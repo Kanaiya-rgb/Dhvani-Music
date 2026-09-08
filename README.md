@@ -2,40 +2,42 @@
 
 <br/>
 
-<img src="Logo.png" alt="Flux Music Logo" width="180" />
+<img src="Logo.png" alt="Flux Music Logo" width="160" />
 
 <br/>
 <br/>
 
 # Flux Music
 
-### Next-Gen Aesthetic Music Streaming Client for Android
+### **Your Music. Without Limits.**
+#### Next-Gen Open-Source Android Music Streaming Client
 
 <br/>
 
 [![Platform](https://img.shields.io/badge/Platform-Android%206.0+-3DDC84?style=for-the-badge&logo=android&logoColor=white&labelColor=0d1117)](https://www.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white&labelColor=0d1117)](https://kotlinlang.org)
-[![Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white&labelColor=0d1117)](https://developer.android.com/jetpack/compose)
+[![Jetpack Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white&labelColor=0d1117)](https://developer.android.com/jetpack/compose)
 [![Media3](https://img.shields.io/badge/Media3-ExoPlayer-E65100?style=for-the-badge&logo=googleplay&logoColor=white&labelColor=0d1117)](https://developer.android.com/media/media3)
-[![APK Size](https://img.shields.io/badge/APK%20Size-~21%20MB-22c55e?style=for-the-badge&logo=files&logoColor=white&labelColor=0d1117)](#download)
+[![APK Size](https://img.shields.io/badge/APK%20Size-~21%20MB-22c55e?style=for-the-badge&logoColor=white&labelColor=0d1117)](#-download)
 [![License](https://img.shields.io/badge/License-GPLv3-ef4444?style=for-the-badge&labelColor=0d1117)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/Kanaiya-rgb/Flux-Music?style=for-the-badge&logo=github&labelColor=0d1117&color=f59e0b)](https://github.com/Kanaiya-rgb/Flux-Music/stargazers)
 
 <br/>
 
-[**Features**](#-features) · [**Screenshots**](#-screenshots) · [**Download**](#-download) · [**Build from Source**](#-build-from-source) · [**Tech Stack**](#-tech-stack) · [**Credits**](#-credits--special-thanks) · [**License**](#-license)
+[**✨ Features**](#-features) • [**📸 Screenshots**](#-screenshots) • [**⬇️ Download**](#-download) • [**🔧 Build**](#-build-from-source) • [**🛠 Tech Stack**](#-tech-stack) • [**❤️ Credits**](#-credits--special-thanks) • [**📜 License**](#-license)
 
 <br/>
 
 </div>
 
 > [!NOTE]
-> **Flux Music** is an open-source, independent Android music client. It streams songs from **YouTube Music** and **JioSaavn** — with zero ads, zero account requirements, and a beautiful modern UI. Built for audiophiles who want full control of their listening experience.
+> **Flux Music** is a free, open-source Android music player that streams from **YouTube Music** and **JioSaavn** — completely ad-free, with no account required. Designed for audiophiles who want a premium listening experience without compromise.
 
 ---
 
 <div align="center">
 
-<img src="Banner.png" alt="Flux Music — Banner" width="100%" />
+<img src="Banner.png" alt="Flux Music — Your Music. Without Limits." width="100%" />
 
 </div>
 
@@ -47,46 +49,57 @@
   <tr>
     <td width="50%" valign="top">
 
-### 🎧 Audio & Playback
-- **Dual Streaming Engine** — YouTube Music (Innertube API) + JioSaavn with seamless auto-fallback.
-- **Lossless / Hi-Res Audio** — FLAC, ALAC, and high-bitrate Opus support.
-- **Gapless Playback & Crossfade** — Smooth transitions with 0–12s adjustable crossfade.
-- **Automix [BETA]** — Native C++ beat-detection & tempo analyzer for DJ-style auto-transitions.
+### 🎧 Playback & Audio Engine
+- **Dual Streaming Engine** — YouTube Music (Innertube) + JioSaavn with seamless auto-fallback between sources.
+- **Lossless / Hi-Res Audio** — Full FLAC, ALAC, and high-bitrate Opus streams.
+- **Gapless Playback & Crossfade** — Smooth 0–12s adjustable crossfade between tracks.
+- **Automix DSP [BETA]** — Native C++ beat-detection and tempo analyzer for DJ-style auto-transitions.
 - **Skip Silence** — Automatically trims silent gaps longer than 1 second.
-- **Spatial Audio** — Stereo widening for a more immersive feel.
-- **Offline Downloads** — Save any song locally with embedded artwork, tags, and lyrics (Wi-Fi only option).
-- **Background Playback** — Lock-screen controls with Android 13+ media notification & widget support.
+- **Spatial Audio** — Stereo widening for a more immersive, concert-like feel.
+- **Offline Downloads** — Save any track with embedded artwork, ID3 tags, and lyrics. Wi-Fi-only option included.
+- **Background Playback** — Full lock-screen controls, Android 13+ media notification, and home-screen widget support.
 
-### 🎤 Lyrics
-- **Synced Lyrics** — Real-time word-by-word highlight as songs play.
-- **Multiple Animation Styles** — Fade, Glow, Slide, Karaoke, and Apple Music-style.
-- **Tap to Seek** — Tap any lyric line to jump to that moment.
-- **Auto-Scroll** — Lyrics follow along automatically.
-- **Configurable Sources** — Multiple lyric providers with fallback.
+### 🎤 Synchronized Lyrics
+- **Word-by-Word Highlight** — Real-time synced lyrics light up as each word is sung.
+- **6 Animation Styles** — Fade, Glow, Slide, Karaoke, Apple Music-style, or None.
+- **Tap-to-Seek** — Tap any lyric line to instantly jump to that moment in the song.
+- **Auto-Scroll** — Lyrics follow along automatically during playback.
+- **Multiple Sources** — LrcLib, KuGou, and embedded track tags with automatic fallback.
+- **Translation Support** — View translated lyrics side-by-side.
+
+### 📊 Nerd Stats & Song Inspector
+- **Technical Info** — Live views, Likes & Dislikes (via Return YouTube Dislike API), Codec, Bitrate, Sample Rate, MIME type, Itag, Loudness (dB), File Size.
+- **Structured Credits** — Clearly separated: Singers, Lyricists, Composers, Album details.
+- **Tap-to-Copy** — Tap any field to copy it instantly.
+- **Zero-Lag** — Cached in-memory, opens in under 0ms.
 
     </td>
     <td width="50%" valign="top">
 
 ### 🎨 Design & Aesthetics
-- **Apple Music-Inspired UI** — Modern frosted glass, translucent navigation, Material 3 typography.
-- **Dynamic Artwork Palettes** — Mesh gradients auto-generated from your album cover.
-- **Live Canvas & Motion Art** — Video and animated backdrops during playback.
-- **Customizable Player** — Choose from Wavy, Slim, Squiggly, or Default slider styles.
-- **Player Background Modes** — Gradient, Blur, or theme-follow.
-- **Multiple Themes** — Dark, Light, System, and Pure Black AMOLED.
+- **Apple Music-Inspired UI** — Frosted glass, translucent navigation bars, and rich Material 3 typography.
+- **Dynamic Artwork Palettes** — Auto-generated mesh-gradient backgrounds tailored to each album cover.
+- **Live Canvas & Motion Art** — Video and animated backdrops during playback for immersive sessions.
+- **Customizable Player Slider** — Default, Wavy, Slim, or Squiggly styles.
+- **Player Backgrounds** — Gradient, Dynamic Blur, or Follow Theme modes.
+- **Multiple Color Themes** — Dark, Light, System, Pure Black (AMOLED).
+- **High Refresh Rate** — 90Hz / 120Hz display support for ultra-smooth animations.
 
 ### ⚡ Discovery & Library
-- **Intelligent Home Feed** — Personalized, adaptive discovery rotating on every launch based on your activity, liked tracks, and trending genres.
-- **Guest Mode** — Full discovery without signing into a Google account.
-- **YouTube Music Sign-In** — Sync your liked songs, playlists, and history.
-- **Spotify Canvas Support** — View animated Spotify canvases on compatible tracks.
-- **Discord Rich Presence** — Show what you're listening to on Discord.
-- **Last.fm Scrobbling** — Auto-scrobble to your Last.fm profile.
+- **Smart Home Feed** — Adaptive, personalized discovery that rotates every launch based on your likes, history, and trending genres.
+- **Guest Mode** — Full discovery without signing into any account.
+- **YouTube Music Sign-In** — Sync your library, liked songs, and playlists.
+- **Spotify Canvas** — Watch animated Spotify canvases on compatible tracks.
+- **Discord Rich Presence** — Show your current track on your Discord profile in real-time.
+- **Last.fm Scrobbling** — Auto-scrobble every listen to your Last.fm profile.
 
-### 📊 Nerd Stats & Song Inspector
-- **Technical Details** — Codec, bitrate, sample rate, itag, MIME type, loudness, file size, live views, likes & dislikes (via Return YouTube Dislike API).
-- **Structured Credits** — Singers, Lyricists, Composers, Album info at a glance.
-- **Tap-to-Copy** — Instantly copy any field.
+### ⚙️ Customization & Controls
+- **App Language** — English, Hindi, Spanish, French, German, Portuguese, Indonesian, Japanese, Russian, Chinese (Simplified).
+- **Import / Export Data** — Backup your full settings and listening history as a JSON file.
+- **Listening Replay** — View your top songs, artists, albums, and genres.
+- **Don't Repeat Songs** — AutoPlay won't suggest an already-played track this session.
+- **Swipe Art to Skip** — Swipe the album art to skip to the next or previous song.
+- **Volume Bar Toggle**, **Mini Player style**, **Grid Size**, **Slim Navbar** — and many more fine-grained controls.
 
     </td>
   </tr>
@@ -98,39 +111,38 @@
 
 <div align="center">
 
-| Home & Discovery | Now Playing | Synced Lyrics | Library |
+| Home / Queue | Now Playing | Synced Lyrics | Playlist / Library |
 |:-:|:-:|:-:|:-:|
-| Dynamic personalized feed | Full-screen artwork with DSP controls | Word-by-word glow highlights | Playlists, Albums & Artists |
+| *Browse queue & songs* | *Full-screen player with artwork* | *Karaoke-style glow lyrics* | *Playlist & track management* |
+
+> 📱 **Real app screenshots are shown in the Banner above.** All screens run live — no mockups, no fakes.
 
 </div>
 
 ---
 
-## 📦 Download
+## ⬇️ Download
 
-### Latest Release — `v1.5.0`
+<div align="center">
+
+### 🚀 Latest Release — `v1.5`
+
+[![Download APK](https://img.shields.io/badge/⬇%20Download%20APK-Flux--Music--v1.5-4285F4?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Kanaiya-rgb/Flux-Music/releases/latest)
+
+</div>
 
 > [!IMPORTANT]
-> Flux Music is distributed as a sideloaded APK. You will need to **enable "Install from Unknown Sources"** in your Android settings before installing.
+> Flux Music is distributed as a **sideloaded APK** (not on Play Store). You need to enable **"Install from Unknown Sources"** on your Android device before installing.
 
-**[⬇️ Download Flux-Music-v1.5.apk](https://github.com/Kanaiya-rgb/Flux-Music/releases/latest)**
+### 📲 Installation Steps
 
-Or grab it directly from this repo:
-
-```
-Flux-Music-v1.5.apk
-```
-
-### Installation Steps
-
-1. Download the APK from the link above.
-2. On your Android device, go to **Settings → Security → Install Unknown Apps**.
-3. Allow your file manager or browser to install APKs.
-4. Open the downloaded APK and tap **Install**.
-5. Done! Open **Flux Music** and start listening. 🎵
+1. Tap the **Download APK** button above, or go to [Releases](https://github.com/Kanaiya-rgb/Flux-Music/releases/latest).
+2. On your phone: **Settings → Security → Install Unknown Apps** → allow your browser or file manager.
+3. Open the downloaded `.apk` file and tap **Install**.
+4. Open **Flux Music** and enjoy! 🎵
 
 > [!TIP]
-> Flux Music has a **built-in auto-updater** — when a new release is published on GitHub, the app will notify you and let you download and install the update directly from within the app.
+> Flux Music has a **built-in auto-updater** — when a new release is published on GitHub Releases, the app will notify you and let you download & install the update directly from within the app.
 
 ---
 
@@ -138,13 +150,14 @@ Flux-Music-v1.5.apk
 
 ### Prerequisites
 
-| Tool | Minimum Version |
+| Tool | Required Version |
 |---|---|
-| Android Studio | Hedgehog (2023.1.1) or newer |
-| JDK | 17+ |
+| Android Studio | Hedgehog 2023.1.1+ |
+| JDK | 17 or higher |
 | Android SDK | API 34+ |
 | Kotlin | 2.3.x |
 | Gradle | 8.x |
+| NDK | r27+ (for native C++ DSP analyzer) |
 
 ### 1. Clone the Repository
 
@@ -153,55 +166,64 @@ git clone https://github.com/Kanaiya-rgb/Flux-Music.git
 cd Flux-Music
 ```
 
-### 2. Build the APK
+### 2. Open in Android Studio
+
+Open the cloned folder directly in **Android Studio**. Let Gradle sync automatically.
+
+### 3. Build the APK
 
 ```bash
-# Debug build (for testing)
+# Linux / macOS — Debug build
 ./gradlew assembleProdDebug
 
-# Release build (for distribution)
+# Linux / macOS — Release build (unsigned)
 ./gradlew assembleProdRelease
 ```
 
-**Windows users:**
 ```powershell
+# Windows — Debug build
 .\gradlew.bat assembleProdDebug
-# or
+
+# Windows — Release build (unsigned)
 .\gradlew.bat assembleProdRelease
 ```
 
-### 3. Locate the Built APK
+### 4. Locate the Built APK
 
 | Build Type | Output Path |
 |---|---|
-| Debug | `app/build/outputs/apk/prod/debug/app-prod-debug.apk` |
-| Release (unsigned) | `app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk` |
+| **Debug** | `app/build/outputs/apk/prod/debug/app-prod-debug.apk` |
+| **Release (unsigned)** | `app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk` |
 
-### 4. Sign the Release APK (Optional)
+### 5. Sign the Release APK
 
 ```bash
-# Using your own keystore
+# Sign with your own keystore
 apksigner sign \
   --ks your-keystore.jks \
-  --ks-pass pass:your-password \
-  --out Flux-Music-signed.apk \
-  app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk
-
-# Or use the debug keystore for testing
-apksigner sign \
-  --ks ~/.android/debug.keystore \
-  --ks-pass pass:android \
+  --ks-pass pass:YOUR_PASSWORD \
+  --key-pass pass:YOUR_KEY_PASSWORD \
   --out Flux-Music-v1.5.apk \
   app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk
 ```
 
-### 5. Publish a GitHub Release
+```powershell
+# Windows — using debug keystore (for testing only)
+& "C:\Users\<you>\AppData\Local\Android\Sdk\build-tools\35.0.0\apksigner.bat" sign `
+  --ks "$env:USERPROFILE\.android\debug.keystore" `
+  --ks-pass pass:android `
+  --out Flux-Music-v1.5.apk `
+  app\build\outputs\apk\prod\release\app-prod-release-unsigned.apk
+```
 
-1. Go to your repository → **Releases** → **Draft a new release**.
-2. Create a new tag: `v1.5.0` — Target branch: `main`.
-3. Title: `Flux Music v1.5.0 — Stable`.
-4. Upload your signed APK as a release asset.
-5. Click **Publish release** — users can now download directly from your GitHub page!
+### 6. Publish a GitHub Release
+
+1. Go to your repo → **Releases** (right sidebar) → **Draft a new release**.
+2. Create tag: `v1.5` — Target: `main`.
+3. Title: `Flux Music v1.5 — Stable`.
+4. Drag-and-drop your signed `.apk` as a release asset.
+5. Add release notes and click **Publish release**.
+6. Users can now download directly from your GitHub releases page! ✅
 
 ---
 
@@ -210,39 +232,47 @@ apksigner sign \
 | Layer | Technology |
 |---|---|
 | **Language** | Kotlin 2.3 |
-| **UI Framework** | Jetpack Compose + Material 3 |
-| **Audio Engine** | Media3 / ExoPlayer |
-| **DI** | Hilt |
-| **Networking** | OkHttp 4 + Kotlinx Serialization |
+| **UI Framework** | Jetpack Compose + Material Design 3 |
+| **Audio / Media** | Media3 ExoPlayer |
+| **Dependency Injection** | Hilt (Dagger) |
+| **Networking** | OkHttp 4 + Kotlinx Serialization (JSON) |
 | **Image Loading** | Coil 3 |
-| **Blur / Glass UI** | Haze |
-| **Native DSP** | C++ (CMake) — beat-detection & tempo analysis |
-| **Stream Extraction** | NewPipe Extractor (YouTube) |
-| **Spotify Integration** | Custom Spotify module |
-| **Async** | Kotlin Coroutines + Flow |
-| **Persistence** | Room + DataStore |
-| **Lyrics Sources** | LrcLib, KuGou, Embedded tags |
+| **Blur / Glassmorphism** | Haze |
+| **Native DSP Analyzer** | C++ via CMake (beat-detection, tempo analysis) |
+| **Stream Extraction** | NewPipe Extractor (YouTube Music) |
+| **Spotify Module** | Custom Kotlin module |
+| **Concurrency** | Kotlin Coroutines + Flow |
+| **Persistence** | Room (SQLite) + DataStore (Preferences) |
+| **Lyrics Sources** | LrcLib, KuGou, Embedded ID3 tags |
+| **Build Tools** | Gradle 8 + AGP 8.10 + R8 8.13 |
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Whether it's a bug fix, feature request, or UI improvement — feel free to open an issue or pull request.
+Contributions are welcome and appreciated! Here's how to get started:
 
-1. Fork the repository.
-2. Create a new branch: `git checkout -b feature/my-feature`.
-3. Commit your changes: `git commit -m "Add: my feature"`.
-4. Push to your branch: `git push origin feature/my-feature`.
-5. Open a **Pull Request** on GitHub.
+1. **Fork** this repository.
+2. **Create** a feature branch: `git checkout -b feature/my-cool-feature`.
+3. **Commit** your changes: `git commit -m "Add: my cool feature"`.
+4. **Push** to your fork: `git push origin feature/my-cool-feature`.
+5. **Open a Pull Request** on GitHub and describe your changes.
 
 > [!NOTE]
-> Please follow the existing code style (Kotlin, Jetpack Compose) and make sure the app builds successfully before submitting a PR.
+> Please keep code consistent with the existing style (Kotlin + Jetpack Compose). Ensure the app builds without errors before opening a PR.
+
+**Ideas for contributions:**
+- 🐛 Bug fixes and crash reports
+- 🌐 New language translations (`app/src/main/res/values-xx/strings.xml`)
+- 🎨 UI polish and new theme options
+- 🎵 New lyrics / streaming source integrations
+- 📱 Widget improvements
 
 ---
 
 ## ❤️ Credits & Special Thanks
 
-Flux Music is built on the shoulders of incredible open-source projects:
+Flux Music is proudly built on the shoulders of these incredible open-source projects:
 
 <table>
   <tr>
@@ -251,7 +281,7 @@ Flux Music is built on the shoulders of incredible open-source projects:
         <h3>🎵 BitChord</h3>
       </a>
       <p>by <strong><a href="https://github.com/kushagrasinghx">@kushagrasinghx</a></strong></p>
-      <p>Foundational player UI architecture, Automix DSP integration, Spotify Canvas support, and the core aesthetic design system.</p>
+      <p>Core player UI architecture, Automix DSP integration (native C++), Spotify Canvas support, and the foundational aesthetic design system that powers Flux Music's player experience.</p>
       <a href="https://github.com/kushagrasinghx/BitChord">
         <img src="https://img.shields.io/badge/GitHub-BitChord-181717?style=for-the-badge&logo=github" />
       </a>
@@ -261,7 +291,7 @@ Flux Music is built on the shoulders of incredible open-source projects:
         <h3>⚡ Meld</h3>
       </a>
       <p>by <strong><a href="https://github.com/FrancescoGrazioso">@FrancescoGrazioso</a></strong></p>
-      <p>Dynamic personalized recommendation engine, real-time discovery feeds, appearance customization settings, and the sleek song details inspector architecture.</p>
+      <p>Dynamic personalized recommendation engine, real-time adaptive discovery feeds, appearance customization system, and the sleek Song Details / Nerd Stats inspector architecture.</p>
       <a href="https://github.com/FrancescoGrazioso/Meld">
         <img src="https://img.shields.io/badge/GitHub-Meld-181717?style=for-the-badge&logo=github" />
       </a>
@@ -271,23 +301,29 @@ Flux Music is built on the shoulders of incredible open-source projects:
 
 ### Additional Acknowledgments
 
-| Library / API | Purpose |
+| Library / Service | Purpose |
 |---|---|
-| [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor) | YouTube stream parsing & metadata extraction |
-| [Return YouTube Dislike API](https://returnyoutubedislikeapi.com/) | Live dislike counts in the song inspector |
-| [Haze](https://github.com/chrisbanes/haze) | High-performance frosted glass blur in Compose |
-| [LrcLib](https://lrclib.net/) | Synced & plain lyrics provider |
-| [Last.fm API](https://www.last.fm/api) | Scrobbling support |
+| [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor) | YouTube Music stream parsing & metadata extraction |
+| [Return YouTube Dislike API](https://returnyoutubedislikeapi.com/) | Live dislike counts in the Song Inspector |
+| [Haze](https://github.com/chrisbanes/haze) | High-performance frosted glass blur for Jetpack Compose |
+| [LrcLib](https://lrclib.net/) | Synchronized & plain-text lyrics provider |
+| [Last.fm API](https://www.last.fm/api) | Scrobbling support & listening history |
+| [Coil](https://coil-kt.github.io/coil/) | Fast, lightweight image loading for Kotlin/Compose |
 
 ---
 
 ## ⚖️ Disclaimer & Legal Notice
 
-Flux Music is an independent, community-driven third-party audio player and client. It is **not** affiliated with, endorsed by, or associated with Google LLC, YouTube Music, JioSaavn, Spotify, or any of their parent entities.
+Flux Music is an **independent, community-driven** third-party audio client. It is **not** affiliated with, endorsed by, or associated with:
+- Google LLC or YouTube Music
+- JioSaavn or Reliance Industries
+- Spotify AB
+- Any other referenced third-party service
 
-- **No Media Hosting** — Flux Music does not host, store, or redistribute any copyrighted media files. It operates strictly as an interface to stream content available through public APIs and services.
-- **Personal & Educational Use** — This software is intended strictly for personal research, educational, and fair-use experimentation purposes.
-- **User Responsibility** — The end user is solely responsible for complying with their local laws, regulations, and third-party terms of service when using this application.
+**Key points:**
+- 📦 **No Media Hosting** — Flux Music does not host, store, or redistribute any copyrighted content. It accesses streams via publicly available APIs.
+- 🎓 **Personal & Educational Use** — Intended strictly for personal, educational, and fair-use purposes.
+- ⚠️ **User Responsibility** — Users are solely responsible for complying with their local laws and the terms of service of third-party platforms.
 
 ---
 
@@ -297,16 +333,19 @@ Flux Music is an independent, community-driven third-party audio player and clie
 
 This project is licensed under the **GNU General Public License v3.0 (GPLv3)**.
 
-See the [LICENSE](LICENSE) file for full details.
+See the [LICENSE](LICENSE) file for complete terms.
 
 <br/>
 
 [![GitHub stars](https://img.shields.io/github/stars/Kanaiya-rgb/Flux-Music?style=for-the-badge&logo=github&labelColor=0d1117&color=f59e0b)](https://github.com/Kanaiya-rgb/Flux-Music/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/Kanaiya-rgb/Flux-Music?style=for-the-badge&logo=github&labelColor=0d1117&color=6366f1)](https://github.com/Kanaiya-rgb/Flux-Music/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/Kanaiya-rgb/Flux-Music?style=for-the-badge&logo=github&labelColor=0d1117&color=22c55e)](https://github.com/Kanaiya-rgb/Flux-Music/issues)
+[![GitHub release](https://img.shields.io/github/v/release/Kanaiya-rgb/Flux-Music?style=for-the-badge&logo=github&labelColor=0d1117&color=38bdf8)](https://github.com/Kanaiya-rgb/Flux-Music/releases/latest)
 
 <br/>
 
-Made with ❤️ by [Kanaiya-rgb](https://github.com/Kanaiya-rgb)
+*Stream. Discover. Feel. — Made with ❤️ by [Kanaiya-rgb](https://github.com/Kanaiya-rgb)*
+
+<br/>
 
 </div>
