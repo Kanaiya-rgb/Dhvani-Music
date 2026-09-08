@@ -9,6 +9,234 @@
 
 # Flux Music
 
+**Flux Music** is a lightweight, open‑source Android music player that streams from YouTube Music and JioSaavn. It offers an ad‑free experience, high‑quality audio, offline downloads, synchronized lyrics, and a modern UI built with Jetpack Compose.
+
+## 📦 Download
+- **Latest version:** v1.5 (≈21 MB)  
+- APK: https://github.com/Kanaiya-rgb/Flux-Music/releases/latest
+
+### Installation
+1. Download the APK.
+2. Enable **Settings → Security → Install unknown apps**.
+3. Open the APK and tap **Install**.
+4. Launch **Flux Music**.
+
+> The app includes an automatic update checker that notifies you when a new release is published.
+
+## 🔧 Build from Source
+### Prerequisites
+| Tool | Minimum version |
+|------|-----------------|
+| Android Studio (or CLI) | Hedgehog 2023.1.1+ |
+| JDK | 17 |
+| Android SDK | API 34 |
+| Kotlin | 2.3 |
+| Gradle | 8.x |
+
+### Steps
+```bash
+# Clone the repository
+git clone https://github.com/Kanaiya-rgb/Flux-Music.git
+cd Flux-Music
+
+# Build the APK
+# Linux / macOS
+./gradlew assembleProdDebug      # debug build
+./gradlew assembleProdRelease    # unsigned release
+
+# Windows (PowerShell)
+.\gradlew.bat assembleProdDebug
+.\gradlew.bat assembleProdRelease
+```
+
+The generated APKs are located at:
+- Debug: `app/build/outputs/apk/prod/debug/app-prod-debug.apk`
+- Release (unsigned): `app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk`
+
+### Sign the Release APK
+```bash
+apksigner sign \
+  --ks your-keystore.jks \
+  --ks-pass pass:YOUR_PASSWORD \
+  --key-pass pass:YOUR_KEY_PASSWORD \
+  --out Flux-Music-v1.5.apk \
+  app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk
+```
+
+### Publish a GitHub Release
+1. Go to **Releases** → **Draft a new release**.  
+2. Tag: `v1.5`, target: `main`.  
+3. Title: `Flux Music v1.5 — Stable`.  
+4. Attach the signed `Flux-Music-v1.5.apk`.  
+5. Publish.
+
+## 🛠 Tech Stack
+| Layer | Technology |
+|-------|------------|
+| Language | Kotlin 2.3 |
+| UI | Jetpack Compose + Material 3 |
+| Media | Media3 ExoPlayer |
+| DI | Hilt |
+| Networking | OkHttp + Kotlinx Serialization |
+| Image loading | Coil |
+| Blur / Glassmorphism | Haze |
+| Native DSP | C++ (CMake) |
+| Stream extraction | NewPipe Extractor |
+
+## 📄 License
+Licensed under the **GNU GPL‑v3**. See the [LICENSE](LICENSE) file.
+
+## 🤝 Contributing
+1. Fork the repo.  
+2. Create a branch (`git checkout -b feature/my-feature`).  
+3. Commit your changes.  
+4. Push and open a Pull Request.
+
+*Made with ❤️ by [Kanaiya‑rgb](https://github.com/Kanaiya-rgb).*
+
+**Flux Music** is a lightweight, open‑source Android music player that streams from YouTube Music and JioSaavn. It offers an ad‑free experience, high‑quality audio, offline downloads, synchronized lyrics, and a modern UI built with Jetpack Compose.
+
+---
+
+## 📦 Download
+
+- **Version:** `v1.5` (≈21 MB)
+- **APK:** https://github.com/Kanaiya-rgb/Flux-Music/releases/latest
+
+### Installation
+1. Download the `Flux-Music-v1.5.apk` from the release page.
+2. Enable **Settings → Security → Install unknown apps** for your browser or file manager.
+3. Open the APK and tap **Install**.
+4. Launch **Flux Music**.
+
+> The app includes an automatic update checker that notifies you when a new release is published.
+
+---
+
+## ✨ Features
+- Dual streaming engine (YouTube Music + JioSaavn) with seamless fallback
+- Lossless / Hi‑Res audio, gapless playback & cross‑fade
+- Offline downloads with artwork and lyrics
+- Real‑time synchronized lyrics (multiple animation styles)
+- Dynamic mesh‑gradient UI, frosted‑glass blur, dark/light/system themes
+- Customizable player sliders and backgrounds
+- Smart home feed, guest mode, Last.fm scrobbling, Discord Rich Presence
+- Extensive language support and theming options
+
+---
+
+## 📸 Screenshots
+<div align="center">
+| Home / Queue | Now Playing | Synced Lyrics | Library |
+|:-:|:-:|:-:|:-:|
+| Browse queue & songs | Full‑screen player with artwork | Karaoke‑style glow lyrics | Playlists & track management |
+</div>
+
+---
+
+## 🔧 Build from Source
+### Prerequisites
+| Tool | Minimum version |
+|------|-----------------|
+| Android Studio (or CLI) | Hedgehog 2023.1.1+ |
+| JDK | 17 |
+| Android SDK | API 34 |
+| Kotlin | 2.3 |
+| Gradle | 8.x |
+| NDK (optional) | r27+ |
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/Kanaiya-rgb/Flux-Music.git
+cd Flux-Music
+```
+
+### 2. Build the APK
+#### Linux / macOS
+```bash
+# Debug build (testing)
+./gradlew assembleProdDebug
+
+# Release build (unsigned)
+./gradlew assembleProdRelease
+```
+#### Windows (PowerShell)
+```powershell
+# Debug build (testing)
+.\gradlew.bat assembleProdDebug
+
+# Release build (unsigned)
+.\gradlew.bat assembleProdRelease
+```
+
+### 3. Locate the built APK
+| Build type | Output path |
+|------------|-------------|
+| **Debug** | `app/build/outputs/apk/prod/debug/app-prod-debug.apk` |
+| **Release (unsigned)** | `app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk` |
+
+### 4. Sign the Release APK
+#### Using your own keystore (recommended)
+```bash
+apksigner sign \
+  --ks your-keystore.jks \
+  --ks-pass pass:YOUR_PASSWORD \
+  --key-pass pass:YOUR_KEY_PASSWORD \
+  --out Flux-Music-v1.5.apk \
+  app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk
+```
+#### Using the debug keystore (quick test on Windows)
+```powershell
+& "C:\Users\$env:USERNAME\AppData\Local\Android\Sdk\build-tools\35.0.0\apksigner.bat" sign `
+  --ks "$env:USERPROFILE\.android\debug.keystore" `
+  --ks-pass pass:android `
+  --out Flux-Music-v1.5.apk `
+  app\build\outputs\apk\prod\release\app-prod-release-unsigned.apk
+```
+
+### 5. Verify the signed APK (optional)
+```bash
+apksigner verify Flux-Music-v1.5.apk
+```
+If no output appears, the signature is valid.
+
+### 6. Publish a GitHub Release
+1. Go to **Releases** in the repository (right sidebar) → **Draft a new release**.
+2. Create tag `v1.5`, target `main`.
+3. Title: `Flux Music v1.5 — Stable`.
+4. Attach the signed `Flux-Music-v1.5.apk`.
+5. Add release notes and **Publish release**.
+
+---
+
+## 🛠 Tech Stack
+| Layer | Technology |
+|-------|------------|
+| Language | Kotlin 2.3 |
+| UI | Jetpack Compose + Material 3 |
+| Media | Media3 ExoPlayer |
+| DI | Hilt (Dagger) |
+| Networking | OkHttp + Kotlinx Serialization |
+| Image loading | Coil |
+| Blur / Glassmorphism | Haze |
+| Native DSP | C++ (CMake) |
+| Stream extraction | NewPipe Extractor |
+| Build tools | Gradle 8, AGP 8.10, R8 8.13 |
+
+---
+
+## 📄 License
+This project is licensed under the **GNU GPL‑v3**. See the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🤝 Contributing
+Contributions are welcome! Fork the repo, create a feature branch, and submit a pull request. Ensure the project builds before opening a PR.
+
+---
+
+*Made with ❤️ by [Kanaiya‑rgb](https://github.com/Kanaiya-rgb)*
+
 ### **Your Music. Without Limits.**
 #### Next-Gen Open-Source Android Music Streaming Client
 
