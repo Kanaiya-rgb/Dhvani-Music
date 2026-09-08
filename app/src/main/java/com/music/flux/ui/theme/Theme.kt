@@ -62,13 +62,7 @@ private val LightColors = lightColorScheme(
  * type scale actually asks for are bundled; Compose synthesises nothing, so a
  * missing weight would silently fall back to the nearest one shipped.
  */
-val SFProDisplay = FontFamily(
-    Font(R.font.sf_pro_display_regular, FontWeight.W400),
-    Font(R.font.sf_pro_display_medium, FontWeight.W500),
-    Font(R.font.sf_pro_display_semibold, FontWeight.W600),
-    Font(R.font.sf_pro_display_bold, FontWeight.W700),
-    Font(R.font.sf_pro_display_heavy, FontWeight.W800),
-)
+val SFProDisplay = FontFamily.SansSerif
 
 // Compact, screen-adaptive typography.
 // All sizes are in sp — they scale automatically with the user's
