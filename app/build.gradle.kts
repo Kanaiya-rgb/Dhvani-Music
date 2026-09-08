@@ -87,11 +87,11 @@ android {
         create("dev") {
             dimension = "env"
             applicationId = "com.dev.flux"
-            resValue("string", "app_name", "Flux Music Dev")
+            resValue("string", "app_name", "Flux Music")
         }
         create("prod") {
             dimension = "env"
-            // Matches defaultConfig — this is the package already shipped/installed.
+            resValue("string", "app_name", "Flux Music")
         }
     }
 
