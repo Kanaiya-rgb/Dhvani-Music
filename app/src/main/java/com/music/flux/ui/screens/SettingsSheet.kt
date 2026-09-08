@@ -394,7 +394,7 @@ fun SettingsScreen(
                             textDecoration = TextDecoration.Underline,
                         ),
                     )
-                    withLink(LinkAnnotation.Url("https://github.com/kanaiya19/FluxMusic", linkStyles)) {
+                    withLink(LinkAnnotation.Url("https://github.com/Kanaiya-rgb/Flux-Music", linkStyles)) {
                         append("GitHub")
                     }
                     append("   •   ")
@@ -1059,9 +1059,9 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.Rounded.Link,
                             title = "GitHub Repository",
-                            subtitle = "https://github.com/kanaiya19/FluxMusic",
+                            subtitle = "https://github.com/Kanaiya-rgb/Flux-Music",
                             onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, "https://github.com/kanaiya19/FluxMusic".toUri()).apply {
+                                val intent = Intent(Intent.ACTION_VIEW, "https://github.com/Kanaiya-rgb/Flux-Music".toUri()).apply {
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 }
                                 runCatching { context.startActivity(intent) }
