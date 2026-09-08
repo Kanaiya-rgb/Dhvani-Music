@@ -40,3 +40,4 @@ keystore.properties
 .debug/
 .ref_bitchord/
 .ref_meld/
+*.apk
