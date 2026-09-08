@@ -339,10 +339,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * registered, and people tap again.
      */
     fun setLike(videoId: String, status: LikeStatus) {
-        if (!requireSignIn()) return
         val previous = likeStatusOf(videoId)
         if (previous == status) return
         LikeState.set(videoId, status)
+        if (!_signedIn.value) {
+            libraryStale = true
+            return
+        }
         viewModelScope.launch {
             YtMusicRepository.rate(videoId, status).fold(
                 onSuccess = {
