@@ -65,21 +65,36 @@ object AppUpdateChecker {
     @Volatile
     private var downloadCancelled = false
 
-    suspend fun check() = withContext(Dispatchers.IO) {
+    sealed interface CheckResult {
+        data class UpdateAvailable(val info: UpdateInfo) : CheckResult
+        data class UpToDate(val currentVersion: String, val latestVersion: String) : CheckResult
+        data class Error(val message: String) : CheckResult
+    }
+
+    suspend fun check(): CheckResult = withContext(Dispatchers.IO) {
         runCatching {
             val request = Request.Builder().url(LATEST_RELEASE_URL).build()
             val body = Http.client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) null else response.body?.string()
-            } ?: return@runCatching
-            val release = json.parseToJsonElement(body) as? JsonObject ?: return@runCatching
-            val tag = release["tag_name"]?.jsonPrimitive?.contentOrNull ?: return@runCatching
-            val url = release["html_url"]?.jsonPrimitive?.contentOrNull ?: return@runCatching
+            } ?: return@runCatching CheckResult.Error("Could not reach GitHub Releases")
+            val release = json.parseToJsonElement(body) as? JsonObject
+                ?: return@runCatching CheckResult.Error("Invalid release response")
+            val tag = release["tag_name"]?.jsonPrimitive?.contentOrNull
+                ?: return@runCatching CheckResult.Error("Missing release tag")
+            val url = release["html_url"]?.jsonPrimitive?.contentOrNull
+                ?: return@runCatching CheckResult.Error("Missing release URL")
             val apkUrl = apkAssetUrl(release)
             val notes = release["body"]?.jsonPrimitive?.contentOrNull
             val latest = tag.removePrefix("v")
             if (isNewer(latest, BuildConfig.VERSION_NAME)) {
-                _available.value = UpdateInfo(latest, url, apkUrl, notes)
+                val info = UpdateInfo(latest, url, apkUrl, notes)
+                _available.value = info
+                CheckResult.UpdateAvailable(info)
+            } else {
+                CheckResult.UpToDate(BuildConfig.VERSION_NAME, latest)
             }
+        }.getOrElse { error ->
+            CheckResult.Error(error.message ?: "Unknown error")
         }
     }
 
@@ -195,16 +210,16 @@ object AppUpdateChecker {
             return
         }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        context.startActivity(
-            Intent(Intent.ACTION_INSTALL_PACKAGE)
-                .setDataAndType(uri, "application/vnd.android.package-archive")
-                .putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-                .putExtra(Intent.EXTRA_RETURN_RESULT, true)
-                .addFlags(
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_ACTIVITY_NEW_TASK,
-                ),
-        )
+        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+            putExtra(Intent.EXTRA_RETURN_RESULT, true)
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_ACTIVITY_NEW_TASK,
+            )
+        }
+        context.startActivity(installIntent)
     }
 
     /** Numeric, dot-separated comparison — "1.10" outranks "1.9". */

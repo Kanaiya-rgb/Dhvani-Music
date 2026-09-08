@@ -54,6 +54,7 @@ import androidx.compose.material.icons.rounded.SignalCellularAlt
 import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.SurroundSound
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.Waves
@@ -161,6 +162,7 @@ fun SettingsScreen(
     onOpenAppearance: () -> Unit,
     onSpotifyCanvasAuth: () -> Unit,
     onAppLanguage: () -> Unit,
+    onCheckForUpdates: () -> Unit = {},
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -375,6 +377,11 @@ fun SettingsScreen(
                         icon = Icons.Rounded.Article,
                         title = "Changelog",
                         onClick = { currentSubScreen = SettingsSubScreen.CHANGELOG },
+                    ),
+                    MeldSettingsItemData(
+                        icon = Icons.Rounded.SystemUpdate,
+                        title = "Check for updates",
+                        onClick = onCheckForUpdates,
                     ),
                     MeldSettingsItemData(
                         icon = Icons.Rounded.Info,
@@ -1051,6 +1058,17 @@ fun SettingsScreen(
                                 textAlign = TextAlign.Center,
                             )
                         }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    SettingsGroup(header = "Updates") {
+                        SettingsRow(
+                            icon = Icons.Rounded.SystemUpdate,
+                            title = "Check for updates",
+                            subtitle = "Installed version: v$version",
+                            onClick = onCheckForUpdates,
+                        )
                     }
 
                     Spacer(Modifier.height(8.dp))

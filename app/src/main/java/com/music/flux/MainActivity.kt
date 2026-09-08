@@ -1507,6 +1507,30 @@ private fun FluxApp(
                             onOpenAppearance = { showAppearanceSettings = true },
                             onSpotifyCanvasAuth = { showSpotifyCanvasAuth = true },
                             onAppLanguage = { showAppLanguage = true },
+                            onCheckForUpdates = {
+                                scope.launch {
+                                    Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
+                                    when (val res = AppUpdateChecker.check()) {
+                                        is AppUpdateChecker.CheckResult.UpdateAvailable -> {
+                                            showUpdateDialog = true
+                                        }
+                                        is AppUpdateChecker.CheckResult.UpToDate -> {
+                                            Toast.makeText(
+                                                context,
+                                                "Flux Music is up to date (v${BuildConfig.VERSION_NAME})",
+                                                Toast.LENGTH_LONG,
+                                            ).show()
+                                        }
+                                        is AppUpdateChecker.CheckResult.Error -> {
+                                            Toast.makeText(
+                                                context,
+                                                "Couldn't check for updates: ${res.message}",
+                                                Toast.LENGTH_LONG,
+                                            ).show()
+                                        }
+                                    }
+                                }
+                            },
                             contentPadding = listPadding,
                         )
                     } else if (page != null && page.browseId.isDeviceFolder()) {
