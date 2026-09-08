@@ -449,6 +449,18 @@ object AppSettings {
     val discordButton2Text = MutableStateFlow("")
     val discordButton2Visible = MutableStateFlow(true)
 
+    // ── Listen Together ─────────────────────────────────────────────────
+    val listenTogetherUsername = MutableStateFlow("Listener")
+    val listenTogetherServerUrl = MutableStateFlow("wss://metroserverx.meowery.eu/ws")
+    val listenTogetherAutoApproval = MutableStateFlow(false)
+    val listenTogetherAutoApproveSuggestions = MutableStateFlow(false)
+    val listenTogetherSyncVolume = MutableStateFlow(false)
+    val listenTogetherSessionToken = MutableStateFlow("")
+    val listenTogetherRoomCode = MutableStateFlow("")
+    val listenTogetherUserId = MutableStateFlow("")
+    val listenTogetherIsHost = MutableStateFlow(false)
+    val listenTogetherSessionTimestamp = MutableStateFlow(0L)
+
     /** The notice about what connecting an account actually does has been read. */
     val discordInfoDismissed = MutableStateFlow(false)
 
@@ -636,6 +648,16 @@ object AppSettings {
         discordButton2Text.value = prefs.getString(KEY_DISCORD_BUTTON_2_TEXT, "").orEmpty()
         discordButton2Visible.value = prefs.getBoolean(KEY_DISCORD_BUTTON_2_VISIBLE, true)
         discordInfoDismissed.value = prefs.getBoolean(KEY_DISCORD_INFO_DISMISSED, false)
+        listenTogetherUsername.value = prefs.getString(KEY_LISTEN_TOGETHER_USERNAME, null) ?: "Listener"
+        listenTogetherServerUrl.value = prefs.getString(KEY_LISTEN_TOGETHER_SERVER_URL, null) ?: "wss://metroserverx.meowery.eu/ws"
+        listenTogetherAutoApproval.value = prefs.getBoolean(KEY_LISTEN_TOGETHER_AUTO_APPROVAL, false)
+        listenTogetherAutoApproveSuggestions.value = prefs.getBoolean(KEY_LISTEN_TOGETHER_AUTO_APPROVE_SUGGESTIONS, false)
+        listenTogetherSyncVolume.value = prefs.getBoolean(KEY_LISTEN_TOGETHER_SYNC_VOLUME, false)
+        listenTogetherSessionToken.value = prefs.getString(KEY_LISTEN_TOGETHER_SESSION_TOKEN, null) ?: ""
+        listenTogetherRoomCode.value = prefs.getString(KEY_LISTEN_TOGETHER_ROOM_CODE, null) ?: ""
+        listenTogetherUserId.value = prefs.getString(KEY_LISTEN_TOGETHER_USER_ID, null) ?: ""
+        listenTogetherIsHost.value = prefs.getBoolean(KEY_LISTEN_TOGETHER_IS_HOST, false)
+        listenTogetherSessionTimestamp.value = prefs.getLong(KEY_LISTEN_TOGETHER_SESSION_TIMESTAMP, 0L)
     }
 
     /**
@@ -1273,6 +1295,50 @@ object AppSettings {
         return prefs.all.filterKeys { it !in SECRETS && it !in DEVICE_LOCAL }
     }
 
+    fun setListenTogetherUsername(value: String) {
+        listenTogetherUsername.value = value
+        prefs.edit().putString(KEY_LISTEN_TOGETHER_USERNAME, value).apply()
+    }
+
+    fun setListenTogetherServerUrl(value: String) {
+        listenTogetherServerUrl.value = value
+        prefs.edit().putString(KEY_LISTEN_TOGETHER_SERVER_URL, value).apply()
+    }
+
+    fun setListenTogetherAutoApproval(value: Boolean) {
+        listenTogetherAutoApproval.value = value
+        prefs.edit().putBoolean(KEY_LISTEN_TOGETHER_AUTO_APPROVAL, value).apply()
+    }
+
+    fun setListenTogetherAutoApproveSuggestions(value: Boolean) {
+        listenTogetherAutoApproveSuggestions.value = value
+        prefs.edit().putBoolean(KEY_LISTEN_TOGETHER_AUTO_APPROVE_SUGGESTIONS, value).apply()
+    }
+
+    fun setListenTogetherSyncVolume(value: Boolean) {
+        listenTogetherSyncVolume.value = value
+        prefs.edit().putBoolean(KEY_LISTEN_TOGETHER_SYNC_VOLUME, value).apply()
+    }
+
+    fun setListenTogetherSession(token: String, roomCode: String, userId: String, isHost: Boolean, timestamp: Long) {
+        listenTogetherSessionToken.value = token
+        listenTogetherRoomCode.value = roomCode
+        listenTogetherUserId.value = userId
+        listenTogetherIsHost.value = isHost
+        listenTogetherSessionTimestamp.value = timestamp
+        prefs.edit()
+            .putString(KEY_LISTEN_TOGETHER_SESSION_TOKEN, token)
+            .putString(KEY_LISTEN_TOGETHER_ROOM_CODE, roomCode)
+            .putString(KEY_LISTEN_TOGETHER_USER_ID, userId)
+            .putBoolean(KEY_LISTEN_TOGETHER_IS_HOST, isHost)
+            .putLong(KEY_LISTEN_TOGETHER_SESSION_TIMESTAMP, timestamp)
+            .apply()
+    }
+
+    fun clearListenTogetherSession() {
+        setListenTogetherSession("", "", "", false, 0L)
+    }
+
     /**
      * Replaces the preference file with [values] and re-reads it.
      *
@@ -1428,6 +1494,16 @@ object AppSettings {
     private const val KEY_DISCORD_BUTTON_2_TEXT = "discord_button_2_text"
     private const val KEY_DISCORD_BUTTON_2_VISIBLE = "discord_button_2_visible"
     private const val KEY_DISCORD_INFO_DISMISSED = "discord_info_dismissed"
+    private const val KEY_LISTEN_TOGETHER_USERNAME = "listen_together_username"
+    private const val KEY_LISTEN_TOGETHER_SERVER_URL = "listen_together_server_url"
+    private const val KEY_LISTEN_TOGETHER_AUTO_APPROVAL = "listen_together_auto_approval"
+    private const val KEY_LISTEN_TOGETHER_AUTO_APPROVE_SUGGESTIONS = "listen_together_auto_approve_suggestions"
+    private const val KEY_LISTEN_TOGETHER_SYNC_VOLUME = "listen_together_sync_volume"
+    private const val KEY_LISTEN_TOGETHER_SESSION_TOKEN = "listen_together_session_token"
+    private const val KEY_LISTEN_TOGETHER_ROOM_CODE = "listen_together_room_code"
+    private const val KEY_LISTEN_TOGETHER_USER_ID = "listen_together_user_id"
+    private const val KEY_LISTEN_TOGETHER_IS_HOST = "listen_together_is_host"
+    private const val KEY_LISTEN_TOGETHER_SESSION_TIMESTAMP = "listen_together_session_timestamp"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"
 }
 

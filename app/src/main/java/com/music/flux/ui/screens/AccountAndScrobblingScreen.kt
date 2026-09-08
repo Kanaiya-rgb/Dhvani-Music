@@ -1,4 +1,4 @@
-﻿package com.music.flux.ui.screens
+package com.music.flux.ui.screens
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -38,6 +38,7 @@ fun AccountAndScrobblingScreen(
     onOpenListenBrainzLogin: () -> Unit,
     onOpenLastfmLogin: () -> Unit,
     onOpenDiscord: () -> Unit,
+    onOpenListenTogether: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -54,6 +55,9 @@ fun AccountAndScrobblingScreen(
     val discordToken by AppSettings.discordToken.collectAsStateWithLifecycle()
     val discordUsername by AppSettings.discordUsername.collectAsStateWithLifecycle()
     val discordRpcEnabled by AppSettings.discordRpcEnabled.collectAsStateWithLifecycle()
+    val listenTogetherAutoApproval by AppSettings.listenTogetherAutoApproval.collectAsStateWithLifecycle()
+    val listenTogetherAutoApproveSuggestions by AppSettings.listenTogetherAutoApproveSuggestions.collectAsStateWithLifecycle()
+    val listenTogetherRoomCode by AppSettings.listenTogetherRoomCode.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier
@@ -74,6 +78,50 @@ fun AccountAndScrobblingScreen(
             SettingsGroup {
                 DestructiveRow(label = "Sign out", onClick = onSignOut)
             }
+        }
+
+        SettingsGroup(
+            header = "Listen Together",
+            footer = "Synchronize music playback in real-time with other listeners across devices.",
+        ) {
+            SettingsRow(
+                icon = androidx.compose.material.icons.Icons.Rounded.GraphicEq,
+                title = "Listen Together Room",
+                subtitle = if (listenTogetherRoomCode.isNotEmpty()) "Active room: $listenTogetherRoomCode" else "Create or join a listening room",
+                onClick = onOpenListenTogether,
+            )
+            RowDivider()
+            SettingsRow(
+                icon = androidx.compose.material.icons.Icons.Rounded.GraphicEq,
+                title = "Auto-approve join requests",
+                subtitle = "Automatically accept guests into your room without asking",
+                trailing = {
+                    Switch(
+                        checked = listenTogetherAutoApproval,
+                        onCheckedChange = { AppSettings.setListenTogetherAutoApproval(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = androidx.compose.material.icons.Icons.Rounded.Tune,
+                title = "Auto-approve suggestions",
+                subtitle = "Automatically queue tracks suggested by room guests",
+                trailing = {
+                    Switch(
+                        checked = listenTogetherAutoApproveSuggestions,
+                        onCheckedChange = { AppSettings.setListenTogetherAutoApproveSuggestions(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+            )
         }
 
         SettingsGroup(

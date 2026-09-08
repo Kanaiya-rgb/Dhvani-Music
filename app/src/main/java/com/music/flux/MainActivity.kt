@@ -48,6 +48,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.SystemUpdate
@@ -111,6 +112,8 @@ import com.music.flux.ui.screens.DiscordDialog
 import com.music.flux.ui.screens.DiscordDialogHost
 import com.music.flux.ui.screens.DiscordScreen
 import com.music.flux.ui.screens.HistoryScreen
+import com.music.flux.ui.screens.ListenTogetherScreen
+import com.music.flux.listentogether.ListenTogetherManager
 import com.music.flux.ui.screens.SettingsScreen
 import com.music.flux.ui.screens.SourcesScreen
 import com.music.flux.ui.screens.SpotifyCanvasAuthScreen
@@ -317,6 +320,7 @@ private fun FluxApp(
     var showDiscord by remember { mutableStateOf(false) }
     var showDiscordLogin by remember { mutableStateOf(false) }
     var discordDialog by remember { mutableStateOf<DiscordDialog?>(null) }
+    var showListenTogether by remember { mutableStateOf(false) }
     var songActions by remember { mutableStateOf<Song?>(null) }
     /**
      * Whether the track menu that is up was opened from the player.
@@ -464,6 +468,10 @@ private fun FluxApp(
 
     val controller = rememberMediaController()
     val player = rememberPlayerState(controller)
+    val listenTogetherManager = remember { ListenTogetherManager.getInstance() }
+    LaunchedEffect(controller) {
+        listenTogetherManager.setMediaController(controller)
+    }
     val shuffleEnabled by QueueShuffle.enabled.collectAsStateWithLifecycle()
 
     // Lyrics follow whatever is playing; duration lands a beat after the track.
@@ -1307,6 +1315,7 @@ private fun FluxApp(
         BackHandler(enabled = discordDialog != null) { discordDialog = null }
         BackHandler(enabled = customModuleAlert) { customModuleAlert = false }
         BackHandler(enabled = showHistory) { showHistory = false }
+        BackHandler(enabled = showListenTogether) { showListenTogether = false }
         // Disabled while a detail page is open over the grid: that one's own
         // BackHandler below has to close first, or back would skip past it
         // straight to Library. See [onLibraryItemClick].
@@ -1321,6 +1330,7 @@ private fun FluxApp(
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 AnimatedContent(
                     targetState = when {
+                        showListenTogether -> "listen_together"
                         showDiscord -> "discord"
                         showHistory -> "history"
                         // `&& detail == null`: a card opened from the grid
@@ -1385,7 +1395,7 @@ private fun FluxApp(
                         it.browseId == key && key != "settings" && key != "account_scrobbling" &&
                             key != "sources" && key != "appearance_settings" &&
                             key != "discord" && key != "replay" && key != "history" &&
-                            key != "library_show_all"
+                            key != "library_show_all" && key != "listen_together"
                     }
                     // Held for the same reason, one step further on: a popped
                     // page is off the stack before it has finished animating
@@ -1448,6 +1458,14 @@ private fun FluxApp(
                             contentPadding = listPadding,
                             listState = replayListState,
                         )
+                    } else if (key == "listen_together") {
+                        ListenTogetherScreen(
+                            onBack = { showListenTogether = false },
+                            onOpenSettings = {
+                                showListenTogether = false
+                                showAccountScrobbling = true
+                            },
+                        )
                     } else if (key == "discord") {
                         DiscordScreen(
                             song = player.song,
@@ -1470,6 +1488,10 @@ private fun FluxApp(
                             onOpenListenBrainzLogin = { showListenBrainzLogin = true },
                             onOpenLastfmLogin = { showLastfmLogin = true },
                             onOpenDiscord = { showDiscord = true },
+                            onOpenListenTogether = {
+                                showAccountScrobbling = false
+                                showListenTogether = true
+                            },
                             contentPadding = listPadding,
                         )
                     } else if (key == "sources") {
@@ -1842,6 +1864,7 @@ private fun FluxApp(
 
                 FrostedTopBar(
                     title = when {
+                        showListenTogether -> "Listen Together"
                         showDiscord -> "Discord"
                         showHistory -> "History"
                         libraryShowAll != null && detail == null -> libraryShowAll?.title.orEmpty()
@@ -1857,7 +1880,7 @@ private fun FluxApp(
                     // Search has no large in-list header to hand the title back to —
                     // the field takes that space — so its bar title is always up.
                     scrolled = when {
-                        showSettings || showAccountScrobbling || showSources || showDiscord || showHistory ||
+                        showSettings || showAccountScrobbling || showSources || showDiscord || showHistory || showListenTogether ||
                             (libraryShowAll != null && detail == null) -> true
                         // The page leads with its own large "Replay", so the bar
                         // stays out of the way until that has been scrolled off.
@@ -1868,6 +1891,7 @@ private fun FluxApp(
                     refreshing = currentFeed != null && currentFeed in refreshing,
                     pullFraction = { currentPull?.distanceFraction ?: 0f },
                     onBack = when {
+                        showListenTogether -> ({ showListenTogether = false })
                         showDiscord -> ({ showDiscord = false })
                         showHistory -> ({ showHistory = false })
                         libraryShowAll != null && detail == null -> ({ libraryShowAll = null })
@@ -1895,8 +1919,28 @@ private fun FluxApp(
                         }
                         if (!showSettings && !showAccountScrobbling) {
                             // Left of the account photo:
-                            // History button to view all played tracks
-                            if (!showHistory && !showReplay && !showDiscord && libraryShowAll == null && detail == null) {
+                            // Listen Together and History buttons
+                            if (!showHistory && !showReplay && !showDiscord && !showListenTogether && libraryShowAll == null && detail == null) {
+                                val currentRoomState by listenTogetherManager.roomState.collectAsStateWithLifecycle()
+                                IconButton(
+                                    onClick = { showListenTogether = true },
+                                ) {
+                                    Box(contentAlignment = Alignment.TopEnd) {
+                                        Icon(
+                                            androidx.compose.material.icons.Icons.Rounded.GraphicEq,
+                                            contentDescription = "Listen Together",
+                                            tint = if (currentRoomState != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                        )
+                                        if (currentRoomState != null) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF4CAF50))
+                                            )
+                                        }
+                                    }
+                                }
                                 IconButton(
                                     onClick = {
                                         showHistory = true
