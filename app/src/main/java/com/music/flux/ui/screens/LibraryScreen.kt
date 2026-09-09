@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.flux.data.LikeState
 import com.music.flux.data.YtMusicRepository
 import com.music.flux.data.model.HomeShelf
 import com.music.flux.R
@@ -129,6 +130,22 @@ fun LibraryScreen(
     downloadedPlaylists: List<SavedCollection> = emptyList(),
 ) {
     val pinnedPlaylists by AppSettings.pinnedPlaylists.collectAsStateWithLifecycle()
+    val localLikedSongs by LikeState.likedSongs.collectAsStateWithLifecycle()
+    val likedList = if (signedIn && state is UiState.Success && state.data.likedSongs.isNotEmpty()) {
+        state.data.likedSongs
+    } else {
+        localLikedSongs
+    }
+    val likedCount = likedList.size
+    val latestLikedCover = likedList.firstOrNull()?.thumbnailUrl
+    val likedShelfItem = ShelfItem(
+        title = stringResource(R.string.liked_music),
+        subtitle = if (likedCount == 1) "1 song" else "$likedCount songs",
+        thumbnailUrl = latestLikedCover,
+        videoId = null,
+        browseId = YtMusicRepository.LIKED_MUSIC,
+    )
+
     PullToRefresh(
         refreshing = refreshing,
         onRefresh = onRefresh,
@@ -197,13 +214,13 @@ fun LibraryScreen(
             }
             if (!signedIn) {
                 item(key = "shelf:$PLAYLISTS") {
-                    val emptyPlaylists = HomeShelf(PLAYLISTS, emptyList())
+                    val guestPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem))
                     PlaylistShelf(
-                        shelf = emptyPlaylists,
+                        shelf = guestPlaylists,
                         onItemClick = onShelfItemClick,
                         onItemLongPress = onShelfItemLongPress,
                         onNewPlaylist = onNewPlaylist,
-                        onShowAll = { onShowAll(emptyPlaylists) },
+                        onShowAll = { onShowAll(guestPlaylists) },
                     )
                 }
                 item(key = "guest_connect_account") {
@@ -250,20 +267,24 @@ fun LibraryScreen(
                     val shelves = state.data.shelves
                     if (shelves.none { it.title == PLAYLISTS }) {
                         item(key = "shelf:$PLAYLISTS") {
-                            val emptyPlaylists = HomeShelf(PLAYLISTS, emptyList())
+                            val defaultPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem))
                             PlaylistShelf(
-                                shelf = emptyPlaylists,
+                                shelf = defaultPlaylists,
                                 onItemClick = onShelfItemClick,
                                 onItemLongPress = onShelfItemLongPress,
                                 onNewPlaylist = onNewPlaylist,
-                                onShowAll = { onShowAll(emptyPlaylists) },
+                                onShowAll = { onShowAll(defaultPlaylists) },
                             )
                         }
                     }
                     shelves.forEach { shelf ->
                         item(key = "shelf:${shelf.title}") {
                             if (shelf.title == PLAYLISTS) {
-                                val pinnedFirst = shelf.pinnedFirst(pinnedPlaylists)
+                                val otherItems = shelf.items.filterNot {
+                                    it.browseId == YtMusicRepository.LIKED_MUSIC || it.browseId == "local:liked"
+                                }
+                                val withLiked = shelf.copy(items = listOf(likedShelfItem) + otherItems)
+                                val pinnedFirst = withLiked.pinnedFirst(pinnedPlaylists)
                                 PlaylistShelf(
                                     shelf = pinnedFirst,
                                     onItemClick = onShelfItemClick,
@@ -327,7 +348,7 @@ private fun ReplayBanner(card: ReplayHeroCard?, onClick: () -> Unit) {
             MeshGradientBackground(
                 palette = palette,
                 trackKey = card?.artworkUrl ?: "replay",
-                continuous = true,
+                continuous = false,
                 // A short wide strip: at the backdrop's own radius the four
                 // colours blur into one wash before they reach its ends.
                 blurRadius = 28.dp,

@@ -284,6 +284,7 @@
     <string name="show_play_random_button">Show play random button</string>
     <string name="show_play_random_button_desc">Show quick shuffle play on home screen</string>
     <string name="auto_playlists">Auto playlists</string>
+    <string name="liked_music">Liked Music</string>
     <string name="show_liked_playlist">Show Liked playlist</string>
     <string name="show_downloaded_playlist">Show Downloaded playlist</string>
     <string name="show_top_playlist">Show Top playlist</string>

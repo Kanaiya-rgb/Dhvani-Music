@@ -1195,7 +1195,7 @@ private fun FluxApp(
             autoplayEnabled = autoplay,
             signedIn = signedIn,
             likeStatus = likeStatuses[song.videoId] ?: LikeStatus.INDIFFERENT,
-            onToggleLike = { viewModel.toggleLike(song.videoId) },
+            onToggleLike = { viewModel.toggleLike(song.videoId, song) },
             onToggleShuffle = { controller?.let(QueueShuffle::toggle) },
             onCycleRepeat = {
                 controller?.let {
@@ -2161,7 +2161,7 @@ private fun FluxApp(
                     onDownload = { downloadSong(song) },
                     // The sheet stays up for a rating: it shows the new state
                     // in place, and people often thumb a song and then queue it.
-                    onToggleLike = { viewModel.toggleLike(song.videoId) },
+                    onToggleLike = { viewModel.toggleLike(song.videoId, song) },
                     onToggleDislike = { viewModel.toggleDislike(song.videoId) },
                     onAddToPlaylist = {
                         songActions = null

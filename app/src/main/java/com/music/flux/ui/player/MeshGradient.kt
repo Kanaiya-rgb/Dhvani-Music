@@ -1,4 +1,4 @@
-﻿package com.music.flux.ui.player
+package com.music.flux.ui.player
 
 import android.graphics.Bitmap
 import androidx.compose.animation.animateColorAsState
@@ -106,6 +106,7 @@ fun MeshGradientBackground(
     animated: Boolean = true,
 ) {
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
 
     val tuned = (palette.colors.ifEmpty { FallbackColors } + FallbackColors)
         .take(4)
@@ -165,7 +166,7 @@ fun MeshGradientBackground(
                 scaleY = 1.3f
             }
             .background(baseColor)
-            .blur(blurRadius),
+            .let { if (!reduceDynamicBlur && blurRadius > 0.dp) it.blur(blurRadius) else it },
     ) {
         val anchors = listOf(
             Offset(0.20f, 0.25f),

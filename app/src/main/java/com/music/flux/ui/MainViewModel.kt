@@ -338,12 +338,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * on a round trip before the heart fills reads as the tap not having
      * registered, and people tap again.
      */
-    fun setLike(videoId: String, status: LikeStatus) {
+    fun setLike(videoId: String, status: LikeStatus, song: Song? = null) {
         val previous = likeStatusOf(videoId)
         if (previous == status) return
-        LikeState.set(videoId, status)
+
+        val resolvedSong: Song? = song
+            ?: PlaybackHistory.recent.value.firstOrNull { it.videoId == videoId }?.toSong()
+            ?: LikeState.getSong(videoId)
+
+        if (status == LikeStatus.LIKE && resolvedSong != null) {
+            LikeState.addLiked(resolvedSong)
+        } else if (status != LikeStatus.LIKE) {
+            LikeState.removeLiked(videoId)
+        } else {
+            LikeState.set(videoId, status)
+        }
+
         if (!_signedIn.value) {
             libraryStale = true
+            if (status != LikeStatus.LIKE) dropFromLikedLists(videoId)
             return
         }
         viewModelScope.launch {
@@ -360,6 +373,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 },
                 onFailure = {
                     LikeState.set(videoId, previous)
+                    if (previous == LikeStatus.LIKE && resolvedSong != null) {
+                        LikeState.addLiked(resolvedSong)
+                    } else if (previous != LikeStatus.LIKE) {
+                        LikeState.removeLiked(videoId)
+                    }
                 },
             )
         }
@@ -405,6 +423,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * into a list that YouTube orders for itself; the next fetch places it.
      */
     private fun dropFromLikedLists(videoId: String) {
+        LikeState.removeLiked(videoId)
         val library = (_library.value as? UiState.Success)?.data
         if (library != null && library.likedSongs.any { it.videoId == videoId }) {
             _library.value = UiState.Success(
@@ -413,7 +432,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         _detailStack.value = _detailStack.value.map { page ->
             val songs = (page.songs as? UiState.Success)?.data
-            if (page.browseId != YtMusicRepository.LIKED_MUSIC || songs == null) {
+            if ((page.browseId != YtMusicRepository.LIKED_MUSIC && page.browseId != "local:liked") || songs == null) {
                 page
             } else {
                 page.copy(songs = UiState.Success(songs.filterNot { it.videoId == videoId }))
@@ -422,9 +441,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** The heart: liked becomes neutral, anything else becomes liked. */
-    fun toggleLike(videoId: String) = setLike(
-        videoId,
-        if (likeStatusOf(videoId) == LikeStatus.LIKE) LikeStatus.INDIFFERENT else LikeStatus.LIKE,
+    fun toggleLike(videoId: String, song: Song? = null) = setLike(
+        videoId = videoId,
+        status = if (likeStatusOf(videoId) == LikeStatus.LIKE) LikeStatus.INDIFFERENT else LikeStatus.LIKE,
+        song = song,
     )
 
     /** As [toggleLike], for the thumb-down. */
@@ -1085,6 +1105,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun fetchLibrary() {
         _library.value = YtMusicRepository.library().fold(
             onSuccess = { page ->
+                if (page.likedSongs.isNotEmpty()) {
+                    LikeState.seedLikedSongs(page.likedSongs)
+                }
                 if (page.isEmpty) UiState.Error("Nothing in your library yet")
                 else UiState.Success(page)
             },
@@ -1539,6 +1562,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         else UiState.Success(songs)
                     }
                 }
+                browseId == YtMusicRepository.LIKED_MUSIC || browseId == "local:liked" -> {
+                    val localSongs = LikeState.likedSongs.value
+                    if (_signedIn.value) {
+                        val ytResult = YtMusicRepository.browseSongs(YtMusicRepository.LIKED_MUSIC)
+                        if (ytResult.isSuccess) {
+                            val page = ytResult.getOrThrow()
+                            page.header?.let { header ->
+                                if (title.isBlank()) name = header.title
+                                if (subtitle.isBlank()) credit = header.subtitle
+                                if (thumbnailUrl == null) artwork = header.thumbnailUrl
+                            }
+                            if (page.songs.isNotEmpty()) {
+                                LikeState.seedLikedSongs(page.songs)
+                                UiState.Success(page.songs)
+                            } else if (localSongs.isNotEmpty()) {
+                                artwork = artwork ?: localSongs.firstOrNull()?.thumbnailUrl
+                                UiState.Success(localSongs)
+                            } else {
+                                UiState.Error("No liked songs yet")
+                            }
+                        } else {
+                            if (localSongs.isNotEmpty()) {
+                                artwork = artwork ?: localSongs.firstOrNull()?.thumbnailUrl
+                                UiState.Success(localSongs)
+                            } else {
+                                UiState.Error("No liked songs yet")
+                            }
+                        }
+                    } else {
+                        if (localSongs.isNotEmpty()) {
+                            artwork = artwork ?: localSongs.firstOrNull()?.thumbnailUrl
+                            UiState.Success(localSongs)
+                        } else {
+                            UiState.Error("No liked songs yet")
+                        }
+                    }
+                }
                 resolved == BrowseType.ARTIST -> {
                     YtMusicRepository.artistPage(browseId).fold(
                         onSuccess = { page ->
@@ -1585,6 +1645,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         },
                         onFailure = { UiState.Error(it.friendly()) },
                     )
+                }
+            }
+            if (browseId == YtMusicRepository.LIKED_MUSIC || browseId == "local:liked") {
+                if (name == null || name?.isBlank() == true) name = "Liked Music"
+                val count = (state as? UiState.Success)?.data?.size ?: 0
+                if (credit == null || credit?.isBlank() == true) {
+                    credit = if (count == 1) "1 song" else "$count songs"
+                }
+                if (artwork == null) {
+                    artwork = (state as? UiState.Success)?.data?.firstOrNull()?.thumbnailUrl
                 }
             }
             // Update by id — the user may have pushed another page meanwhile.
@@ -1735,7 +1805,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun browseTypeOf(browseId: String, fallback: BrowseType = BrowseType.OTHER): BrowseType = when {
         // Not one of YouTube's, and the only one of these that says outright what
         // it is rather than being read off a prefix convention.
-        browseId.startsWith(Downloads.PLAYLIST_PREFIX) -> BrowseType.PLAYLIST
+        browseId.startsWith(Downloads.PLAYLIST_PREFIX) || browseId == "local:liked" -> BrowseType.PLAYLIST
         browseId.startsWith("UC") -> BrowseType.ARTIST
         browseId.startsWith("MPREb") -> BrowseType.ALBUM
         browseId.startsWith("VL") || browseId.startsWith("PL") -> BrowseType.PLAYLIST

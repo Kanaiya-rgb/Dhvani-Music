@@ -6,10 +6,12 @@ import android.media.audiofx.AudioEffect
 import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -1025,20 +1027,13 @@ fun SettingsScreen(
                                 .padding(20.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Box(
+                            Image(
+                                painter = painterResource(R.drawable.ic_flux_logo),
+                                contentDescription = "Flux Music",
                                 modifier = Modifier
                                     .size(64.dp)
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Rounded.PlayArrow,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(36.dp),
-                                )
-                            }
+                                    .clip(RoundedCornerShape(18.dp)),
+                            )
                             Spacer(Modifier.height(12.dp))
                             Text(
                                 text = "Flux Music",

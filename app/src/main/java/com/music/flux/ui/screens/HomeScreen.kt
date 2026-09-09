@@ -74,6 +74,7 @@ import com.music.flux.ui.components.heroCardWidth
 import com.music.flux.ui.components.thumbnailBorder
 import com.music.flux.ui.player.MeshGradientBackground
 import com.music.flux.ui.player.MeshPalette
+import com.music.flux.data.YtMusicRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -532,6 +533,61 @@ internal fun ShelfCard(
         modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onLongPress),
     ) {
         when (item.browseId) {
+            YtMusicRepository.LIKED_MUSIC, "local:liked" -> {
+                val palette = remember { MeshPalette(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0), Color(0xFFE91E63))) }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (item.thumbnailUrl != null) {
+                        AsyncImage(
+                            model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
+                            contentDescription = null,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .thumbnailBorder(RoundedCornerShape(12.dp)),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f))
+                                    )
+                                ),
+                            contentAlignment = Alignment.BottomEnd,
+                        ) {
+                            Icon(
+                                imageVector = FluxIcons.HeartFilled,
+                                contentDescription = null,
+                                tint = Color(0xFFFF4081),
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .size(24.dp),
+                            )
+                        }
+                    } else {
+                        MeshGradientBackground(
+                            palette = palette,
+                            trackKey = "liked_music_card",
+                            continuous = false,
+                            blurRadius = 24.dp,
+                        )
+                        Icon(
+                            imageVector = FluxIcons.HeartFilled,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(42.dp),
+                        )
+                    }
+                }
+            }
             "local:downloads" -> {
                 val palette = remember { MeshPalette(listOf(Color(0xFF1E3C72), Color(0xFF2A5298))) }
                 Box(
@@ -544,7 +600,7 @@ internal fun ShelfCard(
                     MeshGradientBackground(
                         palette = palette,
                         trackKey = "local:downloads",
-                        continuous = true,
+                        continuous = false,
                         blurRadius = 24.dp,
                     )
                     Icon(
@@ -567,7 +623,7 @@ internal fun ShelfCard(
                     MeshGradientBackground(
                         palette = palette,
                         trackKey = "local:all",
-                        continuous = true,
+                        continuous = false,
                         blurRadius = 24.dp,
                     )
                     Icon(
