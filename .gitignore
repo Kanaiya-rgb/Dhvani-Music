@@ -41,4 +41,5 @@ keystore.properties
 .ref_bitchord/
 .ref_meld/
 *.apk
+!apk/*.apk
 *.idsig
