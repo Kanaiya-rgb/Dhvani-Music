@@ -29,10 +29,12 @@ captures/
 .DS_Store
 Thumbs.db
 
-# Release signing — never commit the key or its passwords
+# Release signing & Services credentials — never commit secrets
 keystore.properties
 *.jks
 *.keystore
+google-services.json
+app/google-services.json
 
 # Project scratch / debug artifacts
 .shots/
