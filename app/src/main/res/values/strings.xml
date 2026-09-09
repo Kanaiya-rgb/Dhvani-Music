@@ -231,9 +231,13 @@
     <string name="density_restart_message">The display density change will take effect after restarting the app. Restart now?</string>
     <string name="player_slider_style">Player slider style</string>
     <string name="default_">Default</string>
+    <string name="capsule">Capsule</string>
+    <string name="material">Material</string>
     <string name="wavy">Wavy</string>
     <string name="slim">Slim</string>
     <string name="squiggly">Squiggly</string>
+    <string name="resume_on_bluetooth">Resume on Bluetooth connection</string>
+    <string name="resume_on_bluetooth_subtitle">Automatically resume playback when Bluetooth headphones or devices connect</string>
     <string name="player_background_style">Player background style</string>
     <string name="follow_theme">Follow theme</string>
     <string name="gradient">Gradient</string>

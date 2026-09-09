@@ -49,6 +49,7 @@ import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LocalOffer
 import androidx.compose.material.icons.rounded.MusicOff
 import androidx.compose.material.icons.rounded.MotionPhotosOff
+import androidx.compose.material.icons.rounded.BluetoothAudio
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistPlay
@@ -133,8 +134,10 @@ import com.music.flux.data.sources.SourceKind
 import com.music.flux.data.sources.SourceRegistry
 import com.music.flux.data.settings.AudioQuality
 import com.music.flux.data.settings.DownloadQuality
+import com.music.flux.data.settings.SliderStyle
 import com.music.flux.data.settings.ThemeMode
 import com.music.flux.data.stats.Backup
+import com.music.flux.ui.components.SliderStyleDialog
 import com.music.flux.playback.AudioCache
 import com.music.flux.ui.player.fullBleedArtworkAvailable
 import kotlinx.coroutines.launch
@@ -192,6 +195,10 @@ fun SettingsScreen(
     val wifiOnlyDownloads by AppSettings.wifiOnlyDownloads.collectAsStateWithLifecycle()
     val sourceConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
+    val resumeOnBluetooth by AppSettings.resumeOnBluetooth.collectAsStateWithLifecycle()
+    val sliderStyle by AppSettings.sliderStyle.collectAsStateWithLifecycle()
+    val squigglySlider by AppSettings.squigglySlider.collectAsStateWithLifecycle()
+    var showSliderStyleDialog by remember { mutableStateOf(false) }
     val hideVolumeBar by AppSettings.hideVolumeBar.collectAsStateWithLifecycle()
     val swipeToPlayNext by AppSettings.swipeToPlayNext.collectAsStateWithLifecycle()
     val dontRepeatSuggestions by AppSettings.dontRepeatSuggestions.collectAsStateWithLifecycle()
@@ -575,6 +582,38 @@ fun SettingsScreen(
                     }
 
                     SettingsGroup(header = "Playback behavior") {
+                        SettingsRow(
+                            icon = Icons.Rounded.BluetoothAudio,
+                            title = stringResource(R.string.resume_on_bluetooth),
+                            subtitle = stringResource(R.string.resume_on_bluetooth_subtitle),
+                            trailing = {
+                                Switch(
+                                    checked = resumeOnBluetooth,
+                                    onCheckedChange = AppSettings::setResumeOnBluetooth,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setResumeOnBluetooth(!resumeOnBluetooth) },
+                        )
+                        RowDivider()
+                        SettingsRow(
+                            icon = Icons.Rounded.Tune,
+                            title = stringResource(R.string.player_slider_style),
+                            subtitle = "Choose slider style for the main player",
+                            value = when {
+                                sliderStyle == SliderStyle.SQUIGGLY || (sliderStyle == SliderStyle.WAVY && squigglySlider) -> stringResource(R.string.squiggly)
+                                sliderStyle == SliderStyle.WAVY -> stringResource(R.string.wavy)
+                                sliderStyle == SliderStyle.SLIM -> stringResource(R.string.slim)
+                                sliderStyle == SliderStyle.MATERIAL -> stringResource(R.string.material)
+                                sliderStyle == SliderStyle.CAPSULE -> stringResource(R.string.capsule)
+                                else -> stringResource(R.string.capsule)
+                            },
+                            onClick = { showSliderStyleDialog = true },
+                        )
+                        RowDivider()
                         SettingsRow(
                             icon = Icons.Rounded.VolumeOff,
                             title = stringResource(R.string.hide_volume_bar),
@@ -1272,6 +1311,10 @@ fun SettingsScreen(
 
     if (showEqualizerSheet) {
         EqualizerSheet(onDismiss = { showEqualizerSheet = false })
+    }
+
+    if (showSliderStyleDialog) {
+        SliderStyleDialog(onDismissRequest = { showSliderStyleDialog = false })
     }
 }
 

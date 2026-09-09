@@ -1,8 +1,14 @@
-﻿package com.music.flux.playback
+package com.music.flux.playback
 
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
@@ -130,6 +136,8 @@ class PlaybackService : MediaSessionService() {
     private var spare: ExoPlayer? = null
 
     private var crossfade: CrossfadeController? = null
+
+    private var audioDeviceCallback: AudioDeviceCallback? = null
 
     /**
      * One audio-processor set per player, because both carry per-sink state — a
@@ -655,6 +663,8 @@ class PlaybackService : MediaSessionService() {
                 mediaSession?.setCustomLayout(notificationButtons())
             }
         }
+
+        registerAudioDeviceCallback()
 
         // No user agent on the factory: the right one depends on which client
         // minted the URL, so it is set per request below. Setting it here as
@@ -1327,7 +1337,12 @@ class PlaybackService : MediaSessionService() {
             exoPlayer.pause()
             SleepTimer.cancel()
         }
-        if (exoPlayer.isPlaying) registerCurrentPlay()
+        if (exoPlayer.isPlaying) {
+            registerCurrentPlay()
+            newSong?.let { song ->
+                com.music.flux.data.analytics.AppAnalytics.logSongPlayed(song.title, song.artist)
+            }
+        }
         prefetchAround(exoPlayer)
         // The second look belongs to the track it was started for; the
         // queue moving on ends it, whatever it had found — and starts
@@ -3243,6 +3258,7 @@ class PlaybackService : MediaSessionService() {
 
 
     override fun onDestroy() {
+        unregisterAudioDeviceCallback()
         com.music.flux.playback.eq.EqualizerManager.unregisterProcessor(equalizerProcessorA)
         com.music.flux.playback.eq.EqualizerManager.unregisterProcessor(equalizerProcessorB)
         // Last chance to record the resume point, while the player still exists.
@@ -3315,6 +3331,48 @@ class PlaybackService : MediaSessionService() {
         spare?.release()
         spare = null
         super.onDestroy()
+    }
+
+    private fun registerAudioDeviceCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        audioDeviceCallback = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+                super.onAudioDevicesAdded(addedDevices)
+                if (!AppSettings.resumeOnBluetooth.value) return
+                val hasTargetDevice = addedDevices?.any { dev ->
+                    dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    dev.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    dev.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
+                        dev.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                        dev.type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+                        dev.type == AudioDeviceInfo.TYPE_BLE_BROADCAST
+                    ))
+                } == true
+
+                if (hasTargetDevice) {
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        val p = player ?: return@postDelayed
+                        if (p.currentMediaItem != null && !p.isPlaying && p.playbackState != Player.STATE_ENDED) {
+                            TrackLog.d("FluxMusic", "Resuming playback on Bluetooth / audio connection")
+                            p.play()
+                        }
+                    }, 400L)
+                }
+            }
+        }
+        audioManager.registerAudioDeviceCallback(audioDeviceCallback, Handler(Looper.getMainLooper()))
+    }
+
+    private fun unregisterAudioDeviceCallback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            audioDeviceCallback?.let { callback ->
+                (getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.unregisterAudioDeviceCallback(callback)
+            }
+        }
+        audioDeviceCallback = null
     }
 
     /**

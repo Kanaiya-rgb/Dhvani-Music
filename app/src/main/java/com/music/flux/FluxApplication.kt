@@ -58,6 +58,7 @@ class FluxApplication : Application(), SingletonImageLoader.Factory {
         // What's already saved to Downloads, so the song menu can say so
         // without a media-store query per row.
         Downloads.init(this)
+        com.music.flux.data.analytics.AppAnalytics.init(this)
         // The device's own listening record. Opened here rather than in
         // PlaybackService because the Replay page reads it from the UI side and
         // both live in this process — one owner, one directory.

@@ -70,7 +70,10 @@ enum class ThemeMode(val label: String) {
 
 enum class SliderStyle(val label: String) {
     DEFAULT("Default"),
+    CAPSULE("Capsule"),
+    MATERIAL("Material"),
     WAVY("Wavy"),
+    SQUIGGLY("Squiggly"),
     SLIM("Slim"),
 }
 
@@ -270,6 +273,9 @@ object AppSettings {
 
     /** Swiping a song row plays it next instead of adding it to the end of the queue. */
     val swipeToPlayNext = MutableStateFlow(false)
+
+    /** Automatically resume playback when Bluetooth headphones or devices connect. */
+    val resumeOnBluetooth = MutableStateFlow(false)
 
     /** Once a song has been suggested or played this session, AutoPlay won't offer it again. */
     val dontRepeatSuggestions = MutableStateFlow(false)
@@ -560,6 +566,7 @@ object AppSettings {
         stopOnTaskRemoved.value = prefs.getBoolean(KEY_STOP_ON_TASK_REMOVED, false)
         hideVolumeBar.value = prefs.getBoolean(KEY_HIDE_VOLUME_BAR, false)
         swipeToPlayNext.value = prefs.getBoolean(KEY_SWIPE_TO_PLAY_NEXT, false)
+        resumeOnBluetooth.value = prefs.getBoolean(KEY_RESUME_ON_BLUETOOTH, false)
         dontRepeatSuggestions.value = prefs.getBoolean(KEY_DONT_REPEAT_SUGGESTIONS, false)
         convertVideoToAudio.value = prefs.getBoolean(KEY_CONVERT_VIDEO_TO_AUDIO, true)
         reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, false)
@@ -834,6 +841,11 @@ object AppSettings {
     fun setSwipeToPlayNext(value: Boolean) {
         swipeToPlayNext.value = value
         prefs.edit().putBoolean(KEY_SWIPE_TO_PLAY_NEXT, value).apply()
+    }
+
+    fun setResumeOnBluetooth(value: Boolean) {
+        resumeOnBluetooth.value = value
+        prefs.edit().putBoolean(KEY_RESUME_ON_BLUETOOTH, value).apply()
     }
 
     fun setDontRepeatSuggestions(value: Boolean) {
@@ -1420,6 +1432,7 @@ object AppSettings {
     private const val KEY_STOP_ON_TASK_REMOVED = "stop_on_task_removed"
     private const val KEY_HIDE_VOLUME_BAR = "hide_volume_bar"
     private const val KEY_SWIPE_TO_PLAY_NEXT = "swipe_to_play_next"
+    private const val KEY_RESUME_ON_BLUETOOTH = "resume_on_bluetooth"
     private const val KEY_DONT_REPEAT_SUGGESTIONS = "dont_repeat_suggestions"
     private const val KEY_CONVERT_VIDEO_TO_AUDIO = "convert_video_to_audio"
     private const val KEY_REDUCE_BLUR = "reduce_dynamic_blur"

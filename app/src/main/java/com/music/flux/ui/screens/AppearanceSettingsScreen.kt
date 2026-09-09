@@ -86,6 +86,7 @@ import com.music.flux.data.settings.PlayerButtonsStyle
 import com.music.flux.data.settings.SliderStyle
 import com.music.flux.data.settings.ThemeMode
 import com.music.flux.ui.components.PlayerSliderTrack
+import com.music.flux.ui.components.SliderStyleDialog
 import com.music.flux.ui.components.SquigglySlider
 import com.music.flux.ui.components.WavySlider
 import com.music.flux.ui.player.fullBleedArtworkAvailable
@@ -249,12 +250,14 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.Tune,
                 title = stringResource(R.string.player_slider_style),
-                subtitle = "Choose between Default, Wavy, Slim, or Squiggly waveform",
+                subtitle = "Choose between Capsule, Material, Wavy, Squiggly, or Slim",
                 value = when {
-                    sliderStyle == SliderStyle.WAVY && squigglySlider -> stringResource(R.string.squiggly)
+                    sliderStyle == SliderStyle.SQUIGGLY || (sliderStyle == SliderStyle.WAVY && squigglySlider) -> stringResource(R.string.squiggly)
                     sliderStyle == SliderStyle.WAVY -> stringResource(R.string.wavy)
                     sliderStyle == SliderStyle.SLIM -> stringResource(R.string.slim)
-                    else -> stringResource(R.string.default_)
+                    sliderStyle == SliderStyle.MATERIAL -> stringResource(R.string.material)
+                    sliderStyle == SliderStyle.CAPSULE -> stringResource(R.string.capsule)
+                    else -> stringResource(R.string.capsule)
                 },
                 onClick = { showSliderStyleDialog = true },
             )
@@ -770,196 +773,10 @@ fun AppearanceSettingsScreen(
 
     // ── Dialogs ─────────────────────────────────────────────────────────
 
-    // 1. Slider Style Selection Dialog with 4-Way visual preview (Default, Wavy, Slim, Squiggly)
+    // 1. Slider Style Selection Dialog
     if (showSliderStyleDialog) {
-        val sliderPreviewColors = SliderDefaults.colors(
-            activeTrackColor = MaterialTheme.colorScheme.primary,
-            inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
-            thumbColor = MaterialTheme.colorScheme.primary,
-        )
-
-        AlertDialog(
+        SliderStyleDialog(
             onDismissRequest = { showSliderStyleDialog = false },
-            title = {
-                Text(
-                    text = stringResource(R.string.player_slider_style),
-                    style = MaterialTheme.typography.titleLarge,
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Default Slider Preview
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .border(
-                                    1.5.dp,
-                                    if (sliderStyle == SliderStyle.DEFAULT && !squigglySlider) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.outlineVariant
-                                    },
-                                    RoundedCornerShape(16.dp),
-                                )
-                                .clickable {
-                                    AppSettings.setSliderStyle(SliderStyle.DEFAULT)
-                                    AppSettings.setSquigglySlider(false)
-                                    showSliderStyleDialog = false
-                                }
-                                .padding(12.dp),
-                        ) {
-                            Slider(
-                                value = 0.45f,
-                                onValueChange = {},
-                                colors = sliderPreviewColors,
-                                enabled = false,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                text = stringResource(R.string.default_),
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-
-                        // Wavy Slider Preview
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .border(
-                                    1.5.dp,
-                                    if (sliderStyle == SliderStyle.WAVY && !squigglySlider) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.outlineVariant
-                                    },
-                                    RoundedCornerShape(16.dp),
-                                )
-                                .clickable {
-                                    AppSettings.setSliderStyle(SliderStyle.WAVY)
-                                    AppSettings.setSquigglySlider(false)
-                                    showSliderStyleDialog = false
-                                }
-                                .padding(12.dp),
-                        ) {
-                            WavySlider(
-                                value = 0.5f,
-                                onValueChange = {},
-                                colors = sliderPreviewColors,
-                                modifier = Modifier.weight(1f),
-                                isPlaying = true,
-                                enabled = false,
-                            )
-                            Text(
-                                text = stringResource(R.string.wavy),
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Slim Slider Preview
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .border(
-                                    1.5.dp,
-                                    if (sliderStyle == SliderStyle.SLIM && !squigglySlider) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.outlineVariant
-                                    },
-                                    RoundedCornerShape(16.dp),
-                                )
-                                .clickable {
-                                    AppSettings.setSliderStyle(SliderStyle.SLIM)
-                                    AppSettings.setSquigglySlider(false)
-                                    showSliderStyleDialog = false
-                                }
-                                .padding(12.dp),
-                        ) {
-                            Slider(
-                                value = 0.65f,
-                                onValueChange = {},
-                                thumb = { Spacer(Modifier.size(0.dp)) },
-                                track = { state ->
-                                    PlayerSliderTrack(sliderState = state, colors = sliderPreviewColors)
-                                },
-                                colors = sliderPreviewColors,
-                                enabled = false,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                text = stringResource(R.string.slim),
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-
-                        // Squiggly Slider Preview
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .border(
-                                    1.5.dp,
-                                    if (sliderStyle == SliderStyle.WAVY && squigglySlider) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.outlineVariant
-                                    },
-                                    RoundedCornerShape(16.dp),
-                                )
-                                .clickable {
-                                    AppSettings.setSliderStyle(SliderStyle.WAVY)
-                                    AppSettings.setSquigglySlider(true)
-                                    showSliderStyleDialog = false
-                                }
-                                .padding(12.dp),
-                        ) {
-                            SquigglySlider(
-                                value = 0.55f,
-                                onValueChange = {},
-                                colors = sliderPreviewColors,
-                                isPlaying = true,
-                                enabled = false,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                text = stringResource(R.string.squiggly),
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showSliderStyleDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
         )
     }
 

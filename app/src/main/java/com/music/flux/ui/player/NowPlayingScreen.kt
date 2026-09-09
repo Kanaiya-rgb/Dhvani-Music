@@ -175,6 +175,8 @@ import com.music.flux.ui.haptics.Haptic
 import com.music.flux.ui.haptics.rememberHaptics
 import com.music.flux.ui.icons.FluxIcons
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.flux.data.NerdStats
 import com.music.flux.data.settings.TrackAnalysisState
@@ -1846,7 +1848,7 @@ fun NowPlayingScreen(
             val squigglySlider by AppSettings.squigglySlider.collectAsStateWithLifecycle()
 
             when {
-                sliderStyle == SliderStyle.WAVY && squigglySlider -> {
+                sliderStyle == SliderStyle.SQUIGGLY || (sliderStyle == SliderStyle.WAVY && squigglySlider) -> {
                     SquigglySlider(
                         value = shown,
                         onValueChange = {
@@ -1896,6 +1898,27 @@ fun NowPlayingScreen(
                         mixing = mixing && !scrubbing,
                         idleHeight = 2.dp,
                         activeHeight = 4.dp,
+                    )
+                }
+                sliderStyle == SliderStyle.MATERIAL -> {
+                    Slider(
+                        value = shown,
+                        onValueChange = {
+                            scrubbing = true
+                            scrubValue = it
+                        },
+                        onValueChangeFinished = {
+                            haptics.play(Haptic.Select)
+                            pendingSeek = scrubValue
+                            onSeekFraction(scrubValue)
+                            scrubbing = false
+                        },
+                        colors = SliderDefaults.colors(
+                            activeTrackColor = Color.White.copy(alpha = 0.92f),
+                            inactiveTrackColor = Color.White.copy(alpha = 0.26f),
+                            thumbColor = Color.White,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 else -> {
