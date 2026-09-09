@@ -6,6 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("com.google.gms.google-services")
 }
 
 /**
@@ -278,6 +279,10 @@ dependencies {
 
     // ---- JS module execution: QuickJS VM for style source plugins ----
     implementation("io.github.dokar3:quickjs-kt-android:1.0.5")
+
+    // ---- Firebase Analytics ----
+    implementation(platform("com.google.firebase:firebase-bom:33.9.0"))
+    implementation("com.google.firebase:firebase-analytics")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
