@@ -1465,6 +1465,7 @@ private fun FluxApp(
                                 showListenTogether = false
                                 showAccountScrobbling = true
                             },
+                            contentPadding = listPadding,
                         )
                     } else if (key == "discord") {
                         DiscordScreen(

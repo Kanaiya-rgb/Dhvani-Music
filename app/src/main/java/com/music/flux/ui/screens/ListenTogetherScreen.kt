@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
@@ -102,11 +104,11 @@ import com.music.flux.listentogether.ListenTogetherManager
 import com.music.flux.listentogether.RoomRole
 import com.music.flux.listentogether.UserInfo
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ListenTogetherScreen(
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -121,6 +123,7 @@ fun ListenTogetherScreen(
     val savedUsername by AppSettings.listenTogetherUsername.collectAsStateWithLifecycle()
     var username by rememberSaveable(savedUsername) { mutableStateOf(savedUsername) }
     var roomCodeInput by rememberSaveable { mutableStateOf("") }
+    var lobbyTab by rememberSaveable { mutableStateOf(0) } // 0 = Join Room, 1 = Host Session
 
     val isInRoom = roomState != null
     val isHost = role == RoomRole.HOST
@@ -129,170 +132,162 @@ fun ListenTogetherScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-    ) {
-        // Top App Bar
-        TopAppBar(
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Listen Together",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onBackground,
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    ConnectionBadge(connectionState = connectionState, isInRoom = isInRoom)
-                }
-            },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Back",
-                        tint = MaterialTheme.colorScheme.onBackground,
-                    )
-                }
-            },
-            actions = {
-                IconButton(onClick = onOpenSettings) {
-                    Icon(
-                        imageVector = Icons.Rounded.Tune,
-                        contentDescription = "Settings",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(
+                top = contentPadding.calculateTopPadding(),
+                bottom = contentPadding.calculateBottomPadding() + 28.dp,
             )
-        )
-
-        Column(
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // In-Screen Top Header
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+                .fillMaxWidth()
+                .padding(top = 10.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            if (!isInRoom) {
-                // ==================== LOBBY STATE ====================
-                LobbyHeroBanner()
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f, fill = false)
+            ) {
+                Text(
+                    text = "Listen Together",
+                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                ConnectionBadge(connectionState = connectionState, isInRoom = isInRoom)
+            }
+            IconButton(onClick = onOpenSettings) {
+                Icon(
+                    imageVector = Icons.Rounded.Tune,
+                    contentDescription = "Settings",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
-                // Display Name Input Card
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                    ),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = Brush.verticalGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
-                            )
+        if (!isInRoom) {
+            // Display Name Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                ),
+                border = CardDefaults.outlinedCardBorder().copy(
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
                         )
                     )
-                ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
-                        Text(
-                            text = "Your Display Name",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = username,
-                            onValueChange = {
-                                username = it
-                                AppSettings.setListenTogetherUsername(it)
-                            },
-                            placeholder = { Text("Enter your name") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
-                            ),
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.Person,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                        )
-                    }
-                }
-
-                // Create Room Action Card
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                    ),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = Brush.linearGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f),
-                            )
-                        )
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Your Display Name",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = {
+                            username = it
+                            AppSettings.setListenTogetherUsername(it)
+                        },
+                        placeholder = { Text("Enter your name") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
+                        ),
+                        leadingIcon = {
                             Icon(
-                                imageVector = Icons.Rounded.GraphicEq,
+                                imageVector = Icons.Rounded.Person,
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = MaterialTheme.colorScheme.primary,
                             )
                         }
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text(
-                            text = "Host a Listening Session",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            // Mode Selector Tabs: [Join Room] | [Host Session]
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Tab 0: Join Room
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (lobbyTab == 0) MaterialTheme.colorScheme.secondary
+                            else Color.Transparent
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Start a room, invite your friends, and control playback in real-time.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
+                        .clickable { lobbyTab = 0 }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Group,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = if (lobbyTab == 0) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = {
-                                manager.createRoom(username)
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                            )
-                        ) {
-                            Icon(Icons.Rounded.PlayArrow, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Create Room", fontWeight = FontWeight.SemiBold)
-                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Join Room",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = if (lobbyTab == 0) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
+                // Tab 1: Host Room
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (lobbyTab == 1) MaterialTheme.colorScheme.primary
+                            else Color.Transparent
+                        )
+                        .clickable { lobbyTab = 1 }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.GraphicEq,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = if (lobbyTab == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Host Session",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = if (lobbyTab == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            if (lobbyTab == 0) {
                 // Join Room Action Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -340,12 +335,12 @@ fun ListenTogetherScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
                         OutlinedTextField(
                             value = roomCodeInput,
                             onValueChange = {
                                 if (it.length <= 8) {
-                                    roomCodeInput = it.uppercase()
+                                    roomCodeInput = it.uppercase().replace(" ", "")
                                 }
                             },
                             placeholder = {
@@ -354,6 +349,31 @@ fun ListenTogetherScreen(
                                     fontFamily = FontFamily.Monospace,
                                     letterSpacing = 3.sp
                                 )
+                            },
+                            trailingIcon = {
+                                if (roomCodeInput.isNotEmpty()) {
+                                    IconButton(onClick = { roomCodeInput = "" }) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Close,
+                                            contentDescription = "Clear",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else {
+                                    IconButton(onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                        val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString()?.trim()?.replace(" ", "")?.uppercase()
+                                        if (!clipText.isNullOrBlank()) {
+                                            roomCodeInput = clipText.take(8)
+                                        }
+                                    }) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.ContentPaste,
+                                            contentDescription = "Paste",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
                             },
                             singleLine = true,
                             textStyle = MaterialTheme.typography.titleMedium.copy(
@@ -377,10 +397,10 @@ fun ListenTogetherScreen(
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = MaterialTheme.colorScheme.secondary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
+                                unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
                             )
                         )
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
                         FilledTonalButton(
                             onClick = {
                                 if (roomCodeInput.isNotBlank()) {
@@ -400,6 +420,77 @@ fun ListenTogetherScreen(
                     }
                 }
             } else {
+                // Host Room Action Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    ),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = Brush.linearGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f),
+                            )
+                        )
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.GraphicEq,
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            text = "Host a Listening Session",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Start a room, invite your friends, and control playback in real-time.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Button(
+                            onClick = {
+                                manager.createRoom(username)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        ) {
+                            Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Create Room", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+
+            LobbyHeroBanner()
+        } else {
                 // ==================== IN-ROOM STATE ====================
                 val currentRoom = roomState!!
 
@@ -812,7 +903,6 @@ fun ListenTogetherScreen(
             }
         }
     }
-}
 
 @Composable
 private fun LobbyHeroBanner() {

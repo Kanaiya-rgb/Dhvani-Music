@@ -158,6 +158,10 @@ class ListenTogetherManager private constructor(
 
     private fun handleClientEvent(event: ListenTogetherEvent) {
         when (event) {
+            is ListenTogetherEvent.RoomCreated -> {
+                Log.i(TAG, "Room created: ${event.roomCode}")
+                onRoomJoined()
+            }
             is ListenTogetherEvent.PlaybackSync -> {
                 if (!isHost) {
                     applyGuestPlaybackAction(event.action)
@@ -169,13 +173,34 @@ class ListenTogetherManager private constructor(
                 }
             }
             is ListenTogetherEvent.JoinApproved -> {
+                onRoomJoined()
                 if (!isHost) {
                     applyGuestRoomState(event.state)
                 }
             }
+            is ListenTogetherEvent.UserJoined -> {
+                Log.i(TAG, "User joined: ${event.username}")
+                if (isHost) {
+                    syncHostStateToRoom()
+                }
+            }
             is ListenTogetherEvent.Reconnected -> {
-                if (!event.isHost) {
+                onRoomJoined()
+                if (event.isHost) {
+                    syncHostStateToRoom()
+                } else {
                     applyGuestRoomState(event.state)
+                }
+            }
+            is ListenTogetherEvent.HostChanged -> {
+                Log.i(TAG, "Host changed to: ${event.newHostName} (${event.newHostId})")
+                if (event.newHostId == userId.value) {
+                    controller?.removeListener(playerListener)
+                    controller?.addListener(playerListener)
+                    syncHostStateToRoom()
+                } else {
+                    controller?.removeListener(playerListener)
+                    client.requestSync()
                 }
             }
             is ListenTogetherEvent.UserLeft -> {
@@ -204,21 +229,47 @@ class ListenTogetherManager private constructor(
         if (isHost) {
             ctrl.removeListener(playerListener)
             ctrl.addListener(playerListener)
-            // Sync current host state
-            ctrl.currentMediaItem?.let { item ->
-                val trackInfo = mediaItemToTrackInfo(item)
-                lastSyncedTrackId = item.mediaId
-                lastSyncedIsPlaying = ctrl.playWhenReady
-                client.sendPlaybackAction(
-                    action = PlaybackActions.CHANGE_TRACK,
-                    trackId = item.mediaId,
-                    trackInfo = trackInfo,
-                    position = ctrl.currentPosition
-                )
-            }
+            syncHostStateToRoom()
         } else {
             ctrl.removeListener(playerListener)
             client.requestSync()
+        }
+    }
+
+    /**
+     * Broadcasts the host's current playing track, position, and playback status to all room participants.
+     */
+    fun syncHostStateToRoom() {
+        if (!isHost || !isInRoom) return
+        val ctrl = controller ?: return
+        val item = ctrl.currentMediaItem ?: return
+
+        val trackInfo = mediaItemToTrackInfo(item)
+        val position = ctrl.currentPosition.coerceAtLeast(0L)
+        val isPlaying = ctrl.playWhenReady
+
+        lastSyncedTrackId = item.mediaId
+        lastSyncedIsPlaying = isPlaying
+
+        Log.d(TAG, "Host broadcasting track: ${trackInfo.title} (${item.mediaId}) at $position, isPlaying=$isPlaying")
+        client.sendPlaybackAction(
+            action = PlaybackActions.CHANGE_TRACK,
+            trackId = item.mediaId,
+            trackInfo = trackInfo,
+            position = position
+        )
+
+        if (isPlaying) {
+            scope.launch {
+                delay(300)
+                if (isHost && isInRoom) {
+                    client.sendPlaybackAction(
+                        action = PlaybackActions.PLAY,
+                        trackId = item.mediaId,
+                        position = ctrl.currentPosition
+                    )
+                }
+            }
         }
     }
 
@@ -232,6 +283,15 @@ class ListenTogetherManager private constructor(
             }
 
             PlaybackActions.PLAY -> {
+                val targetTrackId = action.trackId
+                if (targetTrackId != null && ctrl.currentMediaItem?.mediaId != targetTrackId) {
+                    if (action.trackInfo != null) {
+                        loadGuestTrack(action.trackInfo, playImmediately = true, startPosition = action.position ?: 0L)
+                        return
+                    } else {
+                        client.requestSync()
+                    }
+                }
                 isSyncing = true
                 try {
                     val targetPos = action.position ?: ctrl.currentPosition
@@ -352,14 +412,17 @@ class ListenTogetherManager private constructor(
     private fun loadGuestTrack(trackInfo: TrackInfo, playImmediately: Boolean, startPosition: Long) {
         val ctrl = controller ?: return
         val song = trackInfo.toSong()
+        val mediaItem = song.toMediaItem()
 
         isSyncing = true
         try {
-            ctrl.playSongs(listOf(song), 0)
-            if (startPosition > 0) {
-                ctrl.seekTo(startPosition)
-            }
-            if (!playImmediately) {
+            lastSyncedTrackId = trackInfo.id
+            lastSyncedIsPlaying = playImmediately
+            ctrl.setMediaItem(mediaItem, startPosition.coerceAtLeast(0L))
+            ctrl.prepare()
+            if (playImmediately) {
+                ctrl.play()
+            } else {
                 ctrl.pause()
             }
             client.sendBufferReady(trackInfo.id)
