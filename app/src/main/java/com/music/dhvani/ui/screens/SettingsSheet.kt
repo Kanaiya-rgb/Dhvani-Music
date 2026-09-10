@@ -1079,11 +1079,12 @@ fun SettingsScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Image(
-                                painter = painterResource(R.drawable.ic_dhvani_logo),
+                                painter = painterResource(R.drawable.app_logo),
                                 contentDescription = "Dhvani Music",
+                                contentScale = ContentScale.Crop,
                                 modifier = Modifier
-                                    .size(64.dp)
-                                    .clip(RoundedCornerShape(18.dp)),
+                                    .size(72.dp)
+                                    .clip(RoundedCornerShape(20.dp)),
                             )
                             Spacer(Modifier.height(12.dp))
                             Text(
