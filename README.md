@@ -9,8 +9,6 @@
 [![Material 3](https://img.shields.io/badge/Material_3-Material_You-E879F9?style=for-the-badge&logo=google&logoColor=white&labelColor=0d1117)](https://m3.material.io)
 [![Media3](https://img.shields.io/badge/Media3-ExoPlayer-E65100?style=for-the-badge&logo=googleplay&logoColor=white&labelColor=0d1117)](https://developer.android.com/media/media3)
 [![License](https://img.shields.io/badge/License-GPLv3-ef4444?style=for-the-badge&labelColor=0d1117)](LICENSE)
-[![Trendshift #1 Kotlin Repo](https://img.shields.io/badge/TRENDSHIFT-Kotlin_%231_Repository_Of_The_Day-1a1a2e?style=for-the-badge&logo=trendmicro&logoColor=FFD700&labelColor=0d1117)](https://trendshift.io/repositories?q=Dhvani-Music)
-[![Trendshift #3 Kotlin Repo](https://img.shields.io/badge/TRENDSHIFT-Kotlin_%233_Repository_Of_The_Week-1a1a2e?style=for-the-badge&logo=trendmicro&logoColor=CD7F32&labelColor=0d1117)](https://trendshift.io/repositories?q=Dhvani-Music)
 
 <br/>
 
