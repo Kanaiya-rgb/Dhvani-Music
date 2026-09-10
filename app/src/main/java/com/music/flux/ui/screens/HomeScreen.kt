@@ -323,6 +323,7 @@ private fun MoodGenreChips(
         if (isHindi) {
             listOf(
                 "सभी",
+                "नया संगीत",
                 "बॉलीवुड",
                 "इंडी हिंदी",
                 "ग़ज़ल व सूफ़ी",
@@ -334,6 +335,7 @@ private fun MoodGenreChips(
         } else {
             listOf(
                 "All",
+                "New Releases",
                 "Bollywood",
                 "Indie Hindi",
                 "Ghazal & Sufi",

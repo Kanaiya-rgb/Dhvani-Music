@@ -289,6 +289,12 @@ object YtMusicRepository {
     suspend fun categoryShelves(category: String): Result<List<HomeShelf>> = call("category:$category") {
         coroutineScope {
             val queries = when {
+                category.contains("New", ignoreCase = true) || category.contains("नया", ignoreCase = true) -> listOf(
+                    "Latest Hindi Songs 2025" to "Fresh Hindi Releases",
+                    "New Bollywood Songs" to "New in Bollywood",
+                    "Latest Punjabi Hits" to "Fresh Punjabi Releases",
+                    "New Indian Indie Songs" to "Fresh Indie Drops",
+                )
                 category.contains("Hindi", ignoreCase = true) -> listOf(
                     "Trending Hindi Songs" to "Trending in Hindi",
                     "Top Bollywood Hits" to "Bollywood Chartbusters",
