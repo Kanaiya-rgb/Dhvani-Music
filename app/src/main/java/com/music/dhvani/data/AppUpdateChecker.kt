@@ -73,7 +73,11 @@ object AppUpdateChecker {
 
     suspend fun check(): CheckResult = withContext(Dispatchers.IO) {
         runCatching {
-            val request = Request.Builder().url(LATEST_RELEASE_URL).build()
+            val request = Request.Builder()
+                .url(LATEST_RELEASE_URL)
+                .header("User-Agent", "Dhvani-Music/${BuildConfig.VERSION_NAME}")
+                .header("Accept", "application/vnd.github+json")
+                .build()
             val body = Http.client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) null else response.body?.string()
             } ?: return@runCatching CheckResult.Error("Could not reach GitHub Releases")

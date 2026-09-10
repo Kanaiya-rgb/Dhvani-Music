@@ -12,7 +12,7 @@
 
 <br/>
 
-[📥 Download APK](#-download--installation) · [✨ Features](#-features) · [🎧 Categories](#-category--mood-explorer) · [⚙️ Setup](#-setup--optimization) · [❓ FAQ](#-frequently-asked-questions) · [⚖️ Disclaimer](#-disclaimer--legal-notice) · [📜 License](#-license)
+[📥 Download APK](#-download--installation) · [✨ Features](#-features) · [🎧 Categories](#-category--mood-explorer) · [⚙️ Setup](#-setup--optimization) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements) · [⚖️ Disclaimer](#-disclaimer--legal-notice) · [📜 License](#-license)
 
 </div>
 
@@ -178,6 +178,17 @@ Dhvani Music communicates using standard read-only client protocols. It does not
 <br/>
 Yes. Audio playback is routed through the standard Android AudioManager and Media3 ExoPlayer stack, fully supporting Bluetooth codecs (AAC, LDAC, aptX, SBC), media key controls (play/pause/next/previous), and car audio head units.
 </details>
+
+---
+
+## 🙏 Credits & Acknowledgements
+
+Dhvani Music is built with immense gratitude to the open-source community and is inspired by these remarkable projects:
+
+* **[BitChord](https://github.com/kushagrasinghx/BitChord)** by [Kushagra Singh](https://github.com/kushagrasinghx) — For pioneering architectural foundations, sophisticated audio playback pipelines, YouTube Music stream integration, and inspiring aesthetic UI concepts.
+* **[Meld](https://github.com/FrancescoGrazioso/Meld)** by [Francesco Grazioso](https://github.com/FrancescoGrazioso) — For elegant Material 3 design implementations, intuitive playlist & library management workflows, and exceptional contributions to the open-source Android music ecosystem.
+* **[NewPipe](https://github.com/TeamNewPipe/NewPipeExtractor)** — For robust, lightweight YouTube stream extraction infrastructure.
+* **[Jetpack Compose](https://developer.android.com/jetpack/compose)** & **[AndroidX Media3](https://developer.android.com/media/media3)** — The modern foundation powering our audio engine and UI components.
 
 ---
 
