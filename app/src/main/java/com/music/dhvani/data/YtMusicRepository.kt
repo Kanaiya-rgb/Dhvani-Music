@@ -51,6 +51,9 @@ object YtMusicRepository {
      * shelves the same way the official app does as you scroll; signed out
      * it's empty and there's nothing more to fetch.
      */
+    private val currentYear: Int
+        get() = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+
     private fun Song.toShelfItem(): ShelfItem = ShelfItem(
         title = title,
         subtitle = artist,
@@ -104,7 +107,7 @@ object YtMusicRepository {
                 radio(seed).getOrNull().orEmpty().shuffled().take(10)
             } else emptyList()
             val fallback = if (historySongs.isEmpty() && relatedSongs.isEmpty()) {
-                search("Top Hits India 2025", SearchFilter.SONGS).getOrNull()
+                search("Top Hits India $currentYear", SearchFilter.SONGS).getOrNull()
                     ?.filterIsInstance<SearchResult.Track>()?.map { it.song }.orEmpty().shuffled().take(16)
             } else emptyList()
 
@@ -137,7 +140,7 @@ object YtMusicRepository {
                 discoverSongs.addAll(related)
             }
             if (discoverSongs.isEmpty()) {
-                val fresh = search("New Hindi Songs 2025", SearchFilter.SONGS).getOrNull()
+                val fresh = search("New Hindi Songs $currentYear", SearchFilter.SONGS).getOrNull()
                     ?.filterIsInstance<SearchResult.Track>()?.map { it.song }.orEmpty().shuffled().take(12)
                 discoverSongs.addAll(fresh)
             }
@@ -177,8 +180,8 @@ object YtMusicRepository {
         val indianTrendingAsync = async {
             val categories = listOf(
                 "Trending India Songs" to "Trending in India",
-                "Latest Hindi Hits 2025" to "Bollywood Chartbusters",
-                "Hot Punjabi Hits 2025" to "Punjabi Wave",
+                "Latest Hindi Hits $currentYear" to "Bollywood Chartbusters",
+                "Hot Punjabi Hits $currentYear" to "Punjabi Wave",
                 "Indian Indie Songs" to "Indie & Chill India",
                 "Romantic Hindi Songs" to "Desi Romance",
                 "Desi Hip Hop Hits" to "Desi Hip Hop",
@@ -289,30 +292,71 @@ object YtMusicRepository {
     suspend fun categoryShelves(category: String): Result<List<HomeShelf>> = call("category:$category") {
         coroutineScope {
             if (category.contains("New", ignoreCase = true) || category.contains("नया", ignoreCase = true)) {
+                val year = currentYear
+                val pastYears = (1990 until year).map { it.toString() }
+                val isOldTrack: (String) -> Boolean = { text ->
+                    val t = text.lowercase(Locale.ROOT)
+                    pastYears.any { y -> t.contains(y) } ||
+                        t.contains("jukebox") || t.contains("mashup") ||
+                        t.contains("90s") || t.contains("80s") || t.contains("70s") || t.contains("2000s") ||
+                        t.contains("evergreen") || t.contains("purane") || t.contains("old") ||
+                        t.contains("classic") || t.contains("golden") || t.contains("collection") ||
+                        t.contains("non stop") || t.contains("nonstop") || t.contains("sadri")
+                }
+
                 val officialReleasesAsync = async { runCatching { shelvesOf("FEmusic_new_releases") }.getOrDefault(emptyList()) }
                 val officialAlbumsAsync = async { runCatching { shelvesOf("FEmusic_new_releases_albums") }.getOrDefault(emptyList()) }
                 val chartsAsync = async { runCatching { shelvesOf("FEmusic_charts") }.getOrDefault(emptyList()) }
+
                 val freshSinglesAsync = async {
-                    search("Latest Hindi Songs 2025 Official Single", SearchFilter.SONGS).getOrNull()
+                    search("Latest Hindi Songs $year Official Single", SearchFilter.SONGS).getOrNull()
                         ?.filterIsInstance<SearchResult.Track>()
                         ?.map { it.song }
-                        ?.filter { song ->
-                            val text = (song.title + " " + song.artist).lowercase(Locale.ROOT)
-                            !text.contains("jukebox") && !text.contains("mashup") &&
-                                !text.contains("90s") && !text.contains("80s") && !text.contains("2000s") &&
-                                !text.contains("evergreen") && !text.contains("purane") && !text.contains("old") &&
-                                !text.contains("classic") && !text.contains("golden") && !text.contains("collection") &&
-                                !text.contains("non stop") && !text.contains("nonstop") && !text.contains("sadri")
-                        }
+                        ?.filter { !isOldTrack(it.title + " " + it.artist) }
                         ?.take(16)
-                        ?.let { if (it.isNotEmpty()) HomeShelf(title = "Fresh Singles", subtitle = "Latest Releases", items = it.map { s -> s.toShelfItem() }) else null }
+                        ?.let { if (it.isNotEmpty()) HomeShelf(title = "Fresh Singles ($year)", subtitle = "Brand New Releases", items = it.map { s -> s.toShelfItem() }) else null }
+                }
+
+                val freshBollywoodAsync = async {
+                    search("New Bollywood Songs $year", SearchFilter.SONGS).getOrNull()
+                        ?.filterIsInstance<SearchResult.Track>()
+                        ?.map { it.song }
+                        ?.filter { !isOldTrack(it.title + " " + it.artist) }
+                        ?.take(16)
+                        ?.let { if (it.isNotEmpty()) HomeShelf(title = "New in Bollywood", subtitle = "Latest Soundtrack Drops", items = it.map { s -> s.toShelfItem() }) else null }
+                }
+
+                val freshPunjabiAsync = async {
+                    search("New Punjabi Songs $year Official", SearchFilter.SONGS).getOrNull()
+                        ?.filterIsInstance<SearchResult.Track>()
+                        ?.map { it.song }
+                        ?.filter { !isOldTrack(it.title + " " + it.artist) }
+                        ?.take(16)
+                        ?.let { if (it.isNotEmpty()) HomeShelf(title = "Fresh Punjabi Hits", subtitle = "Latest Punjabi Drops", items = it.map { s -> s.toShelfItem() }) else null }
+                }
+
+                val freshIndieAsync = async {
+                    search("New Indian Indie Songs $year", SearchFilter.SONGS).getOrNull()
+                        ?.filterIsInstance<SearchResult.Track>()
+                        ?.map { it.song }
+                        ?.filter { !isOldTrack(it.title + " " + it.artist) }
+                        ?.take(16)
+                        ?.let { if (it.isNotEmpty()) HomeShelf(title = "New Indie & Pop", subtitle = "Independent Releases", items = it.map { s -> s.toShelfItem() }) else null }
                 }
 
                 val allOfficial = officialReleasesAsync.await() + officialAlbumsAsync.await() + chartsAsync.await()
                 val fresh = freshSinglesAsync.await()
+                val freshBolly = freshBollywoodAsync.await()
+                val freshPunjabi = freshPunjabiAsync.await()
+                val freshIndie = freshIndieAsync.await()
+
                 val seenTitles = mutableSetOf<String>()
                 val results = mutableListOf<HomeShelf>()
                 fresh?.let { results.add(it) }
+                freshBolly?.let { results.add(it) }
+                freshPunjabi?.let { results.add(it) }
+                freshIndie?.let { results.add(it) }
+
                 for (shelf in allOfficial) {
                     if (seenTitles.add(shelf.title.lowercase(Locale.ROOT))) {
                         results.add(shelf)
@@ -355,8 +399,8 @@ object YtMusicRepository {
                     "Alternative Rock India" to "Indie Rock Wave",
                 )
                 category.contains("Pop", ignoreCase = true) || category.contains("पॉप", ignoreCase = true) -> listOf(
-                    "Top Global Pop Hits 2025" to "Global Pop Bops",
-                    "Indian Pop Hits 2025" to "Desi Pop Waves",
+                    "Top Global Pop Hits $currentYear" to "Global Pop Bops",
+                    "Indian Pop Hits $currentYear" to "Desi Pop Waves",
                     "Catchy Pop Hits Melodies" to "Pop Sensations",
                     "Electropop Dance Hits" to "Sparkling Beats",
                 )
@@ -392,7 +436,7 @@ object YtMusicRepository {
                 )
                 category.contains("Hip Hop", ignoreCase = true) || category.contains("Rap", ignoreCase = true) || category.contains("Gully", ignoreCase = true) -> listOf(
                     "Desi Hip Hop Hits DIVINE Seedhe Maut KR\$NA" to "Gully & Desi Hip-Hop",
-                    "Indian Underground Rap 2025" to "Spitfire Lyricism",
+                    "Indian Underground Rap $currentYear" to "Spitfire Lyricism",
                     "Hard Hitting Desi Rap Beats" to "Heavy Bars & Flow",
                     "Desi Trap & Drill" to "Street Rhythms",
                 )
@@ -415,18 +459,18 @@ object YtMusicRepository {
                     "Hindi Indie Songs" to "Indie Hindi Vibe",
                 )
                 category.contains("Punjabi", ignoreCase = true) -> listOf(
-                    "Top Punjabi Songs 2025" to "Punjabi Chartbusters",
+                    "Top Punjabi Songs $currentYear" to "Punjabi Chartbusters",
                     "Punjabi Hip Hop Hits" to "Punjabi Beats & Bass",
                     "Romantic Punjabi Songs" to "Sufi & Romance Punjabi",
                     "Diljit Dosanjh Hits" to "Artist Spotlight: Diljit",
                 )
                 category.contains("Tamil", ignoreCase = true) -> listOf(
-                    "Top Tamil Songs 2025" to "Kollywood Hits",
+                    "Top Tamil Songs $currentYear" to "Kollywood Hits",
                     "Anirudh Ravichander Best Songs" to "Anirudh Wave",
                     "Tamil Melody Songs" to "Soul of Tamil",
                 )
                 category.contains("Telugu", ignoreCase = true) -> listOf(
-                    "Top Telugu Songs 2025" to "Tollywood Blockbusters",
+                    "Top Telugu Songs $currentYear" to "Tollywood Blockbusters",
                     "Telugu Melody Hits" to "Heart of Telugu",
                     "SS Thaman Best Songs" to "Mass & Beats",
                 )
@@ -451,7 +495,7 @@ object YtMusicRepository {
                     "Zakir Hussain Classical Tabla" to "Rhythm of Raag",
                 )
                 else -> listOf(
-                    "$category Hits 2025" to "Top Picks for $category",
+                    "$category Hits $currentYear" to "Top Picks for $category",
                     "Best $category Songs" to "Curated $category",
                     "$category Radio Mix" to "Mood Mix",
                 )

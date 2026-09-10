@@ -148,11 +148,12 @@ object InnertubeParser {
             .o("tabRenderer").o("content").o("sectionListRenderer").a("contents")
             .orEmpty()
 
-        return sections.mapNotNull { section ->
+        val parsed = sections.mapNotNull { section ->
             section.o("musicCarouselShelfRenderer")?.let(::carouselShelf)
                 ?: section.o("musicShelfRenderer")?.let(::plainShelf)
                 ?: section.o("gridRenderer")?.let(::gridShelf)
         }
+        return if (parsed.isNotEmpty()) parsed else parseHomeContinuation(response)
     }
 
     /**
