@@ -1,4 +1,4 @@
-﻿package com.music.flux.data.lyrics
+package com.music.flux.data.lyrics
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,12 +29,14 @@ object KuGou {
         durationMs: Long,
         album: String? = null,
     ): List<LyricLine>? = withContext(Dispatchers.IO) {
-        val keyword = keyword(title, artist, album)
+        val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
+        val cleanArtist = LyricsCleaner.cleanArtist(artist)
+        val keyword = keyword(cleanTitle, cleanArtist, album)
         val seconds = (durationMs / 1000).toInt()
 
-        val candidate = searchSongs(keyword, seconds)?.firstNotNullOfOrNull { hash ->
-            searchLyrics(hash = hash)?.firstOrNull()
-        } ?: searchLyrics(keyword = keyword, seconds = seconds)?.firstOrNull()
+        val candidate = searchSongs(keyword, cleanTitle, seconds)?.firstNotNullOfOrNull { hash ->
+            searchLyrics(hash = hash, cleanTitle = cleanTitle)?.firstOrNull()
+        } ?: searchLyrics(keyword = keyword, cleanTitle = cleanTitle, seconds = seconds)?.firstOrNull()
             ?: return@withContext null
 
         val lrc = download(candidate.id, candidate.accesskey) ?: return@withContext null
@@ -42,12 +44,10 @@ object KuGou {
     }
 
     /**
-     * Song hashes worth trying, restricted to cuts within
-     * [DURATION_TOLERANCE_SECONDS] of the track being played — otherwise the
-     * first result for a common title is as likely to be a cover or a remix
-     * as the right recording — and ordered closest match first.
+     * Song hashes worth trying, strictly restricted to tracks matching the title
+     * within [DURATION_TOLERANCE_SECONDS] of the track being played.
      */
-    private fun searchSongs(keyword: Keyword, seconds: Int): List<String>? {
+    private fun searchSongs(keyword: Keyword, cleanTitle: String, seconds: Int): List<String>? {
         val url = "https://mobileservice.kugou.com/api/v3/search/song".toHttpUrl().newBuilder()
             .addQueryParameter("version", "9108")
             .addQueryParameter("plat", "0")
@@ -58,12 +58,20 @@ object KuGou {
         val body = lyricsGet(url.toString()) ?: return null
         val response = runCatching { lyricsJson.decodeFromString<SearchSongResponse>(body) }.getOrNull()
         return response?.data?.info.orEmpty()
-            .filter { seconds <= 0 || abs(it.duration - seconds) <= DURATION_TOLERANCE_SECONDS }
+            .filter {
+                (it.songname.isBlank() || LyricsCleaner.isTitleMatch(it.songname, cleanTitle)) &&
+                    (seconds <= 0 || abs(it.duration - seconds) <= DURATION_TOLERANCE_SECONDS)
+            }
             .sortedBy { abs(it.duration - seconds) }
             .map { it.hash }
     }
 
-    private fun searchLyrics(hash: String? = null, keyword: Keyword? = null, seconds: Int = -1): List<Candidate>? {
+    private fun searchLyrics(
+        hash: String? = null,
+        keyword: Keyword? = null,
+        cleanTitle: String? = null,
+        seconds: Int = -1,
+    ): List<Candidate>? {
         val builder = "https://lyrics.kugou.com/search".toHttpUrl().newBuilder()
             .addQueryParameter("ver", "1")
             .addQueryParameter("man", "yes")
@@ -78,7 +86,12 @@ object KuGou {
         }
         val body = lyricsGet(builder.build().toString()) ?: return null
         val response = runCatching { lyricsJson.decodeFromString<SearchLyricsResponse>(body) }.getOrNull()
-        return response?.candidates
+        val candidates = response?.candidates.orEmpty()
+        return if (cleanTitle != null) {
+            candidates.filter { it.song.isBlank() || LyricsCleaner.isTitleMatch(it.song, cleanTitle) }
+        } else {
+            candidates
+        }
     }
 
     private fun download(id: String, accessKey: String): String? {
@@ -144,14 +157,24 @@ object KuGou {
         data class Data(val info: List<Info> = emptyList())
 
         @Serializable
-        data class Info(val hash: String, val duration: Int = -1)
+        data class Info(
+            val hash: String,
+            val duration: Int = -1,
+            @SerialName("songname") val songname: String = "",
+            @SerialName("singername") val singername: String = "",
+        )
     }
 
     @Serializable
     private data class SearchLyricsResponse(val candidates: List<Candidate> = emptyList())
 
     @Serializable
-    private data class Candidate(val id: String, val accesskey: String)
+    private data class Candidate(
+        val id: String,
+        val accesskey: String,
+        @SerialName("song") val song: String = "",
+        @SerialName("singer") val singer: String = "",
+    )
 
     @Serializable
     private data class DownloadResponse(val content: String = "")

@@ -90,6 +90,7 @@ import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -191,6 +192,14 @@ import com.music.flux.data.settings.SliderStyle
 import com.music.flux.data.settings.LyricsPosition
 import com.music.flux.ui.components.WavySlider
 import com.music.flux.ui.components.SquigglySlider
+import com.music.flux.ui.components.NeonGlowSlider
+import com.music.flux.ui.components.GradientFlowSlider
+import com.music.flux.ui.components.CosmicSlider
+import com.music.flux.ui.components.LiquidLavaSlider
+import com.music.flux.ui.components.AudioBarsSlider
+import com.music.flux.ui.components.RetroDotMatrixSlider
+import com.music.flux.ui.components.VinylGrooveSlider
+import com.music.flux.ui.components.CyberBeamSlider
 import com.music.flux.data.model.LikeStatus
 import com.music.flux.data.model.Song
 import com.music.flux.data.model.artworkAt
@@ -201,6 +210,8 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.graphics.ColorUtils
 
 /** Collapsed-header geometry, shared by the layout and its animation. */
 /** Comfortably over the sleeve's drawn size on a phone, without wasting bytes. */
@@ -632,9 +643,7 @@ fun NowPlayingScreen(
     lyrics: List<LyricLine>?,
     lyricsSource: LyricsSource?,
     lyricsUnavailable: Boolean,
-    isLyricsTranslated: Boolean = false,
-    lyricsTranslating: Boolean = false,
-    onToggleTranslate: (() -> Unit)? = null,
+    onReloadLyrics: (() -> Unit)? = null,
     /** The width of the window the player is in — see [fullBleedArtworkAvailable]. */
     windowWidth: Dp,
     /**
@@ -679,6 +688,9 @@ fun NowPlayingScreen(
     // frame of the fade, and the still art it governs is an AsyncImage whose
     // request is rebuilt on each pass and so would not be skipped.
     val canvasCover = remember(song.videoId) { mutableFloatStateOf(0f) }
+    var lyricsOffsetMs by remember(song.videoId) {
+        mutableLongStateOf(AppSettings.getLyricsOffset(song.videoId))
+    }
     // The one thing about it worth recomposing for: whether the clip is opaque
     // enough that the still frame under it can go entirely. Derived, so this
     // flips twice across a fade instead of once per frame of it.
@@ -1737,6 +1749,7 @@ fun NowPlayingScreen(
                     LyricsPanel(
                         lines = lyrics.orEmpty(),
                         positionMs = positionMs,
+                        lyricsOffsetMs = lyricsOffsetMs,
                         isPlaying = isPlaying,
                         onSeekToLine = onSeek,
                         modifier = Modifier
@@ -1817,6 +1830,7 @@ fun NowPlayingScreen(
                             lines = lyrics,
                             trackKey = song.videoId,
                             positionMs = positionMs,
+                            lyricsOffsetMs = lyricsOffsetMs,
                             isPlaying = isPlaying,
                             durationMs = durationMs,
                             // Still visible over the queue, so still a valid way
@@ -1847,6 +1861,38 @@ fun NowPlayingScreen(
             val sliderStyle by AppSettings.sliderStyle.collectAsStateWithLifecycle()
             val squigglySlider by AppSettings.squigglySlider.collectAsStateWithLifecycle()
 
+            // Derive accent color from current song's artwork palette.
+            // Pick the most saturated/vivid of the 4 mesh colors, brightened for
+            // legibility on the dark player background, and animate it on song change.
+            val rawAccent = remember(meshColors) {
+                meshColors.colors.maxByOrNull { color ->
+                    val hsl = FloatArray(3)
+                    androidx.core.graphics.ColorUtils.colorToHSL(color.toArgb(), hsl)
+                    // Score by saturation * sqrt-population proxy (saturation only here)
+                    hsl[1]
+                } ?: meshColors.colors.firstOrNull() ?: Color.White
+            }
+            // Ensure it is bright enough on the dark backdrop
+            val tunedAccent = remember(rawAccent) {
+                val hsl = FloatArray(3)
+                androidx.core.graphics.ColorUtils.colorToHSL(rawAccent.toArgb(), hsl)
+                hsl[1] = hsl[1].coerceAtLeast(0.55f)
+                hsl[2] = hsl[2].coerceIn(0.65f, 0.90f)
+                Color(androidx.core.graphics.ColorUtils.HSLToColor(hsl))
+            }
+            val sliderActiveColor by animateColorAsState(
+                targetValue = tunedAccent,
+                animationSpec = tween(durationMillis = 800),
+                label = "sliderColor",
+            )
+            val sliderInactiveColor = sliderActiveColor.copy(alpha = 0.28f)
+
+            val artworkSliderColors = SliderDefaults.colors(
+                activeTrackColor = sliderActiveColor,
+                inactiveTrackColor = sliderInactiveColor,
+                thumbColor = sliderActiveColor,
+            )
+
             when {
                 sliderStyle == SliderStyle.SQUIGGLY || (sliderStyle == SliderStyle.WAVY && squigglySlider) -> {
                     SquigglySlider(
@@ -1862,6 +1908,7 @@ fun NowPlayingScreen(
                             scrubbing = false
                         },
                         isPlaying = isPlaying,
+                        colors = artworkSliderColors,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -1879,6 +1926,7 @@ fun NowPlayingScreen(
                             scrubbing = false
                         },
                         isPlaying = isPlaying,
+                        colors = artworkSliderColors,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -1898,6 +1946,8 @@ fun NowPlayingScreen(
                         mixing = mixing && !scrubbing,
                         idleHeight = 2.dp,
                         activeHeight = 4.dp,
+                        activeColor = sliderActiveColor,
+                        inactiveColor = sliderInactiveColor,
                     )
                 }
                 sliderStyle == SliderStyle.MATERIAL -> {
@@ -1913,11 +1963,151 @@ fun NowPlayingScreen(
                             onSeekFraction(scrubValue)
                             scrubbing = false
                         },
-                        colors = SliderDefaults.colors(
-                            activeTrackColor = Color.White.copy(alpha = 0.92f),
-                            inactiveTrackColor = Color.White.copy(alpha = 0.26f),
-                            thumbColor = Color.White,
-                        ),
+                        colors = artworkSliderColors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                sliderStyle == SliderStyle.NEON_GLOW -> {
+                    NeonGlowSlider(
+                        value = shown,
+                        onValueChange = {
+                            scrubbing = true
+                            scrubValue = it
+                        },
+                        onValueChangeFinished = {
+                            haptics.play(Haptic.Select)
+                            pendingSeek = scrubValue
+                            onSeekFraction(scrubValue)
+                            scrubbing = false
+                        },
+                        isPlaying = isPlaying,
+                        colors = artworkSliderColors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                sliderStyle == SliderStyle.GRADIENT_FLOW -> {
+                    GradientFlowSlider(
+                        value = shown,
+                        onValueChange = {
+                            scrubbing = true
+                            scrubValue = it
+                        },
+                        onValueChangeFinished = {
+                            haptics.play(Haptic.Select)
+                            pendingSeek = scrubValue
+                            onSeekFraction(scrubValue)
+                            scrubbing = false
+                        },
+                        isPlaying = isPlaying,
+                        colors = artworkSliderColors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                sliderStyle == SliderStyle.COSMIC -> {
+                    CosmicSlider(
+                        value = shown,
+                        onValueChange = {
+                            scrubbing = true
+                            scrubValue = it
+                        },
+                        onValueChangeFinished = {
+                            haptics.play(Haptic.Select)
+                            pendingSeek = scrubValue
+                            onSeekFraction(scrubValue)
+                            scrubbing = false
+                        },
+                        isPlaying = isPlaying,
+                        colors = artworkSliderColors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                sliderStyle == SliderStyle.LIQUID_LAVA -> {
+                    LiquidLavaSlider(
+                        value = shown,
+                        onValueChange = {
+                            scrubbing = true
+                            scrubValue = it
+                        },
+                        onValueChangeFinished = {
+                            haptics.play(Haptic.Select)
+                            pendingSeek = scrubValue
+                            onSeekFraction(scrubValue)
+                            scrubbing = false
+                        },
+                        isPlaying = isPlaying,
+                        colors = artworkSliderColors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                sliderStyle == SliderStyle.AUDIO_BARS -> {
+                    AudioBarsSlider(
+                        value = shown,
+                        onValueChange = {
+                            scrubbing = true
+                            scrubValue = it
+                        },
+                        onValueChangeFinished = {
+                            haptics.play(Haptic.Select)
+                            pendingSeek = scrubValue
+                            onSeekFraction(scrubValue)
+                            scrubbing = false
+                        },
+                        isPlaying = isPlaying,
+                        colors = artworkSliderColors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                sliderStyle == SliderStyle.RETRO_LED -> {
+                    RetroDotMatrixSlider(
+                        value = shown,
+                        onValueChange = {
+                            scrubbing = true
+                            scrubValue = it
+                        },
+                        onValueChangeFinished = {
+                            haptics.play(Haptic.Select)
+                            pendingSeek = scrubValue
+                            onSeekFraction(scrubValue)
+                            scrubbing = false
+                        },
+                        isPlaying = isPlaying,
+                        colors = artworkSliderColors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                sliderStyle == SliderStyle.VINYL_GROOVE -> {
+                    VinylGrooveSlider(
+                        value = shown,
+                        onValueChange = {
+                            scrubbing = true
+                            scrubValue = it
+                        },
+                        onValueChangeFinished = {
+                            haptics.play(Haptic.Select)
+                            pendingSeek = scrubValue
+                            onSeekFraction(scrubValue)
+                            scrubbing = false
+                        },
+                        isPlaying = isPlaying,
+                        colors = artworkSliderColors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                sliderStyle == SliderStyle.CYBER_BEAM -> {
+                    CyberBeamSlider(
+                        value = shown,
+                        onValueChange = {
+                            scrubbing = true
+                            scrubValue = it
+                        },
+                        onValueChangeFinished = {
+                            haptics.play(Haptic.Select)
+                            pendingSeek = scrubValue
+                            onSeekFraction(scrubValue)
+                            scrubbing = false
+                        },
+                        isPlaying = isPlaying,
+                        colors = artworkSliderColors,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -1935,12 +2125,15 @@ fun NowPlayingScreen(
                             scrubbing = false
                         },
                         mixing = mixing && !scrubbing,
+                        activeColor = sliderActiveColor,
+                        inactiveColor = sliderInactiveColor,
                         transitionWindow = transitionWindow
                             ?.takeIf { !scrubbing && it.end > it.start }
                             ?.let { it.start..it.end },
                     )
                 }
             }
+
             val wifiQuality by AppSettings.audioQualityWifi.collectAsStateWithLifecycle()
             val cellularQuality by AppSettings.audioQualityCellular.collectAsStateWithLifecycle()
             val metered by AppSettings.meteredConnection.collectAsStateWithLifecycle()
@@ -2013,61 +2206,125 @@ fun NowPlayingScreen(
                     modifier = Modifier.height(IntrinsicSize.Min),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    val isPlainLyrics = remember(lyrics) { lyrics.orEmpty().any { it.isEstimatedTiming } }
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(percent = 50))
                             .background(Color.White.copy(alpha = 0.10f))
+                            .then(
+                                if (onReloadLyrics != null) {
+                                    Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                    ) {
+                                        haptics.play(Haptic.Tap)
+                                        onReloadLyrics()
+                                    }
+                                } else Modifier
+                            )
                             .padding(horizontal = 18.dp, vertical = 8.dp),
                     ) {
                         Text(
-                            // A missing source and missing lyrics are not the
-                            // same thing: lyrics read back out of a downloaded
-                            // file have no service to credit, and billing those
-                            // as "No lyrics found" said the opposite of what
-                            // the screen was showing.
                             text = when {
+                                isPlainLyrics -> "Plain lyrics • ${lyricsSource?.label ?: "Online"}"
                                 lyricsSource != null -> "Lyrics by ${lyricsSource.label}"
-                                lyrics.isNullOrEmpty() -> "No lyrics found"
+                                lyrics.isNullOrEmpty() -> "No lyrics found • Tap to retry"
                                 else -> "Lyrics saved with this download"
                             },
                             style = MaterialTheme.typography.labelLarge,
                             color = Color.White.copy(alpha = 0.7f),
                         )
                     }
-                    if (onToggleTranslate != null && !lyrics.isNullOrEmpty()) {
+                    if (!isPlainLyrics && !lyrics.isNullOrEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(percent = 50))
+                                .background(Color.White.copy(alpha = 0.10f))
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        haptics.play(Haptic.Tap)
+                                        val updated = lyricsOffsetMs - 500L
+                                        lyricsOffsetMs = updated
+                                        AppSettings.setLyricsOffset(song.videoId, updated)
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "−",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White.copy(alpha = 0.85f),
+                                )
+                            }
+                            val offsetSec = lyricsOffsetMs / 1000f
+                            val offsetText = if (lyricsOffsetMs == 0L) "Sync" else "${if (offsetSec > 0) "+" else ""}${"%.1f".format(Locale.US, offsetSec)}s"
+                            Text(
+                                text = offsetText,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.7f),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable {
+                                        if (lyricsOffsetMs != 0L) {
+                                            haptics.play(Haptic.Tap)
+                                            lyricsOffsetMs = 0L
+                                            AppSettings.setLyricsOffset(song.videoId, 0L)
+                                        }
+                                    }
+                                    .padding(horizontal = 4.dp),
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        haptics.play(Haptic.Tap)
+                                        val updated = lyricsOffsetMs + 500L
+                                        lyricsOffsetMs = updated
+                                        AppSettings.setLyricsOffset(song.videoId, updated)
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "+",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White.copy(alpha = 0.85f),
+                                )
+                            }
+                        }
+                    }
+                    if (onReloadLyrics != null) {
                         Spacer(Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .aspectRatio(1f, matchHeightConstraintsFirst = true)
                                 .clip(CircleShape)
-                                .background(
-                                    if (isLyricsTranslated) Color.White.copy(alpha = 0.35f)
-                                    else Color.White.copy(alpha = 0.10f)
-                                )
+                                .background(Color.White.copy(alpha = 0.10f))
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
                                 ) {
                                     haptics.play(Haptic.Tap)
-                                    onToggleTranslate()
+                                    onReloadLyrics()
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
-                            if (lyricsTranslating) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color.White.copy(alpha = 0.8f),
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = FluxIcons.Translate,
-                                    contentDescription = "Translate lyrics",
-                                    tint = if (isLyricsTranslated) Color.White else Color.White.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = "Reload lyrics",
+                                tint = Color.White.copy(alpha = 0.7f),
+                                modifier = Modifier.size(16.dp),
+                            )
                         }
                     }
                     Spacer(Modifier.width(8.dp))
@@ -2386,20 +2643,11 @@ private suspend fun AwaitPointerEventScope.dragQueueIn(
  * whole line would recompose sixty times a second.
  */
 @Composable
-private fun rememberLyricClock(positionMs: Long, isPlaying: Boolean): MutableLongState {
-    val clock = remember { mutableLongStateOf(positionMs) }
-    // Gated on the app being on screen. The loop asks for a frame, writes a
-    // value that invalidates a drawing, and is handed the next frame for it —
-    // which is a request to render continuously for as long as it runs. That is
-    // the right trade for a lyric being read and the wrong one for a phone in a
-    // pocket, and the composition alone cannot tell the two apart.
-    //
-    // Resuming needs no catch-up: [positionMs] is a key, so coming back
-    // restarts the effect and the clock is set from the player's own position
-    // before the first frame is asked for.
+private fun rememberLyricClock(positionMs: Long, isPlaying: Boolean, offsetMs: Long = 0L): MutableLongState {
+    val clock = remember { mutableLongStateOf(positionMs + offsetMs) }
     val foreground = rememberIsForeground()
-    LaunchedEffect(positionMs, isPlaying, foreground) {
-        clock.longValue = positionMs
+    LaunchedEffect(positionMs, isPlaying, foreground, offsetMs) {
+        clock.longValue = positionMs + offsetMs
         if (!isPlaying || !foreground) return@LaunchedEffect
         var previousFrame = withFrameMillis { it }
         while (true) {
@@ -2658,37 +2906,25 @@ private fun LyricsPanel(
     positionMs: Long,
     isPlaying: Boolean,
     onSeekToLine: (Long) -> Unit,
+    lyricsOffsetMs: Long = 0L,
     modifier: Modifier = Modifier,
 ) {
-    val clock = rememberLyricClock(positionMs, isPlaying)
+    val isPlain = remember(lines) { lines.any { it.isEstimatedTiming } }
+    val clock = rememberLyricClock(positionMs, isPlaying, if (isPlain) 0L else lyricsOffsetMs)
 
     // Which line is playing right now: the last one whose stamp has passed.
-    //
-    // Read off the frame clock rather than the player's own position, which
-    // only lands twice a second. Taken from there, a line change was up to
-    // half a second late — and with the highlight itself running on the frame
-    // clock, that lateness was visible: the sweep would finish a line and sit
-    // at the end of it, waiting for the screen to admit the next one had
-    // started. derivedStateOf keeps the cost of the finer clock off
-    // composition; it only notifies when the index actually changes, not on
-    // every frame that feeds it.
-    val activeLine by remember(lines) {
-        derivedStateOf { lines.indexOfLast { it.timeMs <= clock.longValue } }
-    }
-    // A background vocal routinely holds past the *next* line's own stamp —
-    // that's the whole reason it's carried apart, see [LyricLine.background].
-    // Taken on [activeLine] alone, the row above dropped out of its active
-    // treatment the instant the next line's stamp passed, so its sweep lost
-    // the glow and full brightness mid-bracket while the words were still
-    // being sung. This is the one line behind [activeLine] kept active
-    // alongside it for as long as its own end — background included — hasn't
-    // arrived yet, so the two rows animate together instead of the first
-    // being cut off under the second.
-    val alsoActive by remember(lines) {
+    val activeLine by remember(lines, clock, isPlain) {
         derivedStateOf {
-            val previous = activeLine - 1
-            val line = lines.getOrNull(previous)
-            if (line != null && line.hasKnownEnd && clock.longValue < line.endMs) previous else -1
+            if (isPlain) -1 else lines.indexOfLast { it.timeMs <= clock.longValue }
+        }
+    }
+    val alsoActive by remember(lines, activeLine, clock, isPlain) {
+        derivedStateOf {
+            if (isPlain || activeLine < 0) -1 else {
+                val previous = activeLine - 1
+                val line = lines.getOrNull(previous)
+                if (line != null && line.hasKnownEnd && clock.longValue < line.endMs) previous else -1
+            }
         }
     }
     val listState = rememberLazyListState()
@@ -2703,28 +2939,15 @@ private fun LyricsPanel(
     val lyricsAutoScroll by AppSettings.lyricsAutoScroll.collectAsStateWithLifecycle()
     val lyricsClickSeek by AppSettings.lyricsClickSeek.collectAsStateWithLifecycle()
 
-    // The bloom is a blurred copy of the line, so it is off wherever blur is:
-    // below API 31 Modifier.blur does nothing and the "glow" would land as a
-    // second sharp copy of the text — fake bold, not light. Both of the
-    // reduce-* settings turn it off too. Reduce animation because it is the
-    // switch for exactly this kind of flourish, and reduce dynamic blur
-    // because adding a blur under a setting that says it drops them would be
-    // the app disagreeing with itself.
     val glowing = lyricsGlowEffect && !reduceAnimation && !reduceDynamicBlur &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
-    // Only a finger on the list counts as browsing — watching
-    // isScrollInProgress would trip on our own auto-scroll.
     LaunchedEffect(listState) {
         listState.interactionSource.interactions.collect { interaction ->
             if (interaction is DragInteraction.Start) browsing = true
         }
     }
 
-    // Hand control back as soon as the playing line is on screen again,
-    // whether the user scrolled to it or the song caught up to them.
-    // rememberUpdatedState matters: read plainly, the derived state would
-    // capture whichever line was active when it was first created.
     val currentLine by rememberUpdatedState(activeLine)
     val activeOnScreen by remember(listState) {
         derivedStateOf {
@@ -2738,7 +2961,6 @@ private fun LyricsPanel(
         }
     }
 
-    // And give up browsing on its own after a while, wherever the list is.
     LaunchedEffect(browsing, listState.isScrollInProgress) {
         if (browsing && !listState.isScrollInProgress) {
             delay(5_000)
@@ -2746,31 +2968,11 @@ private fun LyricsPanel(
         }
     }
 
-    // Follow the song, keeping the active line a third of the way down.
-    //
-    // Gated on isScrollInProgress as well as browsing: browsing flips true from
-    // a Flow collecting DragInteraction.Start, which lags a frame or two behind
-    // the actual touch. A line change landing in that gap started this
-    // animated scroll underneath a finger already dragging, and the ensuing
-    // fight over the list's MutatorMutex was what leaked a stray scroll past
-    // keepScrollInList and down to the sheet — reading the list's own
-    // (synchronous) scroll state closes that window.
-    //
-    // The very first placement is a jump, not a scroll. The panel is built
-    // fresh each time it is opened, so an animated scroll there is the whole
-    // song racing past from the top before settling — which is where the
-    // stutter on opening came from. Later moves, which are one line at a time,
-    // still animate.
     var placed by remember(lines) { mutableStateOf(false) }
-    LaunchedEffect(activeLine, browsing, lyricsAutoScroll) {
-        if (lyricsAutoScroll && !browsing && !listState.isScrollInProgress &&
+    LaunchedEffect(activeLine, browsing, lyricsAutoScroll, isPlain) {
+        if (!isPlain && lyricsAutoScroll && !browsing && !listState.isScrollInProgress &&
             activeLine >= 0 && activeLine in lines.indices
         ) {
-            // A third of the way down the panel, whatever the panel's size — a
-            // fixed pixel offset lands in a different place on every screen,
-            // and on a tablet it put the playing line near the very top.
-            // Measured height is 0 until the list has been laid out once,
-            // which on the opening frame is exactly when this runs.
             val viewport = snapshotFlow { listState.layoutInfo.viewportSize.height }
                 .first { it > 0 }
             val third = viewport / 3
@@ -2810,18 +3012,12 @@ private fun LyricsPanel(
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         itemsIndexed(lines) { index, line ->
-            // Signed rather than absolute: a line already sung and one still to
-            // come are not the same distance from being read, even at the same
-            // number of rows away, so the two fade at different rates below.
             val offset = if (activeLine < 0) 0 else index - activeLine
             val distance = abs(offset)
-            val isActive = index == activeLine || index == alsoActive
-            // Lines already sung stay close to legible — they're what the eye
-            // just read and glances back to. Lines still to come fade faster
-            // and further, so the panel reads as an arrival rather than a wall
-            // of equally-weighted text.
+            val isActive = !isPlain && (index == activeLine || index == alsoActive)
             val lineAlpha by animateFloatAsState(
                 targetValue = when {
+                    isPlain -> 0.92f
                     browsing -> 1f
                     isActive -> 1f
                     offset < 0 -> (0.55f - distance * 0.05f).coerceAtLeast(0.30f)
@@ -2840,9 +3036,7 @@ private fun LyricsPanel(
                     tint = Color.White.copy(alpha = lineAlpha),
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .clickable { onSeekToLine(line.timeMs) }
-                        // Matches the inset every sung line carries, so the
-                        // rhythm of the list doesn't break at a break.
+                        .clickable { if (!isPlain) onSeekToLine(line.timeMs) }
                         .padding(GLOW_ROOM)
                         .size(noteSize),
                 )
@@ -2858,16 +3052,10 @@ private fun LyricsPanel(
                         LyricsPosition.RIGHT -> TextAlign.End
                     },
                 )
-                // The playing line swells a touch. Anchored to its edge,
-                // so the words don't slide sideways under the highlight as it
-                // grows — scaling about the centre would fight the sweep.
                 val scale by animateFloatAsState(
                     targetValue = if (isActive) 1.04f else 1f,
                     label = "lyricScale",
                 )
-                // Apple's bloom on the line being sung. Fades in and out with
-                // the line rather than switching, so a handover is one line's
-                // light going down as the next one's comes up.
                 val glow by animateFloatAsState(
                     targetValue = if (isActive && glowing) GLOW_ALPHA else 0f,
                     animationSpec = tween(durationMillis = 420),
@@ -2944,10 +3132,10 @@ private fun LyricsPanel(
             }
         }
     }
-}
+    }
 
 
-/**
+    /**
  * One voice of a row in [LyricsPanel] — the lead, or the answering line drawn
  * under it.
  *
@@ -3043,12 +3231,40 @@ private fun CurrentLyricLine(
     positionMs: Long,
     isPlaying: Boolean,
     durationMs: Long,
+    lyricsOffsetMs: Long = 0L,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val clock = rememberLyricClock(positionMs, isPlaying)
+    val isPlain = remember(lines) { lines.any { it.isEstimatedTiming } }
+    if (isPlain) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onClick)
+                .padding(vertical = 4.dp),
+        ) {
+            Icon(
+                imageVector = FluxIcons.MusicNote,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.7f),
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "Plain Lyrics • Tap to view",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        return
+    }
 
-    val index by remember(lines) {
+    val clock = rememberLyricClock(positionMs, isPlaying, lyricsOffsetMs)
+
+    val index by remember(lines, clock) {
         derivedStateOf { lines.indexOfLast { it.timeMs <= clock.longValue } }
     }
     val current = lines.getOrNull(index)
@@ -3069,7 +3285,7 @@ private fun CurrentLyricLine(
     val text = when {
         intro -> introLine
         instrumental -> INSTRUMENTAL_MARK
-        else -> current!!.text
+        else -> current.text
     }
 
     Row(

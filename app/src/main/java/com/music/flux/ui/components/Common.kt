@@ -1,4 +1,4 @@
-﻿package com.music.flux.ui.components
+package com.music.flux.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -363,7 +363,8 @@ private fun SongRowContent(
         modifier = modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(horizontal = PAGE_GUTTER, vertical = 4.dp),
+            // Dhvani Stitch spec: 64dp track row height (52dp artwork + 6dp top/bottom padding each)
+            .padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (trackNumber != null) {

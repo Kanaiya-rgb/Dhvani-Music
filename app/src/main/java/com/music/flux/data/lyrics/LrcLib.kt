@@ -1,4 +1,4 @@
-﻿package com.music.flux.data.lyrics
+package com.music.flux.data.lyrics
 
 import com.music.flux.data.Http
 import kotlinx.coroutines.Dispatchers
@@ -29,48 +29,139 @@ object LrcLib {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Synced lyrics for a track, or null when nothing usable is published. */
+    private data class Hit(val synced: String?, val plain: String?)
+
+    /** Synced or plain lyrics for a track, or null when nothing usable is published. */
     suspend fun lyrics(title: String, artist: String, durationMs: Long): List<LyricLine>? =
         withContext(Dispatchers.IO) {
-            val cleanTitle = title.clean()
-            val cleanArtist = artist.clean()
+            val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
+            val cleanArtist = LyricsCleaner.cleanArtist(artist)
+            val allArtists = LyricsCleaner.allArtists(artist)
             val seconds = (durationMs / 1000).toInt()
 
-            val exact = runCatching { exactMatch(cleanTitle, cleanArtist, seconds) }.getOrNull()
-            val synced = exact ?: runCatching { bestSearchHit(cleanTitle, cleanArtist, seconds) }
-                .getOrNull()
-            synced?.let(::parseLrc)?.takeIf { it.isNotEmpty() }
+            var bestHit: Hit? = null
+
+            // 1. Try exact match with primary clean artist
+            bestHit = runCatching { exactMatch(cleanTitle, cleanArtist, seconds) }.getOrNull()
+
+            // 2. Try exact match with any other credited artists
+            if (bestHit?.synced.isNullOrBlank() && allArtists.size > 1) {
+                for (otherArtist in allArtists.drop(1)) {
+                    val candidate = runCatching { exactMatch(cleanTitle, otherArtist, seconds) }.getOrNull()
+                    if (!candidate?.synced.isNullOrBlank()) {
+                        bestHit = candidate
+                        break
+                    } else if (bestHit == null && !candidate?.plain.isNullOrBlank()) {
+                        bestHit = candidate
+                    }
+                }
+            }
+
+            // 3. Search with cleanTitle and cleanArtist, strictly verifying candidate
+            if (bestHit?.synced.isNullOrBlank()) {
+                val candidate = runCatching { bestSearchHit(cleanTitle, cleanArtist, allArtists, seconds) }.getOrNull()
+                if (!candidate?.synced.isNullOrBlank()) {
+                    bestHit = candidate
+                } else if (bestHit == null && !candidate?.plain.isNullOrBlank()) {
+                    bestHit = candidate
+                }
+            }
+
+            // 4. If still missing, search with cleanTitle alone, verifying title & duration
+            if (bestHit?.synced.isNullOrBlank()) {
+                val candidate = runCatching { searchByTitle(cleanTitle, allArtists, seconds) }.getOrNull()
+                if (!candidate?.synced.isNullOrBlank()) {
+                    bestHit = candidate
+                } else if (bestHit == null && !candidate?.plain.isNullOrBlank()) {
+                    bestHit = candidate
+                }
+            }
+
+            // Only return synced lyrics (proper sync)
+            bestHit?.synced?.takeIf { it.isNotBlank() }?.let(::parseLrc)?.takeIf { it.isNotEmpty() }
         }
 
-    private fun exactMatch(title: String, artist: String, seconds: Int): String? {
+    private fun exactMatch(title: String, artist: String, seconds: Int): Hit? {
         val url = "$BASE/get".toHttpUrl().newBuilder()
             .addQueryParameter("track_name", title)
             .addQueryParameter("artist_name", artist)
             .addQueryParameter("duration", seconds.toString())
             .build()
         val body = get(url.toString()) ?: return null
-        return (json.parseToJsonElement(body) as? JsonObject)
-            ?.get("syncedLyrics")?.jsonPrimitive?.contentOrNull
+        val obj = json.parseToJsonElement(body) as? JsonObject ?: return null
+        val synced = obj["syncedLyrics"]?.jsonPrimitive?.contentOrNull
+        val plain = obj["plainLyrics"]?.jsonPrimitive?.contentOrNull
+        if (synced.isNullOrBlank() && plain.isNullOrBlank()) return null
+        return Hit(synced, plain)
     }
 
     /**
-     * Fuzzy fallback. Prefers whichever hit is closest in length to what we're
-     * actually playing — same song, different edit, would drift otherwise.
+     * Fuzzy fallback. Must strictly match the title and be close in length.
      */
-    private fun bestSearchHit(title: String, artist: String, seconds: Int): String? {
+    private fun bestSearchHit(title: String, artist: String, allArtists: List<String>, seconds: Int): Hit? {
         val url = "$BASE/search".toHttpUrl().newBuilder()
             .addQueryParameter("track_name", title)
             .addQueryParameter("artist_name", artist)
             .build()
         val body = get(url.toString()) ?: return null
         val hits = json.parseToJsonElement(body) as? JsonArray ?: return null
-        return hits.mapNotNull { it as? JsonObject }
-            .filter { it["syncedLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true }
-            .minByOrNull {
-                val d = it["duration"]?.jsonPrimitive?.doubleOrNull ?: 0.0
-                abs(d - seconds)
+        val candidates = hits.mapNotNull { it as? JsonObject }
+            .filter { hit ->
+                val trackName = hit["trackName"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val hasAnyLyrics = hit["syncedLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true ||
+                    hit["plainLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true
+                val d = hit["duration"]?.jsonPrimitive?.doubleOrNull?.toInt() ?: 0
+                hasAnyLyrics && LyricsCleaner.isTitleMatch(trackName, title) && LyricsCleaner.isDurationMatch(d, seconds, 15)
             }
-            ?.get("syncedLyrics")?.jsonPrimitive?.contentOrNull
+
+        val best = candidates.filter { hit -> hit["syncedLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true }
+            .minByOrNull { hit ->
+                val d = hit["duration"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+                abs(d - seconds)
+            } ?: candidates.minByOrNull { hit ->
+                val d = hit["duration"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+                abs(d - seconds)
+            } ?: return null
+
+        return Hit(
+            synced = best["syncedLyrics"]?.jsonPrimitive?.contentOrNull,
+            plain = best["plainLyrics"]?.jsonPrimitive?.contentOrNull,
+        )
+    }
+
+    /**
+     * Title-only search fallback for tracks with multiple or alternate artist spellings.
+     */
+    private fun searchByTitle(title: String, allArtists: List<String>, seconds: Int): Hit? {
+        val url = "$BASE/search".toHttpUrl().newBuilder()
+            .addQueryParameter("track_name", title)
+            .build()
+        val body = get(url.toString()) ?: return null
+        val hits = json.parseToJsonElement(body) as? JsonArray ?: return null
+        val candidates = hits.mapNotNull { it as? JsonObject }
+            .filter { hit ->
+                val trackName = hit["trackName"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val hasAnyLyrics = hit["syncedLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true ||
+                    hit["plainLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true
+                val d = hit["duration"]?.jsonPrimitive?.doubleOrNull?.toInt() ?: 0
+                hasAnyLyrics && LyricsCleaner.isTitleMatch(trackName, title) && (seconds <= 0 || abs(d - seconds) <= 18)
+            }
+
+        fun scoreHit(hit: JsonObject): Double {
+            val artistName = hit["artistName"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val d = hit["duration"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+            var score = 50.0
+            if (hit["syncedLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true) score += 40.0
+            if (allArtists.any { LyricsCleaner.isArtistMatch(artistName, it) }) score += 50.0
+            if (seconds > 0) score -= abs(d - seconds) * 3.0
+            return score
+        }
+
+        val best = candidates.maxByOrNull { scoreHit(it) } ?: return null
+        return Hit(
+            synced = best["syncedLyrics"]?.jsonPrimitive?.contentOrNull,
+            plain = best["plainLyrics"]?.jsonPrimitive?.contentOrNull,
+        )
     }
 
     private fun get(url: String): String? {

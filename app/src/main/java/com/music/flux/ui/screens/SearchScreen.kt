@@ -1,10 +1,12 @@
-﻿package com.music.flux.ui.screens
+package com.music.flux.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +51,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.app.Activity
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import coil3.compose.AsyncImage
@@ -102,6 +116,36 @@ fun SearchScreen(
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
+    var isSearchFocused by remember { mutableStateOf(false) }
+
+    // Speech-to-text Voice Search Launcher
+    val voiceSearchLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val spokenText = matches?.firstOrNull()
+            if (!spokenText.isNullOrBlank()) {
+                onQueryChange(spokenText)
+                onSuggestionClick(spokenText)
+                focusManager.clearFocus()
+            }
+        }
+    }
+
+    val launchVoiceSearch = {
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_search))
+            }
+            voiceSearchLauncher.launch(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Voice search is not supported on this device", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // Re-tapping the search tab from the nav bar increments focusTrigger;
     // respond by focusing the field and opening the keyboard.
     LaunchedEffect(focusTrigger) {
@@ -121,13 +165,15 @@ fun SearchScreen(
                 query = query,
                 onQueryChange = onQueryChange,
                 onSubmit = onSubmit,
+                onVoiceClick = launchVoiceSearch,
+                onFocusChanged = { isSearchFocused = it },
                 focusRequester = focusRequester,
                 modifier = Modifier.padding(start = PAGE_GUTTER, end = PAGE_GUTTER, bottom = 4.dp),
             )
             // The filters only mean something once there is a result set to narrow;
             // they stay up for an empty or failed search too, or picking a filter
             // that finds nothing would take away the control needed to leave it.
-            if (results != null && !suggesting) {
+            if (results != null && !suggesting && (!isSearchFocused || query.isNotEmpty())) {
                 SearchFilterTabs(filter = filter, onFilterChange = onFilterChange)
             }
         }
@@ -148,10 +194,19 @@ fun SearchScreen(
                     },
                     onFill = onQueryChange,
                 )
-                results == null -> if (history.isEmpty()) {
+                // When search bar is clicked/focused or when there are no results yet, show recent searches
+                (isSearchFocused && query.isBlank()) || results == null -> if (history.isEmpty()) {
                     item { MessageState(stringResource(R.string.search_empty)) }
                 } else {
-                    recentSearches(history, onHistoryClick, onHistoryRemove, onHistoryClear)
+                    recentSearches(
+                        history = history,
+                        onClick = { term ->
+                            onHistoryClick(term)
+                            focusManager.clearFocus()
+                        },
+                        onRemove = onHistoryRemove,
+                        onClear = onHistoryClear,
+                    )
                 }
                 results is UiState.Loading -> songListSkeleton(circular = filter == SearchFilter.ARTISTS)
                 results is UiState.Error -> item { MessageState(results.message) }
@@ -420,8 +475,14 @@ private fun SearchFilterTabs(filter: SearchFilter, onFilterChange: (SearchFilter
                 modifier = Modifier
                     .clip(FILTER_PILL_SHAPE)
                     .background(
-                        if (selected) MaterialTheme.colorScheme.onBackground
+                        if (selected) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                    .border(
+                        1.dp,
+                        if (selected) MaterialTheme.colorScheme.primary
+                        else Color.White.copy(alpha = 0.08f),
+                        FILTER_PILL_SHAPE,
                     )
                     // Only the pill that isn't already selected has anything to
                     // report — re-tapping the current filter changes nothing, so
@@ -430,12 +491,12 @@ private fun SearchFilterTabs(filter: SearchFilter, onFilterChange: (SearchFilter
                         if (!selected) haptics.play(Haptic.Select)
                         onFilterChange(entry)
                     }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
             ) {
                 Text(
                     text = entry.label,
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (selected) MaterialTheme.colorScheme.background
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary
                     else MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,
                 )
@@ -444,14 +505,16 @@ private fun SearchFilterTabs(filter: SearchFilter, onFilterChange: (SearchFilter
     }
 }
 
-/** Rounded, but well short of a capsule — the corner reads as a cut, not a curve. */
-private val FILTER_PILL_SHAPE = RoundedCornerShape(12.dp)
+/** Stitch Dhvani: Pill shaped genre/search filter tokens */
+private val FILTER_PILL_SHAPE = CircleShape
 
 @Composable
 private fun SearchField(
     query: String,
     onQueryChange: (String) -> Unit,
     onSubmit: () -> Unit,
+    onVoiceClick: () -> Unit,
+    onFocusChanged: (Boolean) -> Unit,
     focusRequester: FocusRequester = remember { FocusRequester() },
     modifier: Modifier = Modifier,
 ) {
@@ -466,12 +529,13 @@ private fun SearchField(
         modifier = modifier
             .fillMaxWidth()
             // Fixed height prevents the row from growing when text is entered
-            .height(46.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
+            .height(48.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+            .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
             // Asymmetric: the magnifier is a button now and wants a real touch
             // target, so it's given the room by pulling the field's own start
             // padding in rather than by pushing the glyph and the text along.
-            .padding(start = 8.dp, end = 12.dp),
+            .padding(start = 10.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The search button. It reads as one — a magnifier at the head of a
@@ -509,7 +573,10 @@ private fun SearchField(
                 keyboardActions = KeyboardActions(onSearch = { submit() }),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .focusRequester(focusRequester),
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { state ->
+                        onFocusChanged(state.isFocused)
+                    },
             )
         }
         // Emptying the field is also how the recent searches are got back to,
@@ -532,6 +599,22 @@ private fun SearchField(
                     modifier = Modifier.size(18.dp),
                 )
             }
+            Spacer(Modifier.width(4.dp))
+        }
+        // Voice Search Mic Button
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onVoiceClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.Mic,
+                contentDescription = stringResource(R.string.voice_search),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }

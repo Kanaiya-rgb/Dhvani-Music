@@ -149,7 +149,8 @@ fun SongDetailsSheet(
         modifier = modifier
             .fillMaxWidth()
             .clip(SHEET_SHAPE)
-            .background(Color(0xFF0F1318))
+            // Dhvani surface-container-lowest: #0C0E12
+            .background(Color(0xFF0C0E12))
             .border(
                 1.dp,
                 Brush.verticalGradient(
@@ -312,7 +313,8 @@ private fun DetailsCard(content: @Composable () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF161A22))
+            // Dhvani surface-container: #1E2024
+            .background(Color(0xFF1E2024))
             .border(0.8.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {

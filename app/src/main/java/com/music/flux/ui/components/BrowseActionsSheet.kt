@@ -1,4 +1,4 @@
-﻿package com.music.flux.ui.components
+package com.music.flux.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -150,6 +151,7 @@ fun BrowseActionsSheet(
      * also happens to be downloaded.
      */
     onDeleteDownload: (() -> Unit)? = null,
+    onExportPlaylist: (() -> Unit)? = null,
 ) {
     var renaming by remember { mutableStateOf(false) }
     var confirmingDelete by remember { mutableStateOf(false) }
@@ -220,6 +222,9 @@ fun BrowseActionsSheet(
         }
         onTogglePin?.let {
             ActionRow(FluxIcons.Pin, if (isPinned) "Unpin" else "Pin", onClick = it)
+        }
+        if (target.type == BrowseType.PLAYLIST && onExportPlaylist != null) {
+            ActionRow(Icons.Rounded.Share, "Export playlist", onClick = onExportPlaylist)
         }
         if (onRename != null) {
             ActionRow(Icons.Rounded.Edit, "Rename") { renaming = true }

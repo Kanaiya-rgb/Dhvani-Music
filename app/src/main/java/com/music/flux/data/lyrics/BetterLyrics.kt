@@ -1,4 +1,4 @@
-﻿package com.music.flux.data.lyrics
+package com.music.flux.data.lyrics
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,22 +29,36 @@ object BetterLyrics {
         durationMs: Long,
         album: String? = null,
     ): List<LyricLine>? = withContext(Dispatchers.IO) {
+        val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
+        val cleanArtist = LyricsCleaner.cleanArtist(artist)
+        val cleanAlbum = album?.let { LyricsCleaner.cleanAlbum(it) }
+        val seconds = durationMs / 1000
+
+        val ttml = fetchTtml(cleanTitle, cleanArtist, seconds, cleanAlbum)
+            ?: run {
+                // If primary artist misses and there are other artists, try secondary artist
+                val otherArtists = LyricsCleaner.allArtists(artist).drop(1)
+                otherArtists.firstNotNullOfOrNull { fetchTtml(cleanTitle, it, seconds, cleanAlbum) }
+            }
+            ?: return@withContext null
+
+        TtmlLyrics.parse(ttml).takeIf { it.isNotEmpty() }
+    }
+
+    private fun fetchTtml(title: String, artist: String, seconds: Long, album: String?): String? {
         val url = BASE.toHttpUrl().newBuilder()
             .addQueryParameter("s", title)
             .addQueryParameter("a", artist)
             .apply {
-                val seconds = durationMs / 1000
                 if (seconds > 0) addQueryParameter("d", seconds.toString())
                 if (!album.isNullOrBlank()) addQueryParameter("al", album)
             }
             .build()
 
-        val body = lyricsGet(url.toString()) ?: return@withContext null
-        val ttml = runCatching {
+        val body = lyricsGet(url.toString()) ?: return null
+        return runCatching {
             (lyricsJson.parseToJsonElement(body) as? JsonObject)
                 ?.get("ttml")?.jsonPrimitive?.contentOrNull
-        }.getOrNull() ?: return@withContext null
-
-        TtmlLyrics.parse(ttml).takeIf { it.isNotEmpty() }
+        }.getOrNull()
     }
 }

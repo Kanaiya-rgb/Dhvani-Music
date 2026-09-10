@@ -18,7 +18,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "FluxMusic"
+rootProject.name = "DhvaniMusic"
 include(":app")
 include(":spotify")
  

@@ -1,4 +1,4 @@
-﻿package com.music.flux.ui.screens
+package com.music.flux.ui.screens
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -120,8 +120,8 @@ private const val SLEEVE_RATIO = 0.92f
 /** The sleeve on a release page, as a fraction of the page width. */
 private const val SLEEVE_FRACTION = 0.80f
 
-private val SLEEVE_SHAPE = RoundedCornerShape(12.dp)
-private val PILL_SHAPE = RoundedCornerShape(12.dp)
+private val SLEEVE_SHAPE = RoundedCornerShape(16.dp)
+private val PILL_SHAPE = CircleShape
 
 /**
  * Where the search field sits once it is open — directly under the header,
@@ -1074,8 +1074,7 @@ private fun PlayPill(
         modifier = modifier
             .height(50.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
-            .border(0.5.dp, Color.White.copy(alpha = 0.10f), CircleShape)
+            .background(MaterialTheme.colorScheme.primary)
             .clickable {
                 haptics.play(Haptic.Resume)
                 onClick()
@@ -1087,14 +1086,15 @@ private fun PlayPill(
         Icon(
             imageVector = FluxIcons.Play,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface,
+            tint = MaterialTheme.colorScheme.onPrimary,
             modifier = Modifier.size(18.dp),
         )
         Spacer(Modifier.width(8.dp))
         Text(
             text = "Play",
             style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onPrimary,
         )
     }
 }

@@ -451,4 +451,178 @@ object FluxIcons {
             }
         }.build()
     }
+
+    /** Notification Bell icon matching Stitch mockup. */
+    val Bell: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_bell",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(18f, 16f)
+                lineTo(18f, 11f)
+                arcToRelative(6f, 6f, 0f, isMoreThanHalf = false, isPositiveArc = false, -12f, 0f)
+                lineTo(6f, 16f)
+                lineTo(4f, 18f)
+                lineTo(20f, 18f)
+                close()
+                moveTo(10.3f, 21f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, 3.4f, 0f)
+            }
+        }.build()
+    }
+
+    /** Utsav celebration popper/sparkle icon */
+    val Utsav: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "flux_utsav",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                // Celebration party cone
+                moveTo(3f, 21f)
+                lineTo(9.5f, 14.5f)
+                lineTo(14.5f, 19.5f)
+                close()
+                // Sparkles / bursts
+                moveTo(16f, 8f); lineTo(19f, 5f)
+                moveTo(12f, 5f); lineTo(12f, 2f)
+                moveTo(19f, 12f); lineTo(22f, 12f)
+                moveTo(14f, 11f); lineTo(16f, 10f)
+                moveTo(10f, 7f); lineTo(9f, 5f)
+            }
+        }.build()
+    }
+
+    /** Radio boombox / wave receiver icon */
+    val Radio: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "flux_radio",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                // Antenna
+                moveTo(3.5f, 3.5f); lineTo(8.5f, 7f)
+                // Radio body
+                moveTo(3f, 7f)
+                lineTo(21f, 7f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, 2f, 2f)
+                lineTo(23f, 19f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, -2f, 2f)
+                lineTo(3f, 21f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, -2f, -2f)
+                lineTo(1f, 9f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, 2f, -2f)
+                close()
+                // Speaker circle
+                moveTo(8.5f, 14f)
+                arcToRelative(3.5f, 3.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, 7f, 0f)
+                arcToRelative(3.5f, 3.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, -7f, 0f)
+            }
+        }.build()
+    }
+
+    val Equalizer: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "flux_equalizer",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                // Bar 1
+                moveTo(5f, 18f); lineTo(5f, 10f)
+                // Bar 2
+                moveTo(12f, 18f); lineTo(12f, 5f)
+                // Bar 3
+                moveTo(19f, 18f); lineTo(19f, 13f)
+            }
+        }.build()
+    }
+
+    val Mic: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "flux_mic",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(12f, 3f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = false, -3f, 3f)
+                lineTo(9f, 11f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = false, 6f, 0f)
+                lineTo(15f, 6f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = false, -3f, -3f)
+                close()
+                moveTo(5f, 10f)
+                arcToRelative(7f, 7f, 0f, isMoreThanHalf = false, isPositiveArc = false, 14f, 0f)
+                moveTo(12f, 17f); lineTo(12f, 21f)
+            }
+        }.build()
+    }
+
+    val Speed: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "flux_speed",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(4f, 18f)
+                arcToRelative(9f, 9f, 0f, isMoreThanHalf = true, isPositiveArc = true, 16f, 0f)
+                moveTo(12f, 13f); lineTo(16f, 9f)
+            }
+        }.build()
+    }
+
+    val Notes: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "flux_notes",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(4f, 4f); lineTo(20f, 4f)
+                moveTo(4f, 10f); lineTo(16f, 10f)
+                moveTo(4f, 16f); lineTo(12f, 16f)
+            }
+        }.build()
+    }
 }

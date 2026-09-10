@@ -1,4 +1,4 @@
-﻿package com.music.flux.data.lyrics
+package com.music.flux.data.lyrics
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -76,13 +76,16 @@ object LyricsPlus {
         durationMs: Long,
         album: String?,
     ): List<LyricLine>? = withContext(Dispatchers.IO) {
+        val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
+        val cleanArtist = LyricsCleaner.cleanArtist(artist)
+        val cleanAlbum = album?.let { LyricsCleaner.cleanAlbum(it) }
         val url = "$host/v2/lyrics/get".toHttpUrl().newBuilder()
-            .addQueryParameter("title", title)
-            .addQueryParameter("artist", artist)
+            .addQueryParameter("title", cleanTitle)
+            .addQueryParameter("artist", cleanArtist)
             .apply {
                 val seconds = durationMs / 1000
                 if (seconds > 0) addQueryParameter("duration", seconds.toString())
-                if (!album.isNullOrBlank()) addQueryParameter("album", album)
+                if (!cleanAlbum.isNullOrBlank()) addQueryParameter("album", cleanAlbum)
             }
             .build()
 

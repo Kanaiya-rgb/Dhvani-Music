@@ -1,4 +1,4 @@
-﻿package com.music.flux.data.lyrics
+package com.music.flux.data.lyrics
 
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -61,20 +61,39 @@ object LyricsRepository {
         order: List<LyricsSource> = LyricsSource.entries,
         prioritizeSyllableSync: Boolean = false,
     ): Result? = coroutineScope {
+        val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
+        val cleanArtist = LyricsCleaner.cleanArtist(artist)
+        val cleanAlbum = album?.let { LyricsCleaner.cleanAlbum(it) }
+
         val sequence = order.filter { it in sources } +
             LyricsSource.entries.filter { it in sources && it !in order }
 
         val racing: List<Pair<LyricsSource, Deferred<List<LyricLine>?>>> = sequence.map { source ->
-            source to async(Dispatchers.IO) { fetch(source, videoId, title, artist, durationMs, album) }
+            source to async(Dispatchers.IO) { fetch(source, videoId, cleanTitle, cleanArtist, durationMs, cleanAlbum) }
         }
 
         try {
             var lineSynced: Result? = null
+
             for ((source, job) in racing) {
                 val lines = runCatching { job.await() }.getOrNull() ?: continue
-                if (lines.any { it.isWordSynced }) return@coroutineScope result(source, lines)
-                if (!prioritizeSyllableSync) return@coroutineScope result(source, lines)
-                if (lineSynced == null) lineSynced = result(source, lines)
+                val isWord = lines.any { it.isWordSynced }
+                val isEstimated = lines.any { it.isEstimatedTiming }
+
+                // Discard plain lyrics with estimated pacing — proper sync only
+                if (isEstimated) continue
+
+                if (isWord) {
+                    return@coroutineScope result(source, lines)
+                }
+
+                // True line-synced lyrics
+                if (!prioritizeSyllableSync) {
+                    return@coroutineScope result(source, lines)
+                }
+                if (lineSynced == null) {
+                    lineSynced = result(source, lines)
+                }
             }
             lineSynced
         } finally {
@@ -96,6 +115,7 @@ object LyricsRepository {
         LyricsSource.LYRICS_PLUS -> LyricsPlus.lyrics(title, artist, durationMs, album)
         LyricsSource.SIMP_MUSIC -> SimpMusicLyrics.lyrics(videoId, durationMs)
         LyricsSource.LRCLIB -> LrcLib.lyrics(title, artist, durationMs)
+        LyricsSource.YOUTUBE -> YouTubeLyrics.lyrics(videoId, title, artist, durationMs)
         LyricsSource.MUSIXMATCH -> Musixmatch.lyrics(title, artist, durationMs)
         LyricsSource.PAXSENIX -> PaxSenix.lyrics(title, artist, durationMs, album)
         LyricsSource.KUGOU -> KuGou.lyrics(title, artist, durationMs, album)

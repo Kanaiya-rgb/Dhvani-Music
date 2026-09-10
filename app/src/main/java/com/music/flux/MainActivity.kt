@@ -45,8 +45,10 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
@@ -130,9 +132,12 @@ import com.music.flux.download.DownloadSession
 import com.music.flux.download.DownloadStore
 import com.music.flux.download.DownloadTarget
 import com.music.flux.download.Downloads
+import com.music.flux.data.model.PlaylistPrivacy
 import com.music.flux.ui.components.BrowseActionsSheet
 import com.music.flux.ui.components.BrowseTarget
 import com.music.flux.ui.components.DownloadManagerSheet
+import com.music.flux.ui.components.ExportPlaylistSheet
+import com.music.flux.ui.components.ImportPlaylistSheet
 import com.music.flux.ui.components.PlaylistPickerSheet
 import com.music.flux.ui.components.SongActionsSheet
 import com.music.flux.playback.rememberMediaController
@@ -169,6 +174,7 @@ import com.music.flux.ui.screens.LibraryGridPage
 import com.music.flux.ui.screens.AppearanceSettingsScreen
 import com.music.flux.ui.screens.LibraryScreen
 import com.music.flux.ui.screens.SearchScreen
+import com.music.flux.ui.screens.UtsavScreen
 import com.music.flux.ui.replay.ReplayScreen
 import com.music.flux.ui.replay.cards
 import com.music.flux.ui.replay.ReplayShareSheet
@@ -349,6 +355,9 @@ private fun FluxApp(
     // The picker opened from the Library tab, where there is no track and
     // creating the playlist is the whole errand.
     var creatingPlaylist by remember { mutableStateOf(false) }
+    var showImportPlaylist by remember { mutableStateOf(false) }
+    var showExportLibraryPlaylist by remember { mutableStateOf(false) }
+    var exportPlaylistTarget by remember { mutableStateOf<Pair<BrowseTarget, List<Song>>?>(null) }
     // Which album or playlist the collection menu is open on, or null when it
     // is shut. One slot for every surface that can open it — the shelves on
     // three tabs, the search rows, the artist page's carousels, the release
@@ -367,6 +376,7 @@ private fun FluxApp(
 
     val homeState by viewModel.home.collectAsStateWithLifecycle()
     val homeLoadingMore by viewModel.homeLoadingMore.collectAsStateWithLifecycle()
+    val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
 
     // The top bar's icon is the quiet, always-there nudge; this is the
     // once-per-launch popup version of the same news. `updateDialogShown`
@@ -493,6 +503,7 @@ private fun FluxApp(
     }
 
     val homeListState = rememberLazyListState()
+    val utsavListState = rememberLazyListState()
     val exploreListState = rememberLazyListState()
     val libraryListState = rememberLazyListState()
     val historyListState = rememberLazyListState()
@@ -500,9 +511,10 @@ private fun FluxApp(
     val searchListState = rememberLazyListState()
     val currentListState = when (selectedTab) {
         TAB_HOME -> homeListState
-        TAB_EXPLORE -> exploreListState
+        TAB_UTSAV -> utsavListState
+        TAB_SEARCH -> searchListState
         TAB_LIBRARY -> libraryListState
-        else -> searchListState
+        else -> homeListState
     }
 
     // Pull-to-refresh: the drag lives with the feed, but the indicator is the
@@ -514,7 +526,6 @@ private fun FluxApp(
     val currentFeed = when {
         showSettings || showAccountScrobbling || detail != null -> null
         selectedTab == TAB_HOME -> MainViewModel.Feed.HOME
-        selectedTab == TAB_EXPLORE -> MainViewModel.Feed.EXPLORE
         selectedTab == TAB_LIBRARY -> MainViewModel.Feed.LIBRARY
         else -> null
     }
@@ -566,11 +577,29 @@ private fun FluxApp(
         }
     }
 
+    val currentLocale = try {
+        val firstLocale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)
+        firstLocale?.toLanguageTag() ?: firstLocale?.language
+    } catch (_: Throwable) {
+        null
+    } ?: java.util.Locale.getDefault().toLanguageTag()
+
+    val (tabSuno, tabUtsav, tabSearch, tabLibrary) = when {
+        currentLocale.startsWith("hi-Latn", ignoreCase = true) || currentLocale.equals("hinglish", ignoreCase = true) ->
+            listOf("Home", "Festival", "Search", "Library")
+        currentLocale.startsWith("hi", ignoreCase = true) ->
+            listOf("सुनो", "उत्सव", "खोज", "संग्रह")
+        currentLocale.startsWith("pa", ignoreCase = true) ->
+            listOf("ਸੁਣੋ", "ਉਤਸਵ", "ਖੋਜ", "ਸੰਗ੍ਰਹਿ")
+        else ->
+            listOf("Home", "Festival", "Search", "Library")
+    }
+
     val tabs = listOf(
-        BottomTab(stringResource(R.string.play), FluxIcons.Play),
-        BottomTab(stringResource(R.string.explore), FluxIcons.Explore),
-        BottomTab(stringResource(R.string.library), FluxIcons.Library),
-        BottomTab(stringResource(R.string.search), FluxIcons.Search),
+        BottomTab(tabSuno, FluxIcons.Play),
+        BottomTab(tabUtsav, FluxIcons.Utsav),
+        BottomTab(tabSearch, FluxIcons.Search),
+        BottomTab(tabLibrary, FluxIcons.Library),
     )
 
     val scope = rememberCoroutineScope()
@@ -1246,9 +1275,16 @@ private fun FluxApp(
             lyrics = lyrics,
             lyricsSource = lyricsSource,
             lyricsUnavailable = lyricsChecked && lyrics.isNullOrEmpty(),
-            isLyricsTranslated = isLyricsTranslated,
-            lyricsTranslating = lyricsTranslating,
-            onToggleTranslate = { viewModel.toggleLyricsTranslation() },
+            onReloadLyrics = {
+                viewModel.reloadLyrics(
+                    song.videoId,
+                    song.title,
+                    song.artist,
+                    player.durationMs,
+                    song.albumName,
+                    song.localUri,
+                )
+            },
             docked = docked,
             onClearQueue = {
                 // Keep what's playing; drop everything queued after it.
@@ -1426,6 +1462,11 @@ private fun FluxApp(
                                 // [PlaylistShelf].
                                 onNewPlaylist = if (shelf.title == YtMusicRepository.PLAYLISTS_SHELF) {
                                     { creatingPlaylist = true }
+                                } else {
+                                    null
+                                },
+                                onImportPlaylist = if (shelf.title == YtMusicRepository.PLAYLISTS_SHELF) {
+                                    { showImportPlaylist = true }
                                 } else {
                                     null
                                 },
@@ -1726,40 +1767,16 @@ private fun FluxApp(
                             contentPadding = listPadding,
                             onLoadMore = viewModel::loadMoreHome,
                             loadingMore = homeLoadingMore,
+                            selectedCategory = selectedCategory,
+                            onCategorySelected = viewModel::setHomeCategory,
                         )
-                        TAB_EXPLORE -> HomeScreen(
-                            state = exploreState,
-                            listState = exploreListState,
-                            title = "Explore",
-                            onItemClick = { item ->
-                                when {
-                                    item.videoId != null -> playRadio(
-                                        Song(
-                                            videoId = item.videoId,
-                                            title = item.title,
-                                            // The card's own subtitle is billed
-                                            // as "Song • Chelsea Wolfe"; only
-                                            // the credit belongs in the field
-                                            // the player, mini player and
-                                            // everything downstream read.
-                                            artist = InnertubeParser.artistFromSubtitle(item.subtitle),
-                                            thumbnailUrl = item.thumbnailUrl,
-                                        ),
-                                    )
-                                    item.browseId != null -> viewModel.openDetail(
-                                        browseId = item.browseId,
-                                        title = item.title,
-                                        subtitle = item.subtitle,
-                                        thumbnailUrl = item.thumbnailUrl,
-                                    )
-                                }
-                            },
-                            onItemLongPress = onBrowseLongPress,
-                            onRetry = viewModel::loadExplore,
-                            refreshing = MainViewModel.Feed.EXPLORE in refreshing,
-                            onRefresh = { viewModel.refresh(MainViewModel.Feed.EXPLORE) },
-                            pullState = explorePull,
+                        TAB_UTSAV -> UtsavScreen(
+                            listState = utsavListState,
                             contentPadding = listPadding,
+                            onPlaySongs = play,
+                            onOpenDetail = { id, title, subtitle, thumbnail, type ->
+                                viewModel.openDetail(id, title, subtitle, thumbnail, type)
+                            },
                         )
                         TAB_SEARCH -> SearchScreen(
                             query = query,
@@ -1828,6 +1845,8 @@ private fun FluxApp(
                             // does nothing; see [onBrowseLongPress].
                             onShelfItemLongPress = onBrowseLongPress,
                             onNewPlaylist = { creatingPlaylist = true },
+                            onImportPlaylist = { showImportPlaylist = true },
+                            onExportPlaylist = { showExportLibraryPlaylist = true },
                             onShowAll = { shelf -> libraryShowAll = shelf },
                             replayCard = replayCards.firstOrNull(),
                             onOpenReplay = { showReplay = true },
@@ -1903,6 +1922,7 @@ private fun FluxApp(
                         detail != null -> ({ viewModel.closeDetail(); Unit })
                         else -> null
                     },
+                    onLanguageClick = { showAppLanguage = true },
                     modifier = Modifier.align(Alignment.TopCenter),
                     actions = {
                         // Only worth surfacing where there's room for it and it won't
@@ -1948,11 +1968,20 @@ private fun FluxApp(
                                         viewModel.loadHistory()
                                     },
                                 ) {
-                                    Icon(
-                                        Icons.Rounded.History,
-                                        contentDescription = "Listening history",
-                                        tint = MaterialTheme.colorScheme.onSurface,
-                                    )
+                                    Box(contentAlignment = Alignment.TopEnd) {
+                                        Icon(
+                                            FluxIcons.Bell,
+                                            contentDescription = "Notifications",
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                        )
+                                        // Stitch Dhvani: orange notification indicator dot
+                                        Box(
+                                            modifier = Modifier
+                                                .size(7.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primaryContainer),
+                                        )
+                                    }
                                 }
                             }
                             // Left of the account photo, and only there while
@@ -2007,6 +2036,8 @@ private fun FluxApp(
                             onNext = { controller?.seekToNextMediaItem() },
                             onExpand = { showNowPlaying = true },
                             modifier = Modifier.fillMaxWidth(),
+                            position = player.position,
+                            durationMs = player.durationMs,
                         )
                     }
                     FloatingBottomBar(
@@ -2299,6 +2330,10 @@ private fun FluxApp(
                         viewModel.createPlaylist(title, privacy, target)
                         dismiss()
                     },
+                    onImport = {
+                        dismiss()
+                        showImportPlaylist = true
+                    },
                 )
             }
         }
@@ -2342,6 +2377,7 @@ private fun FluxApp(
             val remote = target.browseId?.startsWith("local:") == false
             val pinnedPlaylists by AppSettings.pinnedPlaylists.collectAsStateWithLifecycle()
             val pinnableId = target.browseId?.takeIf { target.type == BrowseType.PLAYLIST }
+            val isCustomLocal = target.browseId?.startsWith("local:custom:") == true
             ModalBottomSheet(
                 onDismissRequest = { browseActions = null },
                 containerColor = MaterialTheme.colorScheme.background,
@@ -2410,17 +2446,31 @@ private fun FluxApp(
                             browseActions = null
                         }
                     },
+                    onExportPlaylist = if (target.type == BrowseType.PLAYLIST) {
+                        act { songs -> exportPlaylistTarget = target to songs }
+                    } else null,
                     onRename = playlist?.let { p ->
                         { name: String ->
                             browseActions = null
                             viewModel.renamePlaylist(p, name)
                         }
                     },
-                    onDelete = playlist?.let { p ->
-                        {
-                            browseActions = null
-                            viewModel.deletePlaylist(p)
+                    onDelete = when {
+                        isCustomLocal -> {
+                            {
+                                browseActions = null
+                                target.browseId.removePrefix("local:custom:").let { id ->
+                                    AppSettings.deleteLocalPlaylist(id)
+                                }
+                            }
                         }
+                        playlist != null -> {
+                            {
+                                browseActions = null
+                                viewModel.deletePlaylist(playlist)
+                            }
+                        }
+                        else -> null
                     },
                     onDeleteDownload = target.downloadId?.let { id ->
                         {
@@ -2429,6 +2479,142 @@ private fun FluxApp(
                         }
                     },
                 )
+            }
+        }
+
+        // ---- Export playlist ----
+        exportPlaylistTarget?.let { (target, songs) ->
+            ModalBottomSheet(
+                onDismissRequest = { exportPlaylistTarget = null },
+                containerColor = MaterialTheme.colorScheme.background,
+            ) {
+                ExportPlaylistSheet(
+                    title = target.title,
+                    songs = songs,
+                    onDismiss = { exportPlaylistTarget = null },
+                )
+            }
+        }
+
+        // ---- Import playlist ----
+        if (showImportPlaylist) {
+            ModalBottomSheet(
+                onDismissRequest = { showImportPlaylist = false },
+                containerColor = MaterialTheme.colorScheme.background,
+            ) {
+                ImportPlaylistSheet(
+                    onDismiss = { showImportPlaylist = false },
+                    onImportSuccess = { title: String, songs: List<Song> ->
+                        viewModel.createPlaylistWithSongs(
+                            title = title,
+                            privacy = PlaylistPrivacy.PRIVATE,
+                            songs = songs,
+                            onSuccess = {
+                                Toast.makeText(context, "Imported \"$title\" (${songs.size} songs)", Toast.LENGTH_SHORT).show()
+                            },
+                            onFailure = { err ->
+                                Toast.makeText(context, "Failed to import playlist: $err", Toast.LENGTH_LONG).show()
+                            },
+                        )
+                    },
+                )
+            }
+        }
+
+        // ---- Export library playlists ----
+        if (showExportLibraryPlaylist) {
+            val localPlaylists by AppSettings.localCustomPlaylists.collectAsStateWithLifecycle()
+            ModalBottomSheet(
+                onDismissRequest = { showExportLibraryPlaylist = false },
+                containerColor = MaterialTheme.colorScheme.background,
+            ) {
+                if (localPlaylists.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = "No local playlists to export",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Create a local playlist first, then you can export it.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(24.dp))
+                    }
+                } else {
+                    var selectedPlaylist by remember { mutableStateOf(localPlaylists.first()) }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                    ) {
+                        Text(
+                            text = "Export Local Playlist",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Choose which playlist to export",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        localPlaylists.forEach { pl ->
+                            val isSelected = pl.id == selectedPlaylist.id
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    )
+                                    .clickable { selectedPlaylist = pl }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = pl.title,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = "${pl.songs.size} songs",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                if (isSelected) {
+                                    Icon(
+                                        Icons.Rounded.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        ExportPlaylistSheet(
+                            title = selectedPlaylist.title,
+                            songs = selectedPlaylist.songs,
+                            onDismiss = { showExportLibraryPlaylist = false },
+                        )
+                    }
+                }
             }
         }
 
@@ -2779,9 +2965,9 @@ private const val SEEK_END_GUARD_MS = 1_000L
 private val DETAIL_TITLE_DROP = 320.dp
 
 private const val TAB_HOME = 0
-private const val TAB_EXPLORE = 1
-private const val TAB_LIBRARY = 2
-private const val TAB_SEARCH = 3
+private const val TAB_UTSAV = 1
+private const val TAB_SEARCH = 2
+private const val TAB_LIBRARY = 3
 
 /**
  * What a tab's key is prefixed with in the content switcher above.

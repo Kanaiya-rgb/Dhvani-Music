@@ -8,6 +8,7 @@ import android.net.NetworkCapabilities
 import com.music.flux.BuildConfig
 import com.music.flux.auth.AuthStore
 import com.music.flux.data.lyrics.LyricsSource
+import com.music.flux.data.model.Song
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -75,6 +76,14 @@ enum class SliderStyle(val label: String) {
     WAVY("Wavy"),
     SQUIGGLY("Squiggly"),
     SLIM("Slim"),
+    NEON_GLOW("Neon Glow"),
+    GRADIENT_FLOW("Gradient Flow"),
+    COSMIC("Cosmic Stars"),
+    LIQUID_LAVA("Liquid Lava"),
+    AUDIO_BARS("Audio Visualizer"),
+    RETRO_LED("Retro Dot Matrix"),
+    VINYL_GROOVE("Vinyl Groove"),
+    CYBER_BEAM("Cyber Beam"),
 }
 
 enum class PlayerBackgroundStyle(val label: String) {
@@ -395,6 +404,15 @@ object AppSettings {
     /** How many playlists [pinnedPlaylists] can hold at once. */
     const val MAX_PINNED_PLAYLISTS = 5
 
+    data class CustomLocalPlaylist(
+        val id: String,
+        val title: String,
+        val songs: List<Song>,
+    )
+
+    val localCustomPlaylists = MutableStateFlow<List<CustomLocalPlaylist>>(emptyList())
+    private const val KEY_LOCAL_CUSTOM_PLAYLISTS = "local_custom_playlists_json"
+
     // ── Scrobbling ──────────────────────────────────────────────────────
 
     /** One release gate shared by the settings UI and the playback service. */
@@ -665,6 +683,7 @@ object AppSettings {
         listenTogetherUserId.value = prefs.getString(KEY_LISTEN_TOGETHER_USER_ID, null) ?: ""
         listenTogetherIsHost.value = prefs.getBoolean(KEY_LISTEN_TOGETHER_IS_HOST, false)
         listenTogetherSessionTimestamp.value = prefs.getLong(KEY_LISTEN_TOGETHER_SESSION_TIMESTAMP, 0L)
+        localCustomPlaylists.value = readLocalCustomPlaylists()
     }
 
     /**
@@ -956,6 +975,94 @@ object AppSettings {
     fun setLyricsClickSeek(value: Boolean) {
         lyricsClickSeek.value = value
         prefs.edit().putBoolean(KEY_LYRICS_CLICK_SEEK, value).apply()
+    }
+
+    fun getLyricsOffset(videoId: String): Long {
+        if (videoId.isBlank()) return 0L
+        return prefs.getLong("lyrics_offset_$videoId", 0L)
+    }
+
+    fun setLyricsOffset(videoId: String, offsetMs: Long) {
+        if (videoId.isBlank()) return
+        if (offsetMs == 0L) {
+            prefs.edit().remove("lyrics_offset_$videoId").apply()
+        } else {
+            prefs.edit().putLong("lyrics_offset_$videoId", offsetMs).apply()
+        }
+    }
+
+    fun saveLocalPlaylist(title: String, songs: List<Song>): String {
+        val id = "local_pl_" + System.currentTimeMillis()
+        val playlist = CustomLocalPlaylist(id, title, songs)
+        val list = localCustomPlaylists.value.toMutableList()
+        list.add(0, playlist)
+        localCustomPlaylists.value = list
+        persistLocalCustomPlaylists(list)
+        return id
+    }
+
+    fun deleteLocalPlaylist(id: String) {
+        val list = localCustomPlaylists.value.filterNot { it.id == id }
+        localCustomPlaylists.value = list
+        persistLocalCustomPlaylists(list)
+    }
+
+    fun getLocalPlaylist(id: String): CustomLocalPlaylist? {
+        return localCustomPlaylists.value.firstOrNull { it.id == id }
+    }
+
+    private fun readLocalCustomPlaylists(): List<CustomLocalPlaylist> {
+        val raw = prefs.getString(KEY_LOCAL_CUSTOM_PLAYLISTS, null) ?: return emptyList()
+        return runCatching {
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            val array = json.parseToJsonElement(raw) as? kotlinx.serialization.json.JsonArray ?: return emptyList()
+            array.mapNotNull { item ->
+                val obj = item as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                val id = (obj["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return@mapNotNull null
+                val title = (obj["title"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return@mapNotNull null
+                val songArray = obj["songs"] as? kotlinx.serialization.json.JsonArray ?: return@mapNotNull null
+                val songs = songArray.mapNotNull { s ->
+                    val sObj = s as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                    val videoId = (sObj["videoId"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                    val sTitle = (sObj["title"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return@mapNotNull null
+                    val artist = (sObj["artist"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                    val thumb = (sObj["thumbnailUrl"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                    val dur = (sObj["durationText"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                    Song(videoId = videoId, title = sTitle, artist = artist, thumbnailUrl = thumb, durationText = dur)
+                }
+                CustomLocalPlaylist(id = id, title = title, songs = songs)
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun persistLocalCustomPlaylists(list: List<CustomLocalPlaylist>) {
+        val json = kotlinx.serialization.json.buildJsonArray {
+            list.forEach { pl ->
+                add(
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("id", kotlinx.serialization.json.JsonPrimitive(pl.id))
+                        put("title", kotlinx.serialization.json.JsonPrimitive(pl.title))
+                        put(
+                            "songs",
+                            kotlinx.serialization.json.buildJsonArray {
+                                pl.songs.forEach { s ->
+                                    add(
+                                        kotlinx.serialization.json.buildJsonObject {
+                                            put("videoId", kotlinx.serialization.json.JsonPrimitive(s.videoId))
+                                            put("title", kotlinx.serialization.json.JsonPrimitive(s.title))
+                                            put("artist", kotlinx.serialization.json.JsonPrimitive(s.artist))
+                                            s.thumbnailUrl?.let { put("thumbnailUrl", kotlinx.serialization.json.JsonPrimitive(it)) }
+                                            s.durationText?.let { put("durationText", kotlinx.serialization.json.JsonPrimitive(it)) }
+                                        },
+                                    )
+                                }
+                            },
+                        )
+                    },
+                )
+            }
+        }.toString()
+        prefs.edit().putString(KEY_LOCAL_CUSTOM_PLAYLISTS, json).apply()
     }
 
     fun setLyricsAutoScroll(value: Boolean) {

@@ -281,6 +281,84 @@ object YtMusicRepository {
     }
 
     /**
+     * Fetches dedicated shelves for a selected Indian mood or genre filter:
+     * - Top Tracks (songs)
+     * - Popular Playlists / Albums
+     * - Trending Artists
+     */
+    suspend fun categoryShelves(category: String): Result<List<HomeShelf>> = call("category:$category") {
+        coroutineScope {
+            val queries = when {
+                category.contains("Hindi", ignoreCase = true) -> listOf(
+                    "Trending Hindi Songs" to "Trending in Hindi",
+                    "Top Bollywood Hits" to "Bollywood Chartbusters",
+                    "Best of Arijit Singh" to "Romantic Melodies",
+                    "Hindi Indie Songs" to "Indie Hindi Vibe",
+                )
+                category.contains("Punjabi", ignoreCase = true) -> listOf(
+                    "Top Punjabi Songs 2025" to "Punjabi Chartbusters",
+                    "Punjabi Hip Hop Hits" to "Punjabi Beats & Bass",
+                    "Romantic Punjabi Songs" to "Sufi & Romance Punjabi",
+                    "Diljit Dosanjh Hits" to "Artist Spotlight: Diljit",
+                )
+                category.contains("Tamil", ignoreCase = true) -> listOf(
+                    "Top Tamil Songs 2025" to "Kollywood Hits",
+                    "Anirudh Ravichander Best Songs" to "Anirudh Wave",
+                    "Tamil Melody Songs" to "Soul of Tamil",
+                )
+                category.contains("Telugu", ignoreCase = true) -> listOf(
+                    "Top Telugu Songs 2025" to "Tollywood Blockbusters",
+                    "Telugu Melody Hits" to "Heart of Telugu",
+                    "SS Thaman Best Songs" to "Mass & Beats",
+                )
+                category.contains("Indie", ignoreCase = true) -> listOf(
+                    "Indian Indie Hits" to "Indie Spotlight",
+                    "Prateek Kuhad, Anuv Jain Best" to "Acoustic Poetry",
+                    "Desi Lo-Fi Songs" to "Late Night Indie",
+                )
+                category.contains("Bollywood", ignoreCase = true) -> listOf(
+                    "Bollywood Classics 90s 2000s" to "Golden Bollywood Era",
+                    "Latest Bollywood Blockbusters" to "Current Hindi Hits",
+                    "Bollywood Party Dance Songs" to "Party Rhythms",
+                )
+                category.contains("Ghazal", ignoreCase = true) || category.contains("Sufi", ignoreCase = true) -> listOf(
+                    "Jagjit Singh Best Ghazals" to "Timeless Ghazals",
+                    "Nusrat Fateh Ali Khan Sufi" to "Sufiana Baithak",
+                    "Rahat Fateh Ali Khan Hits" to "Soul of Sufism",
+                )
+                category.contains("Classical", ignoreCase = true) || category.contains("Raga", ignoreCase = true) -> listOf(
+                    "Indian Classical Raag Yaman Bhairavi" to "Raag & Meditation",
+                    "Pandit Ravi Shankar Sitar" to "Sitar & Sarod Maestros",
+                    "Zakir Hussain Classical Tabla" to "Rhythm of Raag",
+                )
+                else -> listOf(
+                    "$category Hits 2025" to "Featured $category",
+                    "$category Popular Songs" to "Top Picks for You",
+                )
+            }
+
+            val shelfDeferreds = queries.map { (query, shelfTitle) ->
+                async {
+                    val tracks = search(query, SearchFilter.SONGS).getOrNull()
+                        ?.filterIsInstance<SearchResult.Track>()
+                        ?.map { it.song }
+                        ?.shuffled()
+                        ?.take(16)
+                    if (!tracks.isNullOrEmpty()) {
+                        HomeShelf(
+                            title = shelfTitle,
+                            subtitle = "Curated $category",
+                            items = tracks.map { it.toShelfItem() },
+                        )
+                    } else null
+                }
+            }
+
+            shelfDeferreds.mapNotNull { it.await() }
+        }
+    }
+
+    /**
      * The lead shelf: the account's listening history, newest first.
      * Falls back to local PlaybackHistory when not signed in.
      */

@@ -24,6 +24,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -87,6 +91,8 @@ fun LibraryScreen(
     onShelfItemClick: (ShelfItem) -> Unit,
     onShelfItemLongPress: (ShelfItem) -> Unit,
     onNewPlaylist: () -> Unit,
+    onImportPlaylist: () -> Unit = {},
+    onExportPlaylist: () -> Unit = {},
     /**
      * A shelf's "Show all" — every shelf's row here stops at five cards (see
      * [LibraryGridShelf]), so this is the only way to reach whatever didn't
@@ -130,6 +136,18 @@ fun LibraryScreen(
     downloadedPlaylists: List<SavedCollection> = emptyList(),
 ) {
     val pinnedPlaylists by AppSettings.pinnedPlaylists.collectAsStateWithLifecycle()
+    val localCustomPlaylists by AppSettings.localCustomPlaylists.collectAsStateWithLifecycle()
+    val customShelfItems = remember(localCustomPlaylists) {
+        localCustomPlaylists.map { pl ->
+            ShelfItem(
+                title = pl.title,
+                subtitle = "${pl.songs.size} songs",
+                thumbnailUrl = pl.songs.firstOrNull()?.thumbnailUrl,
+                videoId = null,
+                browseId = "local:custom:${pl.id}",
+            )
+        }
+    }
     val localLikedSongs by LikeState.likedSongs.collectAsStateWithLifecycle()
     val likedList = if (signedIn && state is UiState.Success && state.data.likedSongs.isNotEmpty()) {
         state.data.likedSongs
@@ -190,14 +208,6 @@ fun LibraryScreen(
                     ) + downloadedPlaylists.map { playlist ->
                         ShelfItem(
                             title = playlist.title,
-                            // The credit the playlist was downloaded with,
-                            // because this is also what the page it opens
-                            // bills itself by — see `headerLines`, which
-                            // reads the kind and the owner back out of it.
-                            // Saying "Downloaded playlist" here instead would
-                            // make that header read "Downloaded playlist" over
-                            // "PLAYLIST • 12 SONGS", and the shelf this card
-                            // is on already says where it lives.
                             subtitle = playlist.subtitle.ifBlank { "Downloaded playlist" },
                             thumbnailUrl = playlist.thumbnailUrl,
                             videoId = null,
@@ -214,12 +224,14 @@ fun LibraryScreen(
             }
             if (!signedIn) {
                 item(key = "shelf:$PLAYLISTS") {
-                    val guestPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem))
+                    val guestPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem) + customShelfItems)
                     PlaylistShelf(
                         shelf = guestPlaylists,
                         onItemClick = onShelfItemClick,
                         onItemLongPress = onShelfItemLongPress,
                         onNewPlaylist = onNewPlaylist,
+                        onImportPlaylist = onImportPlaylist,
+                        onExportPlaylist = onExportPlaylist,
                         onShowAll = { onShowAll(guestPlaylists) },
                     )
                 }
@@ -267,12 +279,14 @@ fun LibraryScreen(
                     val shelves = state.data.shelves
                     if (shelves.none { it.title == PLAYLISTS }) {
                         item(key = "shelf:$PLAYLISTS") {
-                            val defaultPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem))
+                            val defaultPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem) + customShelfItems)
                             PlaylistShelf(
                                 shelf = defaultPlaylists,
                                 onItemClick = onShelfItemClick,
                                 onItemLongPress = onShelfItemLongPress,
                                 onNewPlaylist = onNewPlaylist,
+                                onImportPlaylist = onImportPlaylist,
+                                onExportPlaylist = onExportPlaylist,
                                 onShowAll = { onShowAll(defaultPlaylists) },
                             )
                         }
@@ -283,13 +297,15 @@ fun LibraryScreen(
                                 val otherItems = shelf.items.filterNot {
                                     it.browseId == YtMusicRepository.LIKED_MUSIC || it.browseId == "local:liked"
                                 }
-                                val withLiked = shelf.copy(items = listOf(likedShelfItem) + otherItems)
+                                val withLiked = shelf.copy(items = listOf(likedShelfItem) + customShelfItems + otherItems)
                                 val pinnedFirst = withLiked.pinnedFirst(pinnedPlaylists)
                                 PlaylistShelf(
                                     shelf = pinnedFirst,
                                     onItemClick = onShelfItemClick,
                                     onItemLongPress = onShelfItemLongPress,
                                     onNewPlaylist = onNewPlaylist,
+                                    onImportPlaylist = onImportPlaylist,
+                                    onExportPlaylist = onExportPlaylist,
                                     onShowAll = { onShowAll(pinnedFirst) },
                                     pinnedPlaylists = pinnedPlaylists,
                                 )
@@ -418,6 +434,8 @@ private fun PlaylistShelf(
     onItemClick: (ShelfItem) -> Unit,
     onItemLongPress: (ShelfItem) -> Unit,
     onNewPlaylist: () -> Unit,
+    onImportPlaylist: () -> Unit,
+    onExportPlaylist: () -> Unit,
     onShowAll: () -> Unit,
     pinnedPlaylists: List<String> = emptyList(),
 ) {
@@ -433,6 +451,22 @@ private fun PlaylistShelf(
                 label = "New playlist",
                 subtitle = stringResource(R.string.saved_to_youtube_music),
                 onClick = onNewPlaylist,
+            )
+        },
+        leadingCardSecond = {
+            NewShelfCard(
+                icon = Icons.Rounded.FileUpload,
+                label = "Import playlist",
+                subtitle = "M3U, JSON or link",
+                onClick = onImportPlaylist,
+            )
+        },
+        leadingCardThird = {
+            NewShelfCard(
+                icon = Icons.Rounded.FileDownload,
+                label = "Export playlist",
+                subtitle = "Save as M3U or JSON",
+                onClick = onExportPlaylist,
             )
         },
     )
@@ -458,9 +492,13 @@ internal fun LibraryGridShelf(
     onItemLongPress: (ShelfItem) -> Unit,
     onShowAll: () -> Unit,
     leadingCard: (@Composable () -> Unit)? = null,
+    leadingCardSecond: (@Composable () -> Unit)? = null,
+    leadingCardThird: (@Composable () -> Unit)? = null,
     pinnedPlaylists: List<String> = emptyList(),
 ) {
-    val leadingCount = if (leadingCard != null) 1 else 0
+    val leadingCount = (if (leadingCard != null) 1 else 0) +
+        (if (leadingCardSecond != null) 1 else 0) +
+        (if (leadingCardThird != null) 1 else 0)
     val visibleItems = shelf.items.take((LIBRARY_ROW_MAX_ITEMS - leadingCount).coerceAtLeast(0))
     Column(Modifier.padding(bottom = 26.dp)) {
         SectionHeader(
@@ -473,6 +511,8 @@ internal fun LibraryGridShelf(
             horizontalArrangement = Arrangement.spacedBy(LIBRARY_GRID_SPACING),
         ) {
             leadingCard?.let { card -> item(key = "leading") { card() } }
+            leadingCardSecond?.let { card -> item(key = "leading_second") { card() } }
+            leadingCardThird?.let { card -> item(key = "leading_third") { card() } }
             items(visibleItems) { item ->
                 ShelfCard(
                     item = item,
@@ -498,6 +538,8 @@ fun LibraryGridPage(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     onNewPlaylist: (() -> Unit)? = null,
+    onImportPlaylist: (() -> Unit)? = null,
+    onExportPlaylist: (() -> Unit)? = null,
 ) {
     // Re-read live rather than trusting [shelf] to already be sorted: this page
     // is opened from a snapshot (see `libraryShowAll` in MainActivity), and a
@@ -522,6 +564,28 @@ fun LibraryGridPage(
                         label = "New playlist",
                         subtitle = stringResource(R.string.saved_to_youtube_music),
                         onClick = onNewPlaylist,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            if (onImportPlaylist != null) {
+                item(key = "leading_second") {
+                    NewShelfCard(
+                        icon = Icons.Rounded.FileUpload,
+                        label = "Import playlist",
+                        subtitle = "M3U, JSON or link",
+                        onClick = onImportPlaylist,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            if (onExportPlaylist != null) {
+                item(key = "leading_export") {
+                    NewShelfCard(
+                        icon = Icons.Rounded.FileDownload,
+                        label = "Export playlist",
+                        subtitle = "Save as M3U or JSON",
+                        onClick = onExportPlaylist,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }

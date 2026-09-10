@@ -70,6 +70,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _home = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
     val home: StateFlow<UiState<List<HomeShelf>>> = _home.asStateFlow()
 
+    private val _selectedCategory = MutableStateFlow("All")
+    val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
+
+    /** Cached full Home feed so switching back to "All" is instant */
+    private var cachedAllHome: List<HomeShelf>? = null
+
     /**
      * Token for the next page of Home shelves; null once there's nothing
      * more. Declared here rather than by [loadMoreHome] because [init] calls
@@ -284,6 +290,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _lyricsChecked.value = true
             if (_isLyricsTranslated.value) translateCurrentLyrics()
         }
+    }
+
+    fun reloadLyrics(
+        videoId: String,
+        title: String,
+        artist: String,
+        durationMs: Long,
+        album: String? = null,
+        localUri: String? = null,
+    ) {
+        lyricsFor = null
+        loadLyrics(videoId, title, artist, durationMs, album, localUri)
     }
 
     private val _account = MutableStateFlow<Account?>(null)
@@ -696,6 +714,74 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Creates a playlist populated with an imported list of [songs].
+     * If signed in, syncs to YouTube Music; otherwise saves to local device library.
+     */
+    fun createPlaylistWithSongs(
+        title: String,
+        privacy: PlaylistPrivacy = PlaylistPrivacy.PRIVATE,
+        songs: List<Song>,
+        onSuccess: ((String) -> Unit)? = null,
+        onFailure: ((String) -> Unit)? = null,
+    ) {
+        val name = title.trim().ifBlank { "Imported Playlist" }
+        val videoIds = songs.mapNotNull { it.videoId.takeIf { id -> id.isNotBlank() } }
+
+        viewModelScope.launch {
+            if (_signedIn.value) {
+                YtMusicRepository.createPlaylist(
+                    title = name,
+                    privacy = privacy,
+                    videoIds = videoIds.take(50),
+                ).fold(
+                    onSuccess = { playlistId ->
+                        if (videoIds.size > 50) {
+                            val remainder = videoIds.drop(50)
+                            remainder.chunked(50).forEach { chunk ->
+                                YtMusicRepository.addToPlaylist(playlistId, chunk)
+                            }
+                        }
+                        setPlaylistOwned("VL$playlistId", true)
+                        libraryStale = true
+                        val created = UserPlaylist(
+                            playlistId = playlistId,
+                            title = name,
+                            subtitle = "${songs.size} songs",
+                            thumbnailUrl = songs.firstOrNull()?.thumbnailUrl,
+                        )
+                        _playlists.value = listOf(created) +
+                            _playlists.value.filterNot { it.playlistId == created.playlistId }
+                        editPlaylistShelf { items ->
+                            listOf(
+                                ShelfItem(
+                                    title = created.title,
+                                    subtitle = created.subtitle,
+                                    thumbnailUrl = created.thumbnailUrl,
+                                    videoId = null,
+                                    browseId = created.browseId,
+                                ),
+                            ) + items.filterNot { it.browseId == created.browseId }
+                        }
+                        onSuccess?.invoke(name)
+                    },
+                    onFailure = {
+                        // If YouTube sync fails, save to local device library
+                        AppSettings.saveLocalPlaylist(name, songs)
+                        libraryStale = true
+                        loadLibrary()
+                        onSuccess?.invoke(name)
+                    },
+                )
+            } else {
+                AppSettings.saveLocalPlaylist(name, songs)
+                libraryStale = true
+                loadLibrary()
+                onSuccess?.invoke(name)
+            }
+        }
+    }
+
+    /**
      * Drops [song] from the playlist page it is being read on, and takes the
      * row out from under the reader rather than waiting for a re-fetch.
      */
@@ -1044,8 +1130,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadHome() {
+        if (_selectedCategory.value != "All") {
+            setHomeCategory(_selectedCategory.value)
+            return
+        }
         _home.value = UiState.Loading
         viewModelScope.launch { fetchHome() }
+    }
+
+    fun setHomeCategory(category: String) {
+        _selectedCategory.value = category
+        if (category == "All" || category.startsWith("All")) {
+            cachedAllHome?.let {
+                _home.value = UiState.Success(it)
+                return
+            }
+            loadHome()
+            return
+        }
+
+        _home.value = UiState.Loading
+        viewModelScope.launch {
+            YtMusicRepository.categoryShelves(category).fold(
+                onSuccess = { shelves ->
+                    if (shelves.isEmpty()) {
+                        _home.value = UiState.Error("No results found for $category")
+                    } else {
+                        _home.value = UiState.Success(shelves)
+                    }
+                },
+                onFailure = {
+                    _home.value = UiState.Error(it.friendly())
+                },
+            )
+        }
     }
 
     private suspend fun fetchHome() {
@@ -1057,7 +1175,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 homeContinuation = feed.continuation
                 val shelves = feed.shelves.filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
                 if (shelves.isEmpty()) UiState.Error("No results from YouTube Music")
-                else UiState.Success(shelves)
+                else {
+                    cachedAllHome = shelves
+                    UiState.Success(shelves)
+                }
             },
             onFailure = { UiState.Error(it.friendly()) },
         )
@@ -1560,6 +1681,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         val songs = LocalMediaRepository.getLocalMusic(context)
                         if (songs.isEmpty()) UiState.Error("No audio files found on device")
                         else UiState.Success(songs)
+                    }
+                }
+                browseId.startsWith("local:custom:") -> {
+                    val id = browseId.removePrefix("local:custom:")
+                    val pl = AppSettings.getLocalPlaylist(id)
+                    if (pl != null) {
+                        name = pl.title
+                        credit = "${pl.songs.size} songs"
+                        artwork = pl.songs.firstOrNull()?.thumbnailUrl
+                        UiState.Success(pl.songs)
+                    } else {
+                        UiState.Error("Playlist not found")
                     }
                 }
                 browseId == YtMusicRepository.LIKED_MUSIC || browseId == "local:liked" -> {

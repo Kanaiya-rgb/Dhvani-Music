@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +34,8 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -41,14 +44,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.music.flux.ui.haptics.Haptic
+import com.music.flux.ui.haptics.rememberHaptics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.ui.unit.sp
 import com.music.flux.data.history.PlaybackHistory
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.flux.ui.icons.FluxIcons
@@ -100,6 +111,8 @@ fun HomeScreen(
     // Explore doesn't page — only Home has a continuation worth following.
     onLoadMore: (() -> Unit)? = null,
     loadingMore: Boolean = false,
+    selectedCategory: String = "All Rhythms",
+    onCategorySelected: ((String) -> Unit)? = null,
 ) {
     PullToRefresh(
         refreshing = refreshing,
@@ -113,12 +126,16 @@ fun HomeScreen(
             contentPadding = contentPadding,
         ) {
             item(key = "home_title") {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.displayLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
-                )
+                Column {
+                    // ── Dhvani Stitch Home: Greeting + Language Filter Rail ──────────────
+                    DhvaniHomeHeader()
+                    MoodGenreChips(
+                        selectedChip = selectedCategory,
+                        onChipSelect = { chip ->
+                            onCategorySelected?.invoke(chip)
+                        },
+                    )
+                }
             }
 
             when (state) {
@@ -148,6 +165,236 @@ fun HomeScreen(
         }
         LaunchedEffect(nearEnd, listState.firstVisibleItemIndex) {
             if (nearEnd && !loadingMore) onLoadMore()
+        }
+    }
+}
+
+/**
+ * Dhvani Stitch Home Header: Time-aware greeting (Namaste) + animated context badge.
+ * Matches "Dhvani - Home" screen (projects/6466663551718142121/screens/9afd8dc206ae4127bdcf40f2a709775e)
+ */
+@Composable
+private fun DhvaniHomeHeader() {
+    val currentLocale = try {
+        val firstLocale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)
+        firstLocale?.language ?: java.util.Locale.getDefault().language
+    } catch (_: Throwable) {
+        java.util.Locale.getDefault().language
+    }
+    val isHindi = currentLocale.startsWith("hi", ignoreCase = true)
+
+    val currentHour = remember {
+        java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    }
+
+    val timeLabel = remember(currentHour, isHindi) {
+        if (isHindi) {
+            when (currentHour) {
+                in 5..11  -> "सुबह की धुनें"
+                in 12..16 -> "दोपहर की धुन"
+                in 17..20 -> "शाम की महफ़िल"
+                else      -> "रात का सुकून"
+            }
+        } else {
+            when (currentHour) {
+                in 5..11  -> "MORNING VIBES"
+                in 12..16 -> "AFTERNOON ACOUSTIC"
+                in 17..20 -> "EVENING MELODIES"
+                else      -> "NIGHT CHILL"
+            }
+        }
+    }
+
+    val timeSubtitle = remember(currentHour, isHindi) {
+        if (isHindi) {
+            when (currentHour) {
+                in 5..11  -> "आज क्या सुनेंगे? सुबह के राग या शांत लो-फ़ाई धुनें?"
+                in 12..16 -> "दोपहर की ताज़गी — बॉलीवुड और इंडी संगीत"
+                in 17..20 -> "शाम का सुकून — ग़ज़ल, सूफ़ी या मधुर धुनें"
+                else      -> "रात की शांति — एकांत संगीत और सुकून"
+            }
+        } else {
+            when (currentHour) {
+                in 5..11  -> "Start your day with morning acoustic and calming tunes"
+                in 12..16 -> "Energize your afternoon with fresh popular hits"
+                in 17..20 -> "Unwind with cozy evening melodies and warmth"
+                else      -> "Relax into the night with soothing lo-fi and ambient sounds"
+            }
+        }
+    }
+
+    val greetingTitle = remember(currentHour, isHindi) {
+        if (isHindi) {
+            when (currentHour) {
+                in 5..11  -> "शुभ प्रभात"
+                in 12..16 -> "शुभ दोपहर"
+                in 17..21 -> "शुभ संध्या"
+                else      -> "शुभ रात्रि"
+            }
+        } else {
+            when (currentHour) {
+                in 5..11  -> "Good Morning"
+                in 12..16 -> "Good Afternoon"
+                in 17..21 -> "Good Evening"
+                else      -> "Good Night"
+            }
+        }
+    }
+
+    val listenerLabel = if (isHindi) "संगीत प्रेमी" else "Music Lover"
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = PAGE_GUTTER)
+            .padding(top = 10.dp, bottom = 8.dp),
+    ) {
+        // Top Pill Badge: e.g. MORNING VIBES / सुबह की धुनें
+        Row(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(Color(0xFF2A1C14)) // Warm dark amber/saffron tint
+                .border(0.5.dp, MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f), CircleShape)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.WbSunny,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(13.dp),
+            )
+            Text(
+                text = timeLabel.uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp,
+                ),
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // Greeting headline: Good Evening, Music Lover / शुभ संध्या, संगीत प्रेमी
+        Text(
+            text = "$greetingTitle, $listenerLabel",
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 28.sp,
+                letterSpacing = (-0.5).sp,
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(4.dp))
+
+        Text(
+            text = timeSubtitle,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/**
+ * Stitch Dhvani Mood & Genre Filter Chips:
+ * Bilingual Indian language + genre tags matching the Stitch Home screen language rail.
+ * Selected chip: Saffron fill. Unselected: surface-container with subtle border.
+ */
+@Composable
+private fun MoodGenreChips(
+    selectedChip: String,
+    onChipSelect: (String) -> Unit,
+) {
+    val currentLocale = try {
+        val firstLocale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)
+        firstLocale?.language ?: java.util.Locale.getDefault().language
+    } catch (_: Throwable) {
+        java.util.Locale.getDefault().language
+    }
+    val isHindi = currentLocale.startsWith("hi", ignoreCase = true)
+
+    val chips = remember(isHindi) {
+        if (isHindi) {
+            listOf(
+                "सभी",
+                "बॉलीवुड",
+                "इंडी हिंदी",
+                "ग़ज़ल व सूफ़ी",
+                "शास्त्रीय राग",
+                "पंजाबी पॉप",
+                "तमिल",
+                "तेलुगु",
+            )
+        } else {
+            listOf(
+                "All",
+                "Bollywood",
+                "Indie Hindi",
+                "Ghazal & Sufi",
+                "Classical Ragas",
+                "Punjabi Pop",
+                "Tamil Hits",
+                "Telugu Beats",
+            )
+        }
+    }
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+    ) {
+        items(chips) { chip ->
+            val isSelected = chip == selectedChip
+            val haptics = rememberHaptics()
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                    .border(
+                        1.dp,
+                        if (isSelected) MaterialTheme.colorScheme.primary
+                        else Color.White.copy(alpha = 0.08f),
+                        CircleShape,
+                    )
+                    .clickable {
+                        haptics.play(Haptic.Select)
+                        onChipSelect(chip)
+                    }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (chip == "All Rhythms") {
+                        Icon(
+                            imageVector = FluxIcons.Infinity,
+                            contentDescription = null,
+                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    Text(
+                        text = chip,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.W500,
+                        color = if (isSelected)
+                            MaterialTheme.colorScheme.onPrimary
+                        else
+                            MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
         }
     }
 }
@@ -306,32 +553,58 @@ private fun QuickPickSongRow(
 
 /**
  * Shared by the home feed, Explore and Library so headings line up across tabs.
+ * Dhvani Stitch style: headlineSmall title + saffron "See All" — matching editorial
+ * shelf categorization from the "Midnight Raag" design system.
  *
  * [onShowAll] is only ever set on Library, whose rows stop at five cards
  * rather than running the shelf's whole length — see [LibraryGridShelf].
- * Home and Explore never pass it, so their heading is unchanged.
  */
 @Composable
 internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
-            .padding(horizontal = PAGE_GUTTER, vertical = 10.dp)
+            .padding(horizontal = PAGE_GUTTER)
+            .padding(top = 14.dp, bottom = 8.dp)
             .fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = title,
+                    // Dhvani: headline-sm (17sp / 600 weight) for shelf categorizations
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (title.contains("Made for You", ignoreCase = true) || title.contains("Daily Discover", ignoreCase = true) || title.contains("Quick Picks", ignoreCase = true)) {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Color(0xFF2A1C14))
+                            .border(0.5.dp, MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), CircleShape)
+                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)?.language?.startsWith("hi") == true) "रोज़ाना नया" else "FOR YOU",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -341,7 +614,7 @@ internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() 
         if (onShowAll != null) {
             Text(
                 text = stringResource(R.string.show_all),
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .clickable(onClick = onShowAll)
@@ -383,7 +656,12 @@ private fun HeroShelf(
     }
 }
 
-/** Big card: artwork with the caption laid over a scrim, as on Listen Now. */
+/**
+ * Stitch Dhvani Featured Hero Card:
+ * Atmospheric background image with dark gradient overlay,
+ * Curated Raga & Mood badge, Dolby Atmos 24-bit Hi-Res badge,
+ * Large title, artists, poetic mood caption, and primary "▶ Play Daily Mix" action button.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HeroCard(
@@ -392,12 +670,13 @@ private fun HeroCard(
     onLongPress: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val haptics = rememberHaptics()
     Box(
         modifier = modifier
-            .aspectRatio(HERO_CARD_RATIO)
-            .clip(RoundedCornerShape(18.dp))
-            .thumbnailBorder(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .aspectRatio(0.95f) // Generous atmospheric card ratio matching Stitch
+            .clip(RoundedCornerShape(22.dp))
+            .background(Color(0xFF16181D))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(22.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongPress),
     ) {
         AsyncImage(
@@ -406,32 +685,205 @@ private fun HeroCard(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
-        Column(
+
+        // Gradient overlay: transparent to deep midnight
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomStart)
+                .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f)),
+                        listOf(
+                            Color.Black.copy(alpha = 0.15f),
+                            Color.Black.copy(alpha = 0.55f),
+                            Color(0xFF0F1115).copy(alpha = 0.95f),
+                        ),
                     ),
-                )
-                .padding(start = 16.dp, end = 16.dp, top = 34.dp, bottom = 14.dp),
+                ),
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.Bottom,
         ) {
+            // Badges row: [CURATED RAGA & MOOD] + [Dolby Atmos • 24-bit Hi-Res]
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color(0xFF2E2420).copy(alpha = 0.85f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        text = "CURATED RAGA & MOOD",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.5.sp,
+                            letterSpacing = 0.6.sp,
+                        ),
+                        color = Color(0xFFFFB68D),
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color(0xFF0B251D).copy(alpha = 0.85f))
+                        .border(0.5.dp, Color(0xFF00A878).copy(alpha = 0.35f), CircleShape)
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.GraphicEq,
+                        contentDescription = null,
+                        tint = Color(0xFF59DDA9),
+                        modifier = Modifier.size(11.dp),
+                    )
+                    Text(
+                        text = "Dolby Atmos • 24-bit Hi-Res",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.5.sp,
+                        ),
+                        color = Color(0xFF59DDA9),
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // Main Title (e.g. Shaam-e-Mehfil / Featured Mix)
             Text(
                 text = item.title,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 24.sp,
+                    letterSpacing = (-0.3).sp,
+                ),
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+
+            // Artists line
             if (item.subtitle.isNotBlank()) {
+                Spacer(Modifier.height(3.dp))
                 Text(
                     text = item.subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.72f),
-                    maxLines = 2,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 13.sp,
+                    ),
+                    color = Color.White.copy(alpha = 0.82f),
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+
+            Spacer(Modifier.height(5.dp))
+
+            // Mood description
+            Text(
+                text = "Intimate semi-classical guitar arpeggios woven with soulful vocals, tuned to Raag Yaman for sunset...",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp,
+                ),
+                color = Color.White.copy(alpha = 0.65f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Spacer(Modifier.height(14.dp))
+
+            // Action Buttons Row: [▶ Play Daily Mix] + [+] + [Share]
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                // Primary Saffron "Play Daily Mix" button
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    MaterialTheme.colorScheme.primary,
+                                ),
+                            ),
+                        )
+                        .clickable {
+                            haptics.play(Haptic.Resume)
+                            onClick()
+                        }
+                        .padding(vertical = 11.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = "Play",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Play Daily Mix",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.5.sp,
+                        ),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+
+                // Add to Playlist button
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.12f))
+                        .clickable {
+                            haptics.play(Haptic.Select)
+                            onLongPress?.invoke()
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = "Add",
+                        tint = Color.White,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+
+                // Share button
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.12f))
+                        .clickable {
+                            haptics.play(Haptic.Select)
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Share,
+                        contentDescription = "Share",
+                        tint = Color.White,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
             }
         }
     }
@@ -534,7 +986,8 @@ internal fun ShelfCard(
     ) {
         when (item.browseId) {
             YtMusicRepository.LIKED_MUSIC, "local:liked" -> {
-                val palette = remember { MeshPalette(listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0), Color(0xFFE91E63))) }
+                // Dhvani: Bollywood Crimson → Saffron (tertiary → primary)
+                val palette = remember { MeshPalette(listOf(Color(0xFFFF848E), Color(0xFFFF8A3D), Color(0xFFFFB68D))) }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -566,7 +1019,7 @@ internal fun ShelfCard(
                             Icon(
                                 imageVector = FluxIcons.HeartFilled,
                                 contentDescription = null,
-                                tint = Color(0xFFFF4081),
+                                tint = Color(0xFFFFB68D), // Dhvani saffron-dim
                                 modifier = Modifier
                                     .padding(8.dp)
                                     .size(24.dp),
@@ -589,7 +1042,8 @@ internal fun ShelfCard(
                 }
             }
             "local:downloads" -> {
-                val palette = remember { MeshPalette(listOf(Color(0xFF1E3C72), Color(0xFF2A5298))) }
+                // Dhvani: Midnight deep blue → surface-bright
+                val palette = remember { MeshPalette(listOf(Color(0xFF111318), Color(0xFF37393E), Color(0xFF1E2024))) }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -612,7 +1066,8 @@ internal fun ShelfCard(
                 }
             }
             "local:all" -> {
-                val palette = remember { MeshPalette(listOf(Color(0xFF134E5E), Color(0xFF71B280))) }
+                // Dhvani: Peacock Emerald (secondary) gradient
+                val palette = remember { MeshPalette(listOf(Color(0xFF003826), Color(0xFF00A878), Color(0xFF59DDA9))) }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

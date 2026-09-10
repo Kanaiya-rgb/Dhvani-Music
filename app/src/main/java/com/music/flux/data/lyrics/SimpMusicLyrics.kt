@@ -1,4 +1,4 @@
-﻿package com.music.flux.data.lyrics
+package com.music.flux.data.lyrics
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -39,8 +39,7 @@ object SimpMusicLyrics {
                 .minByOrNull { abs((it.duration ?: 0) - seconds) }
                 ?: return@withContext null
 
-            // Word timing first; a line-synced answer from here is no better
-            // than LRCLIB's, but it is still better than nothing.
+            // Word timing first; line-synced second (proper sync only)
             track.richSyncLyrics?.takeIf { it.isNotBlank() }
                 ?.let { EnhancedLrc.parse(it) }
                 ?.takeIf { it.isNotEmpty() }

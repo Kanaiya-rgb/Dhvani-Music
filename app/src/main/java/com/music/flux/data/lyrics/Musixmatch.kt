@@ -1,4 +1,4 @@
-﻿package com.music.flux.data.lyrics
+package com.music.flux.data.lyrics
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -44,8 +44,10 @@ object Musixmatch {
         artist: String,
         durationMs: Long,
     ): List<LyricLine>? = withContext(Dispatchers.IO) {
+        val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
+        val cleanArtist = LyricsCleaner.cleanArtist(artist)
         val seconds = (durationMs / 1000).toInt()
-        val track = bestTrack(title, artist, seconds) ?: return@withContext null
+        val track = bestTrack(cleanTitle, cleanArtist, seconds) ?: return@withContext null
         val subtitle = if (track.hasSubtitles == 1) fetchSubtitle(track.trackId) else null
         val lrc = subtitle?.let(::subtitleToLrc)?.takeIf { it.isNotBlank() } ?: return@withContext null
         LrcLib.parseLrc(lrc).takeIf { it.isNotEmpty() }
@@ -53,28 +55,26 @@ object Musixmatch {
 
     private suspend fun bestTrack(title: String, artist: String, seconds: Int): Track? {
         val tracks = searchTrack(title, artist) ?: return null
-        return tracks.maxByOrNull { score(it, title, artist, seconds) }
+        val best = tracks.maxByOrNull { score(it, title, artist, seconds) } ?: return null
+        return best.takeIf { score(it, title, artist, seconds) >= 50.0 }
     }
 
     private fun score(track: Track, title: String, artist: String, seconds: Int): Double {
-        var score = 0.0
+        if (!LyricsCleaner.isTitleMatch(track.trackName, title)) return -1000.0
+        var score = 50.0
         val name = track.trackName.trim().lowercase(Locale.ROOT)
         val targetTitle = title.trim().lowercase(Locale.ROOT)
-        score += when {
-            name == targetTitle -> 80.0
-            name.contains(targetTitle) || targetTitle.contains(name) -> 40.0
-            else -> 0.0
-        }
-        if (track.artistName.trim().lowercase(Locale.ROOT).contains(artist.trim().lowercase(Locale.ROOT))) {
-            score += 40.0
+        if (name == targetTitle) score += 30.0
+        if (LyricsCleaner.isArtistMatch(track.artistName, artist)) {
+            score += 30.0
         }
         track.trackLength?.let { length ->
             val diff = abs(length - seconds)
             score += when {
-                diff <= 2 -> 30.0
-                diff <= 5 -> 15.0
-                diff <= 10 -> 5.0
-                else -> -20.0
+                diff <= 2 -> 20.0
+                diff <= 5 -> 10.0
+                diff <= 10 -> 0.0
+                else -> -30.0
             }
         }
         return score

@@ -1,4 +1,4 @@
-﻿package com.music.flux.ui.components
+package com.music.flux.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Public
@@ -82,6 +83,7 @@ fun PlaylistPickerSheet(
     modifier: Modifier = Modifier,
     song: Song? = null,
     startCreating: Boolean = false,
+    onImport: (() -> Unit)? = null,
 ) {
     var creating by remember { mutableStateOf(startCreating) }
 
@@ -108,6 +110,13 @@ fun PlaylistPickerSheet(
             label = "New playlist",
             onClick = { creating = true },
         )
+        onImport?.let {
+            ActionRow(
+                icon = Icons.Rounded.FileUpload,
+                label = "Import playlist",
+                onClick = it,
+            )
+        }
 
         when {
             // Only while there is nothing to show: re-fetching under a list

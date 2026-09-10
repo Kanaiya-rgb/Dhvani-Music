@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,6 +38,7 @@ import com.music.flux.data.model.ROW_ART_PX
 import com.music.flux.data.model.Song
 import com.music.flux.data.model.artworkAt
 import com.music.flux.data.settings.AppSettings
+import com.music.flux.playback.PlaybackPosition
 import com.music.flux.ui.components.thumbnailBorder
 import com.music.flux.ui.haptics.Haptic
 import com.music.flux.ui.haptics.rememberHaptics
@@ -119,15 +121,18 @@ fun MiniPlayer(
     onNext: () -> Unit,
     onExpand: () -> Unit,
     modifier: Modifier = Modifier,
+    position: PlaybackPosition? = null,
+    durationMs: Long = 0L,
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val miniPlayerBgStyle by AppSettings.miniPlayerBackgroundStyle.collectAsStateWithLifecycle()
     val haptics = rememberHaptics()
-    // percent rather than a dp figure, so the corner stays exactly half the
-    // height if the row's contents ever change it — which is what keeps a pill
-    // a pill instead of a rounded rectangle. Same idiom as [FloatingBottomBar]
-    // directly below it, so the two shapes are the same family.
-    val shape = RoundedCornerShape(percent = 50)
+    val shape = RoundedCornerShape(16.dp)
+    // Dhvani "Midnight Raag" — surface-container-low: #1A1C20
+    val containerColor = Color(0xFF1A1C20)
+    val progressFraction = if (durationMs > 0L && position != null) {
+        (position.positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+    } else 0f
     val backgroundModifier = when (miniPlayerBgStyle) {
         com.music.flux.data.settings.MiniPlayerBackgroundStyle.TRANSPARENT -> {
             Modifier.background(Color.Transparent)
@@ -136,23 +141,25 @@ fun MiniPlayer(
             Modifier.background(Color.Black)
         }
         com.music.flux.data.settings.MiniPlayerBackgroundStyle.BLUR -> {
-            Modifier.hazeEffect(state = hazeState, style = HazeMaterials.thin(MaterialTheme.colorScheme.surface))
+            Modifier.hazeEffect(state = hazeState, style = HazeMaterials.thin(containerColor))
         }
         com.music.flux.data.settings.MiniPlayerBackgroundStyle.GRADIENT -> {
             Modifier.background(
                 androidx.compose.ui.graphics.Brush.verticalGradient(
                     listOf(
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.90f),
+                        // Dhvani surface-container: #1E2024
+                        Color(0xFF1E2024).copy(alpha = 0.95f),
+                        // Dhvani surface-container-low: #1A1C20
+                        Color(0xFF1A1C20).copy(alpha = 0.98f),
                     )
                 )
             )
         }
         else -> {
             if (reduceDynamicBlur) {
-                Modifier.background(MaterialTheme.colorScheme.surface)
+                Modifier.background(containerColor)
             } else {
-                Modifier.hazeEffect(state = hazeState, style = HazeMaterials.thin(MaterialTheme.colorScheme.surface))
+                Modifier.hazeEffect(state = hazeState, style = HazeMaterials.thin(containerColor))
             }
         }
     }
@@ -160,10 +167,10 @@ fun MiniPlayer(
         modifier = modifier
             .padding(horizontal = PAGE_GUTTER)
             .shadow(
-                elevation = 14.dp,
+                elevation = 16.dp,
                 shape = shape,
-                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.30f),
-                ambientColor = Color.Black.copy(alpha = 0.50f),
+                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                ambientColor = Color.Black.copy(alpha = 0.60f),
             )
             .clip(shape)
             .then(backgroundModifier)
@@ -171,9 +178,9 @@ fun MiniPlayer(
                 1.dp,
                 androidx.compose.ui.graphics.Brush.verticalGradient(
                     listOf(
-                        Color.White.copy(alpha = 0.28f),
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                        Color.White.copy(alpha = 0.08f),
+                        Color.White.copy(alpha = 0.15f),
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                        Color.White.copy(alpha = 0.05f),
                     )
                 ),
                 shape
@@ -193,12 +200,12 @@ fun MiniPlayer(
                 model = song.artworkAt(ROW_ART_PX),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(ART_CORNER))
-                    .thumbnailBorder(RoundedCornerShape(ART_CORNER))
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .thumbnailBorder(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     text = song.title,
@@ -219,24 +226,28 @@ fun MiniPlayer(
             if (isLoading) {
                 Box(Modifier.size(GLYPH_SLOT), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.onBackground,
-                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 2.5.dp,
                         modifier = Modifier.size(SPINNER_SIZE),
                     )
                 }
             } else {
-                IconButton(
-                    onClick = {
-                        haptics.play(if (isPlaying) Haptic.Pause else Haptic.Resume)
-                        onPlayPause()
-                    },
-                    modifier = Modifier.size(GLYPH_SLOT),
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable {
+                            haptics.play(if (isPlaying) Haptic.Pause else Haptic.Resume)
+                            onPlayPause()
+                        },
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.size(GLYPH_SIZE),
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
@@ -255,6 +266,22 @@ fun MiniPlayer(
                     modifier = Modifier.size(GLYPH_SIZE),
                 )
             }
+        }
+
+        // Stitch Dhvani: Hairline 2px progress bar pinned flush to the bottom edge
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(Color.White.copy(alpha = 0.08f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction = progressFraction.coerceIn(0f, 1f))
+                    .height(2.dp)
+                    .background(MaterialTheme.colorScheme.primary),
+            )
         }
     }
 }

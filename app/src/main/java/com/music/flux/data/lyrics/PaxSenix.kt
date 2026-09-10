@@ -1,4 +1,4 @@
-﻿package com.music.flux.data.lyrics
+package com.music.flux.data.lyrics
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -24,7 +24,8 @@ import kotlin.math.abs
 object PaxSenix {
 
     private const val PROXY = "https://lyrics.paxsenix.org"
-    private const val APPLE_SEARCH = "https://amp-api.music.apple.com/v1/catalog/us/search"
+    private const val APPLE_SEARCH_US = "https://amp-api.music.apple.com/v1/catalog/us/search"
+    private const val APPLE_SEARCH_IN = "https://amp-api.music.apple.com/v1/catalog/in/search"
     private const val DURATION_TOLERANCE_SECONDS = 10
 
     private val tokenMutex = Mutex()
@@ -36,33 +37,34 @@ object PaxSenix {
         durationMs: Long,
         album: String? = null,
     ): List<LyricLine>? = withContext(Dispatchers.IO) {
+        val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
+        val cleanArtist = LyricsCleaner.cleanArtist(artist)
         val seconds = (durationMs / 1000).toInt()
-        val query = listOfNotNull(title.cleaned(), artist.cleaned().takeIf { it.isNotBlank() })
+        val query = listOfNotNull(cleanTitle, cleanArtist.takeIf { it.isNotBlank() })
             .joinToString(" ")
         val results = search(query) ?: return@withContext null
         val best = results
             .filter { track ->
                 val trackSeconds = track.durationSeconds
-                seconds <= 0 || trackSeconds == null || abs(trackSeconds - seconds) <= DURATION_TOLERANCE_SECONDS
+                LyricsCleaner.isTitleMatch(track.attributes.name, cleanTitle) &&
+                    (seconds <= 0 || trackSeconds == null || abs(trackSeconds - seconds) <= DURATION_TOLERANCE_SECONDS)
             }
-            .maxByOrNull { score(it, title, artist) }
+            .maxByOrNull { score(it, cleanTitle, cleanArtist) }
+            ?.takeIf { score(it, cleanTitle, cleanArtist) >= 40.0 }
             ?: return@withContext null
 
         fetchLyrics(best.id)
     }
 
     private fun score(track: AppleTrack, title: String, artist: String): Double {
+        if (!LyricsCleaner.isTitleMatch(track.attributes.name, title)) return -1000.0
         val name = track.attributes.name.trim().lowercase()
         val targetTitle = title.trim().lowercase()
-        val artistName = track.attributes.artistName.trim().lowercase()
-        val targetArtist = artist.trim().lowercase()
-        var score = 0.0
-        score += when {
-            name == targetTitle -> 80.0
-            name.contains(targetTitle) || targetTitle.contains(name) -> 40.0
-            else -> 0.0
-        }
-        if (artistName.contains(targetArtist) || targetArtist.contains(artistName)) score += 40.0
+        var score = 50.0
+        if (name == targetTitle) score += 30.0
+        val artistMatches = listOfNotNull(track.attributes.artistName, track.attributes.composerName)
+            .any { LyricsCleaner.isArtistMatch(it, artist) }
+        if (artistMatches) score += 30.0
         return score
     }
 
@@ -77,12 +79,16 @@ object PaxSenix {
 
     private suspend fun search(query: String): List<AppleTrack>? {
         val token = getToken() ?: return null
-        val body = get(
-            "$APPLE_SEARCH?term=${java.net.URLEncoder.encode(query, "UTF-8")}&types=songs&limit=10&l=en-US",
-            bearer = token,
-        ) ?: return null
-        val response = runCatching { lyricsJson.decodeFromString<AppleSearchResponse>(body) }.getOrNull()
-        return response?.results?.songs?.data
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        val usBody = get("$APPLE_SEARCH_US?term=$encoded&types=songs&limit=10&l=en-US", bearer = token)
+        val usResponse = usBody?.let { runCatching { lyricsJson.decodeFromString<AppleSearchResponse>(it) }.getOrNull() }
+        val usTracks = usResponse?.results?.songs?.data
+        if (!usTracks.isNullOrEmpty()) return usTracks
+
+        // Fall back to Indian catalogue for Bollywood and regional music
+        val inBody = get("$APPLE_SEARCH_IN?term=$encoded&types=songs&limit=10&l=en-IN", bearer = token)
+        val inResponse = inBody?.let { runCatching { lyricsJson.decodeFromString<AppleSearchResponse>(it) }.getOrNull() }
+        return inResponse?.results?.songs?.data
     }
 
     private fun fetchLyrics(appleId: String): List<LyricLine>? {
@@ -152,6 +158,7 @@ object PaxSenix {
     private data class Attributes(
         val name: String,
         val artistName: String,
+        val composerName: String? = null,
         @SerialName("durationInMillis") val durationInMillis: Long? = null,
     )
 

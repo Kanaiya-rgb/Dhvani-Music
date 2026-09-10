@@ -293,6 +293,12 @@ fun SettingsScreen(
         if (currentSubScreen == null) {
             Spacer(Modifier.height(4.dp))
 
+            val selectedLanguage = try {
+                AppCompatDelegate.getApplicationLocales().get(0)?.language
+            } catch (_: Throwable) {
+                null
+            } ?: Locale.getDefault().language
+
             // Interface
             MeldSettingsGroup(
                 title = "Interface",
@@ -301,6 +307,12 @@ fun SettingsScreen(
                         icon = Icons.Rounded.Palette,
                         title = stringResource(R.string.appearance),
                         onClick = onOpenAppearance,
+                    ),
+                    MeldSettingsItemData(
+                        icon = Icons.Rounded.Language,
+                        title = stringResource(R.string.app_language),
+                        subtitle = stringResource(languageDisplayNameRes(selectedLanguage)),
+                        onClick = onAppLanguage,
                     ),
                 ),
             )
@@ -1068,14 +1080,14 @@ fun SettingsScreen(
                         ) {
                             Image(
                                 painter = painterResource(R.drawable.ic_flux_logo),
-                                contentDescription = "Flux Music",
+                                contentDescription = "Dhvani Music",
                                 modifier = Modifier
                                     .size(64.dp)
                                     .clip(RoundedCornerShape(18.dp)),
                             )
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                text = "Flux Music",
+                                text = "Dhvani Music",
                                 style = MaterialTheme.typography.headlineSmall,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )

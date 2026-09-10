@@ -1,4 +1,4 @@
-﻿package com.music.flux.ui.components
+package com.music.flux.ui.components
 
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
@@ -47,12 +47,14 @@ data class AppLanguage(val tag: String, val nameRes: Int)
 
 val SUPPORTED_LANGUAGES = listOf(
     AppLanguage("en", R.string.english),
+    AppLanguage("hi", R.string.hindi),
+    AppLanguage("hinglish", R.string.hinglish),
+    AppLanguage("pa", R.string.punjabi),
     AppLanguage("es", R.string.spanish),
     AppLanguage("fr", R.string.french),
     AppLanguage("de", R.string.german),
     AppLanguage("pt", R.string.portuguese),
     AppLanguage("id", R.string.indonesian),
-    AppLanguage("hi", R.string.hindi),
     AppLanguage("ja", R.string.japanese),
     AppLanguage("ru", R.string.russian),
     AppLanguage("zh", R.string.chinese),

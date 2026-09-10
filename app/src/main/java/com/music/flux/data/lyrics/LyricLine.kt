@@ -38,6 +38,7 @@ data class LyricLine(
     val sungUntilMs: Long? = null,
     val background: LyricLine? = null,
     val timingSource: LyricLine? = null,
+    val isEstimatedTiming: Boolean = false,
 ) {
     val isGap: Boolean get() = text.isEmpty()
 
@@ -157,3 +158,38 @@ private const val GLOW_FLOOR = 0.22f
 /** Share of a word's span spent coming up, and going back down. */
 private const val GLOW_ATTACK = 0.18f
 private const val GLOW_RELEASE = 0.38f
+
+/**
+ * Turns plain (unsynced) lyrics into paced [LyricLine]s spanning the song's duration.
+ * This guarantees every track has readable lyrics that follow along with playback.
+ */
+fun plainToLyricLines(plainText: String, durationMs: Long): List<LyricLine> {
+    val cleanLines = plainText.lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .filterNot { line ->
+            line.startsWith("Source:", ignoreCase = true) ||
+                line.startsWith("Lyrics licensed", ignoreCase = true) ||
+                line.startsWith("Written by:", ignoreCase = true)
+        }
+        .toList()
+    if (cleanLines.isEmpty()) return emptyList()
+
+    val count = cleanLines.size
+    val validDuration = if (durationMs > 10_000L) durationMs else (count * 4_000L)
+    val startMs = if (validDuration > 20_000L) minOf(6_000L, validDuration / 12) else 0L
+    val endMs = if (validDuration > 30_000L) maxOf(validDuration - 8_000L, (validDuration * 0.92).toLong()) else validDuration
+    val availableMs = (endMs - startMs).coerceAtLeast(count * 1_000L)
+    val stepMs = availableMs / count
+
+    return cleanLines.mapIndexed { index, text ->
+        val lineStart = startMs + index * stepMs
+        val lineEnd = lineStart + stepMs
+        LyricLine(
+            timeMs = lineStart,
+            text = text,
+            sungUntilMs = lineEnd,
+            isEstimatedTiming = true,
+        )
+    }
+}

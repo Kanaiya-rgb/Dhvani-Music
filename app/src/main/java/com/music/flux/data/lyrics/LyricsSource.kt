@@ -1,4 +1,4 @@
-﻿package com.music.flux.data.lyrics
+package com.music.flux.data.lyrics
 
 /**
  * The databases [LyricsRepository] can ask, in the order it asks them.
@@ -18,14 +18,9 @@ enum class LyricsSource(
     // Declaration order is the default priority — [AppSettings.lyricsSourceOrder]
     // and [AppSettings.lyricsSources] both fall back to [LyricsSource.entries]
     // verbatim, so this list *is* the out-of-the-box experience.
-    LYRICS_PLUS(
-        label = "LyricsPlus",
-        detail = "Syllable by syllable, on community mirrors",
-        wordSynced = true,
-    ),
-    PAXSENIX(
-        label = "PaxSenix",
-        detail = "Apple Music timings again, on a second host",
+    SIMP_MUSIC(
+        label = "SimpMusic",
+        detail = "Matched on the video, so never the wrong edit",
         wordSynced = true,
     ),
     BETTER_LYRICS(
@@ -33,24 +28,34 @@ enum class LyricsSource(
         detail = "Apple Music timings, word by word",
         wordSynced = true,
     ),
-    SIMP_MUSIC(
-        label = "SimpMusic",
-        detail = "Matched on the video, so never the wrong edit",
-        wordSynced = true,
-    ),
-    KUGOU(
-        label = "KuGou",
-        detail = "Whole lines, strong outside the English catalogue",
-        wordSynced = false,
-    ),
     LRCLIB(
         label = "LRCLIB",
-        detail = "Whole lines only, and always up",
+        detail = "Whole lines, fast and clean community database",
         wordSynced = false,
+    ),
+    YOUTUBE(
+        label = "YouTube Music",
+        detail = "Official lyrics direct from YouTube Music / LyricFind",
+        wordSynced = false,
+    ),
+    PAXSENIX(
+        label = "PaxSenix",
+        detail = "Apple Music timings again, on a second host",
+        wordSynced = true,
     ),
     MUSIXMATCH(
         label = "Musixmatch",
         detail = "Whole lines, from the biggest lyrics database there is",
+        wordSynced = false,
+    ),
+    LYRICS_PLUS(
+        label = "LyricsPlus",
+        detail = "Syllable by syllable, on community mirrors",
+        wordSynced = true,
+    ),
+    KUGOU(
+        label = "KuGou",
+        detail = "Whole lines, verified title fallback",
         wordSynced = false,
     ),
 }
