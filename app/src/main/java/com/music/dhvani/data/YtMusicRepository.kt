@@ -324,6 +324,90 @@ object YtMusicRepository {
             }
 
             val queries = when {
+                category.contains("Sad", ignoreCase = true) || category.contains("दर्द", ignoreCase = true) -> listOf(
+                    "Heartbroken Sad Hindi Songs" to "Heartbreak & Tears",
+                    "Arijit Singh Sad Melodies" to "Melancholy Notes",
+                    "Soulful Sad Bollywood Songs" to "Deep Emotions",
+                    "Acoustic Sad Songs Hindi" to "Healing Melodies",
+                )
+                category.contains("Happy", ignoreCase = true) || category.contains("खुश", ignoreCase = true) || category.contains("Smile", ignoreCase = true) -> listOf(
+                    "Happy Bollywood Songs" to "Pure Joy & Sunshine",
+                    "Feel Good Upbeat Hindi Songs" to "Positive Energy",
+                    "Cheer Up Mood Hindi" to "Smiles & Good Vibes",
+                    "Upbeat Acoustic Pop" to "Light & Breezy",
+                )
+                category.contains("Gym", ignoreCase = true) || category.contains("Workout", ignoreCase = true) -> listOf(
+                    "Gym Workout Motivation Hindi Songs" to "Beast Mode Gym",
+                    "High Energy Workout Hits" to "Cardio & Heavy Reps",
+                    "Punjabi Gym Workout Songs" to "Desi Power Lifting",
+                    "Hard Hitting Workout Rap" to "Pump & Grind",
+                )
+                category.contains("Power", ignoreCase = true) || category.contains("जोश", ignoreCase = true) || category.contains("Energy", ignoreCase = true) -> listOf(
+                    "Power Motivation Hindi Songs" to "Unstoppable Drive",
+                    "Adrenaline Rush High Energy Hits" to "Pure Adrenaline",
+                    "Bass Boosted Motivation Beats" to "Maximum Power",
+                    "Victory & Fighter Anthems" to "Warrior Spirit",
+                )
+                category.contains("Rock", ignoreCase = true) || category.contains("रॉक", ignoreCase = true) -> listOf(
+                    "Indian Rock Bands Best Songs" to "Desi Rock Anthems",
+                    "Classic Rock All Time Hits" to "Guitar Riffs & Thunder",
+                    "Hard Rock Energy Hits" to "High Voltage Rock",
+                    "Alternative Rock India" to "Indie Rock Wave",
+                )
+                category.contains("Pop", ignoreCase = true) || category.contains("पॉप", ignoreCase = true) -> listOf(
+                    "Top Global Pop Hits 2025" to "Global Pop Bops",
+                    "Indian Pop Hits 2025" to "Desi Pop Waves",
+                    "Catchy Pop Hits Melodies" to "Pop Sensations",
+                    "Electropop Dance Hits" to "Sparkling Beats",
+                )
+                category.contains("Party", ignoreCase = true) || category.contains("Dance", ignoreCase = true) || category.contains("पार्टी", ignoreCase = true) -> listOf(
+                    "Bollywood Party Dance Songs" to "Party All Night",
+                    "Non Stop DJ Club Mix Hindi" to "Dancefloor Anthems",
+                    "Punjabi Wedding Party Songs" to "Dhol & Bhangra",
+                    "Desi EDM Club Hits" to "High Bass Drops",
+                )
+                category.contains("Romantic", ignoreCase = true) || category.contains("Love", ignoreCase = true) || category.contains("रोमांटिक", ignoreCase = true) -> listOf(
+                    "Best Bollywood Romantic Songs" to "Endless Romance",
+                    "Arijit Singh Romantic Love Songs" to "Love in the Air",
+                    "Soulful Duets Hindi" to "Heartfelt Duets",
+                    "Late Night Romantic Acoustic" to "Midnight Love",
+                )
+                category.contains("Chill", ignoreCase = true) || category.contains("Relax", ignoreCase = true) || category.contains("सुकून", ignoreCase = true) -> listOf(
+                    "Chill Acoustic Hindi Songs" to "Cozy Acoustic Calm",
+                    "Peaceful Ambient Indian Melodies" to "Sunset Serenade",
+                    "Gentle Desi Lo-Fi" to "Unwind & Breathe",
+                    "Quiet Evening Melodies" to "Soft Whispers",
+                )
+                category.contains("Focus", ignoreCase = true) || category.contains("Study", ignoreCase = true) -> listOf(
+                    "Lofi Study Beats Instrumental" to "Deep Focus Beats",
+                    "Calm Instrumental Study Music" to "Study Sanctuary",
+                    "Peaceful Piano & Meditation" to "Brainwave Focus",
+                    "Ambient Coffee Shop Lofi" to "Concentration Flow",
+                )
+                category.contains("Lofi", ignoreCase = true) || category.contains("Lo-Fi", ignoreCase = true) -> listOf(
+                    "Desi Lo-Fi Hindi Hits" to "Desi Lo-Fi Nostalgia",
+                    "Late Night Slowed & Reverb Hindi" to "Slowed & Reverb Moods",
+                    "Rainy Day Indian Lofi" to "Raindrop Echoes",
+                    "Midnight City Desi Lofi" to "2 AM Lo-Fi Chill",
+                )
+                category.contains("Hip Hop", ignoreCase = true) || category.contains("Rap", ignoreCase = true) || category.contains("Gully", ignoreCase = true) -> listOf(
+                    "Desi Hip Hop Hits DIVINE Seedhe Maut KR\$NA" to "Gully & Desi Hip-Hop",
+                    "Indian Underground Rap 2025" to "Spitfire Lyricism",
+                    "Hard Hitting Desi Rap Beats" to "Heavy Bars & Flow",
+                    "Desi Trap & Drill" to "Street Rhythms",
+                )
+                category.contains("Travel", ignoreCase = true) || category.contains("Road", ignoreCase = true) || category.contains("सफ़र", ignoreCase = true) -> listOf(
+                    "Highway Road Trip Hindi Songs" to "Highway Wanderlust",
+                    "Scenic Drive Hindi Melodies" to "Open Road Vibes",
+                    "Mountain Drive Travel Songs" to "Pahadon Ke Geet",
+                    "Upbeat Travel Playlist" to "Journey Rhythms",
+                )
+                category.contains("Bhakti", ignoreCase = true) || category.contains("Devotional", ignoreCase = true) || category.contains("भक्ति", ignoreCase = true) -> listOf(
+                    "Top Bhakti Hindi Bhajans" to "Bhakti Sagar",
+                    "Krishna Bhajans & Aarti" to "Divine Krishna Peace",
+                    "Shiva Tandav Stotram & Chants" to "Har Har Mahadev",
+                    "Morning Peace Mantras & Gayatri" to "Morning Awakening",
+                )
                 category.contains("Hindi", ignoreCase = true) -> listOf(
                     "Trending Hindi Songs" to "Trending in Hindi",
                     "Top Bollywood Hits" to "Bollywood Chartbusters",
@@ -367,8 +451,9 @@ object YtMusicRepository {
                     "Zakir Hussain Classical Tabla" to "Rhythm of Raag",
                 )
                 else -> listOf(
-                    "$category Hits 2025" to "Featured $category",
-                    "$category Popular Songs" to "Top Picks for You",
+                    "$category Hits 2025" to "Top Picks for $category",
+                    "Best $category Songs" to "Curated $category",
+                    "$category Radio Mix" to "Mood Mix",
                 )
             }
 

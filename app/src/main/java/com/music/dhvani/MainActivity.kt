@@ -175,6 +175,7 @@ import com.music.dhvani.ui.screens.AppearanceSettingsScreen
 import com.music.dhvani.ui.screens.LibraryScreen
 import com.music.dhvani.ui.screens.SearchScreen
 import com.music.dhvani.ui.screens.UtsavScreen
+import com.music.dhvani.ui.screens.CategoryScreen
 import com.music.dhvani.ui.replay.ReplayScreen
 import com.music.dhvani.ui.replay.cards
 import com.music.dhvani.ui.replay.ReplayShareSheet
@@ -503,6 +504,7 @@ private fun DhvaniApp(
     }
 
     val homeListState = rememberLazyListState()
+    val categoryListState = rememberLazyListState()
     val utsavListState = rememberLazyListState()
     val exploreListState = rememberLazyListState()
     val libraryListState = rememberLazyListState()
@@ -511,6 +513,7 @@ private fun DhvaniApp(
     val searchListState = rememberLazyListState()
     val currentListState = when (selectedTab) {
         TAB_HOME -> homeListState
+        TAB_CATEGORY -> categoryListState
         TAB_UTSAV -> utsavListState
         TAB_SEARCH -> searchListState
         TAB_LIBRARY -> libraryListState
@@ -584,19 +587,20 @@ private fun DhvaniApp(
         null
     } ?: java.util.Locale.getDefault().toLanguageTag()
 
-    val (tabSuno, tabUtsav, tabSearch, tabLibrary) = when {
+    val (tabSuno, tabCategory, tabUtsav, tabSearch, tabLibrary) = when {
         currentLocale.startsWith("hi-Latn", ignoreCase = true) || currentLocale.equals("hinglish", ignoreCase = true) ->
-            listOf("Home", "Festival", "Search", "Library")
+            listOf("Home", "Category", "Festival", "Search", "Library")
         currentLocale.startsWith("hi", ignoreCase = true) ->
-            listOf("सुनो", "उत्सव", "खोज", "संग्रह")
+            listOf("सुनो", "कैटेगरी", "उत्सव", "खोज", "संग्रह")
         currentLocale.startsWith("pa", ignoreCase = true) ->
-            listOf("ਸੁਣੋ", "ਉਤਸਵ", "ਖੋਜ", "ਸੰਗ੍ਰਹਿ")
+            listOf("ਸੁਣੋ", "ਕੈਟੇਗਰੀ", "ਉਤਸਵ", "ਖੋਜ", "ਸੰਗ੍ਰਹਿ")
         else ->
-            listOf("Home", "Festival", "Search", "Library")
+            listOf("Home", "Category", "Festival", "Search", "Library")
     }
 
     val tabs = listOf(
         BottomTab(tabSuno, DhvaniIcons.Play),
+        BottomTab(tabCategory, DhvaniIcons.Category),
         BottomTab(tabUtsav, DhvaniIcons.Utsav),
         BottomTab(tabSearch, DhvaniIcons.Search),
         BottomTab(tabLibrary, DhvaniIcons.Library),
@@ -1769,6 +1773,14 @@ private fun DhvaniApp(
                             loadingMore = homeLoadingMore,
                             selectedCategory = selectedCategory,
                             onCategorySelected = viewModel::setHomeCategory,
+                        )
+                        TAB_CATEGORY -> CategoryScreen(
+                            listState = categoryListState,
+                            contentPadding = listPadding,
+                            onPlaySongs = play,
+                            onOpenDetail = { id, title, subtitle, thumbnail, type ->
+                                viewModel.openDetail(id, title, subtitle ?: "", thumbnail, type)
+                            },
                         )
                         TAB_UTSAV -> UtsavScreen(
                             listState = utsavListState,
@@ -2965,9 +2977,10 @@ private const val SEEK_END_GUARD_MS = 1_000L
 private val DETAIL_TITLE_DROP = 320.dp
 
 private const val TAB_HOME = 0
-private const val TAB_UTSAV = 1
-private const val TAB_SEARCH = 2
-private const val TAB_LIBRARY = 3
+private const val TAB_CATEGORY = 1
+private const val TAB_UTSAV = 2
+private const val TAB_SEARCH = 3
+private const val TAB_LIBRARY = 4
 
 /**
  * What a tab's key is prefixed with in the content switcher above.
