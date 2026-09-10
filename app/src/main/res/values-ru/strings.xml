@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Flux Music</string>
+    <string name="app_name">Dhvani Music</string>
     <string name="playback_channel_name">Сейчас играет</string>
     <string name="download_channel_name">Загрузки</string>
     <string name="download_channel_description">Песни сохраняются в папку «Музыка»</string>
@@ -105,10 +105,10 @@
     <string name="dolby_atmos_open_failed">Не удалось открыть настройки Dolby Atmos</string>
     <string name="update_available">Доступно обновление: v%1$s</string>
     <string name="software_update">Обновление ПО</string>
-    <string name="update_available_body">Flux Music %1$s доступен для загрузки.</string>
-    <string name="update_downloading_body">Загрузка Flux Music %1$s…</string>
-    <string name="update_ready_body">Flux Music %1$s готов к установке.</string>
-    <string name="update_failed_body">Не удалось загрузить Flux Music %1$s.</string>
+    <string name="update_available_body">Dhvani Music %1$s доступен для загрузки.</string>
+    <string name="update_downloading_body">Загрузка Dhvani Music %1$s…</string>
+    <string name="update_ready_body">Dhvani Music %1$s готов к установке.</string>
+    <string name="update_failed_body">Не удалось загрузить Dhvani Music %1$s.</string>
     <string name="download_now">Загрузить сейчас</string>
     <string name="install_now">Установить сейчас</string>
     <string name="later">Позже</string>
@@ -136,7 +136,7 @@
     <string name="widget_previous">Назад</string>
     <string name="widget_artwork">Обложка альбома</string>
     <string name="widget_nothing_played">Пока ничего не воспроизводилось</string>
-    <string name="widget_open_flux">Открыть Flux Music</string>
+    <string name="widget_open_flux">Открыть Dhvani Music</string>
     <string name="widget_preview_title">Название песни</string>
     <string name="widget_preview_artist">Исполнитель</string>
     <string name="download_quality">Качество загрузки</string>
@@ -161,7 +161,7 @@
     <string name="cancel_all">Отменить всё</string>
     <string name="language">Язык</string>
     <string name="app_language">Язык приложения</string>
-    <string name="app_language_description">Выберите язык, используемый в Flux Music.</string>
+    <string name="app_language_description">Выберите язык, используемый в Dhvani Music.</string>
     <string name="english">Английский</string>
     <string name="spanish">Испанский</string>
     <string name="french">Французский</string>
@@ -229,3 +229,4 @@
     <string name="dont_repeat_songs_subtitle">Автовоспроизведение не будет предлагать уже сыгранную или предложенную в этой сессии песню</string>
     <string name="download_quality_subtitle">%1$s за трек, независимо от соединения</string>
 </resources>
+

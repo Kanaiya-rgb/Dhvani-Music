@@ -97,10 +97,10 @@
     <string name="dolby_atmos_open_failed">Dolby Atmos सेटिंग्स नहीं खोली जा सकीं</string>
     <string name="update_available">अपडेट उपलब्ध है: v%1$s</string>
     <string name="software_update">सॉफ़्टवेयर अपडेट</string>
-    <string name="update_available_body">Flux Music %1$s डाउनलोड के लिए उपलब्ध है।</string>
-    <string name="update_downloading_body">Flux Music %1$s डाउनलोड हो रहा है…</string>
-    <string name="update_ready_body">Flux Music %1$s इंस्टॉल के लिए तैयार है।</string>
-    <string name="update_failed_body">Flux Music %1$s डाउनलोड नहीं हो सका।</string>
+    <string name="update_available_body">Dhvani Music %1$s डाउनलोड के लिए उपलब्ध है।</string>
+    <string name="update_downloading_body">Dhvani Music %1$s डाउनलोड हो रहा है…</string>
+    <string name="update_ready_body">Dhvani Music %1$s इंस्टॉल के लिए तैयार है।</string>
+    <string name="update_failed_body">Dhvani Music %1$s डाउनलोड नहीं हो सका।</string>
     <string name="download_now">अभी डाउनलोड करें</string>
     <string name="install_now">अभी इंस्टॉल करें</string>
     <string name="later">बाद में</string>
@@ -128,7 +128,7 @@
     <string name="widget_previous">पिछला</string>
     <string name="widget_artwork">एल्बम आर्ट</string>
     <string name="widget_nothing_played">अभी तक कुछ नहीं चलाया गया</string>
-    <string name="widget_open_flux">Flux Music खोलें</string>
+    <string name="widget_open_flux">Dhvani Music खोलें</string>
     <string name="widget_preview_title">गाने का शीर्षक</string>
     <string name="widget_preview_artist">कलाकार</string>
     <string name="download_quality">डाउनलोड क्वालिटी</string>
@@ -153,7 +153,7 @@
     <string name="cancel_all">सभी रद्द करें</string>
     <string name="language">भाषा</string>
     <string name="app_language">ऐप की भाषा</string>
-    <string name="app_language_description">Flux Music द्वारा उपयोग की जाने वाली भाषा चुनें।</string>
+    <string name="app_language_description">Dhvani Music द्वारा उपयोग की जाने वाली भाषा चुनें।</string>
     <string name="english">अंग्रेज़ी</string>
     <string name="spanish">स्पैनिश</string>
     <string name="french">फ़्रेंच</string>
@@ -221,3 +221,4 @@
     <string name="dont_repeat_songs_subtitle">ऑटोप्ले इस सेशन में पहले से चलाया या सुझाया गया गाना दोबारा सुझाव नहीं देगा</string>
     <string name="download_quality_subtitle">%1$s प्रति ट्रैक, कनेक्शन चाहे जो भी हो</string>
 </resources>
+

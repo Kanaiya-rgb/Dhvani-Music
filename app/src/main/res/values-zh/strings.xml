@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Flux Music</string>
+    <string name="app_name">Dhvani Music</string>
     <string name="playback_channel_name">正在播放</string>
     <string name="download_channel_name">下载</string>
     <string name="download_channel_description">正在保存到你的音乐文件夹的歌曲</string>
@@ -93,10 +93,10 @@
     <string name="dolby_atmos_open_failed">无法打开杜比全景声设置</string>
     <string name="update_available">有可用更新：v%1$s</string>
     <string name="software_update">软件更新</string>
-    <string name="update_available_body">Flux Music %1$s 现已可供下载。</string>
-    <string name="update_downloading_body">正在下载 Flux Music %1$s…</string>
-    <string name="update_ready_body">Flux Music %1$s 已准备好安装。</string>
-    <string name="update_failed_body">无法下载 Flux Music %1$s。</string>
+    <string name="update_available_body">Dhvani Music %1$s 现已可供下载。</string>
+    <string name="update_downloading_body">正在下载 Dhvani Music %1$s…</string>
+    <string name="update_ready_body">Dhvani Music %1$s 已准备好安装。</string>
+    <string name="update_failed_body">无法下载 Dhvani Music %1$s。</string>
     <string name="download_now">立即下载</string>
     <string name="install_now">立即安装</string>
     <string name="later">以后再说</string>
@@ -124,7 +124,7 @@
     <string name="widget_previous">上一首</string>
     <string name="widget_artwork">专辑封面</string>
     <string name="widget_nothing_played">尚未播放任何内容</string>
-    <string name="widget_open_flux">打开 Flux Music</string>
+    <string name="widget_open_flux">打开 Dhvani Music</string>
     <string name="widget_preview_title">歌曲标题</string>
     <string name="widget_preview_artist">艺人</string>
     <string name="download_quality">下载质量</string>
@@ -149,7 +149,7 @@
     <string name="cancel_all">取消全部</string>
     <string name="language">语言</string>
     <string name="app_language">应用语言</string>
-    <string name="app_language_description">选择 Flux Music 使用的语言。</string>
+    <string name="app_language_description">选择 Dhvani Music 使用的语言。</string>
     <string name="english">英语</string>
     <string name="spanish">西班牙语</string>
     <string name="french">法语</string>
@@ -217,3 +217,4 @@
     <string name="dont_repeat_songs_subtitle">自动播放不会在本次会话中重复推荐已播放或已推荐过的歌曲</string>
     <string name="download_quality_subtitle">无论何种网络连接，每首曲目均为%1$s</string>
 </resources>
+

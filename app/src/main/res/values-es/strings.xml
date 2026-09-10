@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Flux Music</string>
+    <string name="app_name">Dhvani Music</string>
     <string name="playback_channel_name">Reproduciendo</string>
     <string name="download_channel_name">Descargas</string>
     <string name="download_channel_description">Canciones guardadas en tu carpeta Música</string>
@@ -97,10 +97,10 @@
     <string name="dolby_atmos_open_failed">No se pudieron abrir los ajustes de Dolby Atmos</string>
     <string name="update_available">Actualización disponible: v%1$s</string>
     <string name="software_update">Actualización de software</string>
-    <string name="update_available_body">Flux Music %1$s está disponible para descargar.</string>
-    <string name="update_downloading_body">Descargando Flux Music %1$s…</string>
-    <string name="update_ready_body">Flux Music %1$s está listo para instalar.</string>
-    <string name="update_failed_body">No se pudo descargar Flux Music %1$s.</string>
+    <string name="update_available_body">Dhvani Music %1$s está disponible para descargar.</string>
+    <string name="update_downloading_body">Descargando Dhvani Music %1$s…</string>
+    <string name="update_ready_body">Dhvani Music %1$s está listo para instalar.</string>
+    <string name="update_failed_body">No se pudo descargar Dhvani Music %1$s.</string>
     <string name="download_now">Descargar ahora</string>
     <string name="install_now">Instalar ahora</string>
     <string name="later">Más tarde</string>
@@ -128,7 +128,7 @@
     <string name="widget_previous">Anterior</string>
     <string name="widget_artwork">Portada del álbum</string>
     <string name="widget_nothing_played">Aún no se ha reproducido nada</string>
-    <string name="widget_open_flux">Abrir Flux Music</string>
+    <string name="widget_open_flux">Abrir Dhvani Music</string>
     <string name="widget_preview_title">Título de la canción</string>
     <string name="widget_preview_artist">Artista</string>
     <string name="download_quality">Calidad de descarga</string>
@@ -153,7 +153,7 @@
     <string name="cancel_all">Cancelar todo</string>
     <string name="language">Idioma</string>
     <string name="app_language">Idioma de la aplicación</string>
-    <string name="app_language_description">Elige el idioma que usa Flux Music.</string>
+    <string name="app_language_description">Elige el idioma que usa Dhvani Music.</string>
     <string name="english">Inglés</string>
     <string name="spanish">Español</string>
     <string name="french">Francés</string>
@@ -221,3 +221,4 @@
     <string name="dont_repeat_songs_subtitle">La reproducción automática no sugerirá una canción ya reproducida o sugerida en esta sesión</string>
     <string name="download_quality_subtitle">%1$s por pista, sin importar la conexión</string>
 </resources>
+

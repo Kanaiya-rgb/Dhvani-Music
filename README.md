@@ -2,9 +2,9 @@
 
 <br/>
 
-<img src="Logo.png" alt="Flux Music Logo" width="160" />
+<img src="Logo.png" alt="Dhvani Music Logo" width="160" />
 
-# Flux Music
+# Dhvani Music
 
 ### *Your Music. Without Limits.*
 **A sleek, open-source Android music streaming client powered by YouTube Music & JioSaavn.**
@@ -15,12 +15,12 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white&labelColor=0d1117)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white&labelColor=0d1117)](https://developer.android.com/jetpack/compose)
 [![Media3](https://img.shields.io/badge/Media3-ExoPlayer-E65100?style=for-the-badge&logo=googleplay&logoColor=white&labelColor=0d1117)](https://developer.android.com/media/media3)
-[![Latest Release](https://img.shields.io/badge/Release-v1.8.0-22c55e?style=for-the-badge&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Flux-Music/releases/latest)
+[![Latest Release](https://img.shields.io/badge/Release-v2.0.0-22c55e?style=for-the-badge&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Flux-Music/releases/latest)
 [![License](https://img.shields.io/badge/License-GPLv3-ef4444?style=for-the-badge&labelColor=0d1117)](LICENSE)
 
 <br/>
 
-[📥 Download Latest APK](https://github.com/Kanaiya-rgb/Flux-Music/releases/latest) • [✨ What's New](#-whats-new-in-v180) • [🚀 Features](#-features) • [🔧 Build](#-build-from-source)
+[📥 Download Latest APK](https://github.com/Kanaiya-rgb/Flux-Music/releases/latest) • [✨ What's New](#-whats-new-in-v200) • [🚀 Features](#-features) • [🔧 Build](#-build-from-source)
 
 ---
 
@@ -28,23 +28,19 @@
 
 ## 🌟 Overview
 
-**Flux Music** is a lightweight, ad-free Android music streaming client designed for pure auditory and visual pleasure. Built entirely in Kotlin with modern Jetpack Compose and Material 3, it offers high-resolution audio, offline caching, time-synced lyrics, and rich personalization options.
+**Dhvani Music** is a lightweight, ad-free Android music streaming client designed for pure auditory and visual pleasure. Built entirely in Kotlin with modern Jetpack Compose and Material 3, it offers high-resolution audio, offline caching, time-synced lyrics, and rich personalization options.
 
 ---
 
-## ✨ What's New in v1.8.0
+## ✨ What's New in v2.0.0
 
-- 🎧 **Resume on Bluetooth Connection**: Automatically resumes paused music when your Bluetooth headphones, earbuds, car audio, or wired headsets connect. Toggle it in *Settings ➔ Player & audio ➔ Playback behavior*.
-- 🎚️ **Customizable Player Slider Styles**: Choose between 5 distinct slider designs with live interactive visual previews:
-  - **Capsule**: Modern Apple Music-style expanding scrubber.
-  - **Material**: Classic Material 3 slider with a circular thumb knob.
-  - **Wavy**: Fluid harmonic animated sine wave.
-  - **Squiggly**: Energetic animated squiggly waveform.
-  - **Slim**: Minimalist 2dp hairline bar.
-- ❤️ **Liked Music Playlist in Library**: Your favorite tracks are now organized in a dedicated, beautiful "Liked Music" playlist right inside the Library tab.
-- ⚡ **Ultra-Smooth 120Hz Rendering**: Optimized Coil image caching (25% RAM ceiling, 250MB disk budget) and eliminated infinite blur loop redraws for 60/90/120Hz fluidity on all devices.
-- 🎨 **Brand New 3D Waveform Logo**: Updated modern app icon across all launcher densities and notification panels.
-- 📊 **Privacy-First Anonymous Analytics**: Optional real-time telemetry powered by Firebase (Spark plan) to track active listeners and top-played songs with zero personal data collection.
+- 🏷️ **Rebranded to Dhvani Music**: Fresh new identity inspired by Indian musical heritage with modern aesthetics.
+- 🎙️ **Voice Search Support**: Built-in Mic button on Search Bar to search your favorite tracks hands-free.
+- 🕒 **Instant Search History**: Tap the search bar to view your search history instantly, with individual ✕ remove options.
+- 🎛️ **8 Next-Gen Slider Styles**: Neon Glow, Gradient Flow, Cosmic Stars, Liquid Lava, Audio Visualizer, Retro LED Matrix, Vinyl Groove, and Cyber Beam.
+- 🎨 **Artwork-Matched Dynamic Slider Color**: Sliders automatically match current playing track's artwork palette.
+- 📤 **Playlist Export & Import**: Export your playlists to M3U or JSON format and share with friends.
+- 🌟 **New Releases Home Rail**: Dedicated "New Releases" pill right after "All" on the Home Screen.
 
 ---
 
