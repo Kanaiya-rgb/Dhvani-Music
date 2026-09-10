@@ -11,7 +11,7 @@
 # to that same tree without duplicating this module.
 
 cmake_minimum_required(VERSION 3.22.1)
-project(flux_analysis LANGUAGES CXX)
+project(dhvani_analysis LANGUAGES CXX)
 
 get_filename_component(BITCHORD_NATIVE_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../../native"
@@ -20,7 +20,7 @@ get_filename_component(BITCHORD_NATIVE_DIR
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_library(flux_analysis SHARED
+add_library(dhvani_analysis SHARED
     ${BITCHORD_NATIVE_DIR}/analyzer/audio_analysis.cpp
     ${BITCHORD_NATIVE_DIR}/analyzer/tempo_analysis.cpp
     ${BITCHORD_NATIVE_DIR}/analyzer/resampler.cpp
@@ -31,14 +31,14 @@ add_library(flux_analysis SHARED
     jni/vocal_jni.cpp
 )
 
-target_include_directories(flux_analysis PRIVATE
+target_include_directories(dhvani_analysis PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${BITCHORD_NATIVE_DIR}
 )
 
 # -ffast-math is deliberately NOT enabled: the analyzer's log/mel-adjacent
 # arithmetic (see audio_analysis.cpp) is tuned against exact IEEE behaviour.
-target_compile_options(flux_analysis PRIVATE -O3 -fvisibility=hidden)
+target_compile_options(dhvani_analysis PRIVATE -O3 -fvisibility=hidden)
 
 find_library(log-lib log)
-target_link_libraries(flux_analysis ${log-lib})
+target_link_libraries(dhvani_analysis ${log-lib})

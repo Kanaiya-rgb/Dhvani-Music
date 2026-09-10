@@ -1,4 +1,4 @@
-﻿package com.music.flux
+package com.music.dhvani
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +19,6 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.music.flux", appContext.packageName)
+        assertEquals("com.music.dhvani", appContext.packageName)
     }
 }

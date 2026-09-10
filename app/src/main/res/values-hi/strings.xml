@@ -128,7 +128,7 @@
     <string name="widget_previous">पिछला</string>
     <string name="widget_artwork">एल्बम आर्ट</string>
     <string name="widget_nothing_played">अभी तक कुछ नहीं चलाया गया</string>
-    <string name="widget_open_flux">Dhvani Music खोलें</string>
+    <string name="widget_open_dhvani">Dhvani Music खोलें</string>
     <string name="widget_preview_title">गाने का शीर्षक</string>
     <string name="widget_preview_artist">कलाकार</string>
     <string name="download_quality">डाउनलोड क्वालिटी</string>

@@ -1,4 +1,4 @@
-ï»¿package com.music.flux.ui.preview
+package com.music.dhvani.ui.preview
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background
@@ -24,15 +24,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.music.flux.data.model.Song
-import com.music.flux.ui.components.BottomFadeScrim
-import com.music.flux.ui.components.BottomTab
-import com.music.flux.ui.components.FloatingBottomBar
-import com.music.flux.ui.components.FrostedTopBar
-import com.music.flux.ui.components.MiniPlayer
-import com.music.flux.ui.components.TopFadeBlur
-import com.music.flux.ui.icons.FluxIcons
-import com.music.flux.ui.theme.FluxTheme
+import com.music.dhvani.data.model.Song
+import com.music.dhvani.ui.components.BottomFadeScrim
+import com.music.dhvani.ui.components.BottomTab
+import com.music.dhvani.ui.components.FloatingBottomBar
+import com.music.dhvani.ui.components.FrostedTopBar
+import com.music.dhvani.ui.components.MiniPlayer
+import com.music.dhvani.ui.components.TopFadeBlur
+import com.music.dhvani.ui.icons.DhvaniIcons
+import com.music.dhvani.ui.theme.DhvaniTheme
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 
@@ -47,13 +47,13 @@ import dev.chrisbanes.haze.hazeSource
  * WHAT THESE DO AND DO NOT SHOW
  *
  * [BottomFadeScrim] is a plain shader over a rect, so what the preview draws is
- * exactly what the device draws â€” the gradient can be judged here.
+ * exactly what the device draws — the gradient can be judged here.
  *
  * [TopFadeBlur] cannot. Haze blurs by way of RenderEffect against a real
  * window, and the preview renderer has none, so the fade comes out as a flat
  * pane or as nothing at all. These previews are the place to settle the bar's
  * layout, type, colour and the scrim; the blur ramp itself has to be read on a
- * device â€” `./gradlew :app:installDevDebug`.
+ * device — `./gradlew :app:installDevDebug`.
  */
 
 /** Stand-in feed rows, so the bars have something to sit over. */
@@ -95,7 +95,7 @@ private fun MockFeed(modifier: Modifier = Modifier) {
  * A track with no artwork URL, deliberately.
  *
  * Coil cannot reach the network from the preview renderer, so a real URL would
- * draw the same empty box this does â€” only after a failed load rather than
+ * draw the same empty box this does — only after a failed load rather than
  * instead of one. Nulling it hands the box straight to the placeholder tint
  * [MiniPlayer] already paints under its artwork, which is what the device shows
  * for the beat before the real art arrives anyway.
@@ -108,14 +108,14 @@ private val PreviewSong = Song(
 )
 
 private val PreviewTabs = listOf(
-    BottomTab("Play", FluxIcons.Play),
-    BottomTab("Explore", FluxIcons.Explore),
-    BottomTab("Library", FluxIcons.Library),
-    BottomTab("Search", FluxIcons.Search),
+    BottomTab("Play", DhvaniIcons.Play),
+    BottomTab("Explore", DhvaniIcons.Explore),
+    BottomTab("Library", DhvaniIcons.Library),
+    BottomTab("Search", DhvaniIcons.Search),
 )
 
 /**
- * The whole chrome stack in the order [com.music.flux.MainActivity] draws
+ * The whole chrome stack in the order [com.music.dhvani.MainActivity] draws
  * it: feed, top fade, bar, bottom scrim, pill.
  */
 @Composable
@@ -131,7 +131,7 @@ private fun ChromeStack(scrolled: Boolean, withMiniPlayer: Boolean) {
         TopFadeBlur(
             hazeState = hazeState,
             pageColor = MaterialTheme.colorScheme.background,
-            // The blur does not render here, but the scrim over it does â€” so
+            // The blur does not render here, but the scrim over it does — so
             // this artboard is where the wash's weight can actually be judged.
             scrimColor = MaterialTheme.colorScheme.background,
             modifier = Modifier.align(Alignment.TopCenter),
@@ -146,7 +146,7 @@ private fun ChromeStack(scrolled: Boolean, withMiniPlayer: Boolean) {
             withMiniPlayer = withMiniPlayer,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
-        // The same column MainActivity stacks these in, down to the 8dp gap â€”
+        // The same column MainActivity stacks these in, down to the 8dp gap —
         // the point of this preview is the spacing between the two bars, so it
         // has to be the spacing the app actually uses.
         Column(
@@ -178,23 +178,23 @@ private fun ChromeStack(scrolled: Boolean, withMiniPlayer: Boolean) {
     }
 }
 
-@Preview(name = "Chrome Â· dark", device = "id:pixel_8", showBackground = true)
+@Preview(name = "Chrome · dark", device = "id:pixel_8", showBackground = true)
 @Composable
 private fun ChromeDarkPreview() {
-    FluxTheme(darkTheme = true) { ChromeStack(scrolled = true, withMiniPlayer = false) }
+    DhvaniTheme(darkTheme = true) { ChromeStack(scrolled = true, withMiniPlayer = false) }
 }
 
-@Preview(name = "Chrome Â· light", device = "id:pixel_8", showBackground = true)
+@Preview(name = "Chrome · light", device = "id:pixel_8", showBackground = true)
 @Composable
 private fun ChromeLightPreview() {
-    FluxTheme(darkTheme = false) { ChromeStack(scrolled = true, withMiniPlayer = false) }
+    DhvaniTheme(darkTheme = false) { ChromeStack(scrolled = true, withMiniPlayer = false) }
 }
 
 /** The taller scrim, which the mini player's arrival grows it into. */
-@Preview(name = "Chrome Â· mini player", device = "id:pixel_8", showBackground = true)
+@Preview(name = "Chrome · mini player", device = "id:pixel_8", showBackground = true)
 @Composable
 private fun ChromeMiniPlayerPreview() {
-    FluxTheme(darkTheme = true) { ChromeStack(scrolled = true, withMiniPlayer = true) }
+    DhvaniTheme(darkTheme = true) { ChromeStack(scrolled = true, withMiniPlayer = true) }
 }
 
 /**
@@ -203,19 +203,19 @@ private fun ChromeMiniPlayerPreview() {
  * This is the preview for the pill's geometry: the corner is half the height,
  * so it moves whenever the row's padding or the artwork's size does, and the
  * thing to look at is whether the artwork and the skip glyph still clear the
- * curve at either end. The glass does not render here â€” what is being judged
+ * curve at either end. The glass does not render here — what is being judged
  * is the shape and the spacing inside it.
  */
-@Preview(name = "Mini player Â· dark", widthDp = 400, heightDp = 260)
+@Preview(name = "Mini player · dark", widthDp = 400, heightDp = 260)
 @Preview(
-    name = "Mini player Â· light",
+    name = "Mini player · light",
     widthDp = 400,
     heightDp = 260,
     uiMode = Configuration.UI_MODE_NIGHT_NO,
 )
 @Composable
 private fun MiniPlayerPreview() {
-    FluxTheme {
+    DhvaniTheme {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -258,20 +258,20 @@ private fun MiniPlayerPreview() {
  * The stack above shows it in place; this shows the ramp itself, which is what
  * banding would be visible in. Judge it here before judging it there.
  */
-@Preview(name = "Scrim ramp Â· dark", widthDp = 300, heightDp = 260)
+@Preview(name = "Scrim ramp · dark", widthDp = 300, heightDp = 260)
 @Preview(
-    name = "Scrim ramp Â· light",
+    name = "Scrim ramp · light",
     widthDp = 300,
     heightDp = 260,
     uiMode = Configuration.UI_MODE_NIGHT_NO,
 )
 @Composable
 private fun ScrimRampPreview() {
-    FluxTheme {
+    DhvaniTheme {
         Box(Modifier.fillMaxSize()) {
             // A mid grey under it: the ramp reads as a ramp against this,
             // whereas over the theme's own background it is invisible by
-            // construction â€” it is fading *to* that colour.
+            // construction — it is fading *to* that colour.
             Box(
                 Modifier
                     .fillMaxSize()
@@ -285,15 +285,15 @@ private fun ScrimRampPreview() {
 /**
  * The bar's two backdrops side by side.
  *
- * Left is the shipping case â€” no backdrop, the fade behind it carries the
+ * Left is the shipping case — no backdrop, the fade behind it carries the
  * legibility. Right is Reduce dynamic blur, where the bar fills itself solid
  * and takes the hairline. The blur behind the left one does not render here;
  * what is being compared is the bar's own paint.
  */
-@Preview(name = "Top bar Â· backdrops", device = "id:pixel_8", showBackground = true)
+@Preview(name = "Top bar · backdrops", device = "id:pixel_8", showBackground = true)
 @Composable
 private fun TopBarBackdropPreview() {
-    FluxTheme(darkTheme = true) {
+    DhvaniTheme(darkTheme = true) {
         Column(
             Modifier
                 .fillMaxSize()

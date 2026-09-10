@@ -124,7 +124,7 @@
     <string name="widget_previous">Sebelumnya</string>
     <string name="widget_artwork">Sampul album</string>
     <string name="widget_nothing_played">Belum ada yang diputar</string>
-    <string name="widget_open_flux">Buka Dhvani Music</string>
+    <string name="widget_open_dhvani">Buka Dhvani Music</string>
     <string name="widget_preview_title">Judul lagu</string>
     <string name="widget_preview_artist">Artis</string>
     <string name="download_quality">Kualitas unduhan</string>

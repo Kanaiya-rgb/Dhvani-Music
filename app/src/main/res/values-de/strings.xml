@@ -128,7 +128,7 @@
     <string name="widget_previous">Zurück</string>
     <string name="widget_artwork">Albumcover</string>
     <string name="widget_nothing_played">Noch nichts wiedergegeben</string>
-    <string name="widget_open_flux">Dhvani Music öffnen</string>
+    <string name="widget_open_dhvani">Dhvani Music öffnen</string>
     <string name="widget_preview_title">Songtitel</string>
     <string name="widget_preview_artist">Künstler</string>
     <string name="download_quality">Download-Qualität</string>

@@ -42,12 +42,12 @@ val lastfmSecret: String = (
     ).trim()
 
 android {
-    namespace = "com.music.flux"
+    namespace = "com.music.dhvani"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "com.music.flux"
+        applicationId = "com.music.dhvani"
         // 26 keeps reach wide; real-time blur (RenderEffect) kicks in on API 31+,
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
@@ -87,12 +87,12 @@ android {
     productFlavors {
         create("dev") {
             dimension = "env"
-            applicationId = "com.dev.flux"
-            resValue("string", "app_name", "Flux Music")
+            applicationId = "com.dev.dhvani"
+            resValue("string", "app_name", "Dhvani Music")
         }
         create("prod") {
             dimension = "env"
-            resValue("string", "app_name", "Flux Music")
+            resValue("string", "app_name", "Dhvani Music")
         }
     }
 
