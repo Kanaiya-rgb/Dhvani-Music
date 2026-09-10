@@ -464,6 +464,102 @@ object YtMusicRepository {
                     "Romantic Punjabi Songs" to "Sufi & Romance Punjabi",
                     "Diljit Dosanjh Hits" to "Artist Spotlight: Diljit",
                 )
+                category.contains("Bhojpuri", ignoreCase = true) || category.contains("भोजपुरी", ignoreCase = true) -> listOf(
+                    "Top Bhojpuri Hits Pawan Khesari" to "Bhojpuri Chartbusters",
+                    "New Bhojpuri Song $currentYear" to "Fresh Bhojpuri Drops",
+                    "Bhojpuri Dance Dhamaka" to "Bhojpuri Party Hits",
+                )
+                category.contains("Haryanvi", ignoreCase = true) || category.contains("हरियाणवी", ignoreCase = true) -> listOf(
+                    "Top Haryanvi Songs Masoom Sharma" to "Haryanvi Power Beats",
+                    "New Haryanvi Song $currentYear" to "Latest Haryanvi",
+                    "Desi Haryanvi Ragni & Pop" to "Haryanvi Swag",
+                )
+                category.contains("Bengali", ignoreCase = true) || category.contains("বাংলা", ignoreCase = true) -> listOf(
+                    "Top Bengali Songs Arijit Singh" to "Heart of Bengal",
+                    "Modern Bengali Pop Hits" to "Kolkata Melodies",
+                    "Rabindra Sangeet & Folk" to "Acoustic Bengal",
+                )
+                category.contains("Gujarati", ignoreCase = true) || category.contains("गुजराती", ignoreCase = true) -> listOf(
+                    "Top Gujarati Songs Kinjal Dave" to "Gujarati Garba & Hits",
+                    "Gujarati Folk & Modern Pop" to "Rangeelo Gujarat",
+                    "Gujarati Romantic Melodies" to "Desi Gujarati Beats",
+                )
+                category.contains("Marathi", ignoreCase = true) || category.contains("मराठी", ignoreCase = true) -> listOf(
+                    "Top Marathi Songs Ajay Atul" to "Maharashtra Beats",
+                    "Marathi Natya Sangeet & Bhavgeete" to "Soul of Maharashtra",
+                    "High Energy Marathi DJ Mix" to "Marathi Dhol Tasha",
+                )
+                category.contains("Monsoon", ignoreCase = true) || category.contains("Rain", ignoreCase = true) || category.contains("बारिश", ignoreCase = true) -> listOf(
+                    "Rain Therapy Bollywood Romance" to "Rain Therapy & Cozy Vibes",
+                    "Baarish Aur Chai Hindi Hits" to "Chai & Rain Drops",
+                    "Romantic Monsoon Hindi Songs" to "Monsoon Love Ballads",
+                )
+                category.contains("Sleep", ignoreCase = true) || category.contains("नींद", ignoreCase = true) -> listOf(
+                    "Deep Sleep Melodies Delta Waves" to "Deep Sleep Sanctuary",
+                    "Calm Night Instrumental Sleep" to "Peaceful Slumber",
+                    "Soothing Ambient Rain Sleep" to "Night Calm",
+                )
+                category.contains("Commute", ignoreCase = true) || category.contains("ड्राइव", ignoreCase = true) -> listOf(
+                    "Daily Commute Hindi Hits" to "City Commute Beats",
+                    "Traffic Jam Stress Buster Melodies" to "Smooth Transit",
+                    "Upbeat Morning Commute" to "Rush Hour Energy",
+                )
+                category.contains("Gaming", ignoreCase = true) -> listOf(
+                    "High Energy Gaming Trap Beats" to "Pro Gaming Fuel",
+                    "EDM Adrenaline Rush Gaming" to "Victory Soundtracks",
+                    "Drift & Bass Gaming Music" to "Cyberpunk & Bass",
+                )
+                category.contains("Carnatic", ignoreCase = true) -> listOf(
+                    "Top Carnatic Classical Hits" to "Carnatic Mastery",
+                    "MS Subbulakshmi Carnatic" to "Divine Carnatic Devotion",
+                    "Violin & Veena Carnatic" to "Strings of Carnatic",
+                )
+                category.contains("Hindustani", ignoreCase = true) -> listOf(
+                    "Hindustani Classical Vocal Maestros" to "Hindustani Parampara",
+                    "Pandit Bhimsen Joshi Best" to "Khayal & Thumri",
+                    "Bismillah Khan Shehnai" to "Maestros of Hindustani",
+                )
+                category.contains("K-Pop", ignoreCase = true) || category.contains("Kpop", ignoreCase = true) -> listOf(
+                    "Top K-Pop Hits BTS BLACKPINK" to "K-Pop Phenomenon",
+                    "Viral Korean Pop Bops" to "K-Pop Wave",
+                )
+                category.contains("J-Pop", ignoreCase = true) || category.contains("Jpop", ignoreCase = true) -> listOf(
+                    "Top J-Pop Hits Anime OST" to "Tokyo Beats",
+                    "J-Rock & Japanese City Pop" to "Neo Tokyo Vibe",
+                )
+                category.contains("Arabic", ignoreCase = true) -> listOf(
+                    "Top Arabic Hits Amr Diab" to "Arabic Pop & Oud",
+                    "Middle Eastern Desert Melodies" to "Arabic Vibes",
+                )
+                category.contains("Decades", ignoreCase = true) || category.contains("90s", ignoreCase = true) || category.contains("80s", ignoreCase = true) -> listOf(
+                    "90s Bollywood Romance Golden Era" to "Golden 90s Romance",
+                    "80s Retro Desi Disco Hits" to "Retro 80s Fever",
+                    "2000s Nostalgic Hindi Hits" to "2000s Golden Nostalgia",
+                )
+                category.contains("Kannada", ignoreCase = true) -> listOf(
+                    "Top Kannada Songs $currentYear" to "Sandalwood Chartbusters",
+                    "Kannada Romantic Melodies" to "Soul of Kannada",
+                )
+                category.contains("Malayalam", ignoreCase = true) -> listOf(
+                    "Top Malayalam Songs $currentYear" to "Mollywood Hits",
+                    "Malayalam Acoustic Melodies" to "God's Own Melodies",
+                )
+                category.contains("Metal", ignoreCase = true) -> listOf(
+                    "Heavy Metal & Indian Rock" to "Thunder & Distortion",
+                    "Power Metal Energy Anthems" to "Adrenaline Metal",
+                )
+                category.contains("Latin", ignoreCase = true) -> listOf(
+                    "Top Latin Pop Reggaeton" to "Fiesta Latina",
+                    "Despacito & Tropical Latin" to "Latin Heat",
+                )
+                category.contains("Jazz", ignoreCase = true) -> listOf(
+                    "Smooth Late Night Jazz" to "Midnight Jazz Cafe",
+                    "Saxophone & Velvet Piano" to "Classic Jazz Harmony",
+                )
+                category.contains("Feel good", ignoreCase = true) || category.contains("Energize", ignoreCase = true) -> listOf(
+                    "Feel Good Upbeat Hindi Hits" to "Sunshine & Positivity",
+                    "Energize Motivation Pop" to "High Voltage Energy",
+                )
                 category.contains("Tamil", ignoreCase = true) -> listOf(
                     "Top Tamil Songs $currentYear" to "Kollywood Hits",
                     "Anirudh Ravichander Best Songs" to "Anirudh Wave",

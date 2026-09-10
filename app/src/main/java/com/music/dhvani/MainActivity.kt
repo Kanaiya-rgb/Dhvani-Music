@@ -176,6 +176,7 @@ import com.music.dhvani.ui.screens.LibraryScreen
 import com.music.dhvani.ui.screens.SearchScreen
 import com.music.dhvani.ui.screens.UtsavScreen
 import com.music.dhvani.ui.screens.CategoryScreen
+import com.music.dhvani.ui.screens.ExploreScreen
 import com.music.dhvani.ui.replay.ReplayScreen
 import com.music.dhvani.ui.replay.cards
 import com.music.dhvani.ui.replay.ReplayShareSheet
@@ -587,20 +588,20 @@ private fun DhvaniApp(
         null
     } ?: java.util.Locale.getDefault().toLanguageTag()
 
-    val (tabSuno, tabCategory, tabUtsav, tabSearch, tabLibrary) = when {
+    val (tabSuno, tabExplore, tabUtsav, tabSearch, tabLibrary) = when {
         currentLocale.startsWith("hi-Latn", ignoreCase = true) || currentLocale.equals("hinglish", ignoreCase = true) ->
-            listOf("Home", "Category", "Festival", "Search", "Library")
+            listOf("Home", "Explore", "Festival", "Search", "Library")
         currentLocale.startsWith("hi", ignoreCase = true) ->
-            listOf("सुनो", "कैटेगरी", "उत्सव", "खोज", "संग्रह")
+            listOf("होम", "एक्सप्लोर", "उत्सव", "खोज", "संग्रह")
         currentLocale.startsWith("pa", ignoreCase = true) ->
-            listOf("ਸੁਣੋ", "ਕੈਟੇਗਰੀ", "ਉਤਸਵ", "ਖੋਜ", "ਸੰਗ੍ਰਹਿ")
+            listOf("ਹੋਮ", "ਐਕਸਪਲੋਰ", "ਉਤਸਵ", "ਖੋਜ", "ਸੰਗ੍ਰਹਿ")
         else ->
-            listOf("Home", "Category", "Festival", "Search", "Library")
+            listOf("Home", "Explore", "Festival", "Search", "Library")
     }
 
     val tabs = listOf(
         BottomTab(tabSuno, DhvaniIcons.Play),
-        BottomTab(tabCategory, DhvaniIcons.Category),
+        BottomTab(tabExplore, DhvaniIcons.Explore),
         BottomTab(tabUtsav, DhvaniIcons.Utsav),
         BottomTab(tabSearch, DhvaniIcons.Search),
         BottomTab(tabLibrary, DhvaniIcons.Library),
@@ -1774,7 +1775,7 @@ private fun DhvaniApp(
                             selectedCategory = selectedCategory,
                             onCategorySelected = viewModel::setHomeCategory,
                         )
-                        TAB_CATEGORY -> CategoryScreen(
+                        TAB_EXPLORE -> ExploreScreen(
                             listState = categoryListState,
                             contentPadding = listPadding,
                             onPlaySongs = play,
@@ -2977,6 +2978,7 @@ private const val SEEK_END_GUARD_MS = 1_000L
 private val DETAIL_TITLE_DROP = 320.dp
 
 private const val TAB_HOME = 0
+private const val TAB_EXPLORE = 1
 private const val TAB_CATEGORY = 1
 private const val TAB_UTSAV = 2
 private const val TAB_SEARCH = 3

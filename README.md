@@ -56,30 +56,22 @@ Built entirely in modern Kotlin with Jetpack Compose, Dhvani provides an ad-free
 
 ---
 
-### 🌈 Category & Mood Explorer *(New in v2.0)*
-Dedicated **Category** tab in the floating bottom navigation bar featuring 20+ specialized moods and genres:
+### 🧭 Explore: Moods & Genres, Charts & New Releases *(New in v2.0)*
+Dedicated **Explore** tab in the floating bottom navigation bar featuring 4 main discovery avenues and 50+ specialized moods and genres:
 
-| Mood / Category | Hindi | Vibe & Highlights |
-|---|---|---|
-| **Sad & Heartbreak** 💔 | दर्द भरे गीत | Melancholy notes, heartbreak, acoustic tears & soulful healing |
-| **Happy & Joy** ✨ | खुशी और मुस्कान | Uplifting feel-good anthems, positive energy & sunshine smiles |
-| **Gym & Workout** 🏋️ | जिम और वर्कआउट | High-BPM workout motivation, heavy reps & cardio pump |
-| **Power & Motivation** ⚡ | जोश और ताक़त | Warrior spirit, unstoppable drive & adrenaline rushes |
-| **Rock & Metal** 🎸 | रॉक और गिटार | Heavy electric guitar riffs, desi rock anthems & thunder |
-| **Pop & Bops** 🎤 | पॉप संगीत | Global chartbusters, viral dance pop & indie pop waves |
-| **Party & Dance** 🎉 | पार्टी और डांस | Club bangers, DJ remixes, high-bass drops & wedding dhol |
-| **Romance & Love** 💖 | रोमांटिक धुनें | Timeless Bollywood romance, duets & acoustic love ballads |
-| **Chill & Relax** ☕ | सुकून और शांति | Sunset calm, peaceful ambient melodies & cozy acoustic |
-| **Focus & Study** 📚 | स्टडी और एकाग्रता | Deep study lofi, alpha brainwaves & calm instrumental |
-| **Desi Lo-Fi** 🌙 | लो-फाई मूड | Slowed & reverb, nostalgic rainy midnight city beats |
-| **Hip-Hop & Rap** 🔥 | हिप-हॉप और रैप | Gully rap, heavy lyrical bars, desi trap & street flow |
-| **Punjabi Hits** 🪘 | पंजाबी बीट्स | Bhangra, swagger, modern beats & chartbusters |
-| **Bollywood Magic** 🎬 | बॉलीवुड सदाबहार | Golden 90s, 2000s nostalgia & modern cinematic hits |
-| **Indie Acoustic** 🌿 | इंडि धुनें | Soulful indie poetry, acoustic guitar & indie folk |
-| **Sufi & Ghazal** 🕯️ | सूफ़ी और ग़ज़ल | Timeless poetry, devotional qawwali & spiritual peace |
-| **Classical Ragas** 🪕 | शास्त्रीय राग | Sitar, sarod, tabla maestros & meditative harmony |
-| **Road Trip & Drive** 🚗 | सफ़र के साथी | Open highways, scenic mountain drives & travel beats |
-| **Bhakti & Devotion** 🕉️ | भक्ति और शांति | Morning aartis, peaceful mantras & divine chants |
+* **Top Discovery Rails**:
+  - 🌟 **Moods & genres** — Curated catalogs across *For you*, *Moods & moments*, and *Genres*.
+  - 💿 **New releases** — Real-time live drops of new albums, singles, and music videos.
+  - 📈 **Charts & Trending** — Numbered top 20 trending singles and global charts.
+  - 🎙️ **Podcasts & Long Listens** — Popular news, geopolitics,     storytelling, and 1–2 hour continuous jukeboxes.
+
+#### 🎧 Moods & Genres Taxonomy
+
+| Section | Categories & Highlights |
+|---|---|
+| **For you** | Romance 💖 · Hindi 🎬 · Feel good ✨ · Desi hip-hop 🔥 · Hip-hop 🎧 · Devotional 🕉️ |
+| **Moods & moments** | Chill ☕ · Commute 🚗 · Energize ⚡ · Feel good 🌟 · Focus 📚 · Gaming 🎮 · Party 🎉 · Romance 💖 · Sad 💔 · Sleep 🌙 · Workout 🏋️ |
+| **Regional & Global Genres** | Bhojpuri 🌾 · Haryanvi 🚜 · Punjabi 🪘 · Bengali 🪕 · Gujarati 🎭 · Marathi 🚩 · Tamil 🛕 · Telugu 🏹 · Kannada 🌴 · Malayalam 🛶 · Indian Indie 🌿 · Indian Pop 🌟 · Ghazal/Sufi 🕯️ · Hindustani Classical 🪕 · Carnatic Classical 🎻 · Monsoon 🌧️ · K-Pop 💜 · J-Pop 🌸 · Arabic 🏜️ · African 🌍 · Latin 💃 · Metal ⚡ · Jazz 🎷 · Dance & Electronic 🪩 · Decades (60s–2000s) ⏳ |
 
 ---
 

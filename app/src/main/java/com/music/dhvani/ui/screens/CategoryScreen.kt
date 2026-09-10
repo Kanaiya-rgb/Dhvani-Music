@@ -2,7 +2,6 @@ package com.music.dhvani.ui.screens
 
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -27,9 +26,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -40,7 +36,6 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,7 +48,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -65,17 +59,23 @@ import coil3.compose.AsyncImage
 import com.music.dhvani.data.YtMusicRepository
 import com.music.dhvani.data.model.BrowseType
 import com.music.dhvani.data.model.HomeShelf
+import com.music.dhvani.data.model.SearchResult
 import com.music.dhvani.data.model.ShelfItem
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.ui.components.PAGE_GUTTER
 import com.music.dhvani.ui.haptics.Haptic
 import com.music.dhvani.ui.haptics.rememberHaptics
 import com.music.dhvani.ui.icons.DhvaniIcons
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-enum class CategoryGroup {
-    ALL, MOOD, WORKOUT, GENRE, VIBE
+enum class ExploreTab {
+    MOODS_GENRES, NEW_RELEASES, CHARTS, PODCASTS
+}
+
+enum class MoodGroup {
+    FOR_YOU, MOODS_MOMENTS, GENRES
 }
 
 data class MusicCategory(
@@ -85,192 +85,80 @@ data class MusicCategory(
     val emoji: String,
     val description: String,
     val gradient: List<Color>,
-    val group: CategoryGroup,
+    val group: MoodGroup,
 )
 
-val AllMusicCategories = listOf(
-    // ── Moods ──
-    MusicCategory(
-        id = "sad",
-        title = "Sad & Heartbreak",
-        hindiTitle = "दर्द भरे गीत",
-        emoji = "💔",
-        description = "Melancholy, emotional tears & healing",
-        gradient = listOf(Color(0xFF1E3C72), Color(0xFF2A5298)),
-        group = CategoryGroup.MOOD,
-    ),
-    MusicCategory(
-        id = "happy",
-        title = "Happy & Joy",
-        hindiTitle = "खुशी और मुस्कान",
-        emoji = "✨",
-        description = "Feel good, upbeat positivity & smiles",
-        gradient = listOf(Color(0xFFFF8008), Color(0xFFFFC837)),
-        group = CategoryGroup.MOOD,
-    ),
-    MusicCategory(
-        id = "romantic",
-        title = "Romance & Love",
-        hindiTitle = "रोमांटिक धुनें",
-        emoji = "💖",
-        description = "Endless romance, duets & love ballads",
-        gradient = listOf(Color(0xFFE91E63), Color(0xFFFF5252)),
-        group = CategoryGroup.MOOD,
-    ),
-    MusicCategory(
-        id = "chill",
-        title = "Chill & Relax",
-        hindiTitle = "सुकून और शांति",
-        emoji = "☕",
-        description = "Cozy acoustic, sunset calm & peaceful vibes",
-        gradient = listOf(Color(0xFF007991), Color(0xFF78FFD6)),
-        group = CategoryGroup.MOOD,
-    ),
-
-    // ── Energy & Workout ──
-    MusicCategory(
-        id = "gym",
-        title = "Gym & Workout",
-        hindiTitle = "जिम और वर्कआउट",
-        emoji = "🏋️",
-        description = "Beast mode, heavy lifting & high cardio",
-        gradient = listOf(Color(0xFFB71C1C), Color(0xFFD32F2F)),
-        group = CategoryGroup.WORKOUT,
-    ),
-    MusicCategory(
-        id = "power",
-        title = "Power & Motivation",
-        hindiTitle = "जोश और ताक़त",
-        emoji = "⚡",
-        description = "Adrenaline rush, warrior spirit & hype",
-        gradient = listOf(Color(0xFFFF512F), Color(0xFFDD2476)),
-        group = CategoryGroup.WORKOUT,
-    ),
-    MusicCategory(
-        id = "party",
-        title = "Party & Dance",
-        hindiTitle = "पार्टी और डांस",
-        emoji = "🎉",
-        description = "Club bangers, DJ remixes & high bass",
-        gradient = listOf(Color(0xFF8A2387), Color(0xFFE94057)),
-        group = CategoryGroup.WORKOUT,
-    ),
-
-    // ── Genres ──
-    MusicCategory(
-        id = "rock",
-        title = "Rock & Metal",
-        hindiTitle = "रॉक और गिटार",
-        emoji = "🎸",
-        description = "Heavy riffs, desi rock & electric thunder",
-        gradient = listOf(Color(0xFF232526), Color(0xFF414345)),
-        group = CategoryGroup.GENRE,
-    ),
-    MusicCategory(
-        id = "pop",
-        title = "Pop & Bops",
-        hindiTitle = "पॉप संगीत",
-        emoji = "🎤",
-        description = "Global chartbusters, desi pop & dance hits",
-        gradient = listOf(Color(0xFFDA22FF), Color(0xFF9733EE)),
-        group = CategoryGroup.GENRE,
-    ),
-    MusicCategory(
-        id = "hiphop",
-        title = "Hip-Hop & Rap",
-        hindiTitle = "हिप-हॉप और रैप",
-        emoji = "🔥",
-        description = "Gully rap, heavy bars & street flow",
-        gradient = listOf(Color(0xFF0F2027), Color(0xFF203A43)),
-        group = CategoryGroup.GENRE,
-    ),
-    MusicCategory(
-        id = "punjabi",
-        title = "Punjabi Hits",
-        hindiTitle = "पंजाबी बीट्स",
-        emoji = "🪘",
-        description = "Dhol, bhangra, swagger & chartbusters",
-        gradient = listOf(Color(0xFFFF416C), Color(0xFFFF4B2B)),
-        group = CategoryGroup.GENRE,
-    ),
-    MusicCategory(
-        id = "bollywood",
-        title = "Bollywood Magic",
-        hindiTitle = "बॉलीवुड सदाबहार",
-        emoji = "🎬",
-        description = "Cinematic magic, 90s gold & modern blockbusters",
-        gradient = listOf(Color(0xFFF7971E), Color(0xFFFFD200)),
-        group = CategoryGroup.GENRE,
-    ),
-    MusicCategory(
-        id = "indie",
-        title = "Indie Acoustic",
-        hindiTitle = "इंडि धुनें",
-        emoji = "🌿",
-        description = "Soulful poetry, acoustic guitar & indie scene",
-        gradient = listOf(Color(0xFF134E5E), Color(0xFF71B280)),
-        group = CategoryGroup.GENRE,
-    ),
-    MusicCategory(
-        id = "sufi",
-        title = "Sufi & Ghazal",
-        hindiTitle = "सूफ़ी और ग़ज़ल",
-        emoji = "🕯️",
-        description = "Timeless poetry, qawwali & spiritual peace",
-        gradient = listOf(Color(0xFF3A1C71), Color(0xFFD76D77)),
-        group = CategoryGroup.GENRE,
-    ),
-    MusicCategory(
-        id = "classical",
-        title = "Classical Ragas",
-        hindiTitle = "शास्त्रीय राग",
-        emoji = "🪕",
-        description = "Sitar, tabla maestros & meditative harmony",
-        gradient = listOf(Color(0xFF614385), Color(0xFF516395)),
-        group = CategoryGroup.GENRE,
-    ),
-
-    // ── Vibes & Activity ──
-    MusicCategory(
-        id = "lofi",
-        title = "Desi Lo-Fi",
-        hindiTitle = "लो-फाई मूड",
-        emoji = "🌙",
-        description = "Slowed & reverb, nostalgic rainy evening beats",
-        gradient = listOf(Color(0xFF654EA3), Color(0xFFEAAFC8)),
-        group = CategoryGroup.VIBE,
-    ),
-    MusicCategory(
-        id = "focus",
-        title = "Focus & Study",
-        hindiTitle = "स्टडी और एकाग्रता",
-        emoji = "📚",
-        description = "Deep work, alpha waves & calm instrumental",
-        gradient = listOf(Color(0xFF11998E), Color(0xFF38EF7D)),
-        group = CategoryGroup.VIBE,
-    ),
-    MusicCategory(
-        id = "travel",
-        title = "Road Trip & Drive",
-        hindiTitle = "सफ़र के साथी",
-        emoji = "🚗",
-        description = "Open highways, scenic vistas & wanderlust",
-        gradient = listOf(Color(0xFF396AFC), Color(0xFF2948FF)),
-        group = CategoryGroup.VIBE,
-    ),
-    MusicCategory(
-        id = "bhakti",
-        title = "Bhakti & Devotion",
-        hindiTitle = "भक्ति और शांति",
-        emoji = "🕉️",
-        description = "Morning aartis, peaceful mantras & divine chants",
-        gradient = listOf(Color(0xFFFF6A00), Color(0xFFEE0979)),
-        group = CategoryGroup.VIBE,
-    ),
+val ForYouCategories = listOf(
+    MusicCategory("romance", "Romance", "रोमांटिक धुनें", "💖", "Bollywood love ballads & duets", listOf(Color(0xFFE91E63), Color(0xFFFF5252)), MoodGroup.FOR_YOU),
+    MusicCategory("hindi", "Hindi", "बॉलीवुड सदाबहार", "🎬", "Golden melodies & blockbuster hits", listOf(Color(0xFFF7971E), Color(0xFFFFD200)), MoodGroup.FOR_YOU),
+    MusicCategory("feelgood", "Feel good", "खुशी और मुस्कान", "✨", "Uplifting feel-good anthems", listOf(Color(0xFFFF8008), Color(0xFFFFC837)), MoodGroup.FOR_YOU),
+    MusicCategory("desihiphop", "Desi hip-hop", "देसी हिप-हॉप", "🔥", "Gully rap, street flow & heavy bars", listOf(Color(0xFF0F2027), Color(0xFF203A43)), MoodGroup.FOR_YOU),
+    MusicCategory("hiphop", "Hip-hop", "ग्लोबल हिप-हॉप", "🎧", "Global trap, 808s & lyrical beats", listOf(Color(0xFF141E30), Color(0xFF243B55)), MoodGroup.FOR_YOU),
+    MusicCategory("devotional", "Devotional", "भक्ति और शांति", "🕉️", "Aartis, bhajans & divine mantras", listOf(Color(0xFFFF6A00), Color(0xFFEE0979)), MoodGroup.FOR_YOU),
 )
 
+val MoodsMomentsCategories = listOf(
+    MusicCategory("chill", "Chill", "सुकून और शांति", "☕", "Cozy acoustic, sunset calm & peaceful vibes", listOf(Color(0xFF007991), Color(0xFF78FFD6)), MoodGroup.MOODS_MOMENTS),
+    MusicCategory("commute", "Commute", "सफ़र और ड्राइव", "🚗", "City drives, traffic chill & open road", listOf(Color(0xFF396AFC), Color(0xFF2948FF)), MoodGroup.MOODS_MOMENTS),
+    MusicCategory("energize", "Energize", "जोश और ताक़त", "⚡", "Adrenaline rush, power & unstoppable vibe", listOf(Color(0xFFFF512F), Color(0xFFDD2476)), MoodGroup.MOODS_MOMENTS),
+    MusicCategory("feelgood_m", "Feel good", "अच्छी तरंगें", "🌟", "Smiles, sunshine & positive frequencies", listOf(Color(0xFFF3904F), Color(0xFF3B4371)), MoodGroup.MOODS_MOMENTS),
+    MusicCategory("focus", "Focus", "स्टडी और एकाग्रता", "📚", "Deep study lofi, alpha waves & calm focus", listOf(Color(0xFF11998E), Color(0xFF38EF7D)), MoodGroup.MOODS_MOMENTS),
+    MusicCategory("gaming", "Gaming", "गेमिंग बीट्स", "🎮", "High BPM trap, synthwave & victory tunes", listOf(Color(0xFF8A2387), Color(0xFFE94057)), MoodGroup.MOODS_MOMENTS),
+    MusicCategory("party", "Party", "पार्टी और डांस", "🎉", "Club bangers, DJ drops & dhol beats", listOf(Color(0xFFDA22FF), Color(0xFF9733EE)), MoodGroup.MOODS_MOMENTS),
+    MusicCategory("romance_m", "Romance", "प्यार के पल", "💖", "Soulful duets, acoustic warmth & hearts", listOf(Color(0xFFE91E63), Color(0xFFFF5252)), MoodGroup.MOODS_MOMENTS),
+    MusicCategory("sad", "Sad", "दर्द भरे गीत", "💔", "Melancholy, emotional tears & healing notes", listOf(Color(0xFF1E3C72), Color(0xFF2A5298)), MoodGroup.MOODS_MOMENTS),
+    MusicCategory("sleep", "Sleep", "गहरी नींद और सुकून", "🌙", "Delta sleep waves, gentle ambient rain", listOf(Color(0xFF2C3E50), Color(0xFF4CA1AF)), MoodGroup.MOODS_MOMENTS),
+    MusicCategory("workout", "Workout", "जिम और कसरत", "🏋️", "Heavy lifting, cardio pump & beast mode", listOf(Color(0xFFB71C1C), Color(0xFFD32F2F)), MoodGroup.MOODS_MOMENTS),
+)
+
+val GenreCategories = listOf(
+    MusicCategory("african", "African", "अफ्रीकन बीट्स", "🌍", "Afrobeats, Amapiano & African rhythm", listOf(Color(0xFFB993D6), Color(0xFF8CA6DB)), MoodGroup.GENRES),
+    MusicCategory("arabic", "Arabic", "अरबी धुनें", "🏜️", "Oud melodies, Arabic pop & Middle East", listOf(Color(0xFFD38312), Color(0xFFA83279)), MoodGroup.GENRES),
+    MusicCategory("bengali", "Bengali", "বাংলা গান", "🪕", "Modern Bengali pop, Rabindra & folk", listOf(Color(0xFF2C3E50), Color(0xFFBDC3C7)), MoodGroup.GENRES),
+    MusicCategory("bhojpuri", "Bhojpuri", "भोजपुरी धमाका", "🌾", "High bass Bhojpuri bangers & masti", listOf(Color(0xFFF7971E), Color(0xFFFFD200)), MoodGroup.GENRES),
+    MusicCategory("carnatic", "Carnatic classical", "कर्नाटक संगीत", "🎻", "Divine ragas, veena & violin mastery", listOf(Color(0xFF614385), Color(0xFF516395)), MoodGroup.GENRES),
+    MusicCategory("classical", "Classical", "शास्त्रीy संगीत", "🪕", "Sitar, sarod, flute & tabla maestros", listOf(Color(0xFF3A1C71), Color(0xFFD76D77)), MoodGroup.GENRES),
+    MusicCategory("country", "Country & Americana", "कंट्री संगीत", "🤠", "Acoustic storytelling & southern roots", listOf(Color(0xFF4B6CB7), Color(0xFF182848)), MoodGroup.GENRES),
+    MusicCategory("dance", "Dance & electronic", "ईडीएम और डांस", "🪩", "EDM, house, club anthems & bass drops", listOf(Color(0xFF7F00FF), Color(0xFFE100FF)), MoodGroup.GENRES),
+    MusicCategory("decades", "Decades", "दशकों का संगीत", "⏳", "Golden 60s, 70s, 80s, 90s & 2000s classics", listOf(Color(0xFF000000), Color(0xFF434343)), MoodGroup.GENRES),
+    MusicCategory("desihiphop_g", "Desi hip-hop", "देसी रैप और ट्रैप", "🎤", "Street lyricism, gully rap & beats", listOf(Color(0xFF1F1C18), Color(0xFF8E0E00)), MoodGroup.GENRES),
+    MusicCategory("devotional_g", "Devotional", "भजन और कीर्तन", "🕉️", "Spiritual awakening, peaceful chants", listOf(Color(0xFFFF512F), Color(0xFFF09819)), MoodGroup.GENRES),
+    MusicCategory("family", "Family", "पारिवारिक गीत", "👨‍👩‍👧‍👦", "Celebrations, wedding songs & nostalgia", listOf(Color(0xFF56AB2F), Color(0xFFA8E063)), MoodGroup.GENRES),
+    MusicCategory("folk", "Folk & acoustic", "लोक संगीत", "🪘", "Traditional roots, dholak & desi soul", listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0)), MoodGroup.GENRES),
+    MusicCategory("ghazal", "Ghazal/sufi", "ग़ज़ल और सूफ़ी", "🕯️", "Soul of Sufism, Mehfil & timeless poetry", listOf(Color(0xFF200122), Color(0xFF6F0000)), MoodGroup.GENRES),
+    MusicCategory("gujarati", "Gujarati", "ગુજરાતી ગીતો", "🎭", "Garba, Gujarati folk & modern pop", listOf(Color(0xFFFF8008), Color(0xFFFFC837)), MoodGroup.GENRES),
+    MusicCategory("haryanvi", "Haryanvi", "हरियाणवी बीट्स", "🚜", "High-energy Haryanvi power anthems", listOf(Color(0xFFB71C1C), Color(0xFFE53935)), MoodGroup.GENRES),
+    MusicCategory("hindi_g", "Hindi", "बॉलीवुड हिट्स", "🎬", "Bollywood chartbusters & soundtrack magic", listOf(Color(0xFFF27121), Color(0xFFE94057)), MoodGroup.GENRES),
+    MusicCategory("hindustani", "Hindustani classical", "हिंदुस्तानी शास्त्रीय", "🪕", "Khayal, thumri & classical traditions", listOf(Color(0xFF3E5151), Color(0xFFDECBA4)), MoodGroup.GENRES),
+    MusicCategory("hiphop_g", "Hip-hop", "हिप-हॉप", "🔥", "Boom-bap, modern trap & drill", listOf(Color(0xFF232526), Color(0xFF414345)), MoodGroup.GENRES),
+    MusicCategory("indianindie", "Indian indie", "भारतीय इंडी", "🌿", "Independent acoustic, indie poetry & chill", listOf(Color(0xFF134E5E), Color(0xFF71B280)), MoodGroup.GENRES),
+    MusicCategory("indianpop", "Indian pop", "आई-पॉप", "🌟", "Modern viral desi pop & dance hits", listOf(Color(0xFFDA22FF), Color(0xFF9733EE)), MoodGroup.GENRES),
+    MusicCategory("indiealt", "Indie & alternative", "अल्टरनेटिव रॉक", "🎸", "Alternative rock, indie folk & grunge", listOf(Color(0xFF0F2027), Color(0xFF2C5364)), MoodGroup.GENRES),
+    MusicCategory("jpop", "J-Pop", "जापानी पॉप", "🌸", "Tokyo pop bops, city pop & anime OST", listOf(Color(0xFFEC008C), Color(0xFFFC6767)), MoodGroup.GENRES),
+    MusicCategory("jazz", "Jazz", "जैज़ और सैक्सोफोन", "🎷", "Velvet saxophone, blue notes & smooth piano", listOf(Color(0xFF1A2980), Color(0xFF26D0CE)), MoodGroup.GENRES),
+    MusicCategory("kpop", "K-Pop", "के-पॉप", "💜", "Korean chartbusters, dance & idol anthems", listOf(Color(0xFF654EA3), Color(0xFFEAAFC8)), MoodGroup.GENRES),
+    MusicCategory("kannada", "Kannada", "ಕನ್ನಡ ಹಾಡುಗಳು", "🌴", "Sandalwood hits, melodies & rhythm", listOf(Color(0xFFC33764), Color(0xFF1D2671)), MoodGroup.GENRES),
+    MusicCategory("latin", "Latin", "लैटिन संगीत", "💃", "Reggaeton, tropical bachata & fiesta", listOf(Color(0xFFFF512F), Color(0xFFDD2476)), MoodGroup.GENRES),
+    MusicCategory("malayalam", "Malayalam", "മലയാളം ഗാനങ്ങൾ", "🛶", "God's own melodies, soothing acoustic", listOf(Color(0xFF005AA7), Color(0xFFFFFDE4)), MoodGroup.GENRES),
+    MusicCategory("marathi", "Marathi", "मराठी गाणी", "🚩", "Dhol tasha, bhavgeete & modern Marathi", listOf(Color(0xFFFF8008), Color(0xFFFFC837)), MoodGroup.GENRES),
+    MusicCategory("metal", "Metal", "मेटल और गिटार", "⚡", "Heavy distortion, thunder & double bass", listOf(Color(0xFF000000), Color(0xFF53346C)), MoodGroup.GENRES),
+    MusicCategory("monsoon", "Monsoon", "बारिश और सुकून", "🌧️", "Rain therapy, chai & romantic showers", listOf(Color(0xFF2193B0), Color(0xFF6DD5ED)), MoodGroup.GENRES),
+    MusicCategory("pop", "Pop", "पॉप संगीत", "🎤", "Global chart-toppers & sparkling melodies", listOf(Color(0xFFE55D87), Color(0xFF5FC3E4)), MoodGroup.GENRES),
+    MusicCategory("punjabi", "Punjabi", "ਪੰਜਾਬੀ ਗੀਤ", "🪘", "Bhangra swagger, beats & Punjabi wave", listOf(Color(0xFFFF416C), Color(0xFFFF4B2B)), MoodGroup.GENRES),
+    MusicCategory("rnb", "R&B & soul", "आर एंड बी", "🎙️", "Smooth groove, velvet vocals & deep soul", listOf(Color(0xFF3E5151), Color(0xFFDECBA4)), MoodGroup.GENRES),
+    MusicCategory("reggae", "Reggae & caribbean", "रेगे बीट्स", "🏝️", "Island rhythm, dub & tropical sun", listOf(Color(0xFF56AB2F), Color(0xFFA8E063)), MoodGroup.GENRES),
+    MusicCategory("rock", "Rock", "रॉक संगीत", "🎸", "Electric riffs, desi rock & stadium energy", listOf(Color(0xFF232526), Color(0xFF414345)), MoodGroup.GENRES),
+    MusicCategory("tamil", "Tamil", "தமிழ் பாடல்கள்", "🛕", "Kollywood magic, Anirudh wave & melodies", listOf(Color(0xFFFF416C), Color(0xFF8A2387)), MoodGroup.GENRES),
+    MusicCategory("telugu", "Telugu", "తెలుగు పాటలు", "🏹", "Tollywood blockbusters & mass beats", listOf(Color(0xFFF7971E), Color(0xFFFFD200)), MoodGroup.GENRES),
+)
+
+val AllMusicCategories = ForYouCategories + MoodsMomentsCategories + GenreCategories
+
+/**
+ * Main Explore & Moods & Genres Screen
+ */
 @Composable
-fun CategoryScreen(
+fun ExploreScreen(
     listState: LazyListState,
     contentPadding: PaddingValues,
     onPlaySongs: (List<Song>, Int) -> Unit,
@@ -278,7 +166,7 @@ fun CategoryScreen(
     modifier: Modifier = Modifier,
 ) {
     var selectedCategory by remember { mutableStateOf<MusicCategory?>(null) }
-    var selectedGroup by remember { mutableStateOf(CategoryGroup.ALL) }
+    var selectedTab by remember { mutableStateOf(ExploreTab.MOODS_GENRES) }
     val haptics = rememberHaptics()
     val scope = rememberCoroutineScope()
 
@@ -291,16 +179,18 @@ fun CategoryScreen(
                 (slideInHorizontally { -it } + fadeIn()) togetherWith (slideOutHorizontally { it } + fadeOut())
             }
         },
-        label = "categoryScreenNav",
+        label = "exploreScreenNav",
         modifier = modifier.fillMaxSize(),
     ) { category ->
         if (category == null) {
-            // ── Main Category Catalog Grid ──
-            CategoryCatalogView(
+            ExploreMainView(
                 listState = listState,
                 contentPadding = contentPadding,
-                selectedGroup = selectedGroup,
-                onSelectGroup = { selectedGroup = it },
+                selectedTab = selectedTab,
+                onSelectTab = {
+                    haptics.play(Haptic.Select)
+                    selectedTab = it
+                },
                 onSelectCategory = { cat ->
                     haptics.play(Haptic.Select)
                     selectedCategory = cat
@@ -318,9 +208,10 @@ fun CategoryScreen(
                         }
                     }
                 },
+                onPlaySongs = onPlaySongs,
+                onOpenDetail = onOpenDetail,
             )
         } else {
-            // ── Category Detail / Music Player Feed ──
             CategoryDetailView(
                 category = category,
                 contentPadding = contentPadding,
@@ -335,14 +226,34 @@ fun CategoryScreen(
     }
 }
 
+/**
+ * Backward compatibility alias for CategoryScreen
+ */
 @Composable
-private fun CategoryCatalogView(
+fun CategoryScreen(
     listState: LazyListState,
     contentPadding: PaddingValues,
-    selectedGroup: CategoryGroup,
-    onSelectGroup: (CategoryGroup) -> Unit,
+    onPlaySongs: (List<Song>, Int) -> Unit,
+    onOpenDetail: (id: String, title: String, subtitle: String?, thumbnail: String?, type: BrowseType) -> Unit,
+    modifier: Modifier = Modifier,
+) = ExploreScreen(
+    listState = listState,
+    contentPadding = contentPadding,
+    onPlaySongs = onPlaySongs,
+    onOpenDetail = onOpenDetail,
+    modifier = modifier,
+)
+
+@Composable
+private fun ExploreMainView(
+    listState: LazyListState,
+    contentPadding: PaddingValues,
+    selectedTab: ExploreTab,
+    onSelectTab: (ExploreTab) -> Unit,
     onSelectCategory: (MusicCategory) -> Unit,
     onQuickPlayCategory: (MusicCategory) -> Unit,
+    onPlaySongs: (List<Song>, Int) -> Unit,
+    onOpenDetail: (id: String, title: String, subtitle: String?, thumbnail: String?, type: BrowseType) -> Unit,
 ) {
     val currentLocale = try {
         val first = AppCompatDelegate.getApplicationLocales().get(0)
@@ -353,9 +264,64 @@ private fun CategoryCatalogView(
 
     val isHindi = currentLocale.startsWith("hi", ignoreCase = true)
 
-    val filteredCategories = remember(selectedGroup) {
-        if (selectedGroup == CategoryGroup.ALL) AllMusicCategories
-        else AllMusicCategories.filter { it.group == selectedGroup }
+    // Dedicated state for Explore live feeds (New Releases, Charts, Podcasts)
+    var feedShelves by remember(selectedTab) { mutableStateOf<List<HomeShelf>?>(null) }
+    var feedLoading by remember(selectedTab) { mutableStateOf(false) }
+
+    LaunchedEffect(selectedTab) {
+        if (selectedTab != ExploreTab.MOODS_GENRES) {
+            feedLoading = true
+            feedShelves = null
+            when (selectedTab) {
+                ExploreTab.NEW_RELEASES -> {
+                    val official = YtMusicRepository.fallbackHomeShelves(3)
+                    val fresh = YtMusicRepository.categoryShelves("New Releases").getOrDefault(emptyList())
+                    feedShelves = (fresh + official).distinctBy { it.title }
+                }
+                ExploreTab.CHARTS -> {
+                    feedShelves = YtMusicRepository.explore().getOrDefault(emptyList())
+                }
+                ExploreTab.PODCASTS -> {
+                    val podcasts = YtMusicRepository.search("Popular Hindi Podcasts BBC Dinbhar", com.music.dhvani.data.model.SearchFilter.PLAYLISTS)
+                        .getOrNull()
+                        ?.filterIsInstance<SearchResult.Browse>()
+                        ?.map { it.item }
+                        ?.take(16)
+                    val longListens = YtMusicRepository.search("Bollywood Nonstop 2 Hour Jukebox", com.music.dhvani.data.model.SearchFilter.SONGS)
+                        .getOrNull()
+                        ?.filterIsInstance<SearchResult.Track>()
+                        ?.map { it.song }
+                        ?.take(16)
+
+                    val shelves = mutableListOf<HomeShelf>()
+                    podcasts?.let {
+                        if (it.isNotEmpty()) {
+                            shelves.add(
+                                HomeShelf(
+                                    title = if (isHindi) "लोकप्रिय पॉडकास्ट और शो" else "Popular Podcasts & Shows",
+                                    subtitle = "BBC, Geopolitics, News & Stories",
+                                    items = it.map { p -> ShelfItem(p.title, p.subtitle, p.thumbnailUrl, null, p.browseId) },
+                                )
+                            )
+                        }
+                    }
+                    longListens?.let {
+                        if (it.isNotEmpty()) {
+                            shelves.add(
+                                HomeShelf(
+                                    title = if (isHindi) "लंबे संगीत सत्र (Long Listens)" else "Long Listens & Jukeboxes",
+                                    subtitle = "1 to 2 Hour Non-Stop Listening",
+                                    items = it.map { s -> ShelfItem(s.title, s.artist, s.thumbnailUrl, s.videoId, null) },
+                                )
+                            )
+                        }
+                    }
+                    feedShelves = shelves
+                }
+                else -> Unit
+            }
+            feedLoading = false
+        }
     }
 
     LazyColumn(
@@ -363,47 +329,58 @@ private fun CategoryCatalogView(
         contentPadding = contentPadding,
         modifier = Modifier.fillMaxSize(),
     ) {
-        item(key = "cat_header") {
+        // ── Main Header: Explore / एक्सप्लोर ──
+        item(key = "explore_header") {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = PAGE_GUTTER)
                     .padding(top = 16.dp, bottom = 12.dp),
             ) {
-                Text(
-                    text = if (isHindi) "श्रेणियाँ और मूड्स" else "Categories & Moods",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = (-0.5).sp,
-                    ),
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = DhvaniIcons.Explore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp),
+                    )
+                    Text(
+                        text = if (isHindi) "एक्सप्लोर" else "Explore",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = (-0.5).sp,
+                        ),
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = if (isHindi) "अपनी पसंद की कैटेगरी चुनें और बेहतरीन संगीत सुनें"
-                    else "Choose your favorite category, mood, or workout vibe",
+                    text = if (isHindi) "मूड्स, शैलियाँ, चार्ट्स और नए एल्बम का संसार"
+                    else "Discover Moods & genres, New releases, Charts & Podcasts",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
 
-        // ── Filter Chips ──
-        item(key = "cat_filters") {
-            val chips = listOf(
-                CategoryGroup.ALL to (if (isHindi) "सभी" else "All"),
-                CategoryGroup.MOOD to (if (isHindi) "मूड्स" else "Moods"),
-                CategoryGroup.WORKOUT to (if (isHindi) "जिम और पावर" else "Workout & Power"),
-                CategoryGroup.GENRE to (if (isHindi) "संगीत शैलियाँ" else "Genres"),
-                CategoryGroup.VIBE to (if (isHindi) "वाइब्स" else "Vibes"),
+        // ── Top 4 Explore Nav Pills (YouTube Music matching: Moods & genres, New releases, Charts, Podcasts) ──
+        item(key = "explore_tabs") {
+            val pills = listOf(
+                ExploreTab.MOODS_GENRES to (if (isHindi) "मूड्स और शैलियाँ" else "Moods & genres"),
+                ExploreTab.NEW_RELEASES to (if (isHindi) "नए रिलीज़" else "New releases"),
+                ExploreTab.CHARTS to (if (isHindi) "चार्ट्स और ट्रेंडिंग" else "Charts"),
+                ExploreTab.PODCASTS to (if (isHindi) "पॉडकास्ट" else "Podcasts"),
             )
             LazyRow(
                 contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 14.dp),
+                modifier = Modifier.padding(bottom = 16.dp),
             ) {
-                items(chips) { (group, label) ->
-                    val isSelected = selectedGroup == group
+                items(pills) { (tab, label) ->
+                    val isSelected = selectedTab == tab
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
@@ -417,8 +394,8 @@ private fun CategoryCatalogView(
                                 else Color.White.copy(alpha = 0.08f),
                                 CircleShape,
                             )
-                            .clickable { onSelectGroup(group) }
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                            .clickable { onSelectTab(tab) }
+                            .padding(horizontal = 16.dp, vertical = 9.dp),
                     ) {
                         Text(
                             text = label,
@@ -433,37 +410,214 @@ private fun CategoryCatalogView(
             }
         }
 
-        // ── Grid of Categories in pairs ──
-        items(filteredCategories.chunked(2)) { pair ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = PAGE_GUTTER, vertical = 5.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                CategoryCard(
-                    category = pair[0],
-                    isHindi = isHindi,
-                    onClick = { onSelectCategory(pair[0]) },
-                    onPlay = { onQuickPlayCategory(pair[0]) },
-                    modifier = Modifier.weight(1f),
+        // ── Content Switcher based on Selected Top Pill ──
+        if (selectedTab == ExploreTab.MOODS_GENRES) {
+            // ── Section 1: For you ──
+            item(key = "section_for_you_hdr") {
+                SectionHeaderRow(
+                    title = if (isHindi) "खास आपके लिए (For you)" else "For you",
+                    count = ForYouCategories.size,
                 )
-                if (pair.size > 1) {
-                    CategoryCard(
-                        category = pair[1],
-                        isHindi = isHindi,
-                        onClick = { onSelectCategory(pair[1]) },
-                        onPlay = { onQuickPlayCategory(pair[1]) },
-                        modifier = Modifier.weight(1f),
-                    )
-                } else {
-                    Spacer(Modifier.weight(1f))
+            }
+            items(ForYouCategories.chunked(2)) { pair ->
+                CategoryGridRow(
+                    pair = pair,
+                    isHindi = isHindi,
+                    onSelect = onSelectCategory,
+                    onPlay = onQuickPlayCategory,
+                )
+            }
+
+            // ── Section 2: Moods & moments ──
+            item(key = "section_moods_hdr") {
+                Spacer(Modifier.height(16.dp))
+                SectionHeaderRow(
+                    title = if (isHindi) "मूड्स और पल (Moods & moments)" else "Moods & moments",
+                    count = MoodsMomentsCategories.size,
+                )
+            }
+            items(MoodsMomentsCategories.chunked(2)) { pair ->
+                CategoryGridRow(
+                    pair = pair,
+                    isHindi = isHindi,
+                    onSelect = onSelectCategory,
+                    onPlay = onQuickPlayCategory,
+                )
+            }
+
+            // ── Section 3: Genres ──
+            item(key = "section_genres_hdr") {
+                Spacer(Modifier.height(16.dp))
+                SectionHeaderRow(
+                    title = if (isHindi) "सभी संगीत शैलियाँ (Genres)" else "Genres",
+                    count = GenreCategories.size,
+                )
+            }
+            items(GenreCategories.chunked(2)) { pair ->
+                CategoryGridRow(
+                    pair = pair,
+                    isHindi = isHindi,
+                    onSelect = onSelectCategory,
+                    onPlay = onQuickPlayCategory,
+                )
+            }
+        } else {
+            // ── Feed View (New Releases / Charts / Podcasts) ──
+            if (feedLoading) {
+                item(key = "feed_loading") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(260.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            } else if (feedShelves.isNullOrEmpty()) {
+                item(key = "feed_empty") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(40.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (isHindi) "कोई परिणाम नहीं मिला" else "No content available right now",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            } else {
+                feedShelves?.forEach { shelf ->
+                    item(key = "feed_shelf_${shelf.title}") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = PAGE_GUTTER),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = shelf.title,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                )
+                            }
+                            if (shelf.subtitle != null) {
+                                Text(
+                                    text = shelf.subtitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = PAGE_GUTTER),
+                                )
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                itemsIndexed(shelf.items) { idx, item ->
+                                    CategoryTrackCard(
+                                        item = item,
+                                        rankNumber = if (selectedTab == ExploreTab.CHARTS) idx + 1 else null,
+                                        onClick = {
+                                            if (item.videoId != null) {
+                                                val songs = shelf.items.map { it.toSong() }
+                                                onPlaySongs(songs, idx)
+                                            } else if (item.browseId != null) {
+                                                onOpenDetail(
+                                                    item.browseId,
+                                                    item.title,
+                                                    item.subtitle,
+                                                    item.thumbnailUrl,
+                                                    BrowseType.PLAYLIST,
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
 
         item {
-            Spacer(Modifier.height(30.dp))
+            Spacer(Modifier.height(48.dp))
+        }
+    }
+}
+
+@Composable
+private fun SectionHeaderRow(title: String, count: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+            ),
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 9.dp, vertical = 3.dp),
+        ) {
+            Text(
+                text = "$count",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CategoryGridRow(
+    pair: List<MusicCategory>,
+    isHindi: Boolean,
+    onSelect: (MusicCategory) -> Unit,
+    onPlay: (MusicCategory) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = PAGE_GUTTER, vertical = 5.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        CategoryCard(
+            category = pair[0],
+            isHindi = isHindi,
+            onClick = { onSelect(pair[0]) },
+            onPlay = { onPlay(pair[0]) },
+            modifier = Modifier.weight(1f),
+        )
+        if (pair.size > 1) {
+            CategoryCard(
+                category = pair[1],
+                isHindi = isHindi,
+                onClick = { onSelect(pair[1]) },
+                onPlay = { onPlay(pair[1]) },
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            Spacer(Modifier.weight(1f))
         }
     }
 }
@@ -479,27 +633,12 @@ private fun CategoryCard(
     val haptics = rememberHaptics()
     Box(
         modifier = modifier
-            .height(130.dp)
+            .height(108.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = category.gradient,
-                )
-            )
-            .border(
-                1.dp,
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.25f),
-                        Color.White.copy(alpha = 0.05f),
-                    )
-                ),
-                RoundedCornerShape(18.dp),
-            )
+            .background(Brush.linearGradient(category.gradient))
             .clickable { onClick() }
             .padding(12.dp),
     ) {
-        // Top row: Emoji & Play Button
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -507,11 +646,11 @@ private fun CategoryCard(
         ) {
             Text(
                 text = category.emoji,
-                fontSize = 28.sp,
+                fontSize = 26.sp,
             )
             Box(
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(32.dp)
                     .clip(CircleShape)
                     .background(Color.Black.copy(alpha = 0.35f))
                     .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
@@ -525,12 +664,11 @@ private fun CategoryCard(
                     imageVector = Icons.Rounded.PlayArrow,
                     contentDescription = "Play ${category.title}",
                     tint = Color.White,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }
 
-        // Bottom column: Title & Hindi Subtitle
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -540,7 +678,7 @@ private fun CategoryCard(
                 text = category.title,
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                 ),
                 color = Color.White,
                 maxLines = 1,
@@ -597,7 +735,6 @@ private fun CategoryDetailView(
         contentPadding = contentPadding,
         modifier = Modifier.fillMaxSize(),
     ) {
-        // ── Header Banner ──
         item(key = "detail_header") {
             Box(
                 modifier = Modifier
@@ -608,7 +745,6 @@ private fun CategoryDetailView(
                     .padding(18.dp),
             ) {
                 Column {
-                    // Back button & Emoji
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -630,7 +766,7 @@ private fun CategoryDetailView(
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = "Categories",
+                                text = "Explore",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = Color.White,
                             )
@@ -650,22 +786,18 @@ private fun CategoryDetailView(
                         ),
                         color = Color.White,
                     )
-                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = "${category.hindiTitle} • ${category.description}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.9f),
                     )
 
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(18.dp))
 
-                    // Action Buttons: Play All & Shuffle
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // Play All Button
-                        Box(
+                        Row(
                             modifier = Modifier
                                 .clip(CircleShape)
                                 .background(Color.White)
@@ -675,29 +807,26 @@ private fun CategoryDetailView(
                                         onPlaySongs(allSongs, 0)
                                     }
                                 }
-                                .padding(horizontal = 18.dp, vertical = 10.dp),
-                            contentAlignment = Alignment.Center,
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Rounded.PlayArrow,
-                                    contentDescription = "Play",
-                                    tint = Color.Black,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = "Play Mix",
-                                    style = MaterialTheme.typography.labelLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                    ),
-                                    color = Color.Black,
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Rounded.PlayArrow,
+                                contentDescription = "Play All",
+                                tint = Color.Black,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                text = "Play All",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                ),
+                                color = Color.Black,
+                            )
                         }
 
-                        // Shuffle Button
-                        Box(
+                        Row(
                             modifier = Modifier
                                 .clip(CircleShape)
                                 .background(Color.Black.copy(alpha = 0.3f))
@@ -708,23 +837,23 @@ private fun CategoryDetailView(
                                         onPlaySongs(allSongs.shuffled(), 0)
                                     }
                                 }
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            contentAlignment = Alignment.Center,
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Shuffle,
-                                    contentDescription = "Shuffle",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = "Shuffle",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = Color.White,
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Rounded.Shuffle,
+                                contentDescription = "Shuffle",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                text = "Shuffle",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                ),
+                                color = Color.White,
+                            )
                         }
                     }
                 }
@@ -732,21 +861,18 @@ private fun CategoryDetailView(
         }
 
         if (loading) {
-            item {
+            item(key = "detail_loading") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(200.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(36.dp),
-                    )
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             }
         } else if (error != null) {
-            item {
+            item(key = "detail_error") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -761,7 +887,6 @@ private fun CategoryDetailView(
                 }
             }
         } else {
-            // Render Shelves
             shelves?.forEach { shelf ->
                 item(key = "shelf_${shelf.title}") {
                     Column(
@@ -825,6 +950,7 @@ private fun CategoryDetailView(
 @Composable
 private fun CategoryTrackCard(
     item: ShelfItem,
+    rankNumber: Int? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -845,6 +971,23 @@ private fun CategoryTrackCard(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+            if (rankNumber != null) {
+                Box(
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.75f))
+                        .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "$rankNumber",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+                        color = Color.White,
+                    )
+                }
+            }
         }
         Spacer(Modifier.height(6.dp))
         Text(
