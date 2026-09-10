@@ -15,12 +15,12 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white&labelColor=0d1117)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white&labelColor=0d1117)](https://developer.android.com/jetpack/compose)
 [![Media3](https://img.shields.io/badge/Media3-ExoPlayer-E65100?style=for-the-badge&logo=googleplay&logoColor=white&labelColor=0d1117)](https://developer.android.com/media/media3)
-[![Latest Release](https://img.shields.io/badge/Release-v2.0.0-22c55e?style=for-the-badge&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Flux-Music/releases/latest)
+[![Latest Release](https://img.shields.io/badge/Release-v2.0.0-22c55e?style=for-the-badge&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest)
 [![License](https://img.shields.io/badge/License-GPLv3-ef4444?style=for-the-badge&labelColor=0d1117)](LICENSE)
 
 <br/>
 
-[📥 Download Latest APK](https://github.com/Kanaiya-rgb/Flux-Music/releases/latest) • [✨ What's New](#-whats-new-in-v200) • [🚀 Features](#-features) • [🔧 Build](#-build-from-source)
+[📥 Download Latest APK](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest) • [✨ What's New](#-whats-new-in-v200) • [🚀 Features](#-features) • [🔧 Build](#-build-from-source)
 
 ---
 
@@ -68,14 +68,15 @@
 ## 📦 Download & Installation
 
 ### Option 1: Direct GitHub Release (Recommended)
-Download the latest APK from the [Releases Page](https://github.com/Kanaiya-rgb/Flux-Music/releases/latest):
-* **[Flux-Music-v1.8.0.apk](https://github.com/Kanaiya-rgb/Flux-Music/releases/download/v1.8.0/Flux-Music-v1.8.0.apk)**
+Download the latest APK from the [Releases Page](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest):
+* **[DhvaniMusic-v2.0.0.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.0.0/DhvaniMusic-v2.0.0.apk)** (v2.0.0 — Pre-built APK)
+* Also located in repository: [`apk/DhvaniMusic-v2.0.0.apk`](apk/DhvaniMusic-v2.0.0.apk)
 
 ### Installation Steps
-1. Download `Flux-Music-v1.8.0.apk`.
+1. Download `DhvaniMusic-v2.0.0.apk`.
 2. Open your Android device **Settings → Security → Install unknown apps** and enable permission for your browser / file manager.
 3. Tap the downloaded APK to install.
-4. Open **Flux Music** and enjoy ad-free music!
+4. Open **Dhvani Music** and enjoy ad-free music!
 
 ---
 
@@ -94,8 +95,8 @@ Download the latest APK from the [Releases Page](https://github.com/Kanaiya-rgb/
 
 ```bash
 # Clone the repository
-git clone https://github.com/Kanaiya-rgb/Flux-Music.git
-cd Flux-Music
+git clone https://github.com/Kanaiya-rgb/Dhvani-Music.git
+cd Dhvani-Music
 
 # Build Release APK
 # On Windows (PowerShell):
@@ -134,6 +135,6 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 
 Made with ❤️ by [Kanaiya-rgb](https://github.com/Kanaiya-rgb)
 
-**Flux Music Community** • [GitHub Issues](https://github.com/Kanaiya-rgb/Flux-Music/issues) • [Releases](https://github.com/Kanaiya-rgb/Flux-Music/releases)
+**Flux Music Community** • [GitHub Issues](https://github.com/Kanaiya-rgb/Dhvani-Music/issues) • [Releases](https://github.com/Kanaiya-rgb/Dhvani-Music/releases)
 
 </div>
