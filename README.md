@@ -8,7 +8,8 @@
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white&labelColor=0d1117)](https://developer.android.com/jetpack/compose)
 [![Material 3](https://img.shields.io/badge/Material_3-Material_You-E879F9?style=for-the-badge&logo=google&logoColor=white&labelColor=0d1117)](https://m3.material.io)
 [![Media3](https://img.shields.io/badge/Media3-ExoPlayer-E65100?style=for-the-badge&logo=googleplay&logoColor=white&labelColor=0d1117)](https://developer.android.com/media/media3)
-[![Ko-fi](https://img.shields.io/badge/Support_on-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white&labelColor=0d1117)](https://ko-fi.com/kanaiya_rgb)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white&labelColor=0d1117)](https://ko-fi.com/kanaiya_rgb)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black&labelColor=0d1117)](https://buymeacoffee.com/kanaiya_rgb)
 [![License](https://img.shields.io/badge/License-GPLv3-ef4444?style=for-the-badge&labelColor=0d1117)](LICENSE)
 
 <br/>
@@ -188,13 +189,18 @@ Dhvani Music is completely free, open-source, and ad-free. If you love using the
 
 <div align="center">
 
-[![Support me on Ko-fi](https://img.shields.io/badge/Support%20me%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/kanaiya_rgb)
-
-<br/>
-
 <a href='https://ko-fi.com/kanaiya_rgb' target='_blank'>
-  <img height='40' style='border:0px;height:40px;' src='https://storage.ko-fi.com/cdn/kofi3.png?v=3' border='0' alt='Buy Me a Coffee at ko-fi.com' />
+  <img height='40' style='border:0px;height:40px;margin-right:10px;' src='https://storage.ko-fi.com/cdn/kofi3.png?v=3' border='0' alt='Buy Me a Coffee at ko-fi.com' />
 </a>
+<a href='https://buymeacoffee.com/kanaiya_rgb' target='_blank'>
+  <img height='40' style='border:0px;height:40px;' src='https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png' border='0' alt='Buy Me A Coffee' />
+</a>
+
+<br/><br/>
+
+[![Support me on Ko-fi](https://img.shields.io/badge/Support%20me%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/kanaiya_rgb)
+&nbsp;
+[![Support me on Buy Me a Coffee](https://img.shields.io/badge/Support%20me%20on-Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/kanaiya_rgb)
 
 </div>
 
