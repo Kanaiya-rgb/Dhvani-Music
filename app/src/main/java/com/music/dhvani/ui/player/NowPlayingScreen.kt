@@ -25,6 +25,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -190,6 +191,7 @@ import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.settings.AudioQuality
 import com.music.dhvani.data.settings.SliderStyle
 import com.music.dhvani.data.settings.LyricsPosition
+import com.music.dhvani.data.settings.LyricsAnimationStyle
 import com.music.dhvani.ui.components.WavySlider
 import com.music.dhvani.ui.components.SquigglySlider
 import com.music.dhvani.ui.components.NeonGlowSlider
@@ -2691,20 +2693,12 @@ private fun SweptLyricLine(
     glowAlpha: Float = 0f,
     glowRadius: Dp = GLOW_RADIUS,
     glowRoom: Dp = 0.dp,
+    lineEndMs: Long = line.endMs,
 ) {
     var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
 
-    // Carried by every copy: identical insets keep them laying out identically,
-    // and the inset is what gives the blurred copy's layer somewhere to put the
-    // halo. Sits inside the blur and outside the draw lambdas, so text-layout
-    // coordinates and draw coordinates still agree.
-    //
-    // Off unless asked for. Only the full panel can afford it — it takes the
-    // space back off its own row spacing and content padding. Handed to the
-    // one-line strip above the scrubber, where there is no glow to make room
-    // for and nothing paying the space back, it just left the line sitting in
-    // a pocket of air with the chevron pushed off it.
     val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
 
     val sweep = Modifier.drawWithContent {
         val position = clock.longValue
@@ -2713,10 +2707,10 @@ private fun SweptLyricLine(
             // above and below the playing one — which are in this same state
             // for minutes at a time — cost a comparison per frame rather than
             // a walk of their words.
-            position >= line.endMs -> drawContent()
+            position >= effectiveEnd && effectiveEnd > line.timeMs -> drawContent()
             // Not started: nothing lit, the dim copy is the whole of it.
             position <= line.timeMs -> Unit
-            else -> layout?.let { sweepTo(it, line.revealedChars(position)) }
+            else -> layout?.let { sweepTo(it, line.revealedChars(position, effectiveEnd)) }
         }
     }
 
@@ -2741,7 +2735,7 @@ private fun SweptLyricLine(
                     // Read in the layer block rather than in composition: the
                     // intensity changes every frame, and this way only the
                     // layer's alpha is recomputed, not the line.
-                    .graphicsLayer { alpha = glowAlpha * line.glowIntensity(clock.longValue) }
+                    .graphicsLayer { alpha = glowAlpha * line.glowIntensity(clock.longValue, effectiveEnd) }
                     .blur(glowRadius, BlurredEdgeTreatment.Unbounded)
                     .then(room)
                     // The band is masked with a DstIn gradient, which needs a
@@ -2758,8 +2752,8 @@ private fun SweptLyricLine(
                         val position = clock.longValue
                         glowAt(
                             layout = measured,
-                            revealedChars = line.revealedChars(position),
-                            intensity = line.glowIntensity(position),
+                            revealedChars = line.revealedChars(position, effectiveEnd),
+                            intensity = line.glowIntensity(position, effectiveEnd),
                         )
                     },
             )
@@ -2933,13 +2927,17 @@ private fun LyricsPanel(
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val lyricsPosition by AppSettings.lyricsPosition.collectAsStateWithLifecycle()
+    val lyricsAnimationStyle by AppSettings.lyricsAnimationStyle.collectAsStateWithLifecycle()
     val lyricsTextSize by AppSettings.lyricsTextSize.collectAsStateWithLifecycle()
     val lyricsLineSpacing by AppSettings.lyricsLineSpacing.collectAsStateWithLifecycle()
     val lyricsGlowEffect by AppSettings.lyricsGlowEffect.collectAsStateWithLifecycle()
     val lyricsAutoScroll by AppSettings.lyricsAutoScroll.collectAsStateWithLifecycle()
     val lyricsClickSeek by AppSettings.lyricsClickSeek.collectAsStateWithLifecycle()
 
-    val glowing = lyricsGlowEffect && !reduceAnimation && !reduceDynamicBlur &&
+    val isSlideStyle = lyricsAnimationStyle == LyricsAnimationStyle.SLIDE && !reduceAnimation
+    val isAppleStyle = lyricsAnimationStyle == LyricsAnimationStyle.APPLE && !reduceAnimation
+    val isGlowStyle = (lyricsAnimationStyle == LyricsAnimationStyle.GLOW || lyricsAnimationStyle == LyricsAnimationStyle.APPLE || lyricsGlowEffect) && lyricsAnimationStyle != LyricsAnimationStyle.NONE
+    val glowing = isGlowStyle && !reduceAnimation && !reduceDynamicBlur &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     LaunchedEffect(listState) {
@@ -3020,9 +3018,11 @@ private fun LyricsPanel(
                     isPlain -> 0.92f
                     browsing -> 1f
                     isActive -> 1f
+                    lyricsAnimationStyle == LyricsAnimationStyle.NONE -> if (distance == 1) 0.45f else 0.25f
                     offset < 0 -> (0.55f - distance * 0.05f).coerceAtLeast(0.30f)
                     else -> (0.45f - distance * 0.09f).coerceAtLeast(0.12f)
                 },
+                animationSpec = if (lyricsAnimationStyle == LyricsAnimationStyle.NONE) snap() else tween(durationMillis = 350),
                 label = "lyricAlpha",
             )
             if (line.isGap) {
@@ -3052,8 +3052,17 @@ private fun LyricsPanel(
                         LyricsPosition.RIGHT -> TextAlign.End
                     },
                 )
+                val targetScale = when {
+                    lyricsAnimationStyle == LyricsAnimationStyle.NONE -> 1f
+                    isAppleStyle -> if (isActive) 1.07f else 0.98f
+                    isActive -> 1.04f
+                    else -> 1f
+                }
                 val scale by animateFloatAsState(
-                    targetValue = if (isActive) 1.04f else 1f,
+                    targetValue = targetScale,
+                    animationSpec = if (isAppleStyle) spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
+                                    else if (lyricsAnimationStyle == LyricsAnimationStyle.NONE) snap()
+                                    else tween(durationMillis = 400),
                     label = "lyricScale",
                 )
                 val glow by animateFloatAsState(
@@ -3061,12 +3070,43 @@ private fun LyricsPanel(
                     animationSpec = tween(durationMillis = 420),
                     label = "lyricGlow",
                 )
+                val slideOffsetX by animateFloatAsState(
+                    targetValue = if (!isSlideStyle || isActive) 0f else {
+                        when (lyricsPosition) {
+                            LyricsPosition.LEFT -> 24f
+                            LyricsPosition.RIGHT -> -24f
+                            LyricsPosition.CENTER -> if (offset % 2 == 0) 18f else -18f
+                        }
+                    },
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "lyricSlideX",
+                )
+                val appleOffsetY by animateFloatAsState(
+                    targetValue = if (isAppleStyle && !isActive) 3f else 0f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
+                    label = "lyricAppleY",
+                )
+                val inactiveBlur = if (isAppleStyle && !isActive && !browsing && !reduceDynamicBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    (distance * 1.5f).coerceAtMost(5f).dp
+                } else {
+                    0.dp
+                }
                 val shape = Modifier
                     .fillMaxWidth()
                     .padding(vertical = (lyricsLineSpacing / 2).dp)
+                    .then(
+                        if (inactiveBlur > 0.dp) Modifier.blur(inactiveBlur, BlurredEdgeTreatment.Unbounded)
+                        else Modifier
+                    )
                     .graphicsLayer {
                         scaleX = scale
                         scaleY = scale
+                        if (isSlideStyle) {
+                            translationX = slideOffsetX.dp.toPx()
+                        }
+                        if (isAppleStyle) {
+                            translationY = appleOffsetY.dp.toPx()
+                        }
                         transformOrigin = when (lyricsPosition) {
                             LyricsPosition.LEFT -> TransformOrigin(0f, 0.5f)
                             LyricsPosition.CENTER -> TransformOrigin(0.5f, 0.5f)
@@ -3082,6 +3122,25 @@ private fun LyricsPanel(
                             Modifier
                         }
                     )
+
+                val nextLine = lines.getOrNull(index + 1)
+                val lineEndMs = if (line.hasKnownEnd) {
+                    line.endMs
+                } else {
+                    val nextStart = nextLine?.timeMs
+                    if (nextStart != null && nextStart > line.timeMs) {
+                        val gap = nextStart - line.timeMs
+                        if (gap > 6_000L) {
+                            val estDuration = (line.text.length * 160L).coerceIn(2_500L, 7_000L)
+                            line.timeMs + minOf(estDuration, gap - 500L)
+                        } else {
+                            nextStart - 200L
+                        }
+                    } else {
+                        line.timeMs + 4_000L
+                    }
+                }
+
                 // Lead and answering vocal are one row: they are one line of
                 // the song, they scale and dim together, and tapping either
                 // seeks to the same place.
@@ -3102,6 +3161,8 @@ private fun LyricsPanel(
                         glowAlpha = glow,
                         room = GLOW_ROOM,
                         modifier = Modifier.fillMaxWidth(),
+                        animationStyle = lyricsAnimationStyle,
+                        lineEndMs = lineEndMs,
                     )
                     line.background?.let { backing ->
                         PanelVoice(
@@ -3126,6 +3187,8 @@ private fun LyricsPanel(
                                 // to each other than to the rows either side.
                                 .padding(start = GLOW_ROOM, end = GLOW_ROOM, bottom = GLOW_ROOM)
                                 .graphicsLayer { alpha = BACKING_ALPHA },
+                            animationStyle = lyricsAnimationStyle,
+                            lineEndMs = lineEndMs,
                         )
                     }
                 }
@@ -3154,8 +3217,16 @@ private fun PanelVoice(
     glowAlpha: Float,
     room: Dp,
     modifier: Modifier = Modifier,
+    animationStyle: LyricsAnimationStyle = LyricsAnimationStyle.FADE,
+    lineEndMs: Long = line.endMs,
 ) {
-    if (line.isWordSynced && !browsing) {
+    val shouldSweep = when (animationStyle) {
+        LyricsAnimationStyle.NONE -> false
+        LyricsAnimationStyle.KARAOKE, LyricsAnimationStyle.APPLE -> !browsing && (line.isWordSynced || isActive)
+        LyricsAnimationStyle.GLOW, LyricsAnimationStyle.SLIDE, LyricsAnimationStyle.FADE -> !browsing && line.isWordSynced
+    }
+
+    if (shouldSweep) {
         // Every word-synced line goes through the sweep, not just the playing
         // one — a line that has already been sung is fully revealed and one
         // still to come is not, which falls out of the same arithmetic.
@@ -3177,14 +3248,35 @@ private fun PanelVoice(
             modifier = modifier,
             glowAlpha = glowAlpha,
             glowRoom = room,
+            lineEndMs = lineEndMs,
         )
     } else {
-        Text(
-            text = line.text,
-            style = style,
-            color = Color.White,
-            modifier = modifier.padding(room),
-        )
+        if (glowAlpha > 0.01f && isActive && !browsing) {
+            Box(modifier) {
+                Text(
+                    text = line.text,
+                    style = style,
+                    color = Color.White,
+                    modifier = Modifier
+                        .graphicsLayer { alpha = glowAlpha * 0.75f }
+                        .blur(GLOW_RADIUS, BlurredEdgeTreatment.Unbounded)
+                        .then(if (room > 0.dp) Modifier.padding(room) else Modifier),
+                )
+                Text(
+                    text = line.text,
+                    style = style,
+                    color = Color.White,
+                    modifier = modifier.padding(room),
+                )
+            }
+        } else {
+            Text(
+                text = line.text,
+                style = style,
+                color = Color.White,
+                modifier = modifier.padding(room),
+            )
+        }
     }
 }
 
@@ -3262,6 +3354,7 @@ private fun CurrentLyricLine(
         return
     }
 
+    val lyricsAnimationStyle by AppSettings.lyricsAnimationStyle.collectAsStateWithLifecycle()
     val clock = rememberLyricClock(positionMs, isPlaying, lyricsOffsetMs)
 
     val index by remember(lines, clock) {
@@ -3319,16 +3412,25 @@ private fun CurrentLyricLine(
             )
             Spacer(Modifier.width(6.dp))
         }
-        val swept = current?.takeIf { !instrumental && it.isWordSynced }
-        if (swept != null) {
+        val nextLine = lines.getOrNull(index + 1)
+        val endMs = if (current?.hasKnownEnd == true) current.endMs else nextLine?.timeMs ?: (current?.timeMs?.plus(4_000L) ?: 0L)
+        val shouldSweepCurrent = !instrumental && current != null && (
+            current.isWordSynced ||
+            lyricsAnimationStyle == LyricsAnimationStyle.KARAOKE ||
+            lyricsAnimationStyle == LyricsAnimationStyle.APPLE
+        ) && lyricsAnimationStyle != LyricsAnimationStyle.NONE
+
+        val lyric = current
+        if (shouldSweepCurrent && lyric != null) {
             SweptLyricLine(
-                line = swept,
+                line = lyric,
                 clock = clock,
                 style = MaterialTheme.typography.titleMedium,
                 dimAlpha = UNSUNG_ALPHA_STRIP,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
+                lineEndMs = endMs,
             )
         } else {
             Text(

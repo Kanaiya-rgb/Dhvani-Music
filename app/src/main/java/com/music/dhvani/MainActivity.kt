@@ -15,10 +15,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,6 +42,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsTopHeight
@@ -2010,15 +2015,19 @@ private fun DhvaniApp(
                     },
                 )
 
+                val hideBottomBar = showSettings || showAppearanceSettings || showSources || showAccountScrobbling || showDiscord || showListenTogether
+
                 // Drawn before the bars so their own glass reads on top of it.
-                BottomFadeScrim(
-                    withMiniPlayer = player.song != null && !playerDocked,
-                    // Not the wash: by the foot of the screen the page has finished
-                    // easing out of it and into this, so this is what is actually
-                    // under the tab bar.
-                    pageColor = if (isDetailVisible) detailPalette.background else MaterialTheme.colorScheme.background,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
+                if (!hideBottomBar || (player.song != null && !playerDocked)) {
+                    BottomFadeScrim(
+                        withMiniPlayer = player.song != null && !playerDocked,
+                        // Not the wash: by the foot of the screen the page has finished
+                        // easing out of it and into this, so this is what is actually
+                        // under the tab bar.
+                        pageColor = if (isDetailVisible) detailPalette.background else MaterialTheme.colorScheme.background,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
 
                 Column(
                     modifier = Modifier
@@ -2048,34 +2057,51 @@ private fun DhvaniApp(
                             },
                             onNext = { controller?.seekToNextMediaItem() },
                             onExpand = { showNowPlaying = true },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (hideBottomBar) Modifier
+                                        .navigationBarsPadding()
+                                        .padding(bottom = 12.dp)
+                                    else Modifier
+                                ),
                             position = player.position,
                             durationMs = player.durationMs,
                         )
                     }
-                    FloatingBottomBar(
-                        tabs = tabs,
-                        selectedIndex = selectedTab,
-                        hazeState = hazeState,
-                        onTabSelected = { index ->
-                            // Re-tapping the search tab while already on it focuses the
-                            // input field and opens the keyboard rather than resetting.
-                            if (index == TAB_SEARCH && selectedTab == TAB_SEARCH) {
-                                searchFocusTrigger++
-                                return@FloatingBottomBar
-                            }
-                            if (index != TAB_SEARCH) {
-                                searchFocusTrigger = 0
-                            }
-                            viewModel.clearDetail()
-                            showSettings = false
-                            showAccountScrobbling = false
-                            showReplay = false
-                            showHistory = false
-                            libraryShowAll = null
-                            selectedTab = index
-                        },
-                    )
+                    AnimatedVisibility(
+                        visible = !hideBottomBar,
+                        enter = slideInVertically(tween(durationMillis = 280)) { it } + fadeIn(tween(durationMillis = 200)),
+                        exit = slideOutVertically(tween(durationMillis = 240)) { it } + fadeOut(tween(durationMillis = 180)),
+                    ) {
+                        FloatingBottomBar(
+                            tabs = tabs,
+                            selectedIndex = selectedTab,
+                            hazeState = hazeState,
+                            onTabSelected = { index ->
+                                // Re-tapping the search tab while already on it focuses the
+                                // input field and opens the keyboard rather than resetting.
+                                if (index == TAB_SEARCH && selectedTab == TAB_SEARCH) {
+                                    searchFocusTrigger++
+                                    return@FloatingBottomBar
+                                }
+                                if (index != TAB_SEARCH) {
+                                    searchFocusTrigger = 0
+                                }
+                                viewModel.clearDetail()
+                                showSettings = false
+                                showAppearanceSettings = false
+                                showSources = false
+                                showAccountScrobbling = false
+                                showDiscord = false
+                                showListenTogether = false
+                                showReplay = false
+                                showHistory = false
+                                libraryShowAll = null
+                                selectedTab = index
+                            },
+                        )
+                    }
                 }
             }
 

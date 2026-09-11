@@ -1,11 +1,15 @@
 package com.music.dhvani.ui.screens
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +39,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.NorthWest
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -194,18 +199,25 @@ fun SearchScreen(
                     },
                     onFill = onQueryChange,
                 )
-                // When search bar is clicked/focused or when there are no results yet, show recent searches
-                (isSearchFocused && query.isBlank()) || results == null -> if (history.isEmpty()) {
-                    item { MessageState(stringResource(R.string.search_empty)) }
-                } else {
-                    recentSearches(
-                        history = history,
-                        onClick = { term ->
-                            onHistoryClick(term)
+                // When search bar is clicked/focused or when there are no results yet, show recent searches + quick explore
+                (isSearchFocused && query.isBlank()) || results == null -> {
+                    if (history.isNotEmpty()) {
+                        recentSearches(
+                            history = history,
+                            onClick = { term ->
+                                onHistoryClick(term)
+                                focusManager.clearFocus()
+                            },
+                            onRemove = onHistoryRemove,
+                            onClear = onHistoryClear,
+                        )
+                    }
+                    quickExploreSuggestions(
+                        onTagClick = { tag ->
+                            onQueryChange(tag)
+                            onSuggestionClick(tag)
                             focusManager.clearFocus()
                         },
-                        onRemove = onHistoryRemove,
-                        onClear = onHistoryClear,
                     )
                 }
                 results is UiState.Loading -> songListSkeleton(circular = filter == SearchFilter.ARTISTS)
@@ -408,6 +420,95 @@ private fun RecentSearchRow(term: String, onClick: () -> Unit, onRemove: () -> U
     }
 }
 
+private data class QuickSearchTag(
+    val emoji: String,
+    val title: String,
+    val gradient: List<Color>,
+)
+
+private val QuickTags = listOf(
+    QuickSearchTag("🔥", "Bollywood Hits", listOf(Color(0xFFFF512F), Color(0xFFDD2476))),
+    QuickSearchTag("💖", "Arijit Singh", listOf(Color(0xFFE91E63), Color(0xFFFF5252))),
+    QuickSearchTag("🎧", "Desi Hip Hop", listOf(Color(0xFF1F1C18), Color(0xFF8E0E00))),
+    QuickSearchTag("☕", "Chill Lo-Fi", listOf(Color(0xFF007991), Color(0xFF78FFD6))),
+    QuickSearchTag("🕉️", "Bhakti & Aarti", listOf(Color(0xFFFF6A00), Color(0xFFEE0979))),
+    QuickSearchTag("⚡", "Punjabi Bops", listOf(Color(0xFFF7971E), Color(0xFFFFD200))),
+    QuickSearchTag("🌿", "Indian Indie", listOf(Color(0xFF134E5E), Color(0xFF71B280))),
+    QuickSearchTag("🏋️", "Workout Pump", listOf(Color(0xFFB71C1C), Color(0xFFD32F2F))),
+    QuickSearchTag("🌙", "Late Night", listOf(Color(0xFF2C3E50), Color(0xFF4CA1AF))),
+    QuickSearchTag("✨", "90s Hits", listOf(Color(0xFF8A2387), Color(0xFFE94057))),
+)
+
+@OptIn(ExperimentalLayoutApi::class)
+private fun LazyListScope.quickExploreSuggestions(onTagClick: (String) -> Unit) {
+    item(key = "quick:header") {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 20.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Rounded.TrendingUp,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.quick_explore),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
+    }
+    item(key = "quick:tags") {
+        FlowRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = PAGE_GUTTER),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            QuickTags.forEach { tag ->
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    tag.gradient[0].copy(alpha = 0.22f),
+                                    tag.gradient[1].copy(alpha = 0.12f),
+                                ),
+                            ),
+                        )
+                        .border(
+                            1.dp,
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    tag.gradient[0].copy(alpha = 0.5f),
+                                    tag.gradient[1].copy(alpha = 0.25f),
+                                ),
+                            ),
+                            CircleShape,
+                        )
+                        .clickable { onTagClick(tag.title) }
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(text = tag.emoji, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = tag.title,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BrowseRow(item: BrowseItem, onClick: () -> Unit, onLongPress: (() -> Unit)? = null) {
@@ -519,23 +620,25 @@ private fun SearchField(
     modifier: Modifier = Modifier,
 ) {
     val focusManager = LocalFocusManager.current
+    var isFocused by remember { mutableStateOf(false) }
     // Both ways of saying "search this" do the same two things, so they're
     // written once here rather than twice.
     val submit = {
         onSubmit()
         focusManager.clearFocus()
     }
+    val animatedBorderColor by animateColorAsState(
+        targetValue = if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)
+        else Color.White.copy(alpha = 0.08f),
+        label = "search_border",
+    )
     Row(
         modifier = modifier
             .fillMaxWidth()
-            // Fixed height prevents the row from growing when text is entered
-            .height(48.dp)
+            .height(52.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-            .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
-            // Asymmetric: the magnifier is a button now and wants a real touch
-            // target, so it's given the room by pulling the field's own start
-            // padding in rather than by pushing the glyph and the text along.
-            .padding(start = 10.dp, end = 12.dp),
+            .border(1.2.dp, animatedBorderColor, CircleShape)
+            .padding(start = 12.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The search button. It reads as one — a magnifier at the head of a
@@ -575,6 +678,7 @@ private fun SearchField(
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
                     .onFocusChanged { state ->
+                        isFocused = state.isFocused
                         onFocusChanged(state.isFocused)
                     },
             )

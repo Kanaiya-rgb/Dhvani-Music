@@ -56,6 +56,7 @@
     <string name="albums">एल्बम</string>
     <string name="no_album_metadata">इनमें से कोई भी ट्रैक यह नहीं बताता कि वह किस एल्बम का है।</string>
     <string name="search_empty">YouTube Music पर लाखों गाने खोजें।</string>
+    <string name="quick_explore">ट्रेंडिंग और मूड्स</string>
     <string name="recent_searches">हाल की खोजें</string>
     <string name="clear">साफ़ करें</string>
     <string name="search_hint">कलाकार, गाने, लिरिक्स और बहुत कुछ</string>

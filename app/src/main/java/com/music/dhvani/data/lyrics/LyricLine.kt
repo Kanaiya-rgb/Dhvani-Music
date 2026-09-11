@@ -80,13 +80,19 @@ data class LyricLine(
      * words is credited to the gap between them: it fills as the singer moves
      * on rather than jumping ahead of the next word's first letter.
      */
-    fun revealedChars(positionMs: Long): Float {
+    fun revealedChars(positionMs: Long, lineEndMs: Long = endMs): Float {
         if (timingSource != null) {
             val srcLen = timingSource.text.length.coerceAtLeast(1).toFloat()
-            val ratio = (timingSource.revealedChars(positionMs) / srcLen).coerceIn(0f, 1f)
+            val ratio = (timingSource.revealedChars(positionMs, lineEndMs) / srcLen).coerceIn(0f, 1f)
             return ratio * text.length.toFloat()
         }
-        if (words.isEmpty()) return if (positionMs >= timeMs) text.length.toFloat() else 0f
+        if (words.isEmpty()) {
+            if (positionMs <= timeMs) return 0f
+            val effectiveEnd = if (lineEndMs > timeMs) lineEndMs else sungUntilMs ?: timeMs
+            if (effectiveEnd <= timeMs || positionMs >= effectiveEnd) return text.length.toFloat()
+            val fraction = ((positionMs - timeMs).toFloat() / (effectiveEnd - timeMs)).coerceIn(0f, 1f)
+            return fraction * text.length.toFloat()
+        }
         var offset = 0
         words.forEachIndexed { index, word ->
             // Where this word sits in [text]. Built by walking rather than
@@ -128,8 +134,20 @@ data class LyricLine(
      * Zero between words and after the last one, which is what keeps the
      * pauses dark and costs nothing to draw.
      */
-    fun glowIntensity(positionMs: Long): Float {
-        if (timingSource != null) return timingSource.glowIntensity(positionMs)
+    fun glowIntensity(positionMs: Long, lineEndMs: Long = endMs): Float {
+        if (timingSource != null) return timingSource.glowIntensity(positionMs, lineEndMs)
+        if (words.isEmpty()) {
+            val effectiveEnd = if (lineEndMs > timeMs) lineEndMs else sungUntilMs ?: timeMs
+            if (positionMs !in timeMs..effectiveEnd || effectiveEnd <= timeMs) return 0f
+            val held = (effectiveEnd - timeMs).coerceAtLeast(1L)
+            val through = ((positionMs - timeMs).toFloat() / held).coerceIn(0f, 1f)
+            val envelope = when {
+                through < GLOW_ATTACK -> through / GLOW_ATTACK
+                through > 1f - GLOW_RELEASE -> (1f - through) / GLOW_RELEASE
+                else -> 1f
+            }
+            return (GLOW_FLOOR + (1f - GLOW_FLOOR) * 0.7f) * envelope.coerceIn(0f, 1f)
+        }
         val word = words.firstOrNull { positionMs < it.endMs } ?: return 0f
         if (positionMs < word.startMs) return 0f
 

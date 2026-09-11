@@ -56,6 +56,7 @@
     <string name="albums">Albums</string>
     <string name="no_album_metadata">None of these tracks say what album they are from.</string>
     <string name="search_empty">Search millions of songs on YouTube Music.</string>
+    <string name="quick_explore">Trending &amp; Moods</string>
     <string name="recent_searches">Recent searches</string>
     <string name="clear">Clear</string>
     <string name="search_hint">Artists, Songs, Lyrics and More</string>

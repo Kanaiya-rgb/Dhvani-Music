@@ -1438,6 +1438,7 @@ private fun MeldSettingsGroup(
 }
 
 private fun openSupportedLinks(context: Context) {
+    var launched = false
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         try {
             val intent = Intent(
@@ -1446,21 +1447,14 @@ private fun openSupportedLinks(context: Context) {
             ).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(intent)
-        } catch (_: Exception) {
-            try {
-                val intent = Intent(
-                    AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    "package:${context.packageName}".toUri(),
-                ).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
+            if (intent.resolveActivity(context.packageManager) != null) {
                 context.startActivity(intent)
-            } catch (_: Exception) {
-                Toast.makeText(context, "Could not open settings", Toast.LENGTH_SHORT).show()
+                launched = true
             }
-        }
-    } else {
+        } catch (_: Exception) {}
+    }
+
+    if (!launched) {
         try {
             val intent = Intent(
                 AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -1469,9 +1463,22 @@ private fun openSupportedLinks(context: Context) {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-        } catch (_: Exception) {
-            Toast.makeText(context, "Could not open settings", Toast.LENGTH_SHORT).show()
-        }
+            launched = true
+        } catch (_: Exception) {}
+    }
+
+    if (!launched) {
+        try {
+            val intent = Intent(AndroidSettings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            launched = true
+        } catch (_: Exception) {}
+    }
+
+    if (!launched) {
+        Toast.makeText(context, "Could not open settings", Toast.LENGTH_SHORT).show()
     }
 }
 
