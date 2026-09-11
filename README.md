@@ -8,11 +8,12 @@
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white&labelColor=0d1117)](https://developer.android.com/jetpack/compose)
 [![Material 3](https://img.shields.io/badge/Material_3-Material_You-E879F9?style=for-the-badge&logo=google&logoColor=white&labelColor=0d1117)](https://m3.material.io)
 [![Media3](https://img.shields.io/badge/Media3-ExoPlayer-E65100?style=for-the-badge&logo=googleplay&logoColor=white&labelColor=0d1117)](https://developer.android.com/media/media3)
+[![Ko-fi](https://img.shields.io/badge/Support_on-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white&labelColor=0d1117)](https://ko-fi.com/kanaiya_rgb)
 [![License](https://img.shields.io/badge/License-GPLv3-ef4444?style=for-the-badge&labelColor=0d1117)](LICENSE)
 
 <br/>
 
-[📥 Download APK](#-download--installation) · [✨ Features](#-features) · [🎧 Categories](#-category--mood-explorer) · [⚙️ Setup](#-setup--optimization) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements) · [⚖️ Disclaimer](#-disclaimer--legal-notice) · [📜 License](#-license)
+[📥 Download APK](#-download--installation) · [✨ Features](#-features) · [🎧 Categories](#-category--mood-explorer) · [☕ Support](#-support) · [⚙️ Setup](#-setup--optimization) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements) · [⚖️ Disclaimer](#-disclaimer--legal-notice) · [📜 License](#-license)
 
 </div>
 
@@ -178,6 +179,24 @@ Dhvani Music communicates using standard read-only client protocols. It does not
 <br/>
 Yes. Audio playback is routed through the standard Android AudioManager and Media3 ExoPlayer stack, fully supporting Bluetooth codecs (AAC, LDAC, aptX, SBC), media key controls (play/pause/next/previous), and car audio head units.
 </details>
+
+---
+
+## ☕ Support the Project
+
+Dhvani Music is completely free, open-source, and ad-free. If you love using the app and want to support its active development, new features, and server upkeep, consider buying me a coffee:
+
+<div align="center">
+
+[![Support me on Ko-fi](https://img.shields.io/badge/Support%20me%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/kanaiya_rgb)
+
+<br/>
+
+<a href='https://ko-fi.com/kanaiya_rgb' target='_blank'>
+  <img height='40' style='border:0px;height:40px;' src='https://storage.ko-fi.com/cdn/kofi3.png?v=3' border='0' alt='Buy Me a Coffee at ko-fi.com' />
+</a>
+
+</div>
 
 ---
 
