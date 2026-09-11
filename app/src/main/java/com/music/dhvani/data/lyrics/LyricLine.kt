@@ -87,7 +87,7 @@ data class LyricLine(
             return ratio * text.length.toFloat()
         }
         if (words.isEmpty()) {
-            if (positionMs <= timeMs) return 0f
+            if (positionMs < timeMs) return 0f
             val effectiveEnd = if (lineEndMs > timeMs) lineEndMs else sungUntilMs ?: timeMs
             if (effectiveEnd <= timeMs || positionMs >= effectiveEnd) return text.length.toFloat()
             val fraction = ((positionMs - timeMs).toFloat() / (effectiveEnd - timeMs)).coerceIn(0f, 1f)
@@ -161,6 +161,31 @@ data class LyricLine(
         val pace = ((held - GLOW_FAST_MS).toFloat() / (GLOW_SLOW_MS - GLOW_FAST_MS))
             .coerceIn(0f, 1f)
         return (GLOW_FLOOR + (1f - GLOW_FLOOR) * pace) * envelope.coerceIn(0f, 1f)
+    }
+
+    /**
+     * Returns a copy of this line with syllable-estimated [LyricWord] timings
+     * if the line does not already carry word-level timings from a provider.
+     */
+    fun withEstimatedWords(lineEndMs: Long): LyricLine {
+        if (words.isNotEmpty() || text.isBlank()) return this
+        val effectiveEnd = if (lineEndMs > timeMs) lineEndMs else sungUntilMs ?: (timeMs + text.length * 80L)
+        val estimated = SyllableEstimator.estimateWords(text, timeMs, effectiveEnd)
+        return copy(words = estimated)
+    }
+}
+
+/**
+ * Enhances a list of [LyricLine]s with syllable and word estimation so every track
+ * supports live syllable/word-by-word sing-along, vocal tempo bounce, and word seeking.
+ */
+fun List<LyricLine>.withKaraokeSyllables(): List<LyricLine> {
+    if (isEmpty()) return this
+    if (any { it.words.isNotEmpty() }) return this
+    return mapIndexed { index, line ->
+        val nextStart = getOrNull(index + 1)?.timeMs
+        val effectiveEnd = nextStart ?: (line.timeMs + (line.text.length * 120L).coerceAtLeast(1_500L))
+        line.withEstimatedWords(effectiveEnd)
     }
 }
 

@@ -588,7 +588,10 @@ object StreamResolver {
             val playable = url ?: return null
             if (timed("$videoId WEB_REMIX probe") { probe(playable) } != Probe.OK) return null
             TrackLog.d(TAG, "resolved $videoId via authenticated WEB_REMIX @ ${picked.kbps}kbps")
-            Stream(playable, picked.kbps, picked.mimeType)
+            val lengthSeconds = response["videoDetails"]?.jsonObject
+                ?.get("lengthSeconds")?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
+            val durationMs = lengthSeconds * 1000L
+            Stream(playable, picked.kbps, picked.mimeType, durationMs)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -602,7 +605,7 @@ object StreamResolver {
      * be. Playback only ever needs the URL; a download needs the rest of it to
      * name the file and declare its type.
      */
-    class Stream(val url: String, val kbps: Int, val mimeType: String) {
+    class Stream(val url: String, val kbps: Int, val mimeType: String, val durationMs: Long = 0L) {
 
         /**
          * The container these bytes are actually in, which is not always what
@@ -894,7 +897,10 @@ object StreamResolver {
                         TrackLog.d(TAG, "resolved $videoId via ${client.clientName} @ ${picked.kbps}kbps")
                         served(client)
                         preferred = client
-                        return Stream(playable, picked.kbps, picked.mimeType)
+                        val lengthSeconds = response["videoDetails"]?.jsonObject
+                            ?.get("lengthSeconds")?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
+                        val durationMs = lengthSeconds * 1000L
+                        return Stream(playable, picked.kbps, picked.mimeType, durationMs)
                     }
                     // The client itself is being refused this track; don't
                     // spend another round trip on it for a while.
@@ -1706,10 +1712,12 @@ object StreamResolver {
             // was a second, redundant trip through that same machinery on every
             // fallback — real latency (and a second chance to hit whatever's
             // currently failing it) spent solving something already solved.
+            val durationMs = runCatching { extractor.length * 1000L }.getOrDefault(0L)
             Stream(
                 url = stream.content,
                 kbps = stream.averageBitrate,
                 mimeType = stream.mime,
+                durationMs = durationMs,
             )
         }
     }

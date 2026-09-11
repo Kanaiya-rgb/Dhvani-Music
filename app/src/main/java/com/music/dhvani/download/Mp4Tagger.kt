@@ -3,7 +3,7 @@ package com.music.dhvani.download
 import com.music.dhvani.data.lyrics.WORD_LYRICS_FIELD
 
 /**
- * Writes iTunes-style metadata atoms — title, artist, album, lyrics, cover —
+ * Writes iTunes-style metadata atoms â€” title, artist, album, lyrics, cover â€”
  * into an already-downloaded M4A/MP4 file, in place.
  *
  * There is no public Android API for this: [android.media.MediaMuxer] can
@@ -17,13 +17,13 @@ import com.music.dhvani.data.lyrics.WORD_LYRICS_FIELD
  * appended as the last child of `moov`. Growing `moov` shifts every byte
  * after it, which is only a problem because `stco`/`co64` (the sample tables
  * under `moov/trak/mdia/minf/stbl`) record *absolute* file offsets into
- * `mdat` — so every entry at or past the insertion point is bumped by the
+ * `mdat` â€” so every entry at or past the insertion point is bumped by the
  * inserted length. Nothing else in the file addresses itself by absolute
  * offset, so that one adjustment is sufficient regardless of whether `mdat`
  * sits before or after `moov`.
  *
- * Any layout this doesn't recognise — no `moov`, a box that doesn't fit its
- * parent — falls through to returning the input unchanged rather than
+ * Any layout this doesn't recognise â€” no `moov`, a box that doesn't fit its
+ * parent â€” falls through to returning the input unchanged rather than
  * guessing: a download that plays untagged is a smaller loss than one a
  * bad rewrite has corrupted.
  */
@@ -33,7 +33,7 @@ object Mp4Tagger {
         val offset: Int,
         val headerLen: Int,
         val size: Int,
-        /** The raw 32-bit size field, before size==0/1 are resolved — 0 means "to end of parent", which must be left alone rather than replaced with a real number. */
+        /** The raw 32-bit size field, before size==0/1 are resolved â€” 0 means "to end of parent", which must be left alone rather than replaced with a real number. */
         val rawSize32: Long,
         val type: String,
     ) {
@@ -52,21 +52,15 @@ object Mp4Tagger {
         lyrics: String?,
         cover: ByteArray?,
         coverIsPng: Boolean,
-        /** The A2 form, kept beside [lyrics] rather than instead of it — see [freeformItem]. */
+        /** The A2 form, kept beside [lyrics] rather than instead of it â€” see [freeformItem]. */
         wordLyrics: String? = null,
     ): ByteArray {
         val items = mutableListOf<ByteArray>()
-        // © is iTunes's own "copyright" prefix for the four text atoms
-        // below — not a copyright mark here, just the byte their readers key on.
-        if (title.isNotBlank()) items += textItem("©nam", title)
-        if (artist.isNotBlank()) items += textItem("©ART", artist)
-        if (!album.isNullOrBlank()) items += textItem("©alb", album)
-        // `©lyr` is a UTF-8 text atom like the three above, with no length limit
-        // and no objection to newlines, so LRC goes in as-is. There is a
-        // separate `Sync Lyrics`/`sylt`-style representation in some tools;
-        // nothing writes it, because `©lyr` holding LRC is what the players
-        // that show synced lyrics for an M4A actually read.
-        if (!lyrics.isNullOrBlank()) items += textItem("©lyr", lyrics)
+        // \u00A9 is iTunes's own "copyright" prefix for the four text atoms below.
+        if (title.isNotBlank()) items += textItem("\u00A9nam", title)
+        if (artist.isNotBlank()) items += textItem("\u00A9ART", artist)
+        if (!album.isNullOrBlank()) items += textItem("\u00A9alb", album)
+        if (!lyrics.isNullOrBlank()) items += textItem("\u00A9lyr", lyrics)
         if (!wordLyrics.isNullOrBlank()) items += freeformItem(WORD_LYRICS_FIELD, wordLyrics)
         if (cover != null && cover.isNotEmpty()) items += coverItem(cover, coverIsPng)
         if (items.isEmpty()) return bytes
@@ -85,7 +79,7 @@ object Mp4Tagger {
         val delta = udta.size
 
         val prefix = bytes.copyOf(insertAt)
-        // rawSize32 == 0 means "this box runs to the end of its parent" — still
+        // rawSize32 == 0 means "this box runs to the end of its parent" â€” still
         // true after the insertion, since nothing follows moov but this new
         // atom, so the field is left as-is rather than given a concrete value.
         if (moov.rawSize32 != 0L) {
@@ -191,7 +185,7 @@ object Mp4Tagger {
         writeU32(out, 0, (8 + payload.size).toLong())
         // ISO-8859-1, not ASCII: the iTunes item names below carry the 0xA9
         // "copyright" byte, which plain ASCII can't encode and would replace
-        // with '?' — corrupting the very atom type a player looks up by.
+        // with '?' â€” corrupting the very atom type a player looks up by.
         type.toByteArray(Charsets.ISO_8859_1).copyInto(out, 4)
         payload.copyInto(out, 8)
         return out
@@ -218,11 +212,11 @@ object Mp4Tagger {
      * for, named by a `mean`/`name` pair in front of the value.
      *
      * This is where the word timings go, and the reason they go somewhere of
-     * their own is the one [LrcWriter] documents: `©lyr` is read by every other
+     * their own is the one [LrcWriter] documents: `Â©lyr` is read by every other
      * player, and a reader without the A2 extension shows `<00:01.00>` rather
      * than skipping it. A player that doesn't know this item ignores it whole,
      * so the standard field stays clean and the timings still survive in the
-     * file — see [EmbeddedLyrics][com.music.dhvani.data.lyrics.EmbeddedLyrics],
+     * file â€” see [EmbeddedLyrics][com.music.dhvani.data.lyrics.EmbeddedLyrics],
      * which reads them back.
      */
     private fun freeformItem(name: String, text: String): ByteArray {

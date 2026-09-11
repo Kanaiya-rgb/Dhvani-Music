@@ -23,7 +23,7 @@ data class Song(
      */
     val setVideoId: String? = null,
     /**
-     * Queued by AutoPlay or by a station's own mix rather than asked for — the
+     * Queued by AutoPlay or by a station's own mix rather than asked for â€” the
      * player groups these under the AutoPlay heading and keeps them at the
      * bottom of the queue, below anything the user picked.
      */
@@ -35,12 +35,12 @@ data class Song(
     /**
      * Real filesystem path backing [localUri], when MediaStore exposes one.
      * Lets playback swap a content:// row for a raw file:// path on formats
-     * that need it — see [com.music.dhvani.playback.toMediaItem].
+     * that need it â€” see [com.music.dhvani.playback.toMediaItem].
      */
     val localPath: String? = null,
     /**
      * What a non-YouTube source says it can serve this recording at, as one of
-     * `LOSSLESS`, `HIGH` or `LOW` — null for every row that didn't come from
+     * `LOSSLESS`, `HIGH` or `LOW` â€” null for every row that didn't come from
      * one.
      *
      * Carried on the row rather than discovered at stream time because it is
@@ -62,7 +62,7 @@ data class Song(
  * full-screen player draws, and the source images run to about 1400px, so
  * asking for more is free and sharper. Down: a row thumbnail left at the
  * advertised size costs an order of magnitude more bytes than the square it
- * fills — 84kB against 7.8kB, measured on the same cover.
+ * fills â€” 84kB against 7.8kB, measured on the same cover.
  *
  * Video thumbnails carry no hint and are returned unchanged.
  */
@@ -71,12 +71,12 @@ fun Song.artworkAt(px: Int): String? = thumbnailUrl.artworkAt(px)
 /**
  * [Song.durationText] in milliseconds, or 0 when the row didn't state one.
  *
- * A row's duration is a display string — YouTube sends `"3:45"`, not a
- * number — and anything that has to *reason* about the length rather than draw
+ * A row's duration is a display string â€” YouTube sends `"3:45"`, not a
+ * number â€” and anything that has to *reason* about the length rather than draw
  * it needs it back as a quantity. Lyrics matching is the case that forced this
  * out into the open: LRCLIB keys its exact lookup on the track's length, and
  * falls back to whichever fuzzy hit is closest to it, so a duration of zero
- * doesn't miss — it silently matches the shortest edit of the song in the
+ * doesn't miss â€” it silently matches the shortest edit of the song in the
  * database and hands back timings for a different recording.
  *
  * Zero is the answer for anything that isn't a duration, including null, so a
@@ -96,13 +96,26 @@ fun String?.durationMillis(): Long {
     return (seconds * 1_000).coerceAtLeast(0L)
 }
 
+/** Formats milliseconds into a standard M:SS or H:MM:SS duration string. */
+fun formatDurationText(durationMs: Long): String {
+    val totalSeconds = (durationMs / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    val hours = minutes / 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes % 60, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
+    }
+}
+
 /** As [Song.artworkAt], for artwork that isn't a track's. */
 fun String?.artworkAt(px: Int): String? = this?.replace(SIZE_HINT, "w$px-h$px")
 
 private val SIZE_HINT = Regex("""w\d+-h\d+""")
 
 /**
- * Artwork for a list row — 52dp at most, so about 140px on a 3x screen.
+ * Artwork for a list row â€” 52dp at most, so about 140px on a 3x screen.
  * Rounded up, and one value for every row in the app rather than one per
  * row height, so they share a cache entry instead of each fetching its own.
  */
@@ -115,11 +128,11 @@ const val CARD_ART_PX = 480
 const val HEADER_ART_PX = 720
 
 /**
- * Artwork handed to the media session — the lock screen, the notification,
+ * Artwork handed to the media session â€” the lock screen, the notification,
  * Android Auto. Generous because those surfaces draw it large and take one
  * copy: unlike a list row, nothing goes back for a better one later.
  */
-const val NOTIFICATION_ART_PX = 544
+const val NOTIFICATION_ART_PX = 1024
 
 enum class BrowseType { ALBUM, ARTIST, PLAYLIST, OTHER }
 
@@ -164,11 +177,11 @@ data class Account(
 data class HomeShelf(
     val title: String,
     val items: List<ShelfItem>,
-    /** YouTube's "strapline" — the grey line Apple Music runs under a heading. */
+    /** YouTube's "strapline" â€” the grey line Apple Music runs under a heading. */
     val subtitle: String = "",
 )
 
-/** A page of the Home feed, plus the token for the next one — null once exhausted. */
+/** A page of the Home feed, plus the token for the next one â€” null once exhausted. */
 data class HomeFeed(
     val shelves: List<HomeShelf>,
     val continuation: String?,
@@ -200,24 +213,24 @@ data class DetailPage(
     val sections: List<HomeShelf> = emptyList(),
     /**
      * Tracks YouTube offers to round out a playlist but that were never
-     * added — see [com.music.dhvani.data.innertube.InnertubeParser.parsePlaylistShelf].
+     * added â€” see [com.music.dhvani.data.innertube.InnertubeParser.parsePlaylistShelf].
      * Shown as their own section with a button to actually add them, rather
      * than folded into [songs] where they'd read as the user's own picks.
      */
     val suggestedSongs: List<Song> = emptyList(),
     /**
      * Whether this release can be saved to the library and whether it already
-     * is — null when the page doesn't offer it at all. Only ever set for an
+     * is â€” null when the page doesn't offer it at all. Only ever set for an
      * album or playlist fetched with a session; see [LibraryState].
      */
     val library: LibraryState? = null,
     /**
-     * The editorial blurb YouTube Music writes for a release or an artist —
+     * The editorial blurb YouTube Music writes for a release or an artist â€”
      * absent for most playlists, which is also why the "About" section only
      * ever shows for an album or an artist page.
      */
     val description: String? = null,
-    /** "1.2M subscribers" off an artist page's header — see [ArtistPage.subscriberCountText]. */
+    /** "1.2M subscribers" off an artist page's header â€” see [ArtistPage.subscriberCountText]. */
     val subscriberCountText: String? = null,
     /** "3.4M monthly listeners" off an artist page's header. */
     val monthlyListenerCount: String? = null,
@@ -228,7 +241,7 @@ data class DetailPage(
  *
  * YouTube has no "save" verb for a release: a saved album is a *liked* one, and
  * what gets liked is the playlist behind the page rather than the browse id the
- * page was fetched with — an `MPREb…` album is backed by an `OLAK5uy_…`
+ * page was fetched with â€” an `MPREbâ€¦` album is backed by an `OLAK5uy_â€¦`
  * playlist, and liking the browse id does nothing at all. So the id has to be
  * read off the page rather than derived from what was asked for.
  */
@@ -249,7 +262,7 @@ data class ArtistPage(
     val name: String? = null,
     /** The artist bio YouTube Music writes for the page, when it has one. */
     val description: String? = null,
-    /** "1.2M subscribers" — the artist's YouTube channel, when subscribed counts are shown. */
+    /** "1.2M subscribers" â€” the artist's YouTube channel, when subscribed counts are shown. */
     val subscriberCountText: String? = null,
     /** "3.4M monthly listeners", off the same header. */
     val monthlyListenerCount: String? = null,
@@ -259,7 +272,7 @@ data class ArtistPage(
  * A track's thumbs rating on the signed-in account.
  *
  * [INDIFFERENT] is YouTube's own word for "neither", and is a real state
- * rather than the absence of one — clearing a like is a request in its own
+ * rather than the absence of one â€” clearing a like is a request in its own
  * right (`like/removelike`), not the omission of one.
  */
 enum class LikeStatus { LIKE, DISLIKE, INDIFFERENT }
@@ -291,7 +304,7 @@ data class UserPlaylist(
  * The per-track state that only YouTube can answer: its rating, and whether it
  * is in the library.
  *
- * Library membership is not addressable by video id — it is toggled with an
+ * Library membership is not addressable by video id â€” it is toggled with an
  * opaque feedback token that YouTube mints per row and per direction, so the
  * tokens have to be fetched before the action can be offered at all. Both
  * arrive together on the watch queue's own menu, which is why this is one
@@ -300,7 +313,7 @@ data class UserPlaylist(
 data class SongMenu(
     /**
      * The rating YouTube states on this row, or null when the row states
-     * none — which is common, and is *not* the same as INDIFFERENT. A watch
+     * none â€” which is common, and is *not* the same as INDIFFERENT. A watch
      * queue frequently renders without a like button at all, and reading that
      * silence as "not liked" is how a liked song ends up claiming it isn't.
      */

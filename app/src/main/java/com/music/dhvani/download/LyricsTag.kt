@@ -13,8 +13,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * The lyrics to write into a track [Downloads] is about to save, as LRC text.
  *
- * The same lookup the player does — [LyricsRepository], the same four
- * databases, the same user's pick of which of them may be asked — turned into
+ * The same lookup the player does â€” [LyricsRepository], the same four
+ * databases, the same user's pick of which of them may be asked â€” turned into
  * the one string [MediaTagger] can hand a container. A download is the moment
  * to do it: the lyrics are fetched over the connection that was already good
  * enough to pull the audio down, and they land in the file rather than in a
@@ -24,7 +24,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Gated on [AppSettings.syncedLyrics] and [AppSettings.lyricsSources] rather
  * than on a switch of its own. Those settings are not about the player screen,
  * they are about whether this app may contact third-party lyric services at
- * all and which ones — and a download quietly asking a source the user
+ * all and which ones â€” and a download quietly asking a source the user
  * unticked would be the same request they said no to, made somewhere they
  * weren't looking.
  *
@@ -48,7 +48,7 @@ internal object LyricsTag {
      *
      * [plain] is what goes in the container's own lyrics field, where every
      * other player looks. [enhanced] is the same lines with their word timings
-     * kept, in a field only this app reads — null when the source was
+     * kept, in a field only this app reads â€” null when the source was
      * line-synced and there was nothing extra to say. See
      * [toEnhancedLrc][com.music.dhvani.data.lyrics.toEnhancedLrc] for why
      * they are two fields rather than one.
@@ -63,15 +63,9 @@ internal object LyricsTag {
         }
         if (sources.isEmpty()) return null
 
-        // Three of the four sources match on the track's length, and LRCLIB
-        // *ranks* on it. Asking without one is worse than not asking: the fuzzy
-        // fallback would return the closest hit to zero seconds, which is the
-        // shortest edit in the database rather than the one being downloaded,
-        // and its timings would be wrong for the whole file.
-        val durationMs = track.durationMillis()
+        val durationMs = track.durationMillis().coerceAtLeast(0L)
         if (durationMs <= 0L) {
-            Log.d(TAG, "no duration for ${track.videoId}; skipping lyrics")
-            return null
+            Log.d(TAG, "no explicit duration for ${track.videoId}; attempting lookup without strict duration gate")
         }
 
         val found = try {
@@ -96,7 +90,7 @@ internal object LyricsTag {
 
         // A result made only of blank lines is what an instrumental, or a
         // provider that answered with timing and no words, comes back as. Those
-        // convert to a column of bare timestamps, which is not lyrics — and is
+        // convert to a column of bare timestamps, which is not lyrics â€” and is
         // not blank either, so the length check below would let it through.
         if (found.lines.none { it.text.isNotBlank() }) return null
 
@@ -128,7 +122,7 @@ internal object LyricsTag {
      * The most LRC one track may contribute to its own file.
      *
      * A long song's stamped sheet runs to a few thousand characters, so this is
-     * an order of magnitude clear of anything genuine — it is a ceiling on a
+     * an order of magnitude clear of anything genuine â€” it is a ceiling on a
      * malformed or hostile response, not a judgement about songs.
      */
     private const val MAX_LRC_CHARS = 64_000
@@ -138,8 +132,8 @@ internal object LyricsTag {
      *
      * Usually nothing: [Downloads] starts this before the transfer, so by the
      * time there are bytes to tag the answer has normally been waiting a while.
-     * This is the ceiling for the case where it hasn't — a short track on a fast
-     * connection, or a service that has stopped answering — and it is finite
+     * This is the ceiling for the case where it hasn't â€” a short track on a fast
+     * connection, or a service that has stopped answering â€” and it is finite
      * because the alternative is a saved file the user can see in the queue,
      * complete, held back on a lyric server.
      *
@@ -147,7 +141,7 @@ internal object LyricsTag {
      * mid-lookup cannot interrupt a blocking socket read, so the queue still
      * waits out whichever HTTP call is in flight (its own timeouts, not this
      * one) before it moves on. The same is true of the lossless search this
-     * sits beside — see `Downloads.SOURCE_LOOKUP_MS`.
+     * sits beside â€” see `Downloads.SOURCE_LOOKUP_MS`.
      */
-    private const val LOOKUP_MS = 15_000L
+    private const val LOOKUP_MS = 25_000L
 }

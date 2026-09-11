@@ -186,7 +186,15 @@ import com.music.dhvani.data.canvas.CanvasArtwork
 import com.music.dhvani.data.canvas.CanvasRepository
 import com.music.dhvani.data.canvas.CanvasSource
 import com.music.dhvani.data.lyrics.LyricLine
+import com.music.dhvani.data.lyrics.LyricWord
+import com.music.dhvani.data.lyrics.withKaraokeSyllables
 import com.music.dhvani.data.lyrics.LyricsSource
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.PI
+import kotlin.math.sin
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.settings.AudioQuality
 import com.music.dhvani.data.settings.SliderStyle
@@ -2694,6 +2702,7 @@ private fun SweptLyricLine(
     glowRadius: Dp = GLOW_RADIUS,
     glowRoom: Dp = 0.dp,
     lineEndMs: Long = line.endMs,
+    onSeekToPosition: ((Long) -> Unit)? = null,
 ) {
     var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
 
@@ -2714,7 +2723,31 @@ private fun SweptLyricLine(
         }
     }
 
-    Box(modifier) {
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.pointerInput(line, layout) {
+            detectTapGestures { tapOffset ->
+                val measured = layout ?: run {
+                    onSeekToPosition(line.timeMs)
+                    return@detectTapGestures
+                }
+                val charIndex = measured.getOffsetForPosition(tapOffset)
+                var currentOffset = 0
+                var tappedWord: LyricWord? = null
+                for (word in line.words) {
+                    val start = line.text.indexOf(word.text, currentOffset).takeIf { it >= 0 } ?: currentOffset
+                    val end = start + word.text.length
+                    if (charIndex in start..end) {
+                        tappedWord = word
+                        break
+                    }
+                    currentOffset = end
+                }
+                onSeekToPosition(tappedWord?.startMs ?: line.timeMs)
+            }
+        }
+    } else Modifier
+
+    Box(modifier.then(tapSeek)) {
         Text(
             text = line.text,
             style = style,
@@ -2903,20 +2936,21 @@ private fun LyricsPanel(
     lyricsOffsetMs: Long = 0L,
     modifier: Modifier = Modifier,
 ) {
-    val isPlain = remember(lines) { lines.any { it.isEstimatedTiming } }
+    val displayLines = remember(lines) { lines.withKaraokeSyllables() }
+    val isPlain = remember(displayLines) { displayLines.any { it.isEstimatedTiming } }
     val clock = rememberLyricClock(positionMs, isPlaying, if (isPlain) 0L else lyricsOffsetMs)
 
     // Which line is playing right now: the last one whose stamp has passed.
-    val activeLine by remember(lines, clock, isPlain) {
+    val activeLine by remember(displayLines, clock, isPlain) {
         derivedStateOf {
-            if (isPlain) -1 else lines.indexOfLast { it.timeMs <= clock.longValue }
+            if (isPlain) -1 else displayLines.indexOfLast { it.timeMs <= clock.longValue }
         }
     }
-    val alsoActive by remember(lines, activeLine, clock, isPlain) {
+    val alsoActive by remember(displayLines, activeLine, clock, isPlain) {
         derivedStateOf {
             if (isPlain || activeLine < 0) -1 else {
                 val previous = activeLine - 1
-                val line = lines.getOrNull(previous)
+                val line = displayLines.getOrNull(previous)
                 if (line != null && line.hasKnownEnd && clock.longValue < line.endMs) previous else -1
             }
         }
@@ -2966,24 +3000,27 @@ private fun LyricsPanel(
         }
     }
 
-    var placed by remember(lines) { mutableStateOf(false) }
+    var placed by remember(displayLines) { mutableStateOf(false) }
     LaunchedEffect(activeLine, browsing, lyricsAutoScroll, isPlain) {
         if (!isPlain && lyricsAutoScroll && !browsing && !listState.isScrollInProgress &&
-            activeLine >= 0 && activeLine in lines.indices
+            activeLine >= 0 && activeLine in displayLines.indices
         ) {
             val viewport = snapshotFlow { listState.layoutInfo.viewportSize.height }
                 .first { it > 0 }
-            val third = viewport / 3
-            if (placed) {
-                listState.animateScrollToItem(activeLine, scrollOffset = -third)
-            } else {
-                listState.scrollToItem(activeLine, scrollOffset = -third)
+            val itemInfo = listState.layoutInfo.visibleItemsInfo
+                .firstOrNull { it.index == activeLine }
+            val itemHeight = itemInfo?.size ?: (viewport / 8)
+            val centerOffset = (viewport / 2) - (itemHeight / 2)
+            if (!placed) {
+                listState.scrollToItem(activeLine, -centerOffset)
                 placed = true
+            } else {
+                listState.animateScrollToItem(activeLine, -centerOffset)
             }
         }
     }
 
-    if (lines.isEmpty()) {
+    if (displayLines.isEmpty()) {
         Box(modifier, contentAlignment = Alignment.Center) {
             Text(
                 text = "No lyrics for this track",
@@ -3000,34 +3037,32 @@ private fun LyricsPanel(
             .bleedHorizontally(PLAYER_GUTTER)
             .nestedScroll(keepScroll)
             .fadingEdges(),
-        // Each row carries GLOW_ROOM of its own inset for the halo, so the
-        // list hands that much back — otherwise the lines would sit a glow's
-        // width further apart and further in than they used to.
         contentPadding = PaddingValues(
             vertical = 40.dp - GLOW_ROOM,
             horizontal = PLAYER_GUTTER - GLOW_ROOM,
         ),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        itemsIndexed(lines) { index, line ->
-            val offset = if (activeLine < 0) 0 else index - activeLine
-            val distance = abs(offset)
-            val isActive = !isPlain && (index == activeLine || index == alsoActive)
+        itemsIndexed(displayLines, key = { index, line -> "$index:${line.timeMs}:${line.text.take(12)}" }) { index, line ->
+            val isActive = index == activeLine || index == alsoActive
+            val distance = if (activeLine >= 0) abs(index - activeLine) else 0
             val lineAlpha by animateFloatAsState(
                 targetValue = when {
-                    isPlain -> 0.92f
-                    browsing -> 1f
+                    browsing -> 0.85f
                     isActive -> 1f
-                    lyricsAnimationStyle == LyricsAnimationStyle.NONE -> if (distance == 1) 0.45f else 0.25f
-                    offset < 0 -> (0.55f - distance * 0.05f).coerceAtLeast(0.30f)
-                    else -> (0.45f - distance * 0.09f).coerceAtLeast(0.12f)
+                    distance == 1 -> 0.48f
+                    distance == 2 -> 0.28f
+                    else -> 0.14f
                 },
-                animationSpec = if (lyricsAnimationStyle == LyricsAnimationStyle.NONE) snap() else tween(durationMillis = 350),
+                animationSpec = tween(durationMillis = 350),
                 label = "lyricAlpha",
             )
+            val offset = index - (if (activeLine >= 0) activeLine else 0)
+
             if (line.isGap) {
                 val noteSize by animateDpAsState(
-                    targetValue = if (isActive) 34.dp else 26.dp,
+                    targetValue = if (isActive) 28.dp else 20.dp,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
                     label = "noteSize",
                 )
                 Icon(
@@ -3036,7 +3071,7 @@ private fun LyricsPanel(
                     tint = Color.White.copy(alpha = lineAlpha),
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .clickable { if (!isPlain) onSeekToLine(line.timeMs) }
+                        .clickable { if (!isPlain && lyricsClickSeek) onSeekToLine(line.timeMs) }
                         .padding(GLOW_ROOM)
                         .size(noteSize),
                 )
@@ -3115,15 +3150,8 @@ private fun LyricsPanel(
                         alpha = lineAlpha
                     }
                     .clip(RoundedCornerShape(10.dp))
-                    .then(
-                        if (lyricsClickSeek) {
-                            Modifier.clickable { onSeekToLine(line.timeMs) }
-                        } else {
-                            Modifier
-                        }
-                    )
 
-                val nextLine = lines.getOrNull(index + 1)
+                val nextLine = displayLines.getOrNull(index + 1)
                 val lineEndMs = if (line.hasKnownEnd) {
                     line.endMs
                 } else {
@@ -3140,6 +3168,8 @@ private fun LyricsPanel(
                         line.timeMs + 4_000L
                     }
                 }
+
+                val seekCallback = if (lyricsClickSeek && !isPlain) onSeekToLine else null
 
                 // Lead and answering vocal are one row: they are one line of
                 // the song, they scale and dim together, and tapping either
@@ -3163,6 +3193,8 @@ private fun LyricsPanel(
                         modifier = Modifier.fillMaxWidth(),
                         animationStyle = lyricsAnimationStyle,
                         lineEndMs = lineEndMs,
+                        lyricsPosition = lyricsPosition,
+                        onSeekToPosition = seekCallback,
                     )
                     line.background?.let { backing ->
                         PanelVoice(
@@ -3189,23 +3221,106 @@ private fun LyricsPanel(
                                 .graphicsLayer { alpha = BACKING_ALPHA },
                             animationStyle = lyricsAnimationStyle,
                             lineEndMs = lineEndMs,
+                            lyricsPosition = lyricsPosition,
+                            onSeekToPosition = seekCallback,
                         )
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * Dynamic Apple Music Sing style live syllable and word-by-word sing-along view.
+ * Each word dynamically scales up with energetic bounce following vocal tempo,
+ * emits a real-time luminous bloom when sung, and allows direct word-tap seeking.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LiveKaraokeSingVoice(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    glowAlpha: Float,
+    room: Dp,
+    modifier: Modifier = Modifier,
+    lyricsPosition: LyricsPosition = LyricsPosition.LEFT,
+    onSeekToWord: ((Long) -> Unit)? = null,
+) {
+    val position = clock.longValue
+    val arrangement = when (lyricsPosition) {
+        LyricsPosition.LEFT -> Arrangement.Start
+        LyricsPosition.CENTER -> Arrangement.Center
+        LyricsPosition.RIGHT -> Arrangement.End
     }
 
+    FlowRow(
+        horizontalArrangement = arrangement,
+        verticalArrangement = Arrangement.Center,
+        modifier = modifier.then(if (room > 0.dp) Modifier.padding(room) else Modifier),
+    ) {
+        line.words.forEach { word ->
+            val isWordActive = position in word.startMs..word.endMs
+            val isWordSung = position > word.endMs
+            val wordDuration = (word.endMs - word.startMs).coerceAtLeast(1L)
+            val wordProgress = if (isWordActive) {
+                ((position - word.startMs).toFloat() / wordDuration).coerceIn(0f, 1f)
+            } else 0f
 
-    /**
- * One voice of a row in [LyricsPanel] — the lead, or the answering line drawn
+            // Apple Music Sing real-time vocal tempo bounce (spring/sine peak up to ~1.12x)
+            val bounceScale = if (isWordActive) {
+                1f + 0.12f * sin(wordProgress * PI.toFloat()).coerceAtLeast(0f)
+            } else 1f
+
+            val wordAlpha = when {
+                isWordActive || isWordSung -> 1f
+                else -> dimAlpha
+            }
+
+            val wordGlowIntensity = if (isWordActive && glowAlpha > 0.01f) {
+                glowAlpha * (0.4f + 0.6f * sin(wordProgress * PI.toFloat()).coerceIn(0f, 1f))
+            } else 0f
+
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 2.5.dp, vertical = 2.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .then(
+                        if (onSeekToWord != null) {
+                            Modifier.clickable { onSeekToWord(word.startMs) }
+                        } else Modifier
+                    )
+                    .graphicsLayer {
+                        scaleX = bounceScale
+                        scaleY = bounceScale
+                        alpha = wordAlpha
+                    },
+            ) {
+                if (wordGlowIntensity > 0.01f) {
+                    Text(
+                        text = word.text,
+                        style = style,
+                        color = Color.White,
+                        modifier = Modifier
+                            .graphicsLayer { alpha = wordGlowIntensity }
+                            .blur(GLOW_RADIUS, BlurredEdgeTreatment.Unbounded),
+                    )
+                }
+                Text(
+                    text = word.text,
+                    style = style,
+                    color = Color.White,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One voice of a row in [LyricsPanel] - the lead, or the answering line drawn
  * under it.
- *
- * Both go through the same sweep. A backing vocal carries its own word
- * timings, so it lights up on its own clock rather than borrowing the lead's:
- * that is the whole point of splitting it out, and it is why the bracket no
- * longer gets cut off when the next line's stamp arrives mid-phrase.
  */
 @Composable
 private fun PanelVoice(
@@ -3219,7 +3334,31 @@ private fun PanelVoice(
     modifier: Modifier = Modifier,
     animationStyle: LyricsAnimationStyle = LyricsAnimationStyle.FADE,
     lineEndMs: Long = line.endMs,
+    lyricsPosition: LyricsPosition = LyricsPosition.LEFT,
+    onSeekToPosition: ((Long) -> Unit)? = null,
 ) {
+    val tail by animateFloatAsState(
+        targetValue = if (isActive) UNSUNG_ALPHA else 1f,
+        label = "lyricTail",
+    )
+
+    // When the line is actively playing and has words, render Apple Music Sing style live syllable/word bounce & glow
+    val isKaraokeStyle = animationStyle == LyricsAnimationStyle.KARAOKE || animationStyle == LyricsAnimationStyle.APPLE
+    if (isActive && line.words.isNotEmpty() && !browsing && isKaraokeStyle) {
+        LiveKaraokeSingVoice(
+            line = line,
+            clock = clock,
+            style = style,
+            dimAlpha = tail,
+            glowAlpha = glowAlpha,
+            room = room,
+            modifier = modifier,
+            lyricsPosition = lyricsPosition,
+            onSeekToWord = onSeekToPosition,
+        )
+        return
+    }
+
     val shouldSweep = when (animationStyle) {
         LyricsAnimationStyle.NONE -> false
         LyricsAnimationStyle.KARAOKE, LyricsAnimationStyle.APPLE -> !browsing && (line.isWordSynced || isActive)
@@ -3227,19 +3366,6 @@ private fun PanelVoice(
     }
 
     if (shouldSweep) {
-        // Every word-synced line goes through the sweep, not just the playing
-        // one — a line that has already been sung is fully revealed and one
-        // still to come is not, which falls out of the same arithmetic.
-        //
-        // Running it only on the active line meant swapping this composable
-        // for a plain Text the instant a line handed over, and the two
-        // disagreed about the brightness of the words: the tail of the line
-        // popped up to meet the rest of it in a single frame. Animating the
-        // tail instead lets a finished line close up as it dims away.
-        val tail by animateFloatAsState(
-            targetValue = if (isActive) UNSUNG_ALPHA else 1f,
-            label = "lyricTail",
-        )
         SweptLyricLine(
             line = line,
             clock = clock,
@@ -3249,10 +3375,15 @@ private fun PanelVoice(
             glowAlpha = glowAlpha,
             glowRoom = room,
             lineEndMs = lineEndMs,
+            onSeekToPosition = onSeekToPosition,
         )
     } else {
+        val tapModifier = if (onSeekToPosition != null) {
+            Modifier.clickable { onSeekToPosition(line.timeMs) }
+        } else Modifier
+
         if (glowAlpha > 0.01f && isActive && !browsing) {
-            Box(modifier) {
+            Box(modifier.then(tapModifier)) {
                 Text(
                     text = line.text,
                     style = style,
@@ -3274,7 +3405,7 @@ private fun PanelVoice(
                 text = line.text,
                 style = style,
                 color = Color.White,
-                modifier = modifier.padding(room),
+                modifier = modifier.padding(room).then(tapModifier),
             )
         }
     }

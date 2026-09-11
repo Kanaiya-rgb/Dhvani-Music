@@ -265,8 +265,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // only needed to *match* a track against a stranger's database, and
             // nothing is being matched here — these lyrics were written into
             // this exact file, for this exact recording.
-            if (localUri != null) {
-                EmbeddedLyrics.forUri(getApplication(), localUri)?.let { embedded ->
+            val effectiveLocalUri = localUri
+                ?: Downloads.verifiedSavedUri(videoId)
+                ?: Downloads.savedUri(getApplication(), videoId)?.toString()
+
+            if (effectiveLocalUri != null || videoId.isNotBlank()) {
+                EmbeddedLyrics.forUri(getApplication(), effectiveLocalUri.orEmpty(), videoId)?.let { embedded ->
                     _lyrics.value = embedded
                     // No source to name: what the file records is the lyrics,
                     // not which of the eight services they came from months ago.

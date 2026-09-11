@@ -9,6 +9,8 @@ import androidx.core.content.ContextCompat
 import com.music.dhvani.data.YtMusicRepository
 import com.music.dhvani.data.innertube.StreamResolver
 import com.music.dhvani.data.model.Song
+import com.music.dhvani.data.model.durationMillis
+import com.music.dhvani.data.model.formatDurationText
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.settings.DownloadQuality
 import com.music.dhvani.data.sources.SourceResolver
@@ -52,7 +54,7 @@ sealed interface DownloadState {
  * Split deliberately into two pieces of state that look similar and behave
  * nothing alike:
  *
- *  - [active] is what is happening now — queued, running, just failed. It lives
+ *  - [active] is what is happening now â€” queued, running, just failed. It lives
  *    in memory, is driven by [DownloadService], and is empty on a cold start
  *    because a download interrupted by the process dying did not happen.
  *  - [saved] is what exists on disk, keyed by videoId and remembered across
@@ -62,7 +64,7 @@ sealed interface DownloadState {
  *
  * [saved] is a claim about a folder this app does not own. The user is expected
  * to manage Downloads with a file manager, so an entry here can outlive the
- * file it names — which is why every read of it goes through [savedUri], and
+ * file it names â€” which is why every read of it goes through [savedUri], and
  * why that verifies before it answers.
  */
 object Downloads {
@@ -84,14 +86,14 @@ object Downloads {
      * Ids asked for as part of a release's own download tap, by the browseId
      * that was tapped.
      *
-     * [active] is one flat map for the whole app — a track queued from one
+     * [active] is one flat map for the whole app â€” a track queued from one
      * release is still the same row if it happens to sit in another release
      * too, and correctly so. But that means a release page can't tell "one of
      * my tracks is queued" apart from "one of my tracks is queued *because I
      * was asked for*" just by scanning [active] for its own ids: two releases
      * that happen to share a track would both read as downloading the moment
      * either one is. This is what lets a release's header ask the narrower
-     * question instead — never pruned explicitly, since a stale id here is
+     * question instead â€” never pruned explicitly, since a stale id here is
      * harmless once it drops out of [active].
      */
     private val _requested = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
@@ -118,7 +120,7 @@ object Downloads {
      *
      * Read by the Downloads page so a batch download reads back as the thing
      * that was tapped. Exposed rather than kept private because the page is a
-     * snapshot and has to be retaken when this changes — see
+     * snapshot and has to be retaken when this changes â€” see
      * [collectionsAmong], which is what turns it into something drawable.
      */
     val collections: StateFlow<Map<String, SavedCollection>> = _collections.asStateFlow()
@@ -130,7 +132,7 @@ object Downloads {
 
     /**
      * The tracks taken off the queue and not yet finished, to the job fetching
-     * each — null in the gap between a worker claiming a track and its job
+     * each â€” null in the gap between a worker claiming a track and its job
      * existing.
      *
      * A map rather than the single slot this used to be, because several
@@ -160,14 +162,14 @@ object Downloads {
      * Queue [song], and make sure something is draining the queue.
      *
      * A track already saved, queued or running is left alone rather than
-     * doubled — the menu row shows which of those it is, but a second tap
+     * doubled â€” the menu row shows which of those it is, but a second tap
      * before the sheet updates should still be a no-op.
      *
      * The Wi-Fi-only check is here rather than only at the tap because this is
      * the one door into the queue, and a setting that can be bypassed by a
      * caller that forgot about it is not a setting. Callers that can say
-     * something better than a failed row — a single toast for a whole album, say
-     * — check [AppSettings.downloadsAllowedNow] themselves first; this is what
+     * something better than a failed row â€” a single toast for a whole album, say
+     * â€” check [AppSettings.downloadsAllowedNow] themselves first; this is what
      * catches the rest.
      *
      * @param from what release this track was asked for as part of, when it was
@@ -234,7 +236,7 @@ object Downloads {
     // ---- The record ---------------------------------------------------------
 
     /**
-     * The file saved for [videoId], or null — pruning the record if the file
+     * The file saved for [videoId], or null â€” pruning the record if the file
      * has been deleted from under it.
      *
      * Touches the filesystem, so call it off the main thread.
@@ -261,7 +263,7 @@ object Downloads {
      * read actually fails and costs nothing until then.
      *
      * False for anything unparseable, which keeps "I could not tell" out of the
-     * "the file is missing" answer — the caller drops a uri on a true here.
+     * "the file is missing" answer â€” the caller drops a uri on a true here.
      */
     fun isMissingLocalFile(uriString: String): Boolean {
         if (!uriString.startsWith("file://")) return false
@@ -270,17 +272,17 @@ object Downloads {
     }
 
     /**
-     * As [savedUri], but synchronous and without a [Context] parameter — for
+     * As [savedUri], but synchronous and without a [Context] parameter â€” for
      * [Song.toMediaItem], which builds a [MediaItem] on whatever thread that
      * happens to run on and has neither a suspend context nor a [Context] in
      * hand to reach [DownloadStore.exists] with.
      *
-     * Without this, a record surviving the file it names — deleted by a file
-     * manager, or a folder wiped out from under the app — sent the player a
+     * Without this, a record surviving the file it names â€” deleted by a file
+     * manager, or a folder wiped out from under the app â€” sent the player a
      * `file://` uri to a path that is simply not there. Nothing downstream
      * checks that either: [AudioCache.playbackFactory] hands `file://` and
      * `content://` uris straight to [androidx.media3.datasource.FileDataSource],
-     * which fails with `ERROR_CODE_IO_FILE_NOT_FOUND` — retried a handful of
+     * which fails with `ERROR_CODE_IO_FILE_NOT_FOUND` â€” retried a handful of
      * times and then given up on, so the track just refuses to play, with
      * nothing to say why.
      *
@@ -299,7 +301,11 @@ object Downloads {
     /** Delete the file saved for [videoId] and forget it. */
     suspend fun delete(context: Context, videoId: String): Boolean = withContext(Dispatchers.IO) {
         val uri = _saved.value[videoId]?.toUri() ?: return@withContext false
+        val track = _savedMetadata.value[videoId]?.let {
+            Song(videoId = it.videoId, title = it.title, artist = it.artist, thumbnailUrl = it.thumbnailUrl)
+        }
         val deleted = DownloadStore.delete(context, uri)
+        DownloadStore.deleteLyrics(context, videoId, track)
         forget(videoId)
         deleted
     }
@@ -312,7 +318,7 @@ object Downloads {
      * Drop the record for [videoId] because a read of the file it names has
      * just failed.
      *
-     * The public counterpart to [forget], for [PlaybackService.recoverFrom] —
+     * The public counterpart to [forget], for [PlaybackService.recoverFrom] â€”
      * the one caller that does not need to check anything first, because the
      * player has already done better than a check: it opened the file and got
      * `ENOENT`. That covers the `content://` records [isMissingLocalFile]
@@ -337,7 +343,7 @@ object Downloads {
      * The reason this exists at all: a batch download used to be indistinguishable
      * from forty separate ones the moment it finished. What reached the Downloads
      * page was forty rows, and the only thing that could group them back up was
-     * whatever album tag each row happened to carry — which an album page's rows
+     * whatever album tag each row happened to carry â€” which an album page's rows
      * don't carry at all (the release is billed once, in the header) and a
      * playlist's rows *never* can, because a playlist is not an album and its
      * tracks are off forty different ones. So the thing the user tapped was the
@@ -351,7 +357,7 @@ object Downloads {
      *
      * Nothing here asserts the files exist. That is deliberate and matches
      * [saved]: this is a record of what was *asked* for, and which of those
-     * tracks is actually on disk is answered where it is read — see
+     * tracks is actually on disk is answered where it is read â€” see
      * [collectionsAmong].
      */
     fun rememberCollection(target: DownloadTarget, songs: List<Song>) {
@@ -366,7 +372,7 @@ object Downloads {
             playlist = target.playlist,
             // A release fetched in pages can be downloaded twice from two
             // different depths of the same page, so the two asks are merged
-            // rather than the second replacing the first — but the new order
+            // rather than the second replacing the first â€” but the new order
             // leads, since it is the one just seen on screen.
             videoIds = (ids + (existing?.videoIds ?: emptyList())).distinct(),
         )
@@ -384,7 +390,7 @@ object Downloads {
      *
      * The counterpart to [forgetCollection]: that one is for a record whose
      * files are already gone, this one is what actually takes them off the
-     * device — the "delete download" a whole album or playlist card offers,
+     * device â€” the "delete download" a whole album or playlist card offers,
      * where a single track only ever offers [delete].
      */
     suspend fun deleteCollection(context: Context, id: String): Boolean {
@@ -401,9 +407,9 @@ object Downloads {
      * Under `local:` deliberately: that prefix is how the rest of the app asks
      * "is this already on the device?", and it is what keeps the download button
      * off such a page's header and out of its menu. What it must not be taken
-     * for is one of the two device *folders* — `local:downloads` and `local:all`
+     * for is one of the two device *folders* â€” `local:downloads` and `local:all`
      * open the tabbed Songs / Artists / Albums view, and this opens a plain
-     * track listing — so it gets a segment of its own rather than an id in the
+     * track listing â€” so it gets a segment of its own rather than an id in the
      * same namespace.
      *
      * Playlists only, which is why the word is in the prefix. A downloaded album
@@ -424,8 +430,8 @@ object Downloads {
      * The playlists downloaded whole, in name order, without their tracks.
      *
      * What the Library page's On Device shelf draws a card from. Unlike
-     * [collectionsAmong] there is no track list here to prune against — that
-     * page never reads the folder — so this prunes against [onDisk] instead,
+     * [collectionsAmong] there is no track list here to prune against â€” that
+     * page never reads the folder â€” so this prunes against [onDisk] instead,
      * which drops a playlist once the last file recorded for it has been deleted
      * *through this app* and keeps the rest. That is the same claim [saved] makes
      * everywhere else, and opening the card is what settles it either way.
@@ -450,8 +456,8 @@ object Downloads {
      * picked out of that list.
      *
      * Given the page's own songs rather than reading the disk itself, because
-     * the page has already done that work — every row in it is a file that was
-     * there when it was taken — and a release is only worth drawing for the
+     * the page has already done that work â€” every row in it is a file that was
+     * there when it was taken â€” and a release is only worth drawing for the
      * tracks that survived. A release whose files have all been deleted from a
      * file manager therefore disappears from the page without anything having to
      * notice it went.
@@ -509,7 +515,7 @@ object Downloads {
         val ids = setOf(asked.videoId, fetched.videoId)
         // Either row may be the one that knew the release: a music video is
         // swapped for the catalogue track before this, and it is the catalogue
-        // row that usually carries the album — but a search hit tapped directly
+        // row that usually carries the album â€” but a search hit tapped directly
         // is both, and an album page's rows are neither.
         val album = fetched.albumName?.takeIf { it.isNotBlank() }
             ?: asked.albumName?.takeIf { it.isNotBlank() }
@@ -544,7 +550,7 @@ object Downloads {
      *
      * Takes transforms rather than finished maps because several downloads
      * finish at once now, and "read the map, add my track, store it back" run
-     * from two threads loses one of the two tracks — silently, and permanently,
+     * from two threads loses one of the two tracks â€” silently, and permanently,
      * since this is the only record that a file was written. Both flows are
      * updated compare-and-set, and the persist is serialised so the copy that
      * reaches disk is never older than one already written.
@@ -628,14 +634,14 @@ object Downloads {
         synchronized(lock) { running.remove(videoId) }
     }
 
-    /** Whether anything is still queued or in flight — see [DownloadService]'s workers. */
+    /** Whether anything is still queued or in flight â€” see [DownloadService]'s workers. */
     internal fun busy(): Boolean = synchronized(lock) { pending.isNotEmpty() || running.isNotEmpty() }
 
     /**
      * The service is gone, so nothing is running any more.
      *
      * Distinct from [onIdle], which is one worker reporting one finished track.
-     * This is the whole drain going away at once — every claim in [running] is
+     * This is the whole drain going away at once â€” every claim in [running] is
      * void, and leaving one behind would have [enqueue] refuse that track
      * forever as already in flight.
      */
@@ -649,21 +655,21 @@ object Downloads {
      * Two halves, and the split is what lets a queue go at any speed: [prepare]
      * decides where the bytes come from and [transfer] moves them. Everything
      * that can go wrong past the point of reserving a destination has to
-     * unreserve it — a cancelled or failed download must not leave a partial
+     * unreserve it â€” a cancelled or failed download must not leave a partial
      * file behind pretending to be a whole one, which is what
      * [DownloadStore.Pending] exists to make hard to get wrong.
      *
      * Pinned to [Dispatchers.IO] here rather than trusted to arrive on it.
      * Resolving a stream blocks on HTTP and runs YouTube's player JavaScript
      * through Rhino, and [DownloadService] drives this from a main-thread scope
-     * so its notification work stays where it belongs — inheriting that would
+     * so its notification work stays where it belongs â€” inheriting that would
      * put every network call in the resolve on the main thread, where they
      * don't fail loudly so much as fail *uniformly*: `NetworkOnMainThreadException`
      * is caught by the same per-client `runCatching` that exists to tolerate a
      * client being turned away, so every client appears to be refused and the
      * whole thing reads as a network outage.
      *
-     * Several of these run at once — see [DownloadService]. Nothing in here is
+     * Several of these run at once â€” see [DownloadService]. Nothing in here is
      * shared between them but the two state flows, and both are written through
      * atomic updates for exactly that reason.
      */
@@ -697,7 +703,7 @@ object Downloads {
      * Everything that has to be known before a byte can be asked for, and
      * nothing that touches the destination.
      *
-     * Split out of [run] so it can be done *ahead* of time — see [peekNext].
+     * Split out of [run] so it can be done *ahead* of time â€” see [peekNext].
      * On a lossless queue this is the expensive half by a wide margin: a module
      * search fans out across a whole index and then a stream endpoint is
      * opened, tens of seconds against the few the transfer itself takes on a
@@ -706,8 +712,8 @@ object Downloads {
      * queue spent most of its life doing.
      *
      * Nothing here writes to [_active] or to [DownloadSession]. It may be
-     * running for a track that is still queued — or for one that gets cancelled
-     * before its turn — and a preparation is not a download.
+     * running for a track that is still queued â€” or for one that gets cancelled
+     * before its turn â€” and a preparation is not a download.
      */
     internal suspend fun prepare(context: Context, song: Song): Prepared = withContext(Dispatchers.IO) {
         // A music-video entry is swapped for the catalogue track behind it,
@@ -740,8 +746,13 @@ object Downloads {
         }
 
         val route = routeFor(track, quality)
+        val finalTrack = if (track.durationMillis() <= 0L && route.durationMs > 0L) {
+            track.copy(durationText = formatDurationText(route.durationMs))
+        } else {
+            track
+        }
         Log.d(TAG, "downloading ${song.videoId} as .${route.extension} (${route.describe}, ${quality.label})")
-        Prepared(song.videoId, track, route = route, alreadyAt = null)
+        Prepared(song.videoId, finalTrack, route = route, alreadyAt = null)
     }
 
     /**
@@ -771,9 +782,13 @@ object Downloads {
      */
     private suspend fun transfer(context: Context, song: Song, plan: Prepared) {
         val id = song.videoId
-        val track = plan.track
+        val track = if (plan.track.durationMillis() <= 0L && plan.route?.durationMs != null && plan.route.durationMs > 0L) {
+            plan.track.copy(durationText = formatDurationText(plan.route.durationMs))
+        } else {
+            plan.track
+        }
 
-        // Already there from a previous run the record lost track of — adopt it
+        // Already there from a previous run the record lost track of - adopt it
         // rather than writing a second copy beside it.
         plan.alreadyAt?.let { uri ->
             remember(song, track, uri)
@@ -790,7 +805,7 @@ object Downloads {
                 // Started before the transfer rather than after it, so four lyric
                 // services are being raced while the bytes are already moving. Done
                 // after the commit instead, every download would pay the slowest of
-                // them in dead time — and it is a *suspending* wait, so it would sit
+                // them in dead time - and it is a *suspending* wait, so it would sit
                 // in the one stretch of this function that has no way back: past the
                 // commit, [pending] is null and a cancellation there would abandon a
                 // finished file that nothing has recorded yet. Awaited below while
@@ -808,6 +823,8 @@ object Downloads {
                 val alreadyThere = DownloadStore.existing(context, name)
                 if (alreadyThere != null) {
                     Log.d(TAG, "$name is already in Music; adopting it")
+                    val words = lyrics?.await()
+                    DownloadStore.saveLyrics(context, song.videoId, track, words)
                     remember(song, track, alreadyThere)
                     DownloadSession.done(id)
                     clear(id)
@@ -824,9 +841,23 @@ object Downloads {
                     }
                 }
                 val words = lyrics?.await()
+
+                // Save companion LRC file & offline cache immediately
+                DownloadStore.saveLyrics(context, song.videoId, track, words)
+
+                // Embed tags before commit while file is still pending in MediaStore (full write access)
+                runCatching {
+                    MediaTagger.embed(context, destination.targetUri, track, route.extension, words)
+                }.onFailure { Log.w(TAG, "pre-commit tagging failed for $id: ${it.message}") }
+
                 val savedUri = destination.commit()
                 pending = null
-                MediaTagger.embed(context, savedUri, track, route.extension, words)
+
+                // Also attempt post-commit tagging if needed
+                runCatching {
+                    MediaTagger.embed(context, savedUri, track, route.extension, words)
+                }
+
                 remember(song, track, savedUri)
                 DownloadSession.done(id)
                 clear(id)
@@ -838,7 +869,7 @@ object Downloads {
         } finally {
             // Every exit needs this, not just the failing ones: the adopt-it
             // path above returns with the lookup still in flight, and
-            // [coroutineScope] does not return while a child of it is running —
+            // [coroutineScope] does not return while a child of it is running -
             // so an unwaited job would hold the whole queue up for the length of
             // a lyrics search per already-downloaded track.
             lyrics?.cancel()
@@ -850,8 +881,8 @@ object Downloads {
      * is, and how to fill it.
      *
      * Exists so [run] has one linear body rather than two nearly-identical
-     * ones. Everything after the bytes are chosen — the duplicate check, the
-     * pending row, the commit, the tagging, the abort on failure — is the same
+     * ones. Everything after the bytes are chosen - the duplicate check, the
+     * pending row, the commit, the tagging, the abort on failure - is the same
      * work whichever server the audio came from, and the two routes differ only
      * in these four answers.
      */
@@ -860,6 +891,7 @@ object Downloads {
         val mimeType: String,
         /** For the log line, so a download's provenance is on the record. */
         val describe: String,
+        val durationMs: Long = 0L,
         val write: suspend (OutputStream, (written: Long, total: Long) -> Unit) -> Unit,
     )
 
@@ -867,7 +899,7 @@ object Downloads {
      * Where this download's bytes are coming from.
      *
      * A configured source gets asked first, and YouTube is what happens when
-     * none of them can serve it — see [SourceResolver.forDownload] for what
+     * none of them can serve it - see [SourceResolver.forDownload] for what
      * "can" means, which is narrower here than it is for playback.
      *
      * @param quality read once by the caller and passed down, so that a setting
@@ -881,6 +913,7 @@ object Downloads {
                 extension = storable.extension,
                 mimeType = storable.mimeType,
                 describe = stream.format.summary,
+                durationMs = 0L,
                 write = { sink, onProgress ->
                     Downloader.fetchDirect(stream.url, stream.headers, sink, onProgress)
                 },
@@ -891,6 +924,7 @@ object Downloads {
             extension = stream.downloadExtension,
             mimeType = stream.downloadMimeType,
             describe = "${stream.kbps}kbps ${stream.mimeType}",
+            durationMs = stream.durationMs,
             write = { sink, onProgress ->
                 Downloader.fetch(track.videoId, stream, quality.maxKbps, sink, onProgress)
             },
@@ -899,13 +933,13 @@ object Downloads {
 
     /**
      * The stream to keep for [track] from a configured source, with how to file
-     * it — or null, which is not a failure, just YouTube's turn.
+     * it â€” or null, which is not a failure, just YouTube's turn.
      *
      * Usually a bit-exact one; not always. [SourceResolver.forDownload] falls
      * back to the best lossy copy any enabled source holds when nothing has the
      * recording losslessly, and only gives up on the sources entirely when what
      * they offer would not beat YouTube's own AAC. Which of those happened is
-     * the resolver's business — from here it is a URL and a codec either way.
+     * the resolver's business â€” from here it is a URL and a codec either way.
      *
      * Bounded, because a module search waits on every backend it has (see
      * `ModuleSource.SEARCH_PATIENT_MS`) and does that once per query the matcher
@@ -949,7 +983,7 @@ object Downloads {
         return stream to storable
     }
 
-    /** Back to "not downloaded" — used for success, where [saved] takes over, and for cancellation. */
+    /** Back to "not downloaded" â€” used for success, where [saved] takes over, and for cancellation. */
     private fun clear(videoId: String) {
         _active.update { it - videoId }
     }
@@ -974,7 +1008,7 @@ object Downloads {
     private fun Exception.friendly(): String = when {
         (this is IllegalStateException || this is IllegalArgumentException) &&
             !message.isNullOrBlank() -> message!!
-        else -> "Download failed — check your connection"
+        else -> "Download failed â€” check your connection"
     }
 
     /**
@@ -983,7 +1017,7 @@ object Downloads {
      *
      * Matched to `PlaybackService.SUBSTITUTE_TIMEOUT_MS`, which bounds the same
      * search on the playback side. Generous, because nothing is waiting on the
-     * first note here and a found FLAC is worth some patience — but finite,
+     * first note here and a found FLAC is worth some patience â€” but finite,
      * because the alternative is the queue stalled per track on modules that
      * simply do not have it.
      *
@@ -1035,7 +1069,7 @@ internal data class SavedSongMetadata(
      * What release this track is off, when the row it was downloaded from knew.
      *
      * Added after the fact and defaulted, so a record written before it existed
-     * still decodes — those entries come back with a null album and are filled
+     * still decodes â€” those entries come back with a null album and are filled
      * in from the file's own tags instead, see LocalMediaRepository.
      */
     val albumName: String? = null,
@@ -1045,8 +1079,8 @@ internal data class SavedSongMetadata(
 /**
  * What a batch download was asked for as a whole.
  *
- * Built by whichever surface the tap came from — a release page's own download
- * button, a shelf card's menu — because that surface is the only thing that
+ * Built by whichever surface the tap came from â€” a release page's own download
+ * button, a shelf card's menu â€” because that surface is the only thing that
  * knows the answer, and by the time the tracks reach the queue they are forty
  * unrelated rows. Null everywhere a single track is downloaded on its own,
  * which is the honest answer there: one song off an album is not the album.
@@ -1068,7 +1102,7 @@ data class DownloadTarget(
  * A release the record says was downloaded whole, as it is written down.
  *
  * Only the tracks' ids, not the tracks: a [Song] is a wide row full of things
- * that go stale — like state, autoplay provenance, a resolved local path — and
+ * that go stale â€” like state, autoplay provenance, a resolved local path â€” and
  * a second copy of one per release is a second copy to keep in step. The songs
  * are looked up out of what the Downloads page already read off disk instead;
  * see [Downloads.collectionsAmong].

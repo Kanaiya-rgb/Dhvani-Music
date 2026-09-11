@@ -18,7 +18,7 @@ import java.util.Locale
  * Where a downloaded track goes, and how it gets there.
  *
  * The destination is the device's own Music folder, in a `BitChord`
- * subfolder — somewhere the file manager lists, other players can open, and a
+ * subfolder â€” somewhere the file manager lists, other players can open, and a
  * user can back up or delete without going through this app. That choice is
  * what makes this class necessary at all: an app-private directory would be
  * four lines of [File], but a shared one crosses the scoped-storage line and
@@ -27,8 +27,8 @@ import java.util.Locale
  * It goes through the audio collection rather than Downloads because that is
  * where audio belongs and where every other player on the device looks. What
  * first ruled Downloads out was narrower and is worth keeping on the record:
- * the files were `.webm` then — a container extension Android's own mime table
- * ties to video regardless of what MIME type this class declares for it — and a
+ * the files were `.webm` then â€” a container extension Android's own mime table
+ * ties to video regardless of what MIME type this class declares for it â€” and a
  * Gallery app crawling Downloads for video-looking files does not care what a
  * column says otherwise. Nothing writes `.webm` any more (see [storable] and
  * `StreamResolver.resolveForDownload`), so that particular trap is behind us;
@@ -39,13 +39,13 @@ import java.util.Locale
  *    exists at a location it chooses. `IS_PENDING` keeps the row invisible to
  *    everything else until the bytes are all there, so a cancelled download is
  *    never a half-file somebody can find and play.
- *  - **API 26–28** is a real path and a runtime permission. The file is written
+ *  - **API 26â€“28** is a real path and a runtime permission. The file is written
  *    beside its final name with a `.part` suffix and renamed on completion,
  *    which is the same guarantee `IS_PENDING` gives for free above, and the
  *    media scanner is told afterwards or the file stays invisible to everything
  *    that reads the index rather than the disk.
  *
- * Neither side writes tags — this class only ever copies the bytes the server
+ * Neither side writes tags â€” this class only ever copies the bytes the server
  * on the other end sent. [MediaTagger] rewrites the finished file afterwards to
  * add them; the filename below is what every downloaded track carries
  * regardless of whether that rewrite finds a layout it recognises.
@@ -63,7 +63,7 @@ object DownloadStore {
      * Whether saving needs `WRITE_EXTERNAL_STORAGE` asked for at runtime.
      *
      * Only below API 29. From there on the app writes through the media store,
-     * which grants access to rows it created and needs no permission for them —
+     * which grants access to rows it created and needs no permission for them â€”
      * and the permission it would ask for isn't grantable anyway.
      *
      * Every version check in this file is written out inline rather than
@@ -80,7 +80,7 @@ object DownloadStore {
      * What the file is called: `Artist - Title.ext`.
      *
      * Artist first because a Music folder is sorted by name and nothing
-     * else — no tags to group by — so leading with the artist is the only thing
+     * else â€” no tags to group by â€” so leading with the artist is the only thing
      * that puts an album back together in the listing.
      */
     fun fileNameFor(song: Song, extension: String): String {
@@ -118,7 +118,7 @@ object DownloadStore {
      *
      * A source that can serve lossless does not thereby serve something Android
      * will keep: the media store's audio collection accepts a closed list of
-     * MIME types, and one it doesn't recognise is refused outright at [begin] —
+     * MIME types, and one it doesn't recognise is refused outright at [begin] â€”
      * which is a download that cannot start rather than one that sounds worse
      * than hoped. Anything not answered for here falls the caller back to
      * YouTube's AAC, so an unfamiliar codec costs quality and not the download.
@@ -127,7 +127,7 @@ object DownloadStore {
      * these are not the identity mapping they look like. WAV's registered type
      * is `audio/x-wav` on Android, and ALAC ships inside an MP4 container, so an
      * ALAC file is an `.m4a` as far as both the store and [Mp4Tagger] are
-     * concerned — the tagger works on the box tree and never asks what the
+     * concerned â€” the tagger works on the box tree and never asks what the
      * samples inside are.
      */
     fun storable(codec: String?): Storable? = when (codec?.lowercase(Locale.ROOT)?.trim()) {
@@ -143,7 +143,7 @@ object DownloadStore {
      * The uri of a file already saved under this name, or null.
      *
      * Worth asking before every download because the media store does not
-     * refuse a duplicate — it silently renames it to `… (1)`, and a user who
+     * refuse a duplicate â€” it silently renames it to `â€¦ (1)`, and a user who
      * taps download twice gets two copies rather than being told they already
      * have one.
      */
@@ -239,6 +239,10 @@ object DownloadStore {
             return uri
         }
 
+        /** URI to the currently pending file, safe for embedding tags before commit. */
+        val targetUri: Uri
+            get() = if (part != null) Uri.fromFile(part) else uri
+
         fun abort() {
             part?.delete()
             if (part == null) runCatching { context.contentResolver.delete(uri, null, null) }
@@ -249,7 +253,7 @@ object DownloadStore {
      * Reserve [name] and return somewhere to write it.
      *
      * @throws IllegalStateException if the folder or the store row can't be
-     *   made — a failure worth surfacing, since every one of them means the
+     *   made ? a failure worth surfacing, since every one of them means the
      *   download cannot start rather than that it might not finish.
      */
     fun begin(context: Context, name: String, mimeType: String): Pending {
@@ -265,7 +269,7 @@ object DownloadStore {
             // resolver, several frames away from anything that names the
             // download it belongs to. Every type written here came from
             // [storable] or from the stream resolver, so landing in this branch
-            // means one of those two is wrong about this device — worth saying
+            // means one of those two is wrong about this device ? worth saying
             // in those words the first time it happens again.
             val uri = runCatching {
                 context.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
@@ -289,4 +293,81 @@ object DownloadStore {
         File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), FOLDER),
         name,
     )
+
+    // ---- Lyrics -------------------------------------------------------------
+
+    /** Returns the internal private file where lyrics for [videoId] are cached offline. */
+    fun lyricsFile(context: Context, videoId: String): File {
+        val dir = File(context.filesDir, "lyrics").apply { if (!exists()) mkdirs() }
+        return File(dir, "$videoId.lrc")
+    }
+
+    /**
+     * Saves downloaded lyrics both into the app's persistent offline lyrics cache
+     * and as a companion `.lrc` file beside the audio track in Music/DhvaniMusic.
+     */
+    internal fun saveLyrics(
+        context: Context,
+        videoId: String,
+        track: Song,
+        lyrics: LyricsTag.Embeddable?,
+    ) {
+        if (lyrics == null) return
+        val lrcContent = lyrics.enhanced ?: lyrics.plain
+        if (lrcContent.isBlank()) return
+
+        // 1. Always save to internal app storage: immune to Scoped Storage issues and 100% reliable offline
+        runCatching {
+            val internalFile = lyricsFile(context, videoId)
+            internalFile.writeText(lrcContent, Charsets.UTF_8)
+            Log.d(TAG, "saved offline lyrics cache for $videoId (${internalFile.length()}B)")
+        }.onFailure { Log.w(TAG, "failed to save internal lyrics for $videoId: ${it.message}") }
+
+        // 2. Also save companion .lrc file into shared Music/DhvaniMusic folder
+        val lrcName = fileNameFor(track, "lrc")
+        runCatching {
+            val file = legacyFile(lrcName)
+            file.parentFile?.mkdirs()
+            file.writeText(lyrics.plain, Charsets.UTF_8)
+            Log.d(TAG, "saved companion LRC file $lrcName (${file.length()}B)")
+        }.onFailure { Log.w(TAG, "could not write companion LRC file $lrcName: ${it.message}") }
+    }
+
+    /** Deletes offline lyrics and companion .lrc file for [videoId]. */
+    fun deleteLyrics(context: Context, videoId: String, song: Song? = null) {
+        runCatching {
+            val internal = lyricsFile(context, videoId)
+            if (internal.exists()) internal.delete()
+        }
+        if (song != null) {
+            runCatching {
+                val companion = legacyFile(fileNameFor(song, "lrc"))
+                if (companion.exists()) companion.delete()
+            }
+        }
+    }
+
+    /**
+     * Finds companion lyrics text for [uri] or [videoId], checking the internal
+     * offline lyrics store first, followed by any adjacent `.lrc` file.
+     */
+    fun findCompanionLrc(context: Context, uri: Uri?, videoId: String? = null): String? {
+        if (!videoId.isNullOrBlank()) {
+            val cached = runCatching {
+                val f = lyricsFile(context, videoId)
+                if (f.exists() && f.length() > 0) f.readText(Charsets.UTF_8) else null
+            }.getOrNull()
+            if (!cached.isNullOrBlank()) return cached
+        }
+
+        if (uri != null && uri.scheme == "file") {
+            val path = uri.path ?: return null
+            val audioFile = File(path)
+            val lrcFile = File(audioFile.parentFile, "${audioFile.nameWithoutExtension}.lrc")
+            if (lrcFile.exists() && lrcFile.length() > 0) {
+                return runCatching { lrcFile.readText(Charsets.UTF_8) }.getOrNull()
+            }
+        }
+        return null
+    }
 }
