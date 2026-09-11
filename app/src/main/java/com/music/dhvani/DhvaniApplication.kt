@@ -18,6 +18,7 @@ import com.music.dhvani.playback.LastPlayed
 import com.music.dhvani.data.innertube.Innertube
 import com.music.dhvani.data.LikeState
 import com.music.dhvani.data.scrobbling.LastFM
+import com.music.dhvani.data.AppUpdateChecker
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.history.PlaybackHistory
 import com.music.dhvani.data.settings.SearchHistory
@@ -34,6 +35,7 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
+        AppUpdateChecker.schedulePeriodicCheck(this)
         // PlaybackService shares this process, so seeding the cookie here means
         // stream resolution is authenticated from the first play onwards.
         authStore = AuthStore(this)

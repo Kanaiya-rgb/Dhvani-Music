@@ -1,12 +1,26 @@
 package com.music.dhvani.data
 
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.music.dhvani.BuildConfig
+import com.music.dhvani.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +32,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Request
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 /**
  * BitChord ships as a sideloaded APK off GitHub Releases rather than through
@@ -49,6 +64,17 @@ object AppUpdateChecker {
 
     private val _available = MutableStateFlow<UpdateInfo?>(null)
     val available = _available.asStateFlow()
+
+    private val _promptDialog = MutableStateFlow(false)
+    val promptDialog = _promptDialog.asStateFlow()
+
+    fun triggerDialog() {
+        _promptDialog.value = true
+    }
+
+    fun consumeDialog() {
+        _promptDialog.value = false
+    }
 
     /** Where this update's APK download currently stands, for the dialog's progress row. */
     sealed interface DownloadState {
@@ -236,5 +262,88 @@ object AppUpdateChecker {
             if (a != b) return a > b
         }
         return false
+    }
+
+    private const val UPDATE_CHANNEL_ID = "dhvani_app_updates"
+    private const val UPDATE_NOTIFICATION_ID = 2001
+    private const val PREF_LAST_NOTIFIED_VERSION = "last_notified_update_version"
+
+    /**
+     * Schedules a periodic background check (every 6 hours) via WorkManager
+     * to check GitHub Releases when device has active internet connectivity.
+     */
+    fun schedulePeriodicCheck(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val request = PeriodicWorkRequestBuilder<AppUpdateWorker>(6, TimeUnit.HOURS)
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            "DhvaniAppUpdatePeriodicWorker",
+            ExistingPeriodicWorkPolicy.KEEP,
+            request,
+        )
+    }
+
+    /**
+     * Posts a system notification when a new update is found.
+     * Prevents duplicate spam by recording the notified version in SharedPreferences.
+     */
+    fun postUpdateNotification(context: Context, info: UpdateInfo) {
+        val prefs = context.getSharedPreferences("app_updates", Context.MODE_PRIVATE)
+        val lastNotified = prefs.getString(PREF_LAST_NOTIFIED_VERSION, null)
+        if (lastNotified == info.version) return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            if (manager != null && manager.getNotificationChannel(UPDATE_CHANNEL_ID) == null) {
+                val channel = NotificationChannel(
+                    UPDATE_CHANNEL_ID,
+                    "App Updates",
+                    NotificationManager.IMPORTANCE_DEFAULT,
+                ).apply {
+                    description = "Notifies when a new Dhvani Music update is available on GitHub"
+                }
+                manager.createNotificationChannel(channel)
+            }
+        }
+
+        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            putExtra("open_update_dialog", true)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val notification = NotificationCompat.Builder(context, UPDATE_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification_logo)
+            .setContentTitle("🎵 Dhvani Music Update (v${info.version})")
+            .setContentText("Version ${info.version} is now available! Tap to download & install.")
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText(
+                        "New version ${info.version} is ready on GitHub!\n" +
+                            (info.notes?.take(160)?.let { "\n$it..." } ?: "Tap to download and install now."),
+                    ),
+            )
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) {
+            NotificationManagerCompat.from(context).notify(UPDATE_NOTIFICATION_ID, notification)
+            prefs.edit().putString(PREF_LAST_NOTIFIED_VERSION, info.version).apply()
+        }
     }
 }

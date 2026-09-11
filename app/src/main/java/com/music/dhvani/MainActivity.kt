@@ -229,6 +229,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        if (intent?.getBooleanExtra("open_update_dialog", false) == true) {
+            AppUpdateChecker.triggerDialog()
+        }
     }
 
     /**
@@ -243,6 +246,9 @@ class MainActivity : AppCompatActivity() {
         setIntent(intent)
         PlayerDeepLink.consume(intent)
         MusicLink.consume(intent)
+        if (intent.getBooleanExtra("open_update_dialog", false)) {
+            AppUpdateChecker.triggerDialog()
+        }
     }
 }
 
@@ -399,6 +405,14 @@ private fun DhvaniApp(
      * them made the top bar look like it had caught something the app hadn't.
      */
     val updateNotice = updateAvailable
+
+    val promptUpdate by AppUpdateChecker.promptDialog.collectAsStateWithLifecycle()
+    LaunchedEffect(promptUpdate) {
+        if (promptUpdate) {
+            showUpdateDialog = true
+            AppUpdateChecker.consumeDialog()
+        }
+    }
 
     LaunchedEffect(updateNotice) {
         if (updateNotice != null && !updateDialogShown) {
