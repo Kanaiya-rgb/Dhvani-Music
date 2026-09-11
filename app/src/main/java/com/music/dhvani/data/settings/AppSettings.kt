@@ -252,6 +252,7 @@ object AppSettings {
     val playerButtonsStyle = MutableStateFlow(PlayerButtonsStyle.DEFAULT)
     val hidePlayerThumbnail = MutableStateFlow(false)
     val cropAlbumArt = MutableStateFlow(false)
+    val dynamicLockscreenArt = MutableStateFlow(true)
     val hideStatusBarOnFullscreen = MutableStateFlow(false)
     val swipeThumbnail = MutableStateFlow(true)
     val swipeSensitivity = MutableStateFlow(0.73f)
@@ -606,6 +607,7 @@ object AppSettings {
         }.getOrDefault(PlayerButtonsStyle.DEFAULT)
         hidePlayerThumbnail.value = prefs.getBoolean(KEY_HIDE_PLAYER_THUMBNAIL, false)
         cropAlbumArt.value = prefs.getBoolean(KEY_CROP_ALBUM_ART, false)
+        dynamicLockscreenArt.value = prefs.getBoolean(KEY_DYNAMIC_LOCKSCREEN_ART, true)
         hideStatusBarOnFullscreen.value = prefs.getBoolean(KEY_HIDE_STATUS_BAR_ON_FULLSCREEN, false)
         swipeThumbnail.value = prefs.getBoolean(KEY_SWIPE_THUMBNAIL, true)
         swipeSensitivity.value = prefs.getFloat(KEY_SWIPE_SENSITIVITY, 0.73f)
@@ -930,6 +932,11 @@ object AppSettings {
     fun setCropAlbumArt(value: Boolean) {
         cropAlbumArt.value = value
         prefs.edit().putBoolean(KEY_CROP_ALBUM_ART, value).apply()
+    }
+
+    fun setDynamicLockscreenArt(value: Boolean) {
+        dynamicLockscreenArt.value = value
+        prefs.edit().putBoolean(KEY_DYNAMIC_LOCKSCREEN_ART, value).apply()
     }
 
     fun setHideStatusBarOnFullscreen(value: Boolean) {
@@ -1563,6 +1570,7 @@ object AppSettings {
     private const val KEY_PLAYER_BUTTONS_STYLE = "player_buttons_style"
     private const val KEY_HIDE_PLAYER_THUMBNAIL = "hide_player_thumbnail"
     private const val KEY_CROP_ALBUM_ART = "crop_album_art"
+    private const val KEY_DYNAMIC_LOCKSCREEN_ART = "dynamic_lockscreen_art"
     private const val KEY_HIDE_STATUS_BAR_ON_FULLSCREEN = "hide_status_bar_on_fullscreen"
     private const val KEY_SWIPE_THUMBNAIL = "swipe_thumbnail"
     private const val KEY_SWIPE_SENSITIVITY = "swipe_sensitivity"

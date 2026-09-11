@@ -911,10 +911,12 @@ class PlaybackService : MediaSessionService() {
         crossfade = controller
         controller.start()
 
+        val coilBitmapLoader = CoilBitmapLoader(this, scope)
         mediaSession = MediaSession.Builder(this, SessionPlayer(exoPlayer, controller))
             .setId(SESSION_ID)
             .setSessionActivity(sessionActivity())
             .setCallback(sessionCallback)
+            .setBitmapLoader(coilBitmapLoader)
             .build()
         mediaSession?.setCustomLayout(notificationButtons())
     }
@@ -1357,6 +1359,8 @@ class PlaybackService : MediaSessionService() {
         // Covers crossfades too: a blended advance never reaches
         // onMediaItemTransition, and [adoptPlayer] calls this handler by hand.
         publishWidgetState()
+        // Automatically set lockscreen background wallpaper from song album art
+        LockscreenWallpaperManager.applyWallpaperFor(this, scope, newSong)
         // Cleared rather than re-published. The renderer is still
         // configured for the track that just ended at this point, so
         // reading the format here reports the *previous* song — which
@@ -2956,6 +2960,18 @@ class PlaybackService : MediaSessionService() {
                 spatialAudioProcessorB.enabled = it
             }
         }
+        scope.launch {
+            AppSettings.dynamicLockscreenArt.collect { enabled ->
+                if (!enabled) {
+                    LockscreenWallpaperManager.clearWallpaper(this@PlaybackService, scope)
+                } else {
+                    player?.currentMediaItem?.toSong()?.let { song ->
+                        LockscreenWallpaperManager.applyWallpaperFor(this@PlaybackService, scope, song)
+                    }
+                }
+                mediaSession?.setCustomLayout(notificationButtons())
+            }
+        }
     }
 
     private fun observeScrobbling() {
@@ -3315,6 +3331,9 @@ class PlaybackService : MediaSessionService() {
                 }
                 runCatching { rpc.closeRPC() }
             }
+        }
+        if (AppSettings.dynamicLockscreenArt.value) {
+            LockscreenWallpaperManager.clearWallpaper(this, scope)
         }
         scope.cancel()
         crossfade?.release()

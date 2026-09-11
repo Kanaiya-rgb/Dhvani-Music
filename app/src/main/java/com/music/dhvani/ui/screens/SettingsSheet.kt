@@ -46,6 +46,7 @@ import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LocalOffer
 import androidx.compose.material.icons.rounded.MusicOff
 import androidx.compose.material.icons.rounded.MotionPhotosOff
@@ -195,6 +196,7 @@ fun SettingsScreen(
     val wifiOnlyDownloads by AppSettings.wifiOnlyDownloads.collectAsStateWithLifecycle()
     val sourceConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
+    val dynamicLockscreenArt by AppSettings.dynamicLockscreenArt.collectAsStateWithLifecycle()
     val resumeOnBluetooth by AppSettings.resumeOnBluetooth.collectAsStateWithLifecycle()
     val sliderStyle by AppSettings.sliderStyle.collectAsStateWithLifecycle()
     val squigglySlider by AppSettings.squigglySlider.collectAsStateWithLifecycle()
@@ -692,6 +694,25 @@ fun SettingsScreen(
                                 )
                             },
                             onClick = { AppSettings.setStopOnTaskRemoved(!stopOnTaskRemoved) },
+                        )
+                    }
+
+                    SettingsGroup(header = "Lockscreen & notification") {
+                        SettingsRow(
+                            icon = Icons.Rounded.Lock,
+                            title = "Dynamic Lockscreen Art & Waveform",
+                            subtitle = "Set lockscreen background to album art & show dynamic waveform (Android 11+)",
+                            trailing = {
+                                Switch(
+                                    checked = dynamicLockscreenArt,
+                                    onCheckedChange = AppSettings::setDynamicLockscreenArt,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setDynamicLockscreenArt(!dynamicLockscreenArt) },
                         )
                     }
                 }

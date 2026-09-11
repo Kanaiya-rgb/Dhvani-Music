@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.HideImage
 import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MotionPhotosOff
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Palette
@@ -117,6 +118,7 @@ fun AppearanceSettingsScreen(
     val playerButtonsStyle by AppSettings.playerButtonsStyle.collectAsStateWithLifecycle()
     val hidePlayerThumbnail by AppSettings.hidePlayerThumbnail.collectAsStateWithLifecycle()
     val cropAlbumArt by AppSettings.cropAlbumArt.collectAsStateWithLifecycle()
+    val dynamicLockscreenArt by AppSettings.dynamicLockscreenArt.collectAsStateWithLifecycle()
     val hideStatusBarOnFullscreen by AppSettings.hideStatusBarOnFullscreen.collectAsStateWithLifecycle()
     val fullBleedArtwork by AppSettings.fullBleedArtwork.collectAsStateWithLifecycle()
     val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
@@ -318,6 +320,23 @@ fun AppearanceSettingsScreen(
                     )
                 },
                 onClick = { AppSettings.setCropAlbumArt(!cropAlbumArt) },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.Lock,
+                title = "Dynamic Lockscreen Art & Waveform",
+                subtitle = "Set lockscreen background to album art & show dynamic waveform (Android 11+)",
+                trailing = {
+                    Switch(
+                        checked = dynamicLockscreenArt,
+                        onCheckedChange = AppSettings::setDynamicLockscreenArt,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = { AppSettings.setDynamicLockscreenArt(!dynamicLockscreenArt) },
             )
             RowDivider()
             SettingsRow(
