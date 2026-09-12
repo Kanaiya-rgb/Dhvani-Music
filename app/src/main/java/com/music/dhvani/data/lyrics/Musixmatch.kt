@@ -61,11 +61,14 @@ object Musixmatch {
 
     private fun score(track: Track, title: String, artist: String, seconds: Int): Double {
         if (!LyricsCleaner.isTitleMatch(track.trackName, title)) return -1000.0
+        val artistMatches = LyricsCleaner.isArtistMatch(track.artistName, artist)
+        if (!artistMatches && artist.isNotBlank()) return -1000.0
+
         var score = 50.0
         val name = track.trackName.trim().lowercase(Locale.ROOT)
         val targetTitle = title.trim().lowercase(Locale.ROOT)
         if (name == targetTitle) score += 30.0
-        if (LyricsCleaner.isArtistMatch(track.artistName, artist)) {
+        if (artistMatches) {
             score += 30.0
         }
         track.trackLength?.let { length ->

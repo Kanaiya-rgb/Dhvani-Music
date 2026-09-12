@@ -108,10 +108,12 @@ object LrcLib {
         val candidates = hits.mapNotNull { it as? JsonObject }
             .filter { hit ->
                 val trackName = hit["trackName"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val artistName = hit["artistName"]?.jsonPrimitive?.contentOrNull.orEmpty()
                 val hasAnyLyrics = hit["syncedLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true ||
                     hit["plainLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true
                 val d = hit["duration"]?.jsonPrimitive?.doubleOrNull?.toInt() ?: 0
-                hasAnyLyrics && LyricsCleaner.isTitleMatch(trackName, title) && LyricsCleaner.isDurationMatch(d, seconds, 15)
+                val artistMatches = allArtists.isEmpty() || allArtists.any { LyricsCleaner.isArtistMatch(artistName, it) }
+                hasAnyLyrics && artistMatches && LyricsCleaner.isTitleMatch(trackName, title) && LyricsCleaner.isDurationMatch(d, seconds, 15)
             }
 
         val best = candidates.filter { hit -> hit["syncedLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true }
@@ -141,10 +143,12 @@ object LrcLib {
         val candidates = hits.mapNotNull { it as? JsonObject }
             .filter { hit ->
                 val trackName = hit["trackName"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val artistName = hit["artistName"]?.jsonPrimitive?.contentOrNull.orEmpty()
                 val hasAnyLyrics = hit["syncedLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true ||
                     hit["plainLyrics"]?.jsonPrimitive?.contentOrNull?.isNotBlank() == true
                 val d = hit["duration"]?.jsonPrimitive?.doubleOrNull?.toInt() ?: 0
-                hasAnyLyrics && LyricsCleaner.isTitleMatch(trackName, title) && (seconds <= 0 || abs(d - seconds) <= 18)
+                val artistMatches = allArtists.isEmpty() || allArtists.any { LyricsCleaner.isArtistMatch(artistName, it) }
+                hasAnyLyrics && artistMatches && LyricsCleaner.isTitleMatch(trackName, title) && (seconds <= 0 || abs(d - seconds) <= 18)
             }
 
         fun scoreHit(hit: JsonObject): Double {

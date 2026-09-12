@@ -114,11 +114,52 @@ enum class LyricsPosition(val label: String) {
 
 enum class LyricsAnimationStyle(val label: String) {
     NONE("None"),
-    FADE("Fade"),
-    GLOW("Glow"),
-    SLIDE("Slide"),
-    KARAOKE("Karaoke"),
-    APPLE("Apple Music Style"),
+    FADE("Classic Fade"),
+    SLIDE("Kinetic Slide"),
+    APPLE("Apple Music Bounce"),
+    TYPEWRITER("Typewriter"),
+    NEON("Neon Pulse"),
+    GLITCH("Glitch Slice"),
+    LIQUID("Liquid Fill"),
+    AURORA("Aurora Stream"),
+    EMBER("Ember Lava"),
+    CHROME("Chrome Shimmer"),
+    CRT("CRT Matrix"),
+    WAVE("Kinetic Wave"),
+    SMOKE_SIGNAL("Smoke-Signal"),
+    EQUALIZER("Equalizer"),
+    GHOSTWRITE("Ghostwrite"),
+    ;
+
+    companion object {
+        fun fromString(value: String?): LyricsAnimationStyle = when (value?.uppercase()?.replace("-", "_")) {
+            "NONE" -> NONE
+            "FADE" -> FADE
+            "SLIDE" -> SLIDE
+            "APPLE", "KARAOKE" -> APPLE
+            "TYPEWRITER" -> TYPEWRITER
+            "NEON", "GLOW" -> NEON
+            "GLITCH", "CYBER_GLITCH" -> GLITCH
+            "LIQUID" -> LIQUID
+            "AURORA", "CHROMIA", "HOLO_AURORA" -> AURORA
+            "EMBER" -> EMBER
+            "CHROME" -> CHROME
+            "CRT" -> CRT
+            "WAVE" -> WAVE
+            "SMOKE_SIGNAL", "SMOKESIGNAL" -> SMOKE_SIGNAL
+            "EQUALIZER" -> EQUALIZER
+            "GHOSTWRITE" -> GHOSTWRITE
+            "REVEAL" -> CHROME
+            "STEP_FADE" -> FADE
+            else -> FADE
+        }
+    }
+}
+
+enum class LockscreenStyle(val label: String) {
+    CARD("Floating Art Card"),
+    FLUID_BLUR("Fluid Ambient Blur"),
+    CINEMATIC("Cinematic Full Bleed"),
 }
 
 enum class DensityScale(val value: Float, val label: String) {
@@ -252,7 +293,10 @@ object AppSettings {
     val playerButtonsStyle = MutableStateFlow(PlayerButtonsStyle.DEFAULT)
     val hidePlayerThumbnail = MutableStateFlow(false)
     val cropAlbumArt = MutableStateFlow(false)
-    val dynamicLockscreenArt = MutableStateFlow(true)
+    val dynamicLockscreenArt = MutableStateFlow(false)
+    val lockscreenStyle = MutableStateFlow(LockscreenStyle.CARD)
+    val customRestoreWallpaperUri = MutableStateFlow<String?>(null)
+    val lockscreenPlayerEnabled = MutableStateFlow(true)
     val hideStatusBarOnFullscreen = MutableStateFlow(false)
     val swipeThumbnail = MutableStateFlow(true)
     val swipeSensitivity = MutableStateFlow(0.73f)
@@ -607,16 +651,19 @@ object AppSettings {
         }.getOrDefault(PlayerButtonsStyle.DEFAULT)
         hidePlayerThumbnail.value = prefs.getBoolean(KEY_HIDE_PLAYER_THUMBNAIL, false)
         cropAlbumArt.value = prefs.getBoolean(KEY_CROP_ALBUM_ART, false)
-        dynamicLockscreenArt.value = prefs.getBoolean(KEY_DYNAMIC_LOCKSCREEN_ART, true)
+        dynamicLockscreenArt.value = prefs.getBoolean(KEY_DYNAMIC_LOCKSCREEN_ART, false)
+        lockscreenStyle.value = runCatching {
+            LockscreenStyle.valueOf(prefs.getString(KEY_LOCKSCREEN_STYLE, null) ?: "CARD")
+        }.getOrDefault(LockscreenStyle.CARD)
+        customRestoreWallpaperUri.value = prefs.getString(KEY_CUSTOM_RESTORE_WALLPAPER_URI, null)
+        lockscreenPlayerEnabled.value = prefs.getBoolean(KEY_LOCKSCREEN_PLAYER_ENABLED, true)
         hideStatusBarOnFullscreen.value = prefs.getBoolean(KEY_HIDE_STATUS_BAR_ON_FULLSCREEN, false)
         swipeThumbnail.value = prefs.getBoolean(KEY_SWIPE_THUMBNAIL, true)
         swipeSensitivity.value = prefs.getFloat(KEY_SWIPE_SENSITIVITY, 0.73f)
         lyricsPosition.value = runCatching {
             LyricsPosition.valueOf(prefs.getString(KEY_LYRICS_POSITION, null) ?: "CENTER")
         }.getOrDefault(LyricsPosition.CENTER)
-        lyricsAnimationStyle.value = runCatching {
-            LyricsAnimationStyle.valueOf(prefs.getString(KEY_LYRICS_ANIMATION_STYLE, null) ?: "FADE")
-        }.getOrDefault(LyricsAnimationStyle.FADE)
+        lyricsAnimationStyle.value = LyricsAnimationStyle.fromString(prefs.getString(KEY_LYRICS_ANIMATION_STYLE, null))
         lyricsGlowEffect.value = prefs.getBoolean(KEY_LYRICS_GLOW_EFFECT, false)
         lyricsTextSize.value = prefs.getFloat(KEY_LYRICS_TEXT_SIZE, 24f)
         lyricsLineSpacing.value = prefs.getFloat(KEY_LYRICS_LINE_SPACING, 1.2f)
@@ -937,6 +984,25 @@ object AppSettings {
     fun setDynamicLockscreenArt(value: Boolean) {
         dynamicLockscreenArt.value = value
         prefs.edit().putBoolean(KEY_DYNAMIC_LOCKSCREEN_ART, value).apply()
+    }
+
+    fun setLockscreenPlayerEnabled(value: Boolean) {
+        lockscreenPlayerEnabled.value = value
+        prefs.edit().putBoolean(KEY_LOCKSCREEN_PLAYER_ENABLED, value).apply()
+    }
+
+    fun setLockscreenStyle(value: LockscreenStyle) {
+        lockscreenStyle.value = value
+        prefs.edit().putString(KEY_LOCKSCREEN_STYLE, value.name).apply()
+    }
+
+    fun setCustomRestoreWallpaperUri(value: String?) {
+        customRestoreWallpaperUri.value = value
+        if (value == null) {
+            prefs.edit().remove(KEY_CUSTOM_RESTORE_WALLPAPER_URI).apply()
+        } else {
+            prefs.edit().putString(KEY_CUSTOM_RESTORE_WALLPAPER_URI, value).apply()
+        }
     }
 
     fun setHideStatusBarOnFullscreen(value: Boolean) {
@@ -1521,6 +1587,7 @@ object AppSettings {
         "downloaded_tracks",
         "downloaded_tracks_metadata",
         "downloaded_collections",
+        KEY_CUSTOM_RESTORE_WALLPAPER_URI,
         KEY_LAST_VERSION_CODE,
     )
 
@@ -1571,6 +1638,9 @@ object AppSettings {
     private const val KEY_HIDE_PLAYER_THUMBNAIL = "hide_player_thumbnail"
     private const val KEY_CROP_ALBUM_ART = "crop_album_art"
     private const val KEY_DYNAMIC_LOCKSCREEN_ART = "dynamic_lockscreen_art"
+    private const val KEY_LOCKSCREEN_STYLE = "lockscreen_style"
+    private const val KEY_CUSTOM_RESTORE_WALLPAPER_URI = "custom_restore_wallpaper_uri"
+    private const val KEY_LOCKSCREEN_PLAYER_ENABLED = "lockscreen_player_enabled"
     private const val KEY_HIDE_STATUS_BAR_ON_FULLSCREEN = "hide_status_bar_on_fullscreen"
     private const val KEY_SWIPE_THUMBNAIL = "swipe_thumbnail"
     private const val KEY_SWIPE_SENSITIVITY = "swipe_sensitivity"

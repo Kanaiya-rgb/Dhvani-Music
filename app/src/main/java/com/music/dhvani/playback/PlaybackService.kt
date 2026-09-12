@@ -1,8 +1,10 @@
 package com.music.dhvani.playback
 
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -1203,17 +1205,27 @@ class PlaybackService : MediaSessionService() {
      * to go is skipped and only the plain shade notification survives. Same
      * reason the notification itself was previously un-tappable.
      */
-    private fun sessionActivity(): PendingIntent = PendingIntent.getActivity(
-        this,
-        0,
-        Intent(this, MainActivity::class.java)
-            .setAction(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_LAUNCHER)
-            // MainActivity is singleTask, so this resumes the existing task
-            // rather than stacking a second copy of the UI.
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-    )
+    private fun sessionActivity(): PendingIntent {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            setAction(Intent.ACTION_MAIN)
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            player?.currentMediaItem?.toSong()?.let { s ->
+                putExtra("title", s.title)
+                putExtra("artist", s.artist)
+                putExtra("thumbnailUrl", s.thumbnailUrl)
+            }
+            putExtra("durationMs", player?.duration ?: 0L)
+            putExtra("positionMs", player?.currentPosition ?: 0L)
+            putExtra("isPlaying", player?.isPlaying ?: true)
+        }
+        return PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+    }
 
     private fun registerCurrentPlay() {
         player?.currentMediaItem?.mediaId?.let(PlaybackTracker::onPlaying)
@@ -1359,8 +1371,6 @@ class PlaybackService : MediaSessionService() {
         // Covers crossfades too: a blended advance never reaches
         // onMediaItemTransition, and [adoptPlayer] calls this handler by hand.
         publishWidgetState()
-        // Automatically set lockscreen background wallpaper from song album art
-        LockscreenWallpaperManager.applyWallpaperFor(this, scope, newSong)
         // Cleared rather than re-published. The renderer is still
         // configured for the track that just ended at this point, so
         // reading the format here reports the *previous* song — which
@@ -2960,18 +2970,6 @@ class PlaybackService : MediaSessionService() {
                 spatialAudioProcessorB.enabled = it
             }
         }
-        scope.launch {
-            AppSettings.dynamicLockscreenArt.collect { enabled ->
-                if (!enabled) {
-                    LockscreenWallpaperManager.clearWallpaper(this@PlaybackService, scope)
-                } else {
-                    player?.currentMediaItem?.toSong()?.let { song ->
-                        LockscreenWallpaperManager.applyWallpaperFor(this@PlaybackService, scope, song)
-                    }
-                }
-                mediaSession?.setCustomLayout(notificationButtons())
-            }
-        }
     }
 
     private fun observeScrobbling() {
@@ -3329,11 +3327,7 @@ class PlaybackService : MediaSessionService() {
                 withTimeoutOrNull(DISCORD_TEARDOWN_TIMEOUT_MS) {
                     if (wasUp) runCatching { rpc.close() }
                 }
-                runCatching { rpc.closeRPC() }
             }
-        }
-        if (AppSettings.dynamicLockscreenArt.value) {
-            LockscreenWallpaperManager.clearWallpaper(this, scope)
         }
         scope.cancel()
         crossfade?.release()

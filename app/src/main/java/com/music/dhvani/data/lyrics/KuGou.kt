@@ -34,9 +34,9 @@ object KuGou {
         val keyword = keyword(cleanTitle, cleanArtist, album)
         val seconds = (durationMs / 1000).toInt()
 
-        val candidate = searchSongs(keyword, cleanTitle, seconds)?.firstNotNullOfOrNull { hash ->
-            searchLyrics(hash = hash, cleanTitle = cleanTitle)?.firstOrNull()
-        } ?: searchLyrics(keyword = keyword, cleanTitle = cleanTitle, seconds = seconds)?.firstOrNull()
+        val candidate = searchSongs(keyword, cleanTitle, cleanArtist, seconds)?.firstNotNullOfOrNull { hash ->
+            searchLyrics(hash = hash, cleanTitle = cleanTitle, cleanArtist = cleanArtist)?.firstOrNull()
+        } ?: searchLyrics(keyword = keyword, cleanTitle = cleanTitle, cleanArtist = cleanArtist, seconds = seconds)?.firstOrNull()
             ?: return@withContext null
 
         val lrc = download(candidate.id, candidate.accesskey) ?: return@withContext null
@@ -44,10 +44,10 @@ object KuGou {
     }
 
     /**
-     * Song hashes worth trying, strictly restricted to tracks matching the title
+     * Song hashes worth trying, strictly restricted to tracks matching the title and artist
      * within [DURATION_TOLERANCE_SECONDS] of the track being played.
      */
-    private fun searchSongs(keyword: Keyword, cleanTitle: String, seconds: Int): List<String>? {
+    private fun searchSongs(keyword: Keyword, cleanTitle: String, cleanArtist: String, seconds: Int): List<String>? {
         val url = "https://mobileservice.kugou.com/api/v3/search/song".toHttpUrl().newBuilder()
             .addQueryParameter("version", "9108")
             .addQueryParameter("plat", "0")
@@ -59,7 +59,8 @@ object KuGou {
         val response = runCatching { lyricsJson.decodeFromString<SearchSongResponse>(body) }.getOrNull()
         return response?.data?.info.orEmpty()
             .filter {
-                (it.songname.isBlank() || LyricsCleaner.isTitleMatch(it.songname, cleanTitle)) &&
+                it.songname.isNotBlank() && LyricsCleaner.isTitleMatch(it.songname, cleanTitle) &&
+                    (cleanArtist.isBlank() || it.singername.isBlank() || LyricsCleaner.isArtistMatch(it.singername, cleanArtist)) &&
                     (seconds <= 0 || abs(it.duration - seconds) <= DURATION_TOLERANCE_SECONDS)
             }
             .sortedBy { abs(it.duration - seconds) }
@@ -70,6 +71,7 @@ object KuGou {
         hash: String? = null,
         keyword: Keyword? = null,
         cleanTitle: String? = null,
+        cleanArtist: String? = null,
         seconds: Int = -1,
     ): List<Candidate>? {
         val builder = "https://lyrics.kugou.com/search".toHttpUrl().newBuilder()
@@ -87,10 +89,10 @@ object KuGou {
         val body = lyricsGet(builder.build().toString()) ?: return null
         val response = runCatching { lyricsJson.decodeFromString<SearchLyricsResponse>(body) }.getOrNull()
         val candidates = response?.candidates.orEmpty()
-        return if (cleanTitle != null) {
-            candidates.filter { it.song.isBlank() || LyricsCleaner.isTitleMatch(it.song, cleanTitle) }
-        } else {
-            candidates
+        return candidates.filter {
+            val titleMatches = cleanTitle == null || (it.song.isNotBlank() && LyricsCleaner.isTitleMatch(it.song, cleanTitle))
+            val artistMatches = cleanArtist.isNullOrBlank() || it.singer.isBlank() || LyricsCleaner.isArtistMatch(it.singer, cleanArtist)
+            titleMatches && artistMatches
         }
     }
 

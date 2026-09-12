@@ -58,12 +58,14 @@ object PaxSenix {
 
     private fun score(track: AppleTrack, title: String, artist: String): Double {
         if (!LyricsCleaner.isTitleMatch(track.attributes.name, title)) return -1000.0
+        val artistMatches = listOfNotNull(track.attributes.artistName, track.attributes.composerName)
+            .any { LyricsCleaner.isArtistMatch(it, artist) }
+        if (!artistMatches && artist.isNotBlank()) return -1000.0
+
         val name = track.attributes.name.trim().lowercase()
         val targetTitle = title.trim().lowercase()
         var score = 50.0
         if (name == targetTitle) score += 30.0
-        val artistMatches = listOfNotNull(track.attributes.artistName, track.attributes.composerName)
-            .any { LyricsCleaner.isArtistMatch(it, artist) }
         if (artistMatches) score += 30.0
         return score
     }

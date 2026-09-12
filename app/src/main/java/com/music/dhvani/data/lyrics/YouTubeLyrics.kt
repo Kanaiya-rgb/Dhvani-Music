@@ -4,6 +4,7 @@ import com.music.dhvani.data.YtMusicRepository
 import com.music.dhvani.data.innertube.Innertube
 import com.music.dhvani.data.model.SearchFilter
 import com.music.dhvani.data.model.SearchResult
+import com.music.dhvani.data.model.durationMillis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
@@ -55,8 +56,13 @@ object YouTubeLyrics {
 
             val topSong = searchResults.filterIsInstance<SearchResult.Track>()
                 .firstOrNull { candidate ->
+                    val candidateArtist = candidate.song.artist
+                    val targetSec = (durationMs / 1000).toInt()
+                    val candSec = (candidate.song.durationMillis() / 1000).toInt()
                     candidate.song.videoId != videoId &&
-                        LyricsCleaner.isTitleMatch(candidate.song.title, cleanTitle)
+                        LyricsCleaner.isTitleMatch(candidate.song.title, cleanTitle) &&
+                        (cleanArtist.isBlank() || LyricsCleaner.isArtistMatch(candidateArtist, cleanArtist)) &&
+                        (targetSec <= 0 || candSec <= 0 || LyricsCleaner.isDurationMatch(candSec, targetSec, 15))
                 }
 
             if (topSong != null) {

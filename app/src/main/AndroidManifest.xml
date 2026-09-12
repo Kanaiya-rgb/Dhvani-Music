@@ -15,7 +15,6 @@
     <!-- Touch feedback. The system's own haptics switch is honoured on top of
          this, so granting it doesn't override a user who turned buzzing off. -->
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.SET_WALLPAPER" />
 
     <!--
       In-app updates: handing a downloaded APK to the system installer. The

@@ -17,10 +17,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProgressIndicatorDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderColors
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SliderState
+import com.music.dhvani.data.settings.SliderStyle
+import com.music.dhvani.ui.player.ThinSlider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -1441,6 +1445,166 @@ fun CyberBeamSlider(
                     center = Offset(progressX, centerY),
                 )
             }
+        }
+    }
+}
+
+/**
+ * Universal player slider component that dynamically renders the exact [SliderStyle]
+ * configured by the user (Wavy, Squiggly, Neon Glow, Cosmic, Audio Bars, Cyber Beam, etc.)
+ */
+@Composable
+fun DynamicPlayerSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    isPlaying: Boolean,
+    sliderStyle: SliderStyle,
+    squigglySlider: Boolean = false,
+    activeColor: Color = MaterialTheme.colorScheme.primary,
+    inactiveColor: Color = activeColor.copy(alpha = 0.28f),
+    modifier: Modifier = Modifier,
+    mixing: Boolean = false,
+    transitionWindow: ClosedFloatingPointRange<Float>? = null,
+) {
+    val artworkSliderColors = SliderDefaults.colors(
+        activeTrackColor = activeColor,
+        inactiveTrackColor = inactiveColor,
+        thumbColor = activeColor,
+    )
+
+    when {
+        sliderStyle == SliderStyle.SQUIGGLY || (sliderStyle == SliderStyle.WAVY && squigglySlider) -> {
+            SquigglySlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                isPlaying = isPlaying,
+                colors = artworkSliderColors,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
+        sliderStyle == SliderStyle.WAVY -> {
+            WavySlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                isPlaying = isPlaying,
+                colors = artworkSliderColors,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
+        sliderStyle == SliderStyle.SLIM -> {
+            ThinSlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                mixing = mixing,
+                idleHeight = 2.dp,
+                activeHeight = 4.dp,
+                activeColor = activeColor,
+                inactiveColor = inactiveColor,
+            )
+        }
+        sliderStyle == SliderStyle.MATERIAL -> {
+            Slider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                colors = artworkSliderColors,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
+        sliderStyle == SliderStyle.NEON_GLOW -> {
+            NeonGlowSlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                isPlaying = isPlaying,
+                colors = artworkSliderColors,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
+        sliderStyle == SliderStyle.GRADIENT_FLOW -> {
+            GradientFlowSlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                isPlaying = isPlaying,
+                colors = artworkSliderColors,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
+        sliderStyle == SliderStyle.COSMIC -> {
+            CosmicSlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                isPlaying = isPlaying,
+                colors = artworkSliderColors,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
+        sliderStyle == SliderStyle.LIQUID_LAVA -> {
+            LiquidLavaSlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                isPlaying = isPlaying,
+                colors = artworkSliderColors,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
+        sliderStyle == SliderStyle.AUDIO_BARS -> {
+            AudioBarsSlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                isPlaying = isPlaying,
+                colors = artworkSliderColors,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
+        sliderStyle == SliderStyle.RETRO_LED -> {
+            RetroDotMatrixSlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                isPlaying = isPlaying,
+                colors = artworkSliderColors,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
+        sliderStyle == SliderStyle.VINYL_GROOVE -> {
+            VinylGrooveSlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                isPlaying = isPlaying,
+                colors = artworkSliderColors,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
+        sliderStyle == SliderStyle.CYBER_BEAM -> {
+            CyberBeamSlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                isPlaying = isPlaying,
+                colors = artworkSliderColors,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
+        else -> {
+            ThinSlider(
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                mixing = mixing,
+                activeColor = activeColor,
+                inactiveColor = inactiveColor,
+                transitionWindow = transitionWindow,
+            )
         }
     }
 }

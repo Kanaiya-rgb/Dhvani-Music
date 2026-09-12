@@ -3,7 +3,10 @@ package com.music.dhvani.ui.screens
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -118,7 +121,6 @@ fun AppearanceSettingsScreen(
     val playerButtonsStyle by AppSettings.playerButtonsStyle.collectAsStateWithLifecycle()
     val hidePlayerThumbnail by AppSettings.hidePlayerThumbnail.collectAsStateWithLifecycle()
     val cropAlbumArt by AppSettings.cropAlbumArt.collectAsStateWithLifecycle()
-    val dynamicLockscreenArt by AppSettings.dynamicLockscreenArt.collectAsStateWithLifecycle()
     val hideStatusBarOnFullscreen by AppSettings.hideStatusBarOnFullscreen.collectAsStateWithLifecycle()
     val fullBleedArtwork by AppSettings.fullBleedArtwork.collectAsStateWithLifecycle()
     val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
@@ -172,27 +174,7 @@ fun AppearanceSettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(contentPadding),
     ) {
-        // Top app bar with back navigation
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = stringResource(R.string.cancel),
-                    tint = MaterialTheme.colorScheme.onBackground,
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = stringResource(R.string.appearance),
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-        }
+        Spacer(Modifier.height(4.dp))
 
         // ── 1. Theme & Display ──────────────────────────────────────────
         SettingsGroup(header = stringResource(R.string.theme)) {
@@ -322,23 +304,7 @@ fun AppearanceSettingsScreen(
                 onClick = { AppSettings.setCropAlbumArt(!cropAlbumArt) },
             )
             RowDivider()
-            SettingsRow(
-                icon = Icons.Rounded.Lock,
-                title = "Dynamic Lockscreen Art & Waveform",
-                subtitle = "Set lockscreen background to album art & show dynamic waveform (Android 11+)",
-                trailing = {
-                    Switch(
-                        checked = dynamicLockscreenArt,
-                        onCheckedChange = AppSettings::setDynamicLockscreenArt,
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = MaterialTheme.colorScheme.primary,
-                            checkedBorderColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    )
-                },
-                onClick = { AppSettings.setDynamicLockscreenArt(!dynamicLockscreenArt) },
-            )
-            RowDivider()
+
             SettingsRow(
                 icon = Icons.Rounded.FullscreenExit,
                 title = stringResource(R.string.hide_status_bar_fullscreen),
@@ -534,10 +500,20 @@ fun AppearanceSettingsScreen(
                     value = when (lyricsAnimationStyle) {
                         LyricsAnimationStyle.NONE -> stringResource(R.string.lyrics_animation_none)
                         LyricsAnimationStyle.FADE -> stringResource(R.string.lyrics_animation_fade)
-                        LyricsAnimationStyle.GLOW -> stringResource(R.string.lyrics_animation_glow)
                         LyricsAnimationStyle.SLIDE -> stringResource(R.string.lyrics_animation_slide)
-                        LyricsAnimationStyle.KARAOKE -> stringResource(R.string.lyrics_animation_karaoke)
                         LyricsAnimationStyle.APPLE -> stringResource(R.string.lyrics_animation_apple)
+                        LyricsAnimationStyle.TYPEWRITER -> stringResource(R.string.lyrics_animation_typewriter)
+                        LyricsAnimationStyle.NEON -> stringResource(R.string.lyrics_animation_neon)
+                        LyricsAnimationStyle.GLITCH -> stringResource(R.string.lyrics_animation_glitch)
+                        LyricsAnimationStyle.LIQUID -> stringResource(R.string.lyrics_animation_liquid)
+                        LyricsAnimationStyle.AURORA -> stringResource(R.string.lyrics_animation_aurora)
+                        LyricsAnimationStyle.EMBER -> stringResource(R.string.lyrics_animation_ember)
+                        LyricsAnimationStyle.CHROME -> stringResource(R.string.lyrics_animation_chrome)
+                        LyricsAnimationStyle.CRT -> stringResource(R.string.lyrics_animation_crt)
+                        LyricsAnimationStyle.WAVE -> stringResource(R.string.lyrics_animation_wave)
+                        LyricsAnimationStyle.SMOKE_SIGNAL -> stringResource(R.string.lyrics_animation_smoke_signal)
+                        LyricsAnimationStyle.EQUALIZER -> stringResource(R.string.lyrics_animation_equalizer)
+                        LyricsAnimationStyle.GHOSTWRITE -> stringResource(R.string.lyrics_animation_ghostwrite)
                     },
                     onClick = { showLyricsAnimDialog = true },
                 )
@@ -1029,12 +1005,35 @@ fun AppearanceSettingsScreen(
                                 .padding(vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                text = anim.label,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = if (lyricsAnimationStyle == anim) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.weight(1f),
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = anim.label,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = if (lyricsAnimationStyle == anim) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = when (anim) {
+                                        LyricsAnimationStyle.NONE -> "Static plain lyrics without animations"
+                                        LyricsAnimationStyle.FADE -> "Gentle classic opacity fade"
+                                        LyricsAnimationStyle.SLIDE -> "Smooth dynamic horizontal slide-in"
+                                        LyricsAnimationStyle.APPLE -> "Apple Music style energetic syllable bounce"
+                                        LyricsAnimationStyle.TYPEWRITER -> "Mechanical character-by-character typing with caret"
+                                        LyricsAnimationStyle.NEON -> "Electric gas neon sign with buzzing tube flicker & deep glow"
+                                        LyricsAnimationStyle.GLITCH -> "Torn digital video slices with cyan & magenta channel shift"
+                                        LyricsAnimationStyle.LIQUID -> "Hollow glass typography with rising fluid wave meniscus"
+                                        LyricsAnimationStyle.AURORA -> "Living liquid holographic rainbow with shifting hue rotation"
+                                        LyricsAnimationStyle.EMBER -> "Volcanic incandescent magma with molten embers & heat pulse"
+                                        LyricsAnimationStyle.CHROME -> "Liquid metallic mercury with sweeping specular lens glare"
+                                        LyricsAnimationStyle.CRT -> "Retro green phosphor monitor with rolling TV scanlines & flicker"
+                                        LyricsAnimationStyle.WAVE -> "Letters rhythmically dancing up and down in a fluid sine wave"
+                                        LyricsAnimationStyle.SMOKE_SIGNAL -> "Smoldering amber lyrics with rising smoke vapor plumes"
+                                        LyricsAnimationStyle.EQUALIZER -> "Kinetic 5-band audio visualizer frequency bars on words"
+                                        LyricsAnimationStyle.GHOSTWRITE -> "Phantom spectral mist with trailing spirit echoes"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                             if (lyricsAnimationStyle == anim) {
                                 Icon(
                                     imageVector = Icons.Rounded.Check,
@@ -1293,4 +1292,6 @@ fun AppearanceSettingsScreen(
             },
         )
     }
+
+
 }

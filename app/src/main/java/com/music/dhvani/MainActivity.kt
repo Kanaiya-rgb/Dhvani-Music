@@ -1,6 +1,7 @@
 package com.music.dhvani
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -59,6 +60,9 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -307,6 +311,8 @@ private fun DhvaniApp(
     var showSources by remember { mutableStateOf(false) }
     var showAppearanceSettings by remember { mutableStateOf(false) }
     var showSpotifyCanvasAuth by remember { mutableStateOf(false) }
+    var settingsSubScreenTitle by remember { mutableStateOf<String?>(null) }
+    var settingsSubScreenOnBack by remember { mutableStateOf<(() -> Unit)?>(null) }
     
     // Hosted here rather than inside SourcesScreen so its scrim covers the tab
     // bar and mini player, like every other alert in the app.
@@ -458,6 +464,10 @@ private fun DhvaniApp(
     LaunchedEffect(showSettings) {
         if (!showSettings) {
             showAccountScrobbling = false
+            showSources = false
+            showAppearanceSettings = false
+            settingsSubScreenTitle = null
+            settingsSubScreenOnBack = null
         }
     }
 
@@ -958,6 +968,23 @@ private fun DhvaniApp(
      * permission arrives as forty loose tracks.
      */
     var downloadPendingFrom by remember { mutableStateOf<DownloadTarget?>(null) }
+    var showNotificationPermissionPrompt by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val hasPerm = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+            val prefs = context.getSharedPreferences("dhvani_prefs", Context.MODE_PRIVATE)
+            val alreadyPrompted = prefs.getBoolean("notif_perm_prompted", false)
+            if (!hasPerm && !alreadyPrompted) {
+                prefs.edit().putBoolean("notif_perm_prompted", true).apply()
+                showNotificationPermissionPrompt = true
+            }
+        }
+    }
+
     val notifyPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { /* Refusing costs the progress notification, not the download. */ }
@@ -1356,7 +1383,7 @@ private fun DhvaniApp(
         // One back step out of Settings, or out of any tab but Home, lands on
         // Home rather than exiting — only Home itself hands back to the system,
         // which is what actually closes/minimizes the app.
-        BackHandler(enabled = showSettings && !showAccountScrobbling && !showSources && !showAppearanceSettings) {
+        BackHandler(enabled = showSettings && !showAccountScrobbling && !showSources && !showAppearanceSettings && settingsSubScreenTitle == null) {
             showSettings = false
             // Only when Settings was the whole of what was on screen. Opened
             // over Replay or over a release page, closing it reveals that again
@@ -1365,7 +1392,7 @@ private fun DhvaniApp(
         }
         BackHandler(
             enabled = detail == null && !showSettings && !showAccountScrobbling &&
-                !showSources && !showAppearanceSettings && !showReplay && selectedTab != TAB_HOME,
+                !showSources && !showAppearanceSettings && settingsSubScreenTitle == null && !showReplay && selectedTab != TAB_HOME,
         ) {
             selectedTab = TAB_HOME
         }
@@ -1595,6 +1622,10 @@ private fun DhvaniApp(
                             onOpenAppearance = { showAppearanceSettings = true },
                             onSpotifyCanvasAuth = { showSpotifyCanvasAuth = true },
                             onAppLanguage = { showAppLanguage = true },
+                            onSubScreenChange = { title, onBackAction ->
+                                settingsSubScreenTitle = title
+                                settingsSubScreenOnBack = onBackAction
+                            },
                             onCheckForUpdates = {
                                 scope.launch {
                                     Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
@@ -1922,6 +1953,8 @@ private fun DhvaniApp(
                         libraryShowAll != null && detail == null -> libraryShowAll?.title.orEmpty()
                         showAccountScrobbling -> "Account & scrobbling"
                         showSources -> "Sources"
+                        showAppearanceSettings -> stringResource(R.string.appearance)
+                        settingsSubScreenTitle != null -> settingsSubScreenTitle.orEmpty()
                         showSettings -> "Settings"
                         showReplay -> "Replay"
                         detail != null -> detail.title
@@ -1932,7 +1965,8 @@ private fun DhvaniApp(
                     // Search has no large in-list header to hand the title back to —
                     // the field takes that space — so its bar title is always up.
                     scrolled = when {
-                        showSettings || showAccountScrobbling || showSources || showDiscord || showHistory || showListenTogether ||
+                        showSettings || showAccountScrobbling || showSources || showAppearanceSettings ||
+                            settingsSubScreenTitle != null || showDiscord || showHistory || showListenTogether ||
                             (libraryShowAll != null && detail == null) -> true
                         // The page leads with its own large "Replay", so the bar
                         // stays out of the way until that has been scrolled off.
@@ -1949,6 +1983,8 @@ private fun DhvaniApp(
                         libraryShowAll != null && detail == null -> ({ libraryShowAll = null })
                         showAccountScrobbling -> ({ showAccountScrobbling = false })
                         showSources -> ({ showSources = false })
+                        showAppearanceSettings -> ({ showAppearanceSettings = false })
+                        settingsSubScreenOnBack != null -> settingsSubScreenOnBack
                         showSettings -> ({ showSettings = false })
                         showReplay -> ({ showReplay = false })
                         detail != null -> ({ viewModel.closeDetail(); Unit })
@@ -1959,7 +1995,7 @@ private fun DhvaniApp(
                     actions = {
                         // Only worth surfacing where there's room for it and it won't
                         // be mistaken for a per-page action — Home, at rest.
-                        if (!showSettings && !showAccountScrobbling && !showSources && detail == null && selectedTab == TAB_HOME) {
+                        if (!showSettings && !showAccountScrobbling && !showSources && !showAppearanceSettings && settingsSubScreenTitle == null && detail == null && selectedTab == TAB_HOME) {
                             updateNotice?.let { update ->
                                 IconButton(onClick = { showUpdateDialog = true }) {
                                     Icon(
@@ -1970,7 +2006,7 @@ private fun DhvaniApp(
                                 }
                             }
                         }
-                        if (!showSettings && !showAccountScrobbling) {
+                        if (!showSettings && !showAccountScrobbling && !showSources && !showAppearanceSettings && settingsSubScreenTitle == null) {
                             // Left of the account photo:
                             // Listen Together and History buttons
                             if (!showHistory && !showReplay && !showDiscord && !showListenTogether && libraryShowAll == null && detail == null) {
@@ -2740,6 +2776,50 @@ private fun DhvaniApp(
                     },
                 )
             }
+        }
+
+        if (showNotificationPermissionPrompt) {
+            AlertDialog(
+                onDismissRequest = { showNotificationPermissionPrompt = false },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Rounded.Notifications,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                },
+                title = {
+                    Text(
+                        text = "Enable Notifications",
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Allow notifications to receive instant alerts when a new update is released on GitHub, and to control music playback from your lockscreen.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showNotificationPermissionPrompt = false
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        },
+                    ) {
+                        Text("Allow")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showNotificationPermissionPrompt = false },
+                    ) {
+                        Text("Not Now")
+                    }
+                },
+            )
         }
 
         if (showLyricsSources) {

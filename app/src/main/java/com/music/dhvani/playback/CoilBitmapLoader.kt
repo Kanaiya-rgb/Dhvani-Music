@@ -13,7 +13,6 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import com.music.dhvani.data.settings.AppSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -43,10 +42,6 @@ class CoilBitmapLoader(
     }
 
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> {
-        if (!AppSettings.dynamicLockscreenArt.value) {
-            return Futures.immediateFailedFuture(IllegalStateException("Dynamic lockscreen art disabled"))
-        }
-
         return scope.async(Dispatchers.IO) {
             val request = ImageRequest.Builder(context)
                 .data(uri)
@@ -63,9 +58,6 @@ class CoilBitmapLoader(
     }
 
     override fun loadBitmapFromMetadata(metadata: MediaMetadata): ListenableFuture<Bitmap> {
-        if (!AppSettings.dynamicLockscreenArt.value) {
-            return Futures.immediateFailedFuture(IllegalStateException("Dynamic lockscreen art disabled"))
-        }
         metadata.artworkData?.let { return decodeBitmap(it) }
         metadata.artworkUri?.let { return loadBitmap(it) }
         return Futures.immediateFailedFuture(IllegalArgumentException("No artwork provided in metadata"))

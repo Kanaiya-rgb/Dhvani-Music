@@ -69,9 +69,14 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings as AndroidSettings
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Article
 import androidx.compose.material.icons.rounded.DirectionsCar
@@ -95,6 +100,8 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -115,6 +122,7 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -168,6 +176,7 @@ fun SettingsScreen(
     onOpenAppearance: () -> Unit,
     onSpotifyCanvasAuth: () -> Unit,
     onAppLanguage: () -> Unit,
+    onSubScreenChange: (title: String?, onBack: (() -> Unit)?) -> Unit = { _, _ -> },
     onCheckForUpdates: () -> Unit = {},
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
@@ -196,7 +205,23 @@ fun SettingsScreen(
     val wifiOnlyDownloads by AppSettings.wifiOnlyDownloads.collectAsStateWithLifecycle()
     val sourceConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
-    val dynamicLockscreenArt by AppSettings.dynamicLockscreenArt.collectAsStateWithLifecycle()
+    var hasNotificationPermission by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+        )
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasNotificationPermission = granted
+    }
     val resumeOnBluetooth by AppSettings.resumeOnBluetooth.collectAsStateWithLifecycle()
     val sliderStyle by AppSettings.sliderStyle.collectAsStateWithLifecycle()
     val squigglySlider by AppSettings.squigglySlider.collectAsStateWithLifecycle()
@@ -281,6 +306,19 @@ fun SettingsScreen(
     }
 
     var currentSubScreen by remember { mutableStateOf<SettingsSubScreen?>(null) }
+
+    LaunchedEffect(currentSubScreen) {
+        if (currentSubScreen != null) {
+            onSubScreenChange(currentSubScreen!!.title) { currentSubScreen = null }
+        } else {
+            onSubScreenChange(null, null)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            onSubScreenChange(null, null)
+        }
+    }
 
     BackHandler(enabled = currentSubScreen != null) {
         currentSubScreen = null
@@ -441,27 +479,7 @@ fun SettingsScreen(
                     .padding(top = 24.dp, bottom = 16.dp),
             )
         } else {
-            // Sub-screen header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 6.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { currentSubScreen = null }) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Back",
-                        tint = MaterialTheme.colorScheme.onBackground,
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    text = currentSubScreen!!.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-            }
+            Spacer(Modifier.height(4.dp))
 
             when (currentSubScreen!!) {
                 SettingsSubScreen.PLAYER_AUDIO -> {
@@ -697,22 +715,51 @@ fun SettingsScreen(
                         )
                     }
 
-                    SettingsGroup(header = "Lockscreen & notification") {
+                    SettingsGroup(header = "Notifications") {
                         SettingsRow(
-                            icon = Icons.Rounded.Lock,
-                            title = "Dynamic Lockscreen Art & Waveform",
-                            subtitle = "Set lockscreen background to album art & show dynamic waveform (Android 11+)",
-                            trailing = {
-                                Switch(
-                                    checked = dynamicLockscreenArt,
-                                    onCheckedChange = AppSettings::setDynamicLockscreenArt,
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                    ),
-                                )
+                            icon = Icons.Rounded.Notifications,
+                            title = "Notifications & Update Alerts",
+                            subtitle = if (hasNotificationPermission) {
+                                "Allowed — you'll get instant alerts for app updates & downloads"
+                            } else {
+                                "Not allowed — tap to enable alerts for new updates and playback"
                             },
-                            onClick = { AppSettings.setDynamicLockscreenArt(!dynamicLockscreenArt) },
+                            trailing = {
+                                if (hasNotificationPermission) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Check,
+                                        contentDescription = "Allowed",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Rounded.ChevronRight,
+                                        contentDescription = "Enable",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    if (!hasNotificationPermission) {
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        runCatching {
+                                            val intent = Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                                putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName)
+                                            }
+                                            context.startActivity(intent)
+                                        }
+                                    }
+                                } else {
+                                    runCatching {
+                                        val intent = Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                            putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName)
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                }
+                            },
                         )
                     }
                 }
@@ -1064,31 +1111,133 @@ fun SettingsScreen(
                 }
 
                 SettingsSubScreen.CHANGELOG -> {
-                    SettingsGroup(header = "Release Notes") {
+                    val latestRelease = APP_RELEASES.firstOrNull { it.isLatest } ?: APP_RELEASES.first()
+                    val pastReleases = APP_RELEASES.filter { it != latestRelease }
+
+                    // 1. Top Featured Latest Release
+                    SettingsGroup(header = "Latest Release") {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp),
                         ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    text = "Dhvani Music ${latestRelease.version}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                                ) {
+                                    Text(
+                                        text = "LATEST",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "Dhvani Music v$version",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = "• Meld-style Material 3 settings hub with categorized sections\n" +
-                                    "• YouTube Music home feed with Quick Picks and infinite scroll\n" +
-                                    "• On-screen volume change percentage feedback\n" +
-                                    "• Spotify Canvas video background integration\n" +
-                                    "• Full offline downloads & local music library support\n" +
-                                    "• Last.fm & ListenBrainz scrobbling\n" +
-                                    "• Smart fade & crossfade automix engine",
-                                style = MaterialTheme.typography.bodyMedium,
+                                text = "${latestRelease.summary} • ${latestRelease.date}",
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            Spacer(Modifier.height(14.dp))
+                            latestRelease.items.forEach { item ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.Top,
+                                ) {
+                                    Text(
+                                        text = "•",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(end = 8.dp),
+                                    )
+                                    Text(
+                                        text = item,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
                         }
                     }
+
+                    // 2. Previous Releases History
+                    SettingsGroup(header = "Previous Releases") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                        ) {
+                            pastReleases.forEachIndexed { index, release ->
+                                if (index > 0) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(vertical = 14.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = "Dhvani Music ${release.version}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = release.date,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = release.summary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                release.items.forEach { item ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 3.dp),
+                                        verticalAlignment = Alignment.Top,
+                                    ) {
+                                        Text(
+                                            text = "•",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(end = 8.dp),
+                                        )
+                                        Text(
+                                            text = item,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
                 }
 
                 SettingsSubScreen.ABOUT -> {
@@ -1362,6 +1511,77 @@ private enum class SettingsSubScreen(val title: String) {
     CHANGELOG("Changelog"),
     ABOUT("About"),
 }
+
+private data class ReleaseChangelog(
+    val version: String,
+    val date: String,
+    val isLatest: Boolean = false,
+    val summary: String,
+    val items: List<String>,
+)
+
+private val APP_RELEASES = listOf(
+    ReleaseChangelog(
+        version = "v2.0.4",
+        date = "September 2026",
+        isLatest = true,
+        summary = "Lyrics Animation Suite & Settings Navigation Polish",
+        items = listOf(
+            "🎨 11 Unique Lyrics Animations: Smoke-Signal (vapor plumes), Chromia (3-channel RGB prism split), Ghostwrite (phantom typography & spirit echoes), Equalizer (kinetic 5-band audio bars), Cyber Glitch (matrix jitter & CRT scanlines), Typewriter, Laser Reveal, Step Fade, and Apple Music style.",
+            "🧹 Settings Navigation Overhaul: Eliminated duplicate back buttons on Appearance and sub-settings pages for a unified frosted top bar.",
+            "🔒 Lockscreen & Wallpaper Safety: Fully purged lock screen wallpaper services to guarantee personal lockscreen wallpapers remain completely untouched.",
+            "⚡ Playback & Animation Smoothness: Optimized lyrics sync sweeps and rendered animations with zero frame drops.",
+        ),
+    ),
+    ReleaseChangelog(
+        version = "v2.0.3",
+        date = "September 2026",
+        isLatest = false,
+        summary = "Live Karaoke & Lyrics Seek",
+        items = listOf(
+            "🎤 Live Syllable Karaoke: Real-time Apple Music Sing-along with word-by-word progressive highlights.",
+            "⏱️ Tap-to-Seek Lyrics: Tap any lyric line or individual word to jump playback instantly.",
+            "🌊 Dynamic Artwork & Waveform Visualizer: Live audio visualizer and adaptive artwork background.",
+            "📝 Offline Lyrics Engine: Enhanced local LRC parsing and resilient offline lyrics fallback.",
+        ),
+    ),
+    ReleaseChangelog(
+        version = "v2.0.2",
+        date = "September 2026",
+        isLatest = false,
+        summary = "Background Updates & Automix",
+        items = listOf(
+            "🔔 Periodic Update Worker: Background update checker with system notifications for new releases.",
+            "🔄 In-App Updater: Direct download and seamless APK installation with progress feedback.",
+            "⚡ Crossfade & Smart Fade: Intelligent gapless automix engine between consecutive songs.",
+        ),
+    ),
+    ReleaseChangelog(
+        version = "v2.0.1",
+        date = "September 2026",
+        isLatest = false,
+        summary = "Lyrics Styles & Search Revamp",
+        items = listOf(
+            "✨ Lyrics Animation Styles: Initial launch of kinetic lyrics animations (Typewriter, Reveal, Step Fade).",
+            "🔍 Search Experience Overhaul: Instant search suggestions, history removal, and refined filter chips.",
+            "📱 UI Polishing: Settings bottom bar auto-hiding and updated community documentation links.",
+        ),
+    ),
+    ReleaseChangelog(
+        version = "v2.0.0",
+        date = "September 2026",
+        isLatest = false,
+        summary = "Grand Rebrand to Dhvani Music",
+        items = listOf(
+            "🎵 Grand Rebrand to Dhvani Music: Complete UI/UX redesign with Meld-style Material 3 settings hub.",
+            "🎚️ Next-Gen Sliders: Fluid wavy and squiggly player seekbars with amplitude control.",
+            "🎙️ Voice Search & Explore: YouTube Music moods, genres, new releases, and charts.",
+            "🎥 Spotify Canvas: Full-screen looping video background canvases for supported tracks.",
+            "📊 Last.fm & ListenBrainz: Comprehensive scrobbling integration and listening history.",
+            "💾 Offline Library & Playlists: Full local music manager, playlist export/import, and batch downloads.",
+        ),
+    ),
+)
 
 private data class MeldSettingsItemData(
     val icon: ImageVector,

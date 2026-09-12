@@ -127,6 +127,8 @@ object LyricsCleaner {
         return cleanTitle(rawAlbum)
     }
 
+    private val ARTIST_STOP_WORDS = setOf("the", "dj", "music", "official", "records", "band", "feat", "ft", "and", "production", "records", "entertainment")
+
     /**
      * Normalizes a title for strict equality checking.
      * Keeps unicode characters (Latin, Devanagari, Gurmukhi, etc.).
@@ -142,52 +144,111 @@ object LyricsCleaner {
      * Rejects unrelated songs completely to prevent wrong lyrics.
      */
     fun isTitleMatch(candidateTitle: String, targetTitle: String): Boolean {
-        val candNorm = normalize(candidateTitle)
-        val targetNorm = normalize(targetTitle)
+        val candClean = cleanTitle(candidateTitle)
+        val targetClean = cleanTitle(targetTitle)
+        val candNorm = normalize(candClean)
+        val targetNorm = normalize(targetClean)
         if (candNorm.isEmpty() || targetNorm.isEmpty()) return false
         if (candNorm == targetNorm) return true
 
-        // Substring check with strict length ratio
+        // Substring check with strict length ratio (>= 80% to avoid matching unrelated songs)
         if (candNorm.contains(targetNorm) || targetNorm.contains(candNorm)) {
             val minLen = minOf(candNorm.length, targetNorm.length)
             val maxLen = maxOf(candNorm.length, targetNorm.length)
-            if (minLen >= 4 && minLen.toDouble() / maxLen.toDouble() >= 0.60) {
+            if (minLen >= 4 && minLen.toDouble() / maxLen.toDouble() >= 0.80) {
                 return true
             }
         }
 
-        // Word-level token match
-        val candWords = candidateTitle.lowercase(Locale.ROOT)
-            .split(Regex("""[\s\-–—|_.,'"]+"""))
+        // Word-level token match with Jaccard similarity
+        val candWords = candClean.lowercase(Locale.ROOT)
+            .split(Regex("""[\s\-–—|_.,'":/()\[\]]+"""))
             .map { it.replace(Regex("""[^\p{L}\p{N}]"""), "") }
-            .filter { it.length > 1 }
-        val targetWords = targetTitle.lowercase(Locale.ROOT)
-            .split(Regex("""[\s\-–—|_.,'"]+"""))
+            .filter { it.length > 1 && !isNoiseWord(it) }
+            .toSet()
+
+        val targetWords = targetClean.lowercase(Locale.ROOT)
+            .split(Regex("""[\s\-–—|_.,'":/()\[\]]+"""))
             .map { it.replace(Regex("""[^\p{L}\p{N}]"""), "") }
-            .filter { it.length > 1 }
+            .filter { it.length > 1 && !isNoiseWord(it) }
+            .toSet()
 
-        if (targetWords.isNotEmpty() && targetWords.all { it in candWords }) {
-            return true
-        }
-        if (candWords.isNotEmpty() && candWords.all { it in targetWords }) {
-            return true
+        if (candWords.isEmpty() || targetWords.isEmpty()) return false
+
+        // For single-word titles (e.g. "Dhun", "Stay", "Faded"), require exact single-word match
+        if (targetWords.size == 1 || candWords.size == 1) {
+            return candWords == targetWords
         }
 
-        return false
+        val intersection = candWords.intersect(targetWords).size
+        val union = candWords.union(targetWords).size
+        val jaccard = intersection.toDouble() / union.toDouble()
+
+        // Strict threshold: at least 70% of words must overlap
+        return jaccard >= 0.70
+    }
+
+    private fun isNoiseWord(word: String): Boolean {
+        val lower = word.lowercase(Locale.ROOT)
+        return lower in setOf(
+            "official", "audio", "video", "song", "songs", "lyric", "lyrics", "lyrical",
+            "full", "hd", "4k", "remaster", "remastered", "movie", "film", "version",
+            "original", "remix", "acoustic", "live", "unplugged", "cover", "edit",
+            "slowed", "reverb", "mix", "soundtrack", "ost",
+        )
     }
 
     /**
      * Checks if candidate artist overlaps with any credited artist.
+     * Prevents loading lyrics from completely different artists.
      */
     fun isArtistMatch(candidateArtist: String, targetArtist: String): Boolean {
         if (candidateArtist.isBlank() || targetArtist.isBlank()) return true
+        val candClean = candidateArtist.trim().lowercase(Locale.ROOT)
+        val targetClean = targetArtist.trim().lowercase(Locale.ROOT)
+        if (candClean == targetClean) return true
+
         val candNorm = normalize(candidateArtist)
         val targetNorm = normalize(targetArtist)
-        if (candNorm.contains(targetNorm) || targetNorm.contains(candNorm)) return true
+        if (candNorm.isNotEmpty() && candNorm == targetNorm) return true
 
-        val allTarget = allArtists(targetArtist).map { normalize(it) }.filter { it.isNotEmpty() }
-        val allCand = allArtists(candidateArtist).map { normalize(it) }.filter { it.isNotEmpty() }
-        return allTarget.any { t -> allCand.any { c -> t.contains(c) || c.contains(t) } }
+        val allTarget = allArtists(targetArtist).map { it.trim().lowercase(Locale.ROOT) }.filter { it.isNotEmpty() }
+        val allCand = allArtists(candidateArtist).map { it.trim().lowercase(Locale.ROOT) }.filter { it.isNotEmpty() }
+
+        // Exact match in split artist list
+        for (t in allTarget) {
+            for (c in allCand) {
+                if (t == c) return true
+                val tNorm = normalize(t)
+                val cNorm = normalize(c)
+                if (tNorm.isNotEmpty() && tNorm == cNorm) return true
+                // Substring match with minimum length requirement
+                if (tNorm.length >= 4 && cNorm.length >= 4) {
+                    if (tNorm.contains(cNorm) || cNorm.contains(tNorm)) {
+                        val minLen = minOf(tNorm.length, cNorm.length)
+                        val maxLen = maxOf(tNorm.length, cNorm.length)
+                        if (minLen.toDouble() / maxLen.toDouble() >= 0.65) return true
+                    }
+                }
+            }
+        }
+
+        // Distinctive artist token overlap (e.g. "Arijit Singh" and "Arijit Singh, Mithoon")
+        val targetTokens = allTarget.flatMap { it.split(Regex("""[\s\-–—/.,]+""")) }
+            .map { it.replace(Regex("""[^\p{L}\p{N}]"""), "") }
+            .filter { it.length >= 4 && it !in ARTIST_STOP_WORDS }
+            .toSet()
+
+        val candTokens = allCand.flatMap { it.split(Regex("""[\s\-–—/.,]+""")) }
+            .map { it.replace(Regex("""[^\p{L}\p{N}]"""), "") }
+            .filter { it.length >= 4 && it !in ARTIST_STOP_WORDS }
+            .toSet()
+
+        if (targetTokens.isNotEmpty() && candTokens.isNotEmpty()) {
+            return targetTokens.intersect(candTokens).isNotEmpty()
+        }
+
+        return false
     }
 
     /**

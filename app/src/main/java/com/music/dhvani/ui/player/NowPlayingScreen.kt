@@ -51,6 +51,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TileMode
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import androidx.compose.foundation.layout.Spacer
@@ -123,14 +125,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -2918,6 +2926,1305 @@ private fun ContentDrawScope.sweepTo(layout: TextLayoutResult, revealedChars: Fl
     }
 }
 
+/**
+ * Progressive mechanical typewriter animation effect.
+ * Unsung characters are dimly visible, while sung characters snap into crisp focus
+ * strictly on integer character boundaries with a rhythmic glowing typewriter caret.
+ */
+@Composable
+private fun TypewriterLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = 0.dp,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "typewriterCaret")
+    val caretAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 400, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "caretAlpha",
+    )
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val drawTypewriter = Modifier.drawWithContent {
+        val position = clock.longValue
+        when {
+            position >= effectiveEnd && effectiveEnd > line.timeMs -> {
+                drawContent()
+            }
+            position <= line.timeMs -> Unit
+            else -> {
+                val measured = layout ?: return@drawWithContent
+                val revealed = line.revealedChars(position, effectiveEnd)
+                val fullChars = revealed.toInt().coerceIn(0, line.text.length)
+                sweepTo(measured, fullChars.toFloat())
+
+                if (fullChars in 0..line.text.length && line.text.isNotEmpty()) {
+                    val safeChar = fullChars.coerceIn(0, line.text.length - 1)
+                    val visualLine = measured.getLineForOffset(safeChar)
+                    val start = measured.getLineStart(visualLine)
+                    val end = measured.getLineEnd(visualLine, visibleEnd = true)
+                    val cursorX = horizontalAt(measured, fullChars.toFloat(), start, end)
+                    val topY = measured.getLineTop(visualLine) + 4f
+                    val botY = measured.getLineBottom(visualLine) - 4f
+
+                    drawLine(
+                        color = Color.White.copy(alpha = caretAlpha.coerceIn(0.25f, 1f)),
+                        start = Offset(cursorX + 2f, topY),
+                        end = Offset(cursorX + 2f, botY),
+                        strokeWidth = 2.8.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+        }
+    }
+
+    Box(modifier.then(tapSeek)) {
+        Text(
+            text = line.text,
+            style = style,
+            color = Color.White.copy(alpha = dimAlpha),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = { layout = it },
+            modifier = room,
+        )
+        Text(
+            text = line.text,
+            style = style,
+            color = Color.White,
+            maxLines = maxLines,
+            overflow = overflow,
+            modifier = room.then(drawTypewriter),
+        )
+    }
+}
+
+/**
+ * High-voltage electric neon sign effect (fx-neon).
+ * Vibrant cyan/magenta gas discharge tubes with layered ambient bloom,
+ * inner core radiance, and buzzing electrical voltage drop flicker.
+ */
+@Composable
+private fun NeonLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = GLOW_ROOM,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "neonFlicker")
+    val flickerPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 100f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "flickerPhase",
+    )
+
+    val isVoltageDrop = (flickerPhase.toInt() % 17 == 0 || flickerPhase.toInt() % 37 == 0)
+    val flicker = if (isVoltageDrop) 0.65f else (0.92f + 0.08f * sin(flickerPhase * 12f))
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val position = clock.longValue
+    val isSung = position >= effectiveEnd && effectiveEnd > line.timeMs
+    val isInProgress = position in (line.timeMs until effectiveEnd)
+
+    val sweep = Modifier.drawWithContent {
+        when {
+            isSung || (isInProgress && !line.isWordSynced) -> drawContent()
+            position <= line.timeMs -> Unit
+            else -> layout?.let { sweepTo(it, line.revealedChars(position, effectiveEnd)) }
+        }
+    }
+
+    Box(modifier.then(tapSeek)) {
+        // Cold unlit glass tube
+        Text(
+            text = line.text,
+            style = style,
+            color = Color(0xFF0369A1).copy(alpha = dimAlpha * 0.45f),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = { layout = it },
+            modifier = room,
+        )
+
+        if (isInProgress || isSung) {
+            // Layer 1: Ambient soft bloom wash
+            Text(
+                text = line.text,
+                style = style,
+                color = Color(0xFF00E5FF).copy(alpha = 0.45f * flicker),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room
+                    .blur(14.dp, BlurredEdgeTreatment.Unbounded)
+                    .then(sweep),
+            )
+
+            // Layer 2: Intense inner tube glow
+            Text(
+                text = line.text,
+                style = style,
+                color = Color(0xFF38BDF8).copy(alpha = 0.85f * flicker),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room
+                    .blur(4.dp, BlurredEdgeTreatment.Unbounded)
+                    .then(sweep),
+            )
+
+            // Layer 3: High-luminance core filament
+            Text(
+                text = line.text,
+                style = style.copy(
+                    shadow = Shadow(
+                        color = Color(0xFF00F5FF).copy(alpha = flicker),
+                        offset = Offset(0f, 0f),
+                        blurRadius = 14f,
+                    ),
+                ),
+                color = Color.White,
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room.then(sweep),
+            )
+        }
+    }
+}
+
+/**
+ * Split-slice digital glitch distortion effect (fx-glitch).
+ * Horizontal slice tearing with cyan and magenta chromatic channel displacement,
+ * micro-jitter bursts, and VHS scanline interference.
+ */
+@Composable
+private fun GlitchLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = GLOW_ROOM,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "glitchCycle")
+    val glitchTick by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 60f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "glitchTick",
+    )
+
+    val isGlitching = (glitchTick.toInt() % 11 == 0 || glitchTick.toInt() % 19 == 0)
+    val shiftX = if (isGlitching) (if (glitchTick.toInt() % 2 == 0) 5.dp else (-5).dp) else 0.dp
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val position = clock.longValue
+    val isSung = position >= effectiveEnd && effectiveEnd > line.timeMs
+    val isInProgress = position in (line.timeMs until effectiveEnd)
+
+    val sweep = Modifier.drawWithContent {
+        when {
+            isSung || (isInProgress && !line.isWordSynced) -> drawContent()
+            position <= line.timeMs -> Unit
+            else -> layout?.let { sweepTo(it, line.revealedChars(position, effectiveEnd)) }
+        }
+    }
+
+    Box(modifier.then(tapSeek)) {
+        Text(
+            text = line.text,
+            style = style,
+            color = Color(0xFF64748B).copy(alpha = dimAlpha),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = { layout = it },
+            modifier = room,
+        )
+
+        if (isInProgress || isSung) {
+            // Cyan channel slice (upper half displacement)
+            Text(
+                text = line.text,
+                style = style,
+                color = Color(0xFF00FFFF).copy(alpha = if (isGlitching) 0.85f else 0.4f),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room
+                    .offset(x = -shiftX - 2.dp)
+                    .drawWithContent {
+                        clipRect(bottom = size.height * 0.55f) {
+                            this@drawWithContent.drawContent()
+                        }
+                    }
+                    .then(sweep),
+            )
+
+            // Magenta channel slice (lower half displacement)
+            Text(
+                text = line.text,
+                style = style,
+                color = Color(0xFFFF007F).copy(alpha = if (isGlitching) 0.85f else 0.4f),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room
+                    .offset(x = shiftX + 2.dp)
+                    .drawWithContent {
+                        clipRect(top = size.height * 0.45f) {
+                            this@drawWithContent.drawContent()
+                        }
+                    }
+                    .then(sweep),
+            )
+
+            // Core text with CRT scanline flicker
+            Text(
+                text = line.text,
+                style = style.copy(
+                    shadow = Shadow(
+                        color = if (isGlitching) Color(0xFF00FFFF) else Color(0xFFFF007F).copy(alpha = 0.6f),
+                        offset = Offset(if (isGlitching) 2f else 0f, 0f),
+                        blurRadius = 8f,
+                    ),
+                ),
+                color = Color.White,
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room.then(sweep).drawWithContent {
+                    drawContent()
+                    if (isGlitching) {
+                        val lineY = (glitchTick * 7f) % size.height
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.65f),
+                            start = Offset(0f, lineY),
+                            end = Offset(size.width, lineY),
+                            strokeWidth = 2.dp.toPx(),
+                        )
+                    }
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Undulating ocean liquid wave effect (fx-liquid).
+ * Hollow typography containing a rising fluid wave meniscus in vibrant
+ * turquoise and blue shades, continuously sloshing inside the letters.
+ */
+@Composable
+private fun LiquidLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = 0.dp,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "liquidWave")
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "wavePhase",
+    )
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val position = clock.longValue
+    val isSung = position >= effectiveEnd && effectiveEnd > line.timeMs
+    val isInProgress = position in (line.timeMs until effectiveEnd)
+
+    val liquidBrush = remember {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFF67E8F9), // Aqua Crest
+                Color(0xFF06B6D4), // Cyan
+                Color(0xFF0284C7), // Sky Blue
+                Color(0xFF1D4ED8), // Royal Deep Blue
+            ),
+        )
+    }
+
+    val liquidProgress = when {
+        isSung -> 0.82f
+        isInProgress && line.text.isNotEmpty() -> {
+            val revealed = line.revealedChars(position, effectiveEnd)
+            (0.2f + 0.65f * (revealed / line.text.length.toFloat())).coerceIn(0.2f, 0.85f)
+        }
+        else -> 0.25f
+    }
+
+    val drawLiquid = Modifier.drawWithContent {
+        val waveBaseY = size.height * (1f - liquidProgress)
+        val amplitude = 5.dp.toPx()
+        val wavePath = Path().apply {
+            moveTo(0f, size.height)
+            lineTo(0f, waveBaseY + sin(wavePhase) * amplitude)
+            var x = 0f
+            val step = 10f
+            while (x <= size.width) {
+                val y = waveBaseY + sin(x / 30f + wavePhase) * amplitude
+                lineTo(x, y)
+                x += step
+            }
+            lineTo(size.width, size.height)
+            close()
+        }
+        clipPath(wavePath) {
+            this@drawWithContent.drawContent()
+        }
+    }
+
+    Box(modifier.then(tapSeek)) {
+        // Translucent base
+        Text(
+            text = line.text,
+            style = style,
+            color = Color.White.copy(alpha = dimAlpha),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = { layout = it },
+            modifier = room,
+        )
+
+        // Filled undulating liquid wave
+        Text(
+            text = line.text,
+            style = style.copy(
+                brush = liquidBrush,
+                shadow = Shadow(
+                    color = Color(0xFF06B6D4).copy(alpha = 0.8f),
+                    offset = Offset(0f, 1f),
+                    blurRadius = 8f,
+                ),
+            ),
+            maxLines = maxLines,
+            overflow = overflow,
+            modifier = room.then(drawLiquid),
+        )
+    }
+}
+
+/**
+ * Living celestial northern lights effect (fx-aurora).
+ * Flowing iridescent holographic spectrum (mint, cyan, violet, magenta, amber)
+ * constantly translating and shimmering across the letters with an ethereal aura.
+ */
+@Composable
+private fun AuroraLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = GLOW_ROOM,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "auroraShift")
+    val auroraPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1200f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "auroraPhase",
+    )
+
+    val auroraColors = remember {
+        listOf(
+            Color(0xFF00FFA3), // Mint
+            Color(0xFF00D8F6), // Cyan
+            Color(0xFF7000FF), // Violet
+            Color(0xFFFF007A), // Magenta
+            Color(0xFFFFBE0B), // Gold
+            Color(0xFF00FFA3), // Mint loop
+        )
+    }
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val position = clock.longValue
+    val isSung = position >= effectiveEnd && effectiveEnd > line.timeMs
+    val isInProgress = position in (line.timeMs until effectiveEnd)
+
+    val sweep = Modifier.drawWithContent {
+        when {
+            isSung || (isInProgress && !line.isWordSynced) -> drawContent()
+            position <= line.timeMs -> Unit
+            else -> layout?.let { sweepTo(it, line.revealedChars(position, effectiveEnd)) }
+        }
+    }
+
+    Box(modifier.then(tapSeek)) {
+        Text(
+            text = line.text,
+            style = style,
+            color = Color.White.copy(alpha = dimAlpha),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = { layout = it },
+            modifier = room,
+        )
+
+        if (isInProgress || isSung) {
+            val auroraBrush = remember(auroraPhase) {
+                Brush.linearGradient(
+                    colors = auroraColors,
+                    start = Offset(auroraPhase, 0f),
+                    end = Offset(auroraPhase + 650f, 300f),
+                    tileMode = TileMode.Repeated,
+                )
+            }
+
+            // Ethereal atmospheric haze
+            Text(
+                text = line.text,
+                style = style,
+                color = Color(0xFF7000FF).copy(alpha = 0.35f),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room
+                    .blur(14.dp, BlurredEdgeTreatment.Unbounded)
+                    .then(sweep),
+            )
+
+            // Celestial iridescent aurora text
+            Text(
+                text = line.text,
+                style = style.copy(
+                    brush = auroraBrush,
+                    shadow = Shadow(
+                        color = Color.White.copy(alpha = 0.75f),
+                        offset = Offset(0f, 0f),
+                        blurRadius = 8f,
+                    ),
+                ),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room.then(sweep),
+            )
+        }
+    }
+}
+
+/**
+ * Volcanic incandescent magma effect (fx-ember).
+ * Dark volcanic rock typography with breathing molten lava heat pulses,
+ * cracking gold/orange magma veins, and incandescent fiery embers.
+ */
+@Composable
+private fun EmberLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = GLOW_ROOM,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "emberPulse")
+    val heatPulse by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "heatPulse",
+    )
+
+    val emberSpectrum = remember {
+        listOf(
+            Color(0xFFFF1E00), // Lava Red
+            Color(0xFFFF6D00), // Molten Orange
+            Color(0xFFFFD600), // Incandescent Gold
+            Color(0xFFFF3D00), // Flare Red
+        )
+    }
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val position = clock.longValue
+    val isSung = position >= effectiveEnd && effectiveEnd > line.timeMs
+    val isInProgress = position in (line.timeMs until effectiveEnd)
+
+    val sweep = Modifier.drawWithContent {
+        when {
+            isSung || (isInProgress && !line.isWordSynced) -> drawContent()
+            position <= line.timeMs -> Unit
+            else -> layout?.let { sweepTo(it, line.revealedChars(position, effectiveEnd)) }
+        }
+    }
+
+    Box(modifier.then(tapSeek)) {
+        // Cooled volcanic charcoal
+        Text(
+            text = line.text,
+            style = style,
+            color = Color(0xFF78716C).copy(alpha = dimAlpha),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = { layout = it },
+            modifier = room,
+        )
+
+        if (isInProgress || isSung) {
+            // Molten heat aura
+            Text(
+                text = line.text,
+                style = style,
+                color = Color(0xFFFF3D00).copy(alpha = 0.5f * heatPulse),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room
+                    .offset(y = (-2).dp)
+                    .blur(12.dp, BlurredEdgeTreatment.Unbounded)
+                    .then(sweep),
+            )
+
+            // Incandescent magma text
+            Text(
+                text = line.text,
+                style = style.copy(
+                    brush = Brush.linearGradient(
+                        colors = emberSpectrum,
+                        start = Offset(0f, 0f),
+                        end = Offset(450f * heatPulse, 200f),
+                        tileMode = TileMode.Repeated,
+                    ),
+                    shadow = Shadow(
+                        color = Color(0xFFFF9100).copy(alpha = heatPulse),
+                        offset = Offset(0f, -2f),
+                        blurRadius = 14f * heatPulse,
+                    ),
+                ),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room.then(sweep),
+            )
+        }
+    }
+}
+
+/**
+ * Specular liquid metallic chrome effect (fx-chrome).
+ * Highly reflective liquid silver finish with a 45-degree sweeping lens glare
+ * beam slicing across the typography.
+ */
+@Composable
+private fun ChromeLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = GLOW_ROOM,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "chromeGlare")
+    val glareOffset by infiniteTransition.animateFloat(
+        initialValue = -200f,
+        targetValue = 1200f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "glareOffset",
+    )
+
+    val chromeBaseColors = remember {
+        listOf(
+            Color(0xFFCBD5E1), // Platinum
+            Color(0xFFFFFFFF), // Specular White
+            Color(0xFF475569), // Slate Steel
+            Color(0xFFF1F5F9), // Silver
+            Color(0xFF334155), // Charcoal
+            Color(0xFFFFFFFF), // Highlight
+        )
+    }
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val position = clock.longValue
+    val isSung = position >= effectiveEnd && effectiveEnd > line.timeMs
+    val isInProgress = position in (line.timeMs until effectiveEnd)
+
+    val sweep = Modifier.drawWithContent {
+        when {
+            isSung || (isInProgress && !line.isWordSynced) -> drawContent()
+            position <= line.timeMs -> Unit
+            else -> layout?.let { sweepTo(it, line.revealedChars(position, effectiveEnd)) }
+        }
+    }
+
+    Box(modifier.then(tapSeek)) {
+        Text(
+            text = line.text,
+            style = style,
+            color = Color.White.copy(alpha = dimAlpha),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = { layout = it },
+            modifier = room,
+        )
+
+        if (isInProgress || isSung) {
+            val glareBrush = remember(glareOffset) {
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        Color.White.copy(alpha = 0.85f),
+                        Color.Transparent,
+                    ),
+                    start = Offset(glareOffset - 120f, 0f),
+                    end = Offset(glareOffset + 120f, 150f),
+                )
+            }
+
+            // Liquid mercury metallic text
+            Text(
+                text = line.text,
+                style = style.copy(
+                    brush = Brush.verticalGradient(chromeBaseColors),
+                    shadow = Shadow(
+                        color = Color(0xFF64748B).copy(alpha = 0.7f),
+                        offset = Offset(0f, 2f),
+                        blurRadius = 4f,
+                    ),
+                ),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room.then(sweep),
+            )
+
+            // Sweeping specular beam
+            Text(
+                text = line.text,
+                style = style.copy(brush = glareBrush),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room.then(sweep),
+            )
+        }
+    }
+}
+
+/**
+ * 1980s retro cathode ray tube terminal effect (fx-crt).
+ * Vintage green phosphor bloom, continuous television scanline interference,
+ * and rolling CRT raster refresh beam.
+ */
+@Composable
+private fun CrtMatrixLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = GLOW_ROOM,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "crtScan")
+    val scanlinePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "scanlinePhase",
+    )
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val position = clock.longValue
+    val isSung = position >= effectiveEnd && effectiveEnd > line.timeMs
+    val isInProgress = position in (line.timeMs until effectiveEnd)
+
+    val sweep = Modifier.drawWithContent {
+        when {
+            isSung || (isInProgress && !line.isWordSynced) -> drawContent()
+            position <= line.timeMs -> Unit
+            else -> layout?.let { sweepTo(it, line.revealedChars(position, effectiveEnd)) }
+        }
+    }
+
+    Box(modifier.then(tapSeek)) {
+        // Dim retro phosphor base
+        Text(
+            text = line.text,
+            style = style,
+            color = Color(0xFF14532D).copy(alpha = dimAlpha),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = { layout = it },
+            modifier = room,
+        )
+
+        if (isInProgress || isSung) {
+            // Phosphor tube glow
+            Text(
+                text = line.text,
+                style = style,
+                color = Color(0xFF22C55E).copy(alpha = 0.45f),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room
+                    .blur(8.dp, BlurredEdgeTreatment.Unbounded)
+                    .then(sweep),
+            )
+
+            // Sharp CRT green phosphor with TV scanlines and roll bar
+            Text(
+                text = line.text,
+                style = style.copy(
+                    shadow = Shadow(
+                        color = Color(0xFF22C55E),
+                        offset = Offset(0f, 0f),
+                        blurRadius = 6f,
+                    ),
+                ),
+                color = Color(0xFF4ADE80),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room.then(sweep).drawWithContent {
+                    drawContent()
+                    val lineSpacing = 3.dp.toPx()
+                    var y = 0f
+                    while (y <= size.height) {
+                        drawLine(
+                            color = Color.Black.copy(alpha = 0.35f),
+                            start = Offset(0f, y),
+                            end = Offset(size.width, y),
+                            strokeWidth = 1.dp.toPx(),
+                        )
+                        y += lineSpacing
+                    }
+                    val rollY = scanlinePhase * size.height
+                    drawLine(
+                        color = Color(0xFF86EFAC).copy(alpha = 0.25f),
+                        start = Offset(0f, rollY),
+                        end = Offset(size.width, rollY),
+                        strokeWidth = 3.dp.toPx(),
+                    )
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Fluid sinusoidal bouncing wave typography (fx-wave).
+ * Words physically oscillate up and down in a fluid undulating wave motion,
+ * like musical notes or water ripples.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WaveLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = 0.dp,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "waveCycle")
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "wavePhase",
+    )
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val position = clock.longValue
+    val isSung = position >= effectiveEnd && effectiveEnd > line.timeMs
+    val isInProgress = position in (line.timeMs until effectiveEnd)
+
+    val words = remember(line.text) { line.text.split(Regex("\\s+")).filter { it.isNotEmpty() } }
+
+    if (maxLines == 1) {
+        Row(
+            modifier = modifier.then(tapSeek).then(room),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            words.forEachIndexed { index, word ->
+                val wordOffset = (sin(wavePhase + index * 0.7f) * 4f).dp
+                Text(
+                    text = if (index == words.lastIndex) word else "$word ",
+                    style = style,
+                    color = if (isSung || isInProgress) Color(0xFF38BDF8) else Color.White.copy(alpha = dimAlpha),
+                    maxLines = 1,
+                    overflow = overflow,
+                    modifier = Modifier.offset(y = wordOffset),
+                )
+            }
+        }
+    } else {
+        FlowRow(
+            modifier = modifier.then(tapSeek).then(room),
+            horizontalArrangement = Arrangement.Start,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            words.forEachIndexed { index, word ->
+                val wordOffset = (sin(wavePhase + index * 0.65f) * 7.5f).dp
+                Text(
+                    text = "$word ",
+                    style = style.copy(
+                        shadow = if (isSung || isInProgress) Shadow(
+                            color = Color(0xFF38BDF8).copy(alpha = 0.75f),
+                            offset = Offset(0f, 2f),
+                            blurRadius = 8f,
+                        ) else null,
+                    ),
+                    color = if (isSung || isInProgress) Color(0xFFE0F2FE) else Color.White.copy(alpha = dimAlpha),
+                    modifier = Modifier.offset(y = wordOffset),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Smoke-Signal lyrics effect.
+ * Sung words materialize out of swirling mystical vapor clouds.
+ * Rising smoke vapor layers drift upwards and dissipate as words are voiced.
+ */
+@Composable
+private fun SmokeSignalLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = GLOW_ROOM,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "smokeDrift")
+    val smokePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "smokePhase",
+    )
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val position = clock.longValue
+    val isSung = position >= effectiveEnd && effectiveEnd > line.timeMs
+    val isInProgress = position in (line.timeMs until effectiveEnd)
+
+    val sweep = Modifier.drawWithContent {
+        when {
+            isSung || (isInProgress && !line.isWordSynced) -> drawContent()
+            position <= line.timeMs -> Unit
+            else -> layout?.let { sweepTo(it, line.revealedChars(position, effectiveEnd)) }
+        }
+    }
+
+    Box(modifier.then(tapSeek)) {
+        Text(
+            text = line.text,
+            style = style,
+            color = Color.White.copy(alpha = dimAlpha),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = { layout = it },
+            modifier = room,
+        )
+
+        if (isInProgress || isSung) {
+            val driftY1 = -(smokePhase * 12f).dp
+            val driftX1 = (kotlin.math.sin(smokePhase * 6.28f) * 6f).dp
+            Text(
+                text = line.text,
+                style = style,
+                color = Color(0xFF94A3B8).copy(alpha = (1f - smokePhase) * 0.45f),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room
+                    .offset(x = driftX1, y = driftY1)
+                    .blur(10.dp, BlurredEdgeTreatment.Unbounded)
+                    .then(sweep),
+            )
+
+            val driftY2 = -(((smokePhase + 0.5f) % 1f) * 16f).dp
+            val driftX2 = (kotlin.math.cos(smokePhase * 6.28f) * 8f).dp
+            Text(
+                text = line.text,
+                style = style,
+                color = Color(0xFFCBD5E1).copy(alpha = (1f - ((smokePhase + 0.5f) % 1f)) * 0.35f),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room
+                    .offset(x = driftX2, y = driftY2)
+                    .blur(16.dp, BlurredEdgeTreatment.Unbounded)
+                    .then(sweep),
+            )
+
+            Text(
+                text = line.text,
+                style = style.copy(
+                    shadow = Shadow(
+                        color = Color(0xFFE2E8F0).copy(alpha = 0.8f),
+                        offset = Offset(0f, -2f),
+                        blurRadius = 12f,
+                    ),
+                ),
+                color = Color.White,
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room.then(sweep),
+            )
+        }
+    }
+}
+
+/**
+ * Ghostwrite: Spectral phantom typography.
+ * Words materialize from an otherworldly mist with breathing ectoplasm glow
+ * and trailing spirit pen echoes drifting above the lyrics.
+ */
+@Composable
+private fun GhostwriteLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = GLOW_ROOM,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "ghostBreathing")
+    val ghostPulse by infiniteTransition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "ghostPulse",
+    )
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val position = clock.longValue
+    val isSung = position >= effectiveEnd && effectiveEnd > line.timeMs
+    val isInProgress = position in (line.timeMs until effectiveEnd)
+
+    val sweep = Modifier.drawWithContent {
+        when {
+            isSung || (isInProgress && !line.isWordSynced) -> drawContent()
+            position <= line.timeMs -> Unit
+            else -> layout?.let { sweepTo(it, line.revealedChars(position, effectiveEnd)) }
+        }
+    }
+
+    Box(modifier.then(tapSeek)) {
+        Text(
+            text = line.text,
+            style = style,
+            color = Color.White.copy(alpha = dimAlpha),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = { layout = it },
+            modifier = room,
+        )
+
+        if (isInProgress || isSung) {
+            Text(
+                text = line.text,
+                style = style,
+                color = Color(0xFF5EEAD4).copy(alpha = ghostPulse * 0.22f),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room
+                    .offset(y = (-6).dp)
+                    .blur(10.dp, BlurredEdgeTreatment.Unbounded)
+                    .then(sweep),
+            )
+
+            Text(
+                text = line.text,
+                style = style,
+                color = Color(0xFFA7F3D0).copy(alpha = ghostPulse * 0.35f),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room
+                    .offset(y = (-3).dp)
+                    .blur(5.dp, BlurredEdgeTreatment.Unbounded)
+                    .then(sweep),
+            )
+
+            Text(
+                text = line.text,
+                style = style.copy(
+                    shadow = Shadow(
+                        color = Color(0xFF5EEAD4).copy(alpha = ghostPulse),
+                        offset = Offset(0f, 0f),
+                        blurRadius = 16f,
+                    ),
+                ),
+                color = Color(0xFFF0FDFA),
+                maxLines = maxLines,
+                overflow = overflow,
+                modifier = room.then(sweep),
+            )
+        }
+    }
+}
+
+/**
+ * Equalizer: Kinetic audio-reactive spectrum visualizer.
+ * Dynamic multi-band frequency visualizer bars leap from the active lyric line
+ * dancing in rhythm to the track's tempo and vocal amplitude.
+ */
+@Composable
+private fun EqualizerLyricLine(
+    line: LyricLine,
+    clock: MutableLongState,
+    style: TextStyle,
+    dimAlpha: Float,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    lineEndMs: Long = line.endMs,
+    glowRoom: Dp = GLOW_ROOM,
+    onSeekToPosition: ((Long) -> Unit)? = null,
+) {
+    var layout by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
+    val room = if (glowRoom > 0.dp) Modifier.padding(glowRoom) else Modifier
+    val effectiveEnd = if (lineEndMs > line.timeMs) lineEndMs else line.endMs
+
+    val infiniteTransition = rememberInfiniteTransition(label = "eqBounce")
+    val eqAnim by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.28f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "eqAnim",
+    )
+
+    val tapSeek = if (onSeekToPosition != null) {
+        Modifier.clickable { onSeekToPosition(line.timeMs) }
+    } else Modifier
+
+    val position = clock.longValue
+    val isSung = position >= effectiveEnd && effectiveEnd > line.timeMs
+    val isInProgress = position in (line.timeMs until effectiveEnd)
+
+    val drawEq = Modifier.drawWithContent {
+        drawContent()
+        if (isInProgress) {
+            val measured = layout ?: return@drawWithContent
+            val revealed = line.revealedChars(position, effectiveEnd)
+            val edge = revealed.coerceIn(0f, line.text.length.toFloat())
+            if (line.text.isEmpty()) return@drawWithContent
+            val visualLine = measured.getLineForOffset(edge.toInt().coerceIn(0, line.text.length - 1))
+            val start = measured.getLineStart(visualLine)
+            val end = measured.getLineEnd(visualLine, visibleEnd = true)
+            val currentX = horizontalAt(measured, edge, start, end)
+            val baselineY = measured.getLineTop(visualLine) - 2.dp.toPx()
+
+            val barCount = 5
+            val barWidth = 3.dp.toPx()
+            val barGap = 2.5.dp.toPx()
+            val totalW = barCount * barWidth + (barCount - 1) * barGap
+            val startX = (currentX - totalW / 2).coerceAtLeast(0f)
+
+            for (i in 0 until barCount) {
+                val harmonic = sin(eqAnim * (1 + i * 0.7f) + i * 1.2f).toFloat()
+                val heightFraction = (0.25f + 0.75f * ((harmonic + 1f) / 2f)).coerceIn(0.2f, 1f)
+                val barH = 14.dp.toPx() * heightFraction
+                val bx = startX + i * (barWidth + barGap)
+
+                val barColor = when (i) {
+                    0 -> Color(0xFF00F5D4)
+                    1 -> Color(0xFF10B981)
+                    2 -> Color(0xFFFBBF24)
+                    3 -> Color(0xFFF97316)
+                    else -> Color(0xFFF43F5E)
+                }
+
+                drawRoundRect(
+                    color = barColor,
+                    topLeft = Offset(bx, baselineY - barH),
+                    size = Size(barWidth, barH),
+                    cornerRadius = CornerRadius(1.5.dp.toPx()),
+                )
+            }
+        }
+    }
+
+    val sweep = Modifier.drawWithContent {
+        when {
+            isSung || (isInProgress && !line.isWordSynced) -> drawContent()
+            position <= line.timeMs -> Unit
+            else -> layout?.let { sweepTo(it, line.revealedChars(position, effectiveEnd)) }
+        }
+    }
+
+    Box(modifier.then(tapSeek)) {
+        Text(
+            text = line.text,
+            style = style,
+            color = Color.White.copy(alpha = dimAlpha),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = { layout = it },
+            modifier = room,
+        )
+        Text(
+            text = line.text,
+            style = style.copy(
+                shadow = Shadow(
+                    color = Color(0xFF00F5D4).copy(alpha = 0.5f),
+                    offset = Offset(0f, 0f),
+                    blurRadius = 8f,
+                ),
+            ),
+            color = Color.White,
+            maxLines = maxLines,
+            overflow = overflow,
+            modifier = room.then(sweep).then(drawEq),
+        )
+    }
+}
+
 
 /**
  * Apple Music's lyrics view: big tight type, the playing line crisp and
@@ -2970,7 +4277,20 @@ private fun LyricsPanel(
 
     val isSlideStyle = lyricsAnimationStyle == LyricsAnimationStyle.SLIDE && !reduceAnimation
     val isAppleStyle = lyricsAnimationStyle == LyricsAnimationStyle.APPLE && !reduceAnimation
-    val isGlowStyle = (lyricsAnimationStyle == LyricsAnimationStyle.GLOW || lyricsAnimationStyle == LyricsAnimationStyle.APPLE || lyricsGlowEffect) && lyricsAnimationStyle != LyricsAnimationStyle.NONE
+    val isGlowStyle = (
+        lyricsAnimationStyle == LyricsAnimationStyle.NEON ||
+        lyricsAnimationStyle == LyricsAnimationStyle.GLITCH ||
+        lyricsAnimationStyle == LyricsAnimationStyle.LIQUID ||
+        lyricsAnimationStyle == LyricsAnimationStyle.AURORA ||
+        lyricsAnimationStyle == LyricsAnimationStyle.EMBER ||
+        lyricsAnimationStyle == LyricsAnimationStyle.CHROME ||
+        lyricsAnimationStyle == LyricsAnimationStyle.CRT ||
+        lyricsAnimationStyle == LyricsAnimationStyle.WAVE ||
+        lyricsAnimationStyle == LyricsAnimationStyle.SMOKE_SIGNAL ||
+        lyricsAnimationStyle == LyricsAnimationStyle.EQUALIZER ||
+        lyricsAnimationStyle == LyricsAnimationStyle.GHOSTWRITE ||
+        lyricsGlowEffect
+    ) && lyricsAnimationStyle != LyricsAnimationStyle.NONE
     val glowing = isGlowStyle && !reduceAnimation && !reduceDynamicBlur &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
@@ -3095,9 +4415,11 @@ private fun LyricsPanel(
                 }
                 val scale by animateFloatAsState(
                     targetValue = targetScale,
-                    animationSpec = if (isAppleStyle) spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
-                                    else if (lyricsAnimationStyle == LyricsAnimationStyle.NONE) snap()
-                                    else tween(durationMillis = 400),
+                    animationSpec = when {
+                        isAppleStyle -> spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
+                        lyricsAnimationStyle == LyricsAnimationStyle.NONE -> snap()
+                        else -> tween(durationMillis = 400)
+                    },
                     label = "lyricScale",
                 )
                 val glow by animateFloatAsState(
@@ -3343,7 +4665,7 @@ private fun PanelVoice(
     )
 
     // When the line is actively playing and has words, render Apple Music Sing style live syllable/word bounce & glow
-    val isKaraokeStyle = animationStyle == LyricsAnimationStyle.KARAOKE || animationStyle == LyricsAnimationStyle.APPLE
+    val isKaraokeStyle = animationStyle == LyricsAnimationStyle.APPLE
     if (isActive && line.words.isNotEmpty() && !browsing && isKaraokeStyle) {
         LiveKaraokeSingVoice(
             line = line,
@@ -3359,10 +4681,177 @@ private fun PanelVoice(
         return
     }
 
+    if (isActive && !browsing) {
+        when (animationStyle) {
+            LyricsAnimationStyle.TYPEWRITER -> {
+                TypewriterLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            LyricsAnimationStyle.NEON -> {
+                NeonLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            LyricsAnimationStyle.GLITCH -> {
+                GlitchLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            LyricsAnimationStyle.LIQUID -> {
+                LiquidLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            LyricsAnimationStyle.AURORA -> {
+                AuroraLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            LyricsAnimationStyle.EMBER -> {
+                EmberLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            LyricsAnimationStyle.CHROME -> {
+                ChromeLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            LyricsAnimationStyle.CRT -> {
+                CrtMatrixLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            LyricsAnimationStyle.WAVE -> {
+                WaveLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            LyricsAnimationStyle.SMOKE_SIGNAL -> {
+                SmokeSignalLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            LyricsAnimationStyle.EQUALIZER -> {
+                EqualizerLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            LyricsAnimationStyle.GHOSTWRITE -> {
+                GhostwriteLyricLine(
+                    line = line,
+                    clock = clock,
+                    style = style,
+                    dimAlpha = tail,
+                    modifier = modifier,
+                    lineEndMs = lineEndMs,
+                    glowRoom = room,
+                    onSeekToPosition = onSeekToPosition,
+                )
+                return
+            }
+            else -> Unit
+        }
+    }
+
     val shouldSweep = when (animationStyle) {
         LyricsAnimationStyle.NONE -> false
-        LyricsAnimationStyle.KARAOKE, LyricsAnimationStyle.APPLE -> !browsing && (line.isWordSynced || isActive)
-        LyricsAnimationStyle.GLOW, LyricsAnimationStyle.SLIDE, LyricsAnimationStyle.FADE -> !browsing && line.isWordSynced
+        LyricsAnimationStyle.APPLE -> !browsing && (line.isWordSynced || isActive)
+        LyricsAnimationStyle.SLIDE, LyricsAnimationStyle.FADE -> !browsing && line.isWordSynced
+        LyricsAnimationStyle.TYPEWRITER, LyricsAnimationStyle.NEON, LyricsAnimationStyle.GLITCH,
+        LyricsAnimationStyle.LIQUID, LyricsAnimationStyle.AURORA, LyricsAnimationStyle.EMBER,
+        LyricsAnimationStyle.CHROME, LyricsAnimationStyle.CRT, LyricsAnimationStyle.WAVE,
+        LyricsAnimationStyle.SMOKE_SIGNAL, LyricsAnimationStyle.EQUALIZER,
+        LyricsAnimationStyle.GHOSTWRITE -> false
     }
 
     if (shouldSweep) {
@@ -3547,22 +5036,192 @@ private fun CurrentLyricLine(
         val endMs = if (current?.hasKnownEnd == true) current.endMs else nextLine?.timeMs ?: (current?.timeMs?.plus(4_000L) ?: 0L)
         val shouldSweepCurrent = !instrumental && current != null && (
             current.isWordSynced ||
-            lyricsAnimationStyle == LyricsAnimationStyle.KARAOKE ||
-            lyricsAnimationStyle == LyricsAnimationStyle.APPLE
+            lyricsAnimationStyle == LyricsAnimationStyle.APPLE ||
+            lyricsAnimationStyle == LyricsAnimationStyle.TYPEWRITER ||
+            lyricsAnimationStyle == LyricsAnimationStyle.NEON ||
+            lyricsAnimationStyle == LyricsAnimationStyle.GLITCH ||
+            lyricsAnimationStyle == LyricsAnimationStyle.LIQUID ||
+            lyricsAnimationStyle == LyricsAnimationStyle.AURORA ||
+            lyricsAnimationStyle == LyricsAnimationStyle.EMBER ||
+            lyricsAnimationStyle == LyricsAnimationStyle.CHROME ||
+            lyricsAnimationStyle == LyricsAnimationStyle.CRT ||
+            lyricsAnimationStyle == LyricsAnimationStyle.WAVE ||
+            lyricsAnimationStyle == LyricsAnimationStyle.SMOKE_SIGNAL ||
+            lyricsAnimationStyle == LyricsAnimationStyle.EQUALIZER ||
+            lyricsAnimationStyle == LyricsAnimationStyle.GHOSTWRITE
         ) && lyricsAnimationStyle != LyricsAnimationStyle.NONE
 
         val lyric = current
         if (shouldSweepCurrent && lyric != null) {
-            SweptLyricLine(
-                line = lyric,
-                clock = clock,
-                style = MaterialTheme.typography.titleMedium,
-                dimAlpha = UNSUNG_ALPHA_STRIP,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-                lineEndMs = endMs,
-            )
+            when (lyricsAnimationStyle) {
+                LyricsAnimationStyle.TYPEWRITER -> {
+                    TypewriterLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                    )
+                }
+                LyricsAnimationStyle.NEON -> {
+                    NeonLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                        glowRoom = 0.dp,
+                    )
+                }
+                LyricsAnimationStyle.GLITCH -> {
+                    GlitchLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                        glowRoom = 0.dp,
+                    )
+                }
+                LyricsAnimationStyle.LIQUID -> {
+                    LiquidLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                        glowRoom = 0.dp,
+                    )
+                }
+                LyricsAnimationStyle.AURORA -> {
+                    AuroraLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                        glowRoom = 0.dp,
+                    )
+                }
+                LyricsAnimationStyle.EMBER -> {
+                    EmberLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                        glowRoom = 0.dp,
+                    )
+                }
+                LyricsAnimationStyle.CHROME -> {
+                    ChromeLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                        glowRoom = 0.dp,
+                    )
+                }
+                LyricsAnimationStyle.CRT -> {
+                    CrtMatrixLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                        glowRoom = 0.dp,
+                    )
+                }
+                LyricsAnimationStyle.WAVE -> {
+                    WaveLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                        glowRoom = 0.dp,
+                    )
+                }
+                LyricsAnimationStyle.SMOKE_SIGNAL -> {
+                    SmokeSignalLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                        glowRoom = 0.dp,
+                    )
+                }
+                LyricsAnimationStyle.EQUALIZER -> {
+                    EqualizerLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                        glowRoom = 0.dp,
+                    )
+                }
+                LyricsAnimationStyle.GHOSTWRITE -> {
+                    GhostwriteLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                        glowRoom = 0.dp,
+                    )
+                }
+                else -> {
+                    SweptLyricLine(
+                        line = lyric,
+                        clock = clock,
+                        style = MaterialTheme.typography.titleMedium,
+                        dimAlpha = UNSUNG_ALPHA_STRIP,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                        lineEndMs = endMs,
+                    )
+                }
+            }
         } else {
             Text(
                 text = text,

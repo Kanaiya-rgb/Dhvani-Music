@@ -34,5 +34,22 @@ class LyricsCleanerTest {
         assertTrue(LyricsCleaner.isTitleMatch("O Maahi", "O Maahi"))
         assertTrue(LyricsCleaner.isTitleMatch("Kesariya (Audio)", "Kesariya"))
         assertTrue(LyricsCleaner.isTitleMatch("Despacito", "Despacito (Remix)"))
+        assertTrue(LyricsCleaner.isTitleMatch("Dhun (Movie: Saiyaara)", "Dhun"))
+
+        // Must reject single-word substring false positives
+        org.junit.Assert.assertFalse(LyricsCleaner.isTitleMatch("Saiyaara", "Dhun (Movie: Saiyaara)"))
+        org.junit.Assert.assertFalse(LyricsCleaner.isTitleMatch("Movie", "Dhun (Movie: Saiyaara)"))
+        org.junit.Assert.assertFalse(LyricsCleaner.isTitleMatch("Dhun Lagi", "Dhun"))
+        org.junit.Assert.assertFalse(LyricsCleaner.isTitleMatch("Dil Bechara", "Dil"))
+    }
+
+    @Test
+    fun `isArtistMatch validates artist overlap and rejects mismatches`() {
+        assertTrue(LyricsCleaner.isArtistMatch("Arijit Singh", "Arijit Singh & Mithoon"))
+        assertTrue(LyricsCleaner.isArtistMatch("Mithoon", "Arijit Singh & Mithoon"))
+        assertTrue(LyricsCleaner.isArtistMatch("Pritam, Arijit Singh", "Pritam"))
+
+        org.junit.Assert.assertFalse(LyricsCleaner.isArtistMatch("Neha Kakkar", "Arijit Singh & Mithoon"))
+        org.junit.Assert.assertFalse(LyricsCleaner.isArtistMatch("Atif Aslam", "Arijit Singh"))
     }
 }
