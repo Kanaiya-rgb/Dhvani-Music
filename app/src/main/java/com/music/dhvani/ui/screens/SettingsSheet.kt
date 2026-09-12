@@ -1522,15 +1522,27 @@ private data class ReleaseChangelog(
 
 private val APP_RELEASES = listOf(
     ReleaseChangelog(
-        version = "v2.0.4",
+        version = "v2.0.5",
         date = "September 2026",
         isLatest = true,
-        summary = "Lyrics Animation Suite & Settings Navigation Polish",
+        summary = "Text-Effects Showcase Engine & UI Navigation Polish",
         items = listOf(
-            "🎨 11 Unique Lyrics Animations: Smoke-Signal (vapor plumes), Chromia (3-channel RGB prism split), Ghostwrite (phantom typography & spirit echoes), Equalizer (kinetic 5-band audio bars), Cyber Glitch (matrix jitter & CRT scanlines), Typewriter, Laser Reveal, Step Fade, and Apple Music style.",
+            "✨ 12+ Unique Text-Effects (inspired by text-effects.colorion.co): Neon Electric (tube bloom & voltage flicker), Digital Glitch (RGB slices & scanline interference), Ocean Liquid Wave (sloshing fluid meniscus in letters), Cosmic Aurora (rotating holographic rainbow), Volcanic Ember (molten magma pulse), Liquid Chrome (specular lens glare), Retro CRT Terminal (phosphor scanlines), Dancing Wave (fluid bouncy typography), Smoke-Signal, Equalizer, Ghostwrite, and Typewriter.",
+            "🎯 Persistent Line-Sync Stylization: All active lyric lines instantly ignite in their distinctive signature shaders even for songs without word timestamps.",
             "🧹 Settings Navigation Overhaul: Eliminated duplicate back buttons on Appearance and sub-settings pages for a unified frosted top bar.",
             "🔒 Lockscreen & Wallpaper Safety: Fully purged lock screen wallpaper services to guarantee personal lockscreen wallpapers remain completely untouched.",
-            "⚡ Playback & Animation Smoothness: Optimized lyrics sync sweeps and rendered animations with zero frame drops.",
+            "⚡ Playback & Animation Smoothness: Optimized Compose canvas draw scopes and shaders for flawless 60/120fps lyrics motion.",
+        ),
+    ),
+    ReleaseChangelog(
+        version = "v2.0.4",
+        date = "September 2026",
+        isLatest = false,
+        summary = "Lyrics Styles & Settings Polish",
+        items = listOf(
+            "🎨 Initial kinetic lyrics animations and settings navigation groundwork.",
+            "🧹 Unified top app bar navigation architecture for all sub-settings.",
+            "⚡ Background update notifications and playback stability improvements.",
         ),
     ),
     ReleaseChangelog(

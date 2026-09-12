@@ -3,7 +3,7 @@
 # 🎵 Dhvani Music
 ### *Aesthetic Indian & Global Music Client*
 
-[![Latest Release](https://img.shields.io/badge/Release-v2.0.4-22c55e?style=for-the-badge&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest)
+[![Latest Release](https://img.shields.io/badge/Release-v2.0.5-22c55e?style=for-the-badge&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white&labelColor=0d1117)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white&labelColor=0d1117)](https://developer.android.com/jetpack/compose)
 [![Material 3](https://img.shields.io/badge/Material_3-Material_You-E879F9?style=for-the-badge&logo=google&logoColor=white&labelColor=0d1117)](https://m3.material.io)
@@ -49,6 +49,19 @@ Built entirely in modern Kotlin with Jetpack Compose, Dhvani provides an ad-free
 
 ### 🎨 Visuals & Liquid Aesthetics
 * **Pure Material 3 (Material You)** — Built strictly on Android's latest design guidelines with soft curves, tonal elevation, and pill-shaped navigation.
+* **12+ Kinetic Text-Effects Lyrics Engine *(New in v2.0.5)*** — Complete overhaul inspired by [text-effects.colorion.co](https://text-effects.colorion.co/) featuring custom shaders, physics models, and persistent styling for every line:
+  - ⚡ **Neon Electric (`fx-neon`)** — High-voltage cyan/magenta gas discharge tube bloom with electrical flicker.
+  - 👾 **Digital Glitch (`fx-glitch`)** — Split-slice horizontal displacement with cyan/magenta chromatic channel shifts.
+  - 🌊 **Ocean Liquid Wave (`fx-liquid`)** — Hollow typography filled with an undulating sinusoidal fluid wave meniscus.
+  - 🌌 **Cosmic Aurora (`fx-aurora`)** — Living celestial northern lights holographic spectrum rotating across letters.
+  - 🌋 **Volcanic Ember (`fx-ember`)** — Molten incandescent magma with cracked orange/gold heat pulses.
+  - 🪞 **Liquid Chrome (`fx-chrome`)** — Specular liquid silver finish with continuous 45° sweeping lens glare.
+  - 📺 **Retro CRT Terminal (`fx-crt`)** — Vintage 1980s green phosphor bloom, CRT scanlines, and rolling refresh line.
+  - 🏄 **Dancing Sine Wave (`fx-wave`)** — Fluid bouncy typography where words physically oscillate in a sine wave.
+  - 💨 **Smoke-Signal** — Smoldering amber typography with rising multi-layer plumes of vapor clouds.
+  - 📊 **Kinetic Equalizer** — 5-band dynamic audio spectrum frequency bars leaping from active lyric words.
+  - 👻 **Ghostwrite** — Ethereal phantom typography with breathing mint-teal ectoplasm glow.
+  - ⌨️ **Mechanical Typewriter** — Monospace character-by-character snap with glowing typewriter caret.
 * **Dynamic Artwork Palette** — Liquid color theming dynamically extracted from album covers on every track change.
 * **Frosted-Glass UI (Haze)** — Silky, translucent navigation and bottom bars with real-time blurred backdrops.
 * **Next-Gen Interactive Sliders** — Liquid physics seek bars and volume sliders with subtle haptic ticks and expand-on-touch ergonomics.
@@ -103,11 +116,11 @@ Dedicated **Explore** tab in the floating bottom navigation bar featuring 4 main
 
 ### Option 1: Direct GitHub Release (Recommended)
 Grab the latest signed APK directly from the [Releases Page](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest):
-* **[📥 Download DhvaniMusic-v2.0.4.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.0.4/DhvaniMusic-v2.0.4.apk)** (Latest v2.0.4)
-* Repository file: [`apk/DhvaniMusic-v2.0.4.apk`](apk/DhvaniMusic-v2.0.4.apk)
+* **[📥 Download DhvaniMusic-v2.0.5.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.0.5/DhvaniMusic-v2.0.5.apk)** (Latest v2.0.5)
+* Repository file: [`apk/DhvaniMusic-v2.0.5.apk`](apk/DhvaniMusic-v2.0.5.apk)
 
 ### Installation Steps
-1. Download **`DhvaniMusic-v2.0.4.apk`**.
+1. Download **`DhvaniMusic-v2.0.5.apk`**.
 2. Open your device's **Settings → Apps → Special app access → Install unknown apps** and allow installation for your browser/file manager.
 3. Tap on the downloaded APK file and click **Install**.
 4. Open **Dhvani Music** and immerse yourself in clean, ad-free music!
