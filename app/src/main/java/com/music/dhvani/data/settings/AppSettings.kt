@@ -65,6 +65,28 @@ enum class DownloadQuality(
     ),
 }
 
+/**
+ * Network options for downloading songs.
+ */
+enum class DownloadNetwork {
+    /** Download songs over any network (Mobile Data & Wi-Fi) - Default */
+    BOTH,
+
+    /** Only download songs when connected to unmetered Wi-Fi */
+    WIFI_ONLY,
+
+    /** Only download songs over mobile cellular data */
+    CELLULAR_ONLY;
+
+    companion object {
+        fun fromString(name: String?): DownloadNetwork = when (name?.uppercase()) {
+            "WIFI_ONLY" -> WIFI_ONLY
+            "CELLULAR_ONLY" -> CELLULAR_ONLY
+            else -> BOTH
+        }
+    }
+}
+
 enum class ThemeMode(val label: String) {
     SYSTEM("System"), LIGHT("Light"), DARK("Dark")
 }
@@ -236,7 +258,17 @@ object AppSettings {
      * refusing with a sentence naming the switch that would allow it — only the
      * second is recoverable by the person it happens to.
      */
-    val wifiOnlyDownloads = MutableStateFlow(true)
+    /**
+     * Which network types downloads are permitted on.
+     * Defaults to [DownloadNetwork.BOTH] so mobile data is enabled out of the box.
+     */
+    val downloadNetwork = MutableStateFlow(DownloadNetwork.BOTH)
+
+    /**
+     * Backward-compatible indicator for Wi-Fi only download restriction.
+     * True only when [downloadNetwork] is [DownloadNetwork.WIFI_ONLY].
+     */
+    val wifiOnlyDownloads = MutableStateFlow(false)
 
     /** Whether the active network charges for data. `null` while offline. */
     val meteredConnection = MutableStateFlow<Boolean?>(null)
@@ -583,7 +615,11 @@ object AppSettings {
      * would blame a Wi-Fi setting for an outage.
      */
     val downloadsAllowedNow: Boolean
-        get() = !wifiOnlyDownloads.value || meteredConnection.value != true
+        get() = when (downloadNetwork.value) {
+            DownloadNetwork.BOTH -> true
+            DownloadNetwork.WIFI_ONLY -> meteredConnection.value != true
+            DownloadNetwork.CELLULAR_ONLY -> meteredConnection.value == true
+        }
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences("flux_settings", Context.MODE_PRIVATE)
@@ -614,7 +650,16 @@ object AppSettings {
         audioQualityCellular.value = readQuality(KEY_QUALITY_CELLULAR)
         migrateDownloadQuality()
         downloadQuality.value = readDownloadQuality()
-        wifiOnlyDownloads.value = prefs.getBoolean(KEY_WIFI_ONLY_DOWNLOADS, true)
+        val savedNetwork = prefs.getString(KEY_DOWNLOAD_NETWORK, null)
+        val networkMode = if (savedNetwork != null) {
+            DownloadNetwork.fromString(savedNetwork)
+        } else if (prefs.contains(KEY_WIFI_ONLY_DOWNLOADS)) {
+            if (prefs.getBoolean(KEY_WIFI_ONLY_DOWNLOADS, false)) DownloadNetwork.WIFI_ONLY else DownloadNetwork.BOTH
+        } else {
+            DownloadNetwork.BOTH
+        }
+        downloadNetwork.value = networkMode
+        wifiOnlyDownloads.value = (networkMode == DownloadNetwork.WIFI_ONLY)
         crossfadeSeconds.value = prefs.getInt(KEY_CROSSFADE, 0)
         smartFadeEnabled.value = prefs.getBoolean(KEY_SMART_FADE, false)
         skipSilence.value = prefs.getBoolean(KEY_SKIP_SILENCE, false)
@@ -851,9 +896,17 @@ object AppSettings {
         prefs.edit().putString(KEY_QUALITY_DOWNLOAD, value.name).apply()
     }
 
+    fun setDownloadNetwork(value: DownloadNetwork) {
+        downloadNetwork.value = value
+        wifiOnlyDownloads.value = (value == DownloadNetwork.WIFI_ONLY)
+        prefs.edit()
+            .putString(KEY_DOWNLOAD_NETWORK, value.name)
+            .putBoolean(KEY_WIFI_ONLY_DOWNLOADS, value == DownloadNetwork.WIFI_ONLY)
+            .apply()
+    }
+
     fun setWifiOnlyDownloads(value: Boolean) {
-        wifiOnlyDownloads.value = value
-        prefs.edit().putBoolean(KEY_WIFI_ONLY_DOWNLOADS, value).apply()
+        setDownloadNetwork(if (value) DownloadNetwork.WIFI_ONLY else DownloadNetwork.BOTH)
     }
 
     fun setCrossfadeSeconds(value: Int) {
@@ -1598,6 +1651,7 @@ object AppSettings {
     private const val KEY_QUALITY_WIFI = "audio_quality_wifi"
     private const val KEY_QUALITY_CELLULAR = "audio_quality_cellular"
     private const val KEY_QUALITY_DOWNLOAD = "audio_quality_download"
+    private const val KEY_DOWNLOAD_NETWORK = "download_network"
     private const val KEY_WIFI_ONLY_DOWNLOADS = "wifi_only_downloads"
     private const val KEY_LOSSLESS = "lossless_audio"
     private const val KEY_CROSSFADE = "crossfade_seconds"

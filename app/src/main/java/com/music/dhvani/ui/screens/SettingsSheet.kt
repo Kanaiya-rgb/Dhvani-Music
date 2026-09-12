@@ -61,8 +61,10 @@ import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VolumeOff
-import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material.icons.rounded.Waves
+import androidx.compose.material.icons.rounded.CloudDownload
+import com.music.dhvani.data.settings.DownloadNetwork
 import com.music.dhvani.ui.components.EqualizerSheet
 import com.music.dhvani.playback.eq.EqualizerManager
 import androidx.activity.compose.BackHandler
@@ -200,9 +202,10 @@ fun SettingsScreen(
     val lyricsSources by AppSettings.lyricsSources.collectAsStateWithLifecycle()
     val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
     val sessionId by AppSettings.audioSessionId.collectAsStateWithLifecycle()
-    val cacheLimitBytes by AppSettings.audioCacheLimitBytes.collectAsStateWithLifecycle()
     val downloadQuality by AppSettings.downloadQuality.collectAsStateWithLifecycle()
+    val downloadNetwork by AppSettings.downloadNetwork.collectAsStateWithLifecycle()
     val wifiOnlyDownloads by AppSettings.wifiOnlyDownloads.collectAsStateWithLifecycle()
+    val cacheLimitBytes by AppSettings.audioCacheLimitBytes.collectAsStateWithLifecycle()
     val sourceConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
     var hasNotificationPermission by remember {
@@ -255,6 +258,7 @@ fun SettingsScreen(
 
     var picking by remember { mutableStateOf<QualityTarget?>(null) }
     var pickingDownloadQuality by remember { mutableStateOf(false) }
+    var pickingDownloadNetwork by remember { mutableStateOf(false) }
     // What the last export or import did, shown on the row that did it rather
     // than as a toast: a backup is the one action here whose outcome nobody can
     // check by looking at the app afterwards. Held per direction, or an import's
@@ -515,20 +519,15 @@ fun SettingsScreen(
                         )
                         RowDivider()
                         SettingsRow(
-                            icon = Icons.Rounded.Wifi,
-                            title = stringResource(R.string.download_wifi_only),
-                            subtitle = stringResource(R.string.blocking).takeIf { wifiOnlyDownloads && metered == true },
-                            trailing = {
-                                Switch(
-                                    checked = wifiOnlyDownloads,
-                                    onCheckedChange = AppSettings::setWifiOnlyDownloads,
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                    ),
-                                )
+                            icon = when (downloadNetwork) {
+                                DownloadNetwork.BOTH -> Icons.Rounded.CloudDownload
+                                DownloadNetwork.WIFI_ONLY -> Icons.Rounded.Wifi
+                                DownloadNetwork.CELLULAR_ONLY -> Icons.Rounded.SignalCellularAlt
                             },
-                            onClick = { AppSettings.setWifiOnlyDownloads(!wifiOnlyDownloads) },
+                            title = stringResource(R.string.download_network_title),
+                            value = downloadNetwork.localizedLabel(),
+                            subtitle = stringResource(R.string.blocking).takeIf { !AppSettings.downloadsAllowedNow && metered == true },
+                            onClick = { pickingDownloadNetwork = true },
                         )
                     }
 
@@ -1071,20 +1070,15 @@ fun SettingsScreen(
                         )
                         RowDivider()
                         SettingsRow(
-                            icon = Icons.Rounded.Wifi,
-                            title = stringResource(R.string.download_wifi_only),
-                            subtitle = stringResource(R.string.blocking).takeIf { wifiOnlyDownloads && metered == true },
-                            trailing = {
-                                Switch(
-                                    checked = wifiOnlyDownloads,
-                                    onCheckedChange = AppSettings::setWifiOnlyDownloads,
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                    ),
-                                )
+                            icon = when (downloadNetwork) {
+                                DownloadNetwork.BOTH -> Icons.Rounded.CloudDownload
+                                DownloadNetwork.WIFI_ONLY -> Icons.Rounded.Wifi
+                                DownloadNetwork.CELLULAR_ONLY -> Icons.Rounded.SignalCellularAlt
                             },
-                            onClick = { AppSettings.setWifiOnlyDownloads(!wifiOnlyDownloads) },
+                            title = stringResource(R.string.download_network_title),
+                            value = downloadNetwork.localizedLabel(),
+                            subtitle = stringResource(R.string.blocking).takeIf { !AppSettings.downloadsAllowedNow && metered == true },
+                            onClick = { pickingDownloadNetwork = true },
                         )
                     }
                 }
@@ -1352,6 +1346,16 @@ fun SettingsScreen(
                 onSelect = { quality ->
                     AppSettings.setDownloadQuality(quality)
                     pickingDownloadQuality = false
+                },
+            )
+        }
+
+        if (pickingDownloadNetwork) {
+            DownloadNetworkSheet(
+                selected = downloadNetwork,
+                onSelect = { network ->
+                    AppSettings.setDownloadNetwork(network)
+                    pickingDownloadNetwork = false
                 },
             )
         }
@@ -2007,6 +2011,94 @@ private fun DownloadQualitySheet(
                         contentDescription = "Selected",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DownloadNetwork.localizedLabel(): String = stringResource(
+    when (this) {
+        DownloadNetwork.BOTH -> R.string.download_network_both
+        DownloadNetwork.WIFI_ONLY -> R.string.download_network_wifi_only
+        DownloadNetwork.CELLULAR_ONLY -> R.string.download_network_cellular_only
+    },
+)
+
+@Composable
+private fun DownloadNetwork.localizedDesc(): String = stringResource(
+    when (this) {
+        DownloadNetwork.BOTH -> R.string.download_network_both_desc
+        DownloadNetwork.WIFI_ONLY -> R.string.download_network_wifi_only_desc
+        DownloadNetwork.CELLULAR_ONLY -> R.string.download_network_cellular_only_desc
+    },
+)
+
+@Composable
+private fun DownloadNetworkSheet(
+    selected: DownloadNetwork,
+    onSelect: (DownloadNetwork) -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
+    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        Row(
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.CloudDownload,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.size(22.dp),
+            )
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(
+                    text = stringResource(R.string.download_network_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    text = "Choose connection for song downloads",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+
+        DownloadNetwork.entries.forEach { option ->
+            val chosen = option == selected
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSelect(option)
+                    }
+                    .padding(horizontal = 22.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = option.localizedLabel(),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    Text(
+                        text = option.localizedDesc(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (chosen) {
+                    Icon(
+                        imageVector = Icons.Rounded.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }

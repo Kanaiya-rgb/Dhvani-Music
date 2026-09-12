@@ -15,8 +15,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.music.dhvani.BuildConfig
@@ -56,6 +57,9 @@ object AppUpdateChecker {
     )
 
     private const val CACHE_SUBDIR = "updates"
+
+    private const val CDN_VERSION_URL =
+        "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/version.json"
 
     private const val LATEST_RELEASE_URL =
         "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Music/releases/latest"
@@ -97,36 +101,83 @@ object AppUpdateChecker {
         data class Error(val message: String) : CheckResult
     }
 
-    suspend fun check(): CheckResult = withContext(Dispatchers.IO) {
-        runCatching {
-            val request = Request.Builder()
-                .url(LATEST_RELEASE_URL)
-                .header("User-Agent", "Dhvani-Music/${BuildConfig.VERSION_NAME}")
-                .header("Accept", "application/vnd.github+json")
-                .build()
-            val body = Http.client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) null else response.body?.string()
-            } ?: return@runCatching CheckResult.Error("Could not reach GitHub Releases")
-            val release = json.parseToJsonElement(body) as? JsonObject
-                ?: return@runCatching CheckResult.Error("Invalid release response")
-            val tag = release["tag_name"]?.jsonPrimitive?.contentOrNull
-                ?: return@runCatching CheckResult.Error("Missing release tag")
-            val url = release["html_url"]?.jsonPrimitive?.contentOrNull
-                ?: return@runCatching CheckResult.Error("Missing release URL")
-            val apkUrl = apkAssetUrl(release)
-            val notes = release["body"]?.jsonPrimitive?.contentOrNull
-            val latest = tag.removePrefix("v")
-            if (isNewer(latest, BuildConfig.VERSION_NAME)) {
-                val info = UpdateInfo(latest, url, apkUrl, notes)
-                _available.value = info
-                CheckResult.UpdateAvailable(info)
-            } else {
-                CheckResult.UpToDate(BuildConfig.VERSION_NAME, latest)
-            }
-        }.getOrElse { error ->
-            CheckResult.Error(error.message ?: "Unknown error")
+    /**
+     * Checks for updates using a multi-tiered strategy:
+     * 1. Raw GitHub CDN (version.json): Never rate-limited, ultra-fast.
+     * 2. GitHub REST API: Official releases API.
+     * 3. GitHub Web redirect: Direct fallback without rate limits.
+     *
+     * If an update is found and [context] is provided, also posts a system notification.
+     */
+    suspend fun check(context: Context? = null): CheckResult = withContext(Dispatchers.IO) {
+        val latestInfo = fetchFromCdn() ?: fetchFromGitHubApi() ?: fetchFromGitHubRedirect()
+        if (latestInfo == null) {
+            return@withContext CheckResult.Error("Could not reach update server")
+        }
+
+        if (isNewer(latestInfo.version, BuildConfig.VERSION_NAME)) {
+            _available.value = latestInfo
+            context?.let { postUpdateNotification(it, latestInfo) }
+            CheckResult.UpdateAvailable(latestInfo)
+        } else {
+            CheckResult.UpToDate(BuildConfig.VERSION_NAME, latestInfo.version)
         }
     }
+
+    private fun fetchFromCdn(): UpdateInfo? = runCatching {
+        val req = Request.Builder()
+            .url(CDN_VERSION_URL)
+            .header("User-Agent", "Dhvani-Music/${BuildConfig.VERSION_NAME}")
+            .build()
+        Http.client.newCall(req).execute().use { res ->
+            if (!res.isSuccessful) return null
+            val text = res.body?.string() ?: return null
+            val obj = json.parseToJsonElement(text) as? JsonObject ?: return null
+            val ver = obj["version"]?.jsonPrimitive?.contentOrNull?.trim()?.removePrefix("v") ?: return null
+            val relUrl = obj["releaseUrl"]?.jsonPrimitive?.contentOrNull
+                ?: "https://github.com/Kanaiya-rgb/Dhvani-Music/releases"
+            val apk = obj["apkUrl"]?.jsonPrimitive?.contentOrNull
+            val notes = obj["notes"]?.jsonPrimitive?.contentOrNull
+            UpdateInfo(ver, relUrl, apk, notes)
+        }
+    }.getOrNull()
+
+    private fun fetchFromGitHubApi(): UpdateInfo? = runCatching {
+        val request = Request.Builder()
+            .url(LATEST_RELEASE_URL)
+            .header("User-Agent", "Dhvani-Music/${BuildConfig.VERSION_NAME}")
+            .header("Accept", "application/vnd.github+json")
+            .build()
+        Http.client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            val body = response.body?.string() ?: return null
+            val release = json.parseToJsonElement(body) as? JsonObject ?: return null
+            val tag = release["tag_name"]?.jsonPrimitive?.contentOrNull ?: return null
+            val url = release["html_url"]?.jsonPrimitive?.contentOrNull ?: return null
+            val apkUrl = apkAssetUrl(release)
+            val notes = release["body"]?.jsonPrimitive?.contentOrNull
+            val latest = tag.removePrefix("v").trim()
+            UpdateInfo(latest, url, apkUrl, notes)
+        }
+    }.getOrNull()
+
+    private fun fetchFromGitHubRedirect(): UpdateInfo? = runCatching {
+        val req = Request.Builder()
+            .url("https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest")
+            .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+            .build()
+        Http.client.newCall(req).execute().use { res ->
+            val finalUrl = res.request.url.toString()
+            if (finalUrl.contains("/tag/")) {
+                val tag = finalUrl.substringAfterLast("/tag/").removePrefix("v").trim()
+                if (tag.isNotEmpty()) {
+                    val apk = "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v$tag/DhvaniMusic-v$tag.apk"
+                    return UpdateInfo(tag, finalUrl, apk, null)
+                }
+            }
+            null
+        }
+    }.getOrNull()
 
     /**
      * Wipes any APK left over from a previous run. Called once at cold start
@@ -252,10 +303,10 @@ object AppUpdateChecker {
         context.startActivity(installIntent)
     }
 
-    /** Numeric, dot-separated comparison — "1.10" outranks "1.9". */
+    /** Robust, numeric, dot-separated comparison — handles "2.0.5", "v2.0.5", "2.0.5-release". */
     private fun isNewer(latest: String, current: String): Boolean {
-        val l = latest.split(".").map { it.toIntOrNull() ?: 0 }
-        val c = current.split(".").map { it.toIntOrNull() ?: 0 }
+        val l = parseVersionParts(latest)
+        val c = parseVersionParts(current)
         for (i in 0 until maxOf(l.size, c.size)) {
             val a = l.getOrElse(i) { 0 }
             val b = c.getOrElse(i) { 0 }
@@ -264,48 +315,75 @@ object AppUpdateChecker {
         return false
     }
 
+    private fun parseVersionParts(version: String): List<Int> {
+        val clean = version.trim().removePrefix("v")
+        val base = clean.substringBefore("-").substringBefore("+")
+        return base.split(".").map { part ->
+            part.filter { it.isDigit() }.toIntOrNull() ?: 0
+        }
+    }
+
     private const val UPDATE_CHANNEL_ID = "dhvani_app_updates"
     private const val UPDATE_NOTIFICATION_ID = 2001
     private const val PREF_LAST_NOTIFIED_VERSION = "last_notified_update_version"
+    private const val PREF_LAST_NOTIFIED_TIME = "last_notified_update_time"
+    private const val REMINDER_INTERVAL_MS = 24 * 60 * 60 * 1000L // 24 hours
 
     /**
-     * Schedules a periodic background check (every 6 hours) via WorkManager
-     * to check GitHub Releases when device has active internet connectivity.
+     * Schedules periodic and immediate background checks via WorkManager
+     * to check for updates whenever device has active internet connectivity.
      */
     fun schedulePeriodicCheck(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val request = PeriodicWorkRequestBuilder<AppUpdateWorker>(6, TimeUnit.HOURS)
+        val periodicRequest = PeriodicWorkRequestBuilder<AppUpdateWorker>(4, TimeUnit.HOURS)
             .setConstraints(constraints)
             .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             "DhvaniAppUpdatePeriodicWorker",
-            ExistingPeriodicWorkPolicy.KEEP,
-            request,
+            androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
+            periodicRequest,
+        )
+
+        val oneTimeRequest = OneTimeWorkRequestBuilder<AppUpdateWorker>()
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "DhvaniAppUpdateInitialWorker",
+            ExistingWorkPolicy.REPLACE,
+            oneTimeRequest,
         )
     }
 
     /**
-     * Posts a system notification when a new update is found.
-     * Prevents duplicate spam by recording the notified version in SharedPreferences.
+     * Posts a high-priority system notification when a new update is found.
+     * Includes rate-limiting (maximum once per 24 hours per version) so it doesn't spam.
      */
     fun postUpdateNotification(context: Context, info: UpdateInfo) {
         val prefs = context.getSharedPreferences("app_updates", Context.MODE_PRIVATE)
-        val lastNotified = prefs.getString(PREF_LAST_NOTIFIED_VERSION, null)
-        if (lastNotified == info.version) return
+        val lastNotifiedVersion = prefs.getString(PREF_LAST_NOTIFIED_VERSION, null)
+        val lastNotifiedTime = prefs.getLong(PREF_LAST_NOTIFIED_TIME, 0L)
+        val now = System.currentTimeMillis()
+
+        if (lastNotifiedVersion == info.version && (now - lastNotifiedTime) < REMINDER_INTERVAL_MS) {
+            return
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            if (manager != null && manager.getNotificationChannel(UPDATE_CHANNEL_ID) == null) {
+            if (manager != null) {
                 val channel = NotificationChannel(
                     UPDATE_CHANNEL_ID,
                     "App Updates",
-                    NotificationManager.IMPORTANCE_DEFAULT,
+                    NotificationManager.IMPORTANCE_HIGH,
                 ).apply {
                     description = "Notifies when a new Dhvani Music update is available on GitHub"
+                    enableLights(true)
+                    enableVibration(true)
                 }
                 manager.createNotificationChannel(channel)
             }
@@ -324,18 +402,20 @@ object AppUpdateChecker {
 
         val notification = NotificationCompat.Builder(context, UPDATE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_logo)
-            .setContentTitle("🎵 Dhvani Music Update (v${info.version})")
+            .setContentTitle("🎵 New Update: Dhvani Music v${info.version}")
             .setContentText("Version ${info.version} is now available! Tap to download & install.")
             .setStyle(
                 NotificationCompat.BigTextStyle()
                     .bigText(
-                        "New version ${info.version} is ready on GitHub!\n" +
-                            (info.notes?.take(160)?.let { "\n$it..." } ?: "Tap to download and install now."),
+                        "Dhvani Music v${info.version} is now available!\n" +
+                            (info.notes?.take(180)?.let { "\n$it\n\n" } ?: "") +
+                            "Tap to open and install the new update.",
                     ),
             )
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
 
@@ -343,7 +423,10 @@ object AppUpdateChecker {
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ) {
             NotificationManagerCompat.from(context).notify(UPDATE_NOTIFICATION_ID, notification)
-            prefs.edit().putString(PREF_LAST_NOTIFIED_VERSION, info.version).apply()
+            prefs.edit()
+                .putString(PREF_LAST_NOTIFIED_VERSION, info.version)
+                .putLong(PREF_LAST_NOTIFIED_TIME, now)
+                .apply()
         }
     }
 }

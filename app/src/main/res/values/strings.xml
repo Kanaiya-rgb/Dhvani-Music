@@ -334,4 +334,11 @@
     <string name="song_count_format_singular">1 Song</string>
     <string name="playback_mins_format">%1$d Mins</string>
     <string name="playback_hours_format">%.1f Hours</string>
+    <string name="download_network_title">Download Network</string>
+    <string name="download_network_both">Both (Mobile Data &amp; Wi-Fi)</string>
+    <string name="download_network_both_desc">Download songs using cellular data or Wi-Fi networks</string>
+    <string name="download_network_wifi_only">Only Wi-Fi</string>
+    <string name="download_network_wifi_only_desc">Only download songs when connected to Wi-Fi</string>
+    <string name="download_network_cellular_only">Mobile Data Only</string>
+    <string name="download_network_cellular_only_desc">Only download songs using mobile data</string>
 </resources>

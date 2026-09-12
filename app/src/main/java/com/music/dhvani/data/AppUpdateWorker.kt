@@ -14,7 +14,7 @@ class AppUpdateWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        return when (val res = AppUpdateChecker.check()) {
+        return when (val res = AppUpdateChecker.check(applicationContext)) {
             is AppUpdateChecker.CheckResult.UpdateAvailable -> {
                 AppUpdateChecker.postUpdateNotification(applicationContext, res.info)
                 Result.success()

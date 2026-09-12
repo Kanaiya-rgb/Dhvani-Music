@@ -1106,11 +1106,16 @@ private fun DhvaniApp(
             // normally needs no toast — but a refused one leaves the row exactly
             // as it was, and a button that visibly does nothing is worse than a
             // long message. So this one is said whatever the count.
-            blocked -> Toast.makeText(
-                context,
-                "${Downloads.WIFI_ONLY_REFUSAL} — turn that off in Settings to use mobile data",
-                Toast.LENGTH_LONG,
-            ).show()
+            blocked -> {
+                val msg = if (AppSettings.downloadNetwork.value == com.music.dhvani.data.settings.DownloadNetwork.WIFI_ONLY) {
+                    "Downloads are set to Wi-Fi only — change to 'Mobile Data & Wi-Fi' in Settings to download now"
+                } else if (AppSettings.downloadNetwork.value == com.music.dhvani.data.settings.DownloadNetwork.CELLULAR_ONLY) {
+                    "Downloads are set to Mobile Data only"
+                } else {
+                    "Waiting for network connection to download"
+                }
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            }
             requested.size > 1 -> {
                 val message = if (songs.isEmpty()) {
                     "Already downloaded"
@@ -1629,7 +1634,7 @@ private fun DhvaniApp(
                             onCheckForUpdates = {
                                 scope.launch {
                                     Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
-                                    when (val res = AppUpdateChecker.check()) {
+                                    when (val res = AppUpdateChecker.check(context)) {
                                         is AppUpdateChecker.CheckResult.UpdateAvailable -> {
                                             showUpdateDialog = true
                                         }

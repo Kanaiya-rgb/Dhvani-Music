@@ -234,5 +234,12 @@
     <string name="song_count_format_singular">1 गाना</string>
     <string name="playback_mins_format">%1$d मिनट</string>
     <string name="playback_hours_format">%.1f घंटे</string>
+    <string name="download_network_title">डाउनलोड नेटवर्क</string>
+    <string name="download_network_both">दोनों (मोबाइल डेटा और Wi-Fi)</string>
+    <string name="download_network_both_desc">सेलुलर डेटा या Wi-Fi किसी भी नेटवर्क पर डाउनलोड करें</string>
+    <string name="download_network_wifi_only">केवल Wi-Fi</string>
+    <string name="download_network_wifi_only_desc">केवल Wi-Fi कनेक्ट होने पर गाने डाउनलोड करें</string>
+    <string name="download_network_cellular_only">केवल मोबाइल डेटा</string>
+    <string name="download_network_cellular_only_desc">केवल मोबाइल डेटा पर गाने डाउनलोड करें</string>
 </resources>
 
