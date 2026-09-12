@@ -1526,9 +1526,22 @@ private data class ReleaseChangelog(
 
 private val APP_RELEASES = listOf(
     ReleaseChangelog(
-        version = "v2.0.5",
+        version = "v2.0.6",
         date = "September 2026",
         isLatest = true,
+        summary = "Download Network Controls, CDN Update Notifications & Storage Fixes",
+        items = listOf(
+            "🌐 Song Download Network Policy: Download songs over Mobile Data & Wi-Fi (default), Only Wi-Fi, or Mobile Data Only with a smooth settings selector.",
+            "🔔 High-Reliability Update Notifications: Fast CDN-backed update detection engine with heads-up notifications that bypass GitHub API rate-limits on all carriers.",
+            "📊 Dynamic Offline Playback Statistics: Fixed download page stats to calculate live song counts and accurate cumulative playback duration.",
+            "🇮🇳 Multilingual Support: Complete Hindi & English localization across download preferences, storage, and settings.",
+            "✨ 12+ Kinetic Text-Effects Lyrics Engine: Full shader rendering with 12 distinctive visual animations inspired by text-effects.",
+        ),
+    ),
+    ReleaseChangelog(
+        version = "v2.0.5",
+        date = "September 2026",
+        isLatest = false,
         summary = "Text-Effects Showcase Engine & UI Navigation Polish",
         items = listOf(
             "✨ 12+ Unique Text-Effects (inspired by text-effects.colorion.co): Neon Electric (tube bloom & voltage flicker), Digital Glitch (RGB slices & scanline interference), Ocean Liquid Wave (sloshing fluid meniscus in letters), Cosmic Aurora (rotating holographic rainbow), Volcanic Ember (molten magma pulse), Liquid Chrome (specular lens glare), Retro CRT Terminal (phosphor scanlines), Dancing Wave (fluid bouncy typography), Smoke-Signal, Equalizer, Ghostwrite, and Typewriter.",

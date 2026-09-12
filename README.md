@@ -3,7 +3,7 @@
 # 🎵 Dhvani Music
 ### *Aesthetic Indian & Global Music Client*
 
-[![Latest Release](https://img.shields.io/badge/Release-v2.0.5-22c55e?style=for-the-badge&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest)
+[![Latest Release](https://img.shields.io/badge/Release-v2.0.6-22c55e?style=for-the-badge&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white&labelColor=0d1117)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white&labelColor=0d1117)](https://developer.android.com/jetpack/compose)
 [![Material 3](https://img.shields.io/badge/Material_3-Material_You-E879F9?style=for-the-badge&logo=google&logoColor=white&labelColor=0d1117)](https://m3.material.io)
@@ -116,11 +116,11 @@ Dedicated **Explore** tab in the floating bottom navigation bar featuring 4 main
 
 ### Option 1: Direct GitHub Release (Recommended)
 Grab the latest signed APK directly from the [Releases Page](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest):
-* **[📥 Download DhvaniMusic-v2.0.5.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.0.5/DhvaniMusic-v2.0.5.apk)** (Latest v2.0.5)
-* Repository file: [`apk/DhvaniMusic-v2.0.5.apk`](apk/DhvaniMusic-v2.0.5.apk)
+* **[📥 Download DhvaniMusic-v2.0.6.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.0.6/DhvaniMusic-v2.0.6.apk)** (Latest v2.0.6)
+* Repository file: [`apk/DhvaniMusic-v2.0.6.apk`](apk/DhvaniMusic-v2.0.6.apk)
 
 ### Installation Steps
-1. Download **`DhvaniMusic-v2.0.5.apk`**.
+1. Download **`DhvaniMusic-v2.0.6.apk`**.
 2. Open your device's **Settings → Apps → Special app access → Install unknown apps** and allow installation for your browser/file manager.
 3. Tap on the downloaded APK file and click **Install**.
 4. Open **Dhvani Music** and immerse yourself in clean, ad-free music!

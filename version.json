@@ -1,7 +1,7 @@
 {
-  "version": "2.0.5",
-  "versionCode": 25,
-  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.0.5",
-  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.0.5/DhvaniMusic-v2.0.5.apk",
-  "notes": "All-new Kinetic Text-Effects Lyrics Engine (12+ styles), settings top-bar navigation fix, download network options (mobile data default), dynamic continuous playback statistics, and full localization."
+  "version": "2.0.6",
+  "versionCode": 26,
+  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.0.6",
+  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.0.6/DhvaniMusic-v2.0.6.apk",
+  "notes": "v2.0.6: Flexible song download network choices (Mobile Data & Wi-Fi by default), high-reliability CDN-backed update notification engine, accurate offline playback statistics, and 12+ Kinetic Text-Effects Lyrics Engine."
 }
