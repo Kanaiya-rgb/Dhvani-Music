@@ -1711,6 +1711,13 @@ private fun DhvaniApp(
                                     downloadId = downloadId,
                                 )
                             },
+                            onExplore = {
+                                viewModel.closeDetail()
+                                selectedTab = TAB_SEARCH
+                            },
+                            onBack = {
+                                viewModel.closeDetail()
+                            },
                             contentPadding = listPadding,
                         )
                     } else if (page != null) {

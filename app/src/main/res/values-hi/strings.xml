@@ -221,5 +221,18 @@
     <string name="miscellaneous_footer">चालू होने पर, हाल के ऐप्स स्क्रीन से ऐप बंद करने पर संगीत प्लेबैक भी रुक जाएगा।</string>
     <string name="dont_repeat_songs_subtitle">ऑटोप्ले इस सेशन में पहले से चलाया या सुझाया गया गाना दोबारा सुझाव नहीं देगा</string>
     <string name="download_quality_subtitle">%1$s प्रति ट्रैक, कनेक्शन चाहे जो भी हो</string>
+    <string name="offline_badge">☁ ऑफ़लाइन मोड</string>
+    <string name="offline_pill">🎧 इन्टरनेट नहीं है? चिन्ता न करें</string>
+    <string name="offline_title">आप ऑफ़लाइन हैं, पर आपका\nसंगीत जारी है।</string>
+    <string name="offline_subtitle">अभी कोई गाना डाउनलोड नहीं है। ऑफ़लाइन प्लेबैक के लिए गाने खोजें और डाउनलोड करें।</string>
+    <string name="offline_subtitle_with_songs">सेलुलर डेटा के बिना 24-बिट लॉसलेस क्वालिटी में अपने संगीत का आनंद लें।</string>
+    <string name="offline_downloaded_label">ऑफ़लाइन डाउनलोड</string>
+    <string name="offline_continuous_playback_label">लगातार प्लेबैक</string>
+    <string name="offline_explore_music">संगीत खोजें</string>
+    <string name="offline_go_back">वापस जाएं</string>
+    <string name="songs_count_format">%1$d गाने</string>
+    <string name="song_count_format_singular">1 गाना</string>
+    <string name="playback_mins_format">%1$d मिनट</string>
+    <string name="playback_hours_format">%.1f घंटे</string>
 </resources>
 

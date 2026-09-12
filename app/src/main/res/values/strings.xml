@@ -321,4 +321,17 @@
     <string name="ok">OK</string>
     <string name="reset">Reset</string>
     <string name="player">Player</string>
+    <string name="offline_badge">Offline Mode</string>
+    <string name="offline_pill">🎧 No Internet? No Worries</string>
+    <string name="offline_title">You are offline, but your\nmusic isn\'t.</string>
+    <string name="offline_subtitle">No downloaded songs yet. Search and download music to enjoy continuous offline playback.</string>
+    <string name="offline_subtitle_with_songs">Enjoy your collection in uncompressed 24–bit Lossless without cellular data.</string>
+    <string name="offline_downloaded_label">Downloaded Offline</string>
+    <string name="offline_continuous_playback_label">Continuous Playback</string>
+    <string name="offline_explore_music">Explore Music</string>
+    <string name="offline_go_back">Go Back</string>
+    <string name="songs_count_format">%1$d Songs</string>
+    <string name="song_count_format_singular">1 Song</string>
+    <string name="playback_mins_format">%1$d Mins</string>
+    <string name="playback_hours_format">%.1f Hours</string>
 </resources>

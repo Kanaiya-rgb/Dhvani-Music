@@ -27,10 +27,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -63,6 +66,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -70,9 +76,11 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.music.dhvani.R
 import com.music.dhvani.data.model.ROW_ART_PX
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.artworkAt
+import com.music.dhvani.data.model.durationMillis
 import com.music.dhvani.download.DownloadedCollection
 import com.music.dhvani.ui.components.MessageState
 import com.music.dhvani.ui.components.PAGE_GUTTER
@@ -136,6 +144,8 @@ fun LocalMusicScreen(
      * the tags are all there is.
      */
     collections: List<DownloadedCollection> = emptyList(),
+    onExplore: (() -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     // Which top-level tab is selected.
@@ -207,7 +217,7 @@ fun LocalMusicScreen(
         ) {
             LocalTab(
                 icon = Icons.Rounded.MusicNote,
-                label = "Songs",
+                label = stringResource(R.string.songs),
                 selected = selectedTab == LOCAL_TAB_SONGS,
                 onClick = {
                     selectedTab = LOCAL_TAB_SONGS
@@ -216,7 +226,7 @@ fun LocalMusicScreen(
             )
             LocalTab(
                 icon = Icons.Rounded.Person,
-                label = "Artists",
+                label = stringResource(R.string.artists),
                 selected = selectedTab == LOCAL_TAB_ARTISTS,
                 onClick = {
                     selectedTab = LOCAL_TAB_ARTISTS
@@ -225,7 +235,7 @@ fun LocalMusicScreen(
             )
             LocalTab(
                 icon = Icons.Rounded.Album,
-                label = "Albums",
+                label = stringResource(R.string.albums),
                 selected = selectedTab == LOCAL_TAB_ALBUMS,
                 onClick = {
                     selectedTab = LOCAL_TAB_ALBUMS
@@ -259,10 +269,10 @@ fun LocalMusicScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         DhvaniOfflineBanner(
-                            onGoToDownloads = {
-                                selectedTab = LOCAL_TAB_SONGS
-                            },
-                            onRetry = {},
+                            songCount = 0,
+                            totalDurationMs = 0L,
+                            onExplore = onExplore ?: {},
+                            onBack = onBack ?: {},
                         )
                     }
                 }
@@ -354,15 +364,27 @@ private fun SongsTab(
     contentPadding: PaddingValues,
 ) {
     val listState = rememberLazyListState()
+    val totalPlaybackMs = remember(songs) {
+        songs.sumOf { it.durationMillis() }
+    }
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding,
     ) {
         item {
+            OfflineStatsSummaryCard(
+                songCount = songs.size,
+                totalDurationMs = totalPlaybackMs,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+            )
+        }
+        item {
             SectionHeader(
                 icon = Icons.Rounded.LibraryMusic,
-                title = "${songs.size} songs",
+                title = formatSongsCount(songs.size),
             )
         }
         itemsIndexed(songs) { index, song ->
@@ -991,18 +1013,104 @@ private fun SectionHeader(icon: ImageVector, title: String) {
     }
 }
 
+/** Formats continuous playback duration into localized string (e.g. 0 Mins, 45 Mins, 2.4 Hours). */
+@Composable
+fun formatPlaybackDuration(totalMs: Long): String {
+    if (totalMs <= 0L) {
+        return stringResource(R.string.playback_mins_format, 0)
+    }
+    val totalMinutes = totalMs / 60_000L
+    return if (totalMinutes < 60) {
+        val mins = totalMinutes.toInt().coerceAtLeast(1)
+        stringResource(R.string.playback_mins_format, mins)
+    } else {
+        val hours = totalMs / 3_600_000f
+        stringResource(R.string.playback_hours_format, hours)
+    }
+}
+
+/** Formats songs count into localized string (e.g. 1 Song, 12 Songs). */
+@Composable
+fun formatSongsCount(count: Int): String {
+    return if (count == 1) {
+        stringResource(R.string.song_count_format_singular)
+    } else {
+        stringResource(R.string.songs_count_format, count)
+    }
+}
+
 /**
- * Offline Mode Banner matching Stitch Dhvani design:
- * "You are offline, but your music isn't.
- * नेटवर्क नहीं है, पर संगीत जारी है। Enjoy your collection in uncompressed 24-bit Lossless without cellular data."
- * Stats: 142 Songs Downloaded Offline • 9.8 Hours Continuous Playback
- * Button: Go to Downloaded Music (Orange), Retry Network Connection
- * Device: OnePlus Buds 3 Pro • LHDC 5.0 • Low Latency Mode (92%)
+ * Modern Stats summary card showing real downloaded songs count and continuous playback duration.
+ */
+@Composable
+fun OfflineStatsSummaryCard(
+    songCount: Int,
+    totalDurationMs: Long,
+    modifier: Modifier = Modifier,
+) {
+    val saffron = androidx.compose.ui.graphics.Color(0xFFFF7A29)
+    val cardBg = androidx.compose.ui.graphics.Color(0xFF16181C)
+    val cardBorder = androidx.compose.ui.graphics.Color(0xFF2E323A)
+
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(cardBg)
+            .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
+            .padding(vertical = 12.dp, horizontal = 12.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = formatSongsCount(songCount),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = saffron,
+                ),
+            )
+            Text(
+                text = stringResource(R.string.offline_downloaded_label),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
+                ),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .height(28.dp)
+                .background(cardBorder),
+        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = formatPlaybackDuration(totalDurationMs),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = androidx.compose.ui.graphics.Color(0xFF34D399),
+                ),
+            )
+            Text(
+                text = stringResource(R.string.offline_continuous_playback_label),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
+                ),
+            )
+        }
+    }
+}
+
+/**
+ * Offline Mode Banner with accurate dynamic stats, localized texts, and responsive actions.
  */
 @Composable
 fun DhvaniOfflineBanner(
-    onGoToDownloads: () -> Unit,
-    onRetry: () -> Unit,
+    songCount: Int,
+    totalDurationMs: Long,
+    onExplore: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val saffron = androidx.compose.ui.graphics.Color(0xFFFF7A29)
@@ -1012,14 +1120,15 @@ fun DhvaniOfflineBanner(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        // Tree / Network zero icon graphic
+        // Icon graphic
         Box(
             modifier = Modifier
-                .size(110.dp)
+                .size(100.dp)
                 .clip(CircleShape)
                 .background(cardBg)
                 .border(1.dp, cardBorder, CircleShape),
@@ -1033,7 +1142,7 @@ fun DhvaniOfflineBanner(
                     imageVector = Icons.Rounded.MusicNote,
                     contentDescription = null,
                     tint = saffron,
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(34.dp),
                 )
                 Box(
                     modifier = Modifier
@@ -1042,10 +1151,10 @@ fun DhvaniOfflineBanner(
                         .padding(horizontal = 8.dp, vertical = 2.dp),
                 ) {
                     Text(
-                        text = "☁ नेटवर्क शून्य",
+                        text = stringResource(R.string.offline_badge),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                            fontWeight = FontWeight.SemiBold,
                         ),
                         color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f),
                     )
@@ -1053,7 +1162,7 @@ fun DhvaniOfflineBanner(
             }
         }
 
-        // Pill: 🎧 इन्टरनेट चला गया? चिन्ता न करें
+        // Pill
         Box(
             modifier = Modifier
                 .clip(CircleShape)
@@ -1062,105 +1171,65 @@ fun DhvaniOfflineBanner(
                 .padding(horizontal = 14.dp, vertical = 5.dp),
         ) {
             Text(
-                text = "🎧 इन्टरनेट चला गया? चिन्ता न करें",
+                text = stringResource(R.string.offline_pill),
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
                 ),
                 color = saffron,
             )
         }
 
-        // Headline & Bilingual Subtitle
+        // Headline & Subtitle
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "You are offline, but your\nmusic isn't.",
+                text = stringResource(R.string.offline_title),
                 style = MaterialTheme.typography.headlineSmall.copy(
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
+                    fontWeight = FontWeight.ExtraBold,
                     fontSize = 22.sp,
                     lineHeight = 28.sp,
                 ),
                 color = androidx.compose.ui.graphics.Color.White,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
             )
             Text(
-                text = "नेटवर्क नहीं है, पर संगीत जारी है। Enjoy your collection in uncompressed 24–bit Lossless without cellular data.",
+                text = if (songCount == 0) {
+                    stringResource(R.string.offline_subtitle)
+                } else {
+                    stringResource(R.string.offline_subtitle_with_songs)
+                },
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = 12.5.sp,
                     lineHeight = 17.sp,
                 ),
                 color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
         }
 
-        // Stats Row (142 Songs Downloaded Offline • 9.8 Hours Continuous Playback)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(cardBg)
-                .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
-                .padding(vertical = 14.dp, horizontal = 12.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "142 Songs",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                        color = saffron,
-                    ),
-                )
-                Text(
-                    text = "Downloaded Offline",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 10.sp,
-                        color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
-                    ),
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(30.dp)
-                    .background(cardBorder),
-            )
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "9.8 Hours",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                        color = androidx.compose.ui.graphics.Color(0xFF34D399),
-                    ),
-                )
-                Text(
-                    text = "Continuous Playback",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 10.sp,
-                        color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
-                    ),
-                )
-            }
-        }
+        // Stats Row (Dynamic song count & playback)
+        OfflineStatsSummaryCard(
+            songCount = songCount,
+            totalDurationMs = totalDurationMs,
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         // Action Buttons
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Orange Primary: Go to Downloaded Music
+            // Saffron Primary: Explore Music
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
                     .background(saffron)
-                    .clickable(onClick = onGoToDownloads)
+                    .clickable(onClick = onExplore)
                     .padding(vertical = 14.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -1169,29 +1238,29 @@ fun DhvaniOfflineBanner(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.ArrowBack,
+                        imageVector = Icons.Rounded.Search,
                         contentDescription = null,
                         tint = androidx.compose.ui.graphics.Color.Black,
                         modifier = Modifier.size(18.dp),
                     )
                     Text(
-                        text = "Go to Downloaded Music",
+                        text = stringResource(R.string.offline_explore_music),
                         style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            fontWeight = FontWeight.Bold,
                             color = androidx.compose.ui.graphics.Color.Black,
                         ),
                     )
                 }
             }
 
-            // Dark Secondary: Retry Network Connection
+            // Dark Secondary: Go Back
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
                     .background(cardBg)
                     .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
-                    .clickable(onClick = onRetry)
+                    .clickable(onClick = onBack)
                     .padding(vertical = 13.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -1200,75 +1269,20 @@ fun DhvaniOfflineBanner(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.Close,
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = null,
                         tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f),
                         modifier = Modifier.size(16.dp),
                     )
                     Text(
-                        text = "Retry Network Connection",
+                        text = stringResource(R.string.offline_go_back),
                         style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                            fontWeight = FontWeight.SemiBold,
                             color = androidx.compose.ui.graphics.Color.White,
                         ),
                     )
                 }
             }
-        }
-
-        // Bluetooth / Audio Hardware Card: OnePlus Buds 3 Pro • LHDC 5.0 • Low Latency Mode (92%)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(androidx.compose.ui.graphics.Color(0xFF131B17))
-                .border(1.dp, androidx.compose.ui.graphics.Color(0xFF1E3A2B), RoundedCornerShape(14.dp))
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(androidx.compose.ui.graphics.Color(0xFF1B3B2B)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Headphones,
-                        contentDescription = null,
-                        tint = androidx.compose.ui.graphics.Color(0xFF34D399),
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-                Column {
-                    Text(
-                        text = "OnePlus Buds 3 Pro",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            color = androidx.compose.ui.graphics.Color.White,
-                        ),
-                    )
-                    Text(
-                        text = "LHDC 5.0 • Low Latency Mode",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.5.sp,
-                            color = androidx.compose.ui.graphics.Color(0xFF34D399),
-                        ),
-                    )
-                }
-            }
-            Text(
-                text = "92%",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    color = androidx.compose.ui.graphics.Color(0xFF34D399),
-                ),
-            )
         }
     }
 }
