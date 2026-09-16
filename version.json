@@ -1,7 +1,7 @@
 {
-  "version": "2.1.1",
-  "versionCode": 29,
-  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.1.1",
-  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.1.1/DhvaniMusic-v2.1.1.apk",
-  "notes": "v2.1.1: Critical hotfix for app crash caused by missing path in status bar playback icon vector drawable when status bar icon is toggled off."
+  "version": "2.1.2",
+  "versionCode": 30,
+  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.1.2",
+  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.1.2/DhvaniMusic-v2.1.2.apk",
+  "notes": "v2.1.2: Super-smooth Home page scrolling (eliminated subcompositions & jank), separate Settings scroll states with auto-top reset for About screen, Meet the Developer & Creator card, and live GitHub releases changelog."
 }

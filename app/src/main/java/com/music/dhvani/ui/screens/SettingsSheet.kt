@@ -816,13 +816,23 @@ fun SettingsScreen(
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(contentPadding),
-    ) {
-        if (currentSubScreen == null) {
+    val mainScrollState = rememberScrollState()
+    val subScrollState = rememberScrollState()
+
+    // Ensure sub-screens always open at the top (offset 0) instead of inheriting main scroll position
+    LaunchedEffect(currentSubScreen) {
+        if (currentSubScreen != null) {
+            subScrollState.scrollTo(0)
+        }
+    }
+
+    if (currentSubScreen == null) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .verticalScroll(mainScrollState)
+                .padding(contentPadding),
+        ) {
             Spacer(Modifier.height(4.dp))
 
             // Search Bar
@@ -1068,7 +1078,14 @@ fun SettingsScreen(
                         .padding(top = 24.dp, bottom = 16.dp),
                 )
             }
-        } else {
+        }
+    } else {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .verticalScroll(subScrollState)
+                .padding(contentPadding),
+        ) {
             Spacer(Modifier.height(4.dp))
 
             when (currentSubScreen!!) {

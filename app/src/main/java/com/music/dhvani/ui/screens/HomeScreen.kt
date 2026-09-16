@@ -38,8 +38,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -152,19 +155,16 @@ fun HomeScreen(
     }
 
     if (onLoadMore != null && state is UiState.Success) {
-        // Fires again each time the tail end of the list comes back into
-        // view — appending shelves doesn't reset it, only leaving the
-        // bottom and scrolling back down does, which is exactly when
-        // another page is worth asking for.
-        val nearEnd by remember {
-            derivedStateOf {
+        // Use snapshotFlow to observe scroll position without causing HomeScreen to recompose
+        LaunchedEffect(listState, loadingMore) {
+            snapshotFlow {
                 val layout = listState.layoutInfo
-                val last = layout.visibleItemsInfo.lastOrNull()?.index ?: return@derivedStateOf false
+                val last = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
                 layout.totalItemsCount > 0 && last >= layout.totalItemsCount - 4
-            }
-        }
-        LaunchedEffect(nearEnd, listState.firstVisibleItemIndex) {
-            if (nearEnd && !loadingMore) onLoadMore()
+            }.distinctUntilChanged()
+                .collect { nearEnd ->
+                    if (nearEnd && !loadingMore) onLoadMore()
+                }
         }
     }
 }
@@ -175,13 +175,14 @@ fun HomeScreen(
  */
 @Composable
 private fun DhvaniHomeHeader() {
-    val currentLocale = try {
-        val firstLocale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)
-        firstLocale?.language ?: java.util.Locale.getDefault().language
-    } catch (_: Throwable) {
-        java.util.Locale.getDefault().language
+    val isHindi = remember {
+        try {
+            val firstLocale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)
+            (firstLocale?.language ?: java.util.Locale.getDefault().language).startsWith("hi", ignoreCase = true)
+        } catch (_: Throwable) {
+            java.util.Locale.getDefault().language.startsWith("hi", ignoreCase = true)
+        }
     }
-    val isHindi = currentLocale.startsWith("hi", ignoreCase = true)
 
     val currentHour = remember {
         java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
@@ -311,13 +312,14 @@ private fun MoodGenreChips(
     selectedChip: String,
     onChipSelect: (String) -> Unit,
 ) {
-    val currentLocale = try {
-        val firstLocale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)
-        firstLocale?.language ?: java.util.Locale.getDefault().language
-    } catch (_: Throwable) {
-        java.util.Locale.getDefault().language
+    val isHindi = remember {
+        try {
+            val firstLocale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)
+            (firstLocale?.language ?: java.util.Locale.getDefault().language).startsWith("hi", ignoreCase = true)
+        } catch (_: Throwable) {
+            java.util.Locale.getDefault().language.startsWith("hi", ignoreCase = true)
+        }
     }
-    val isHindi = currentLocale.startsWith("hi", ignoreCase = true)
 
     val chips = remember(isHindi) {
         if (isHindi) {
@@ -461,25 +463,23 @@ private fun SongShelf(
         SectionHeader(shelf.title, shelf.subtitle)
         val rowsPerColumn = 4
         val columns = remember(shelf.items) { shelf.items.chunked(rowsPerColumn) }
-        BoxWithConstraints {
-            val columnWidth = if (maxWidth > 600.dp) 340.dp else maxWidth * 0.88f
-            LazyRow(
-                state = rememberLazyListState(),
-                contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                items(columns) { columnItems ->
-                    Column(
-                        modifier = Modifier.width(columnWidth),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        columnItems.forEach { item ->
-                            QuickPickSongRow(
-                                item = item,
-                                onClick = { onItemClick(item) },
-                                onLongPress = onItemLongPress?.let { { it(item) } },
-                            )
-                        }
+        val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+        val columnWidth = if (screenWidth > 600.dp) 340.dp else screenWidth * 0.88f
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(columns) { columnItems ->
+                Column(
+                    modifier = Modifier.width(columnWidth),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    columnItems.forEach { item ->
+                        QuickPickSongRow(
+                            item = item,
+                            onClick = { onItemClick(item) },
+                            onLongPress = onItemLongPress?.let { { it(item) } },
+                        )
                     }
                 }
             }
@@ -563,6 +563,13 @@ private fun QuickPickSongRow(
  */
 @Composable
 internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() -> Unit)? = null) {
+    val isHindi = remember {
+        try {
+            androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)?.language?.startsWith("hi") == true
+        } catch (_: Throwable) {
+            false
+        }
+    }
     Row(
         modifier = Modifier
             .padding(horizontal = PAGE_GUTTER)
@@ -593,7 +600,7 @@ internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() 
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = if (androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)?.language?.startsWith("hi") == true) "रोज़ाना नया" else "FOR YOU",
+                            text = if (isHindi) "रोज़ाना नया" else "FOR YOU",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
@@ -634,25 +641,19 @@ private fun HeroShelf(
 ) {
     Column(Modifier.padding(bottom = 26.dp)) {
         SectionHeader(shelf.title, shelf.subtitle)
-        // Measured rather than taken as a share of the parent, because the card
-        // has a ceiling as well as a fraction — see [heroCardWidth]. A fixed
-        // width is also the only one of the two the aspect ratio below can turn
-        // into a height, so the card keeps its shape however it was arrived at.
-        BoxWithConstraints {
-            val cardWidth = heroCardWidth(maxWidth)
-            LazyRow(
-                state = rememberLazyListState(),
-                contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                items(shelf.items) { item ->
-                    HeroCard(
-                        item = item,
-                        onClick = { onItemClick(item) },
-                        onLongPress = onItemLongPress?.let { { it(item) } },
-                        modifier = Modifier.width(cardWidth),
-                    )
-                }
+        val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+        val cardWidth = heroCardWidth(screenWidth)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(shelf.items) { item ->
+                HeroCard(
+                    item = item,
+                    onClick = { onItemClick(item) },
+                    onLongPress = onItemLongPress?.let { { it(item) } },
+                    modifier = Modifier.width(cardWidth),
+                )
             }
         }
     }
@@ -688,19 +689,21 @@ private fun HeroCard(
             modifier = Modifier.fillMaxSize(),
         )
 
+        val gradientBrush = remember {
+            Brush.verticalGradient(
+                listOf(
+                    Color.Black.copy(alpha = 0.15f),
+                    Color.Black.copy(alpha = 0.55f),
+                    Color(0xFF0F1115).copy(alpha = 0.95f),
+                ),
+            )
+        }
+
         // Gradient overlay: transparent to deep midnight
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.Black.copy(alpha = 0.15f),
-                            Color.Black.copy(alpha = 0.55f),
-                            Color(0xFF0F1115).copy(alpha = 0.95f),
-                        ),
-                    ),
-                ),
+                .background(gradientBrush),
         )
 
         Column(

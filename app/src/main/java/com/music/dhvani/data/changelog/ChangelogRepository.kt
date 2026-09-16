@@ -36,9 +36,21 @@ object ChangelogRepository {
 
     val FALLBACK_RELEASES = listOf(
         ReleaseChangelog(
-            version = "v2.1.1",
+            version = "v2.1.2",
             date = "16 Sep 2026",
             isLatest = true,
+            summary = "Super-Smooth Home Feed & Settings UX Polish",
+            items = listOf(
+                "🚀 Home Scroll Performance: Eliminated BoxWithConstraints subcompositions and scroll-tick recompositions for butter-smooth 60/120fps scrolling.",
+                "📱 Settings Subscreen Auto-Top: About and all sub-screens now open directly at the very top instead of retaining main scroll offset.",
+                "👨‍💻 Meet the Developer: Added personal Creator & Developer card with social links in About Dhvani Music.",
+                "🌐 Live Changelog Engine: Real-time synchronization with GitHub releases directly from Settings.",
+            ),
+        ),
+        ReleaseChangelog(
+            version = "v2.1.1",
+            date = "16 Sep 2026",
+            isLatest = false,
             summary = "Status Bar Icon Crash Hotfix",
             items = listOf(
                 "🐛 Critical Hotfix: Resolved a fatal RemoteServiceException crash caused by an empty vector drawable when Status bar playback icon is turned off.",
