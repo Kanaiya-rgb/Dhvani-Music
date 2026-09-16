@@ -116,11 +116,10 @@ Dedicated **Explore** tab in the floating bottom navigation bar featuring 4 main
 
 ### Option 1: Direct GitHub Release (Recommended)
 Grab the latest signed APK directly from the [Releases Page](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest):
-* **[📥 Download DhvaniMusic-v2.0.6.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.0.6/DhvaniMusic-v2.0.6.apk)** (Latest v2.0.6)
-* Repository file: [`apk/DhvaniMusic-v2.0.6.apk`](apk/DhvaniMusic-v2.0.6.apk)
+* **[📥 Download DhvaniMusic-v2.1.1.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.1.1/DhvaniMusic-v2.1.1.apk)** (Latest v2.1.1)
 
 ### Installation Steps
-1. Download **`DhvaniMusic-v2.0.6.apk`**.
+1. Download **`DhvaniMusic-v2.1.1.apk`**.
 2. Open your device's **Settings → Apps → Special app access → Install unknown apps** and allow installation for your browser/file manager.
 3. Tap on the downloaded APK file and click **Install**.
 4. Open **Dhvani Music** and immerse yourself in clean, ad-free music!
