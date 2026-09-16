@@ -16,9 +16,9 @@ import com.music.dhvani.data.model.Song
  * the assumption underneath all of them.
  *
  * Tracks keep their bare video ids rather than being wrapped in a
- * [SourceRegistry.trackKey]. Half the app knows what a YouTube video id is —
+ * [SourceRegistry.trackKey]. Half the app knows what a YouTube video id is Â—
  * the like button, the lyrics lookup keyed on it, the radio endpoint, the
- * canvas lookup, the scrobbler — and re-keying them here would break every one
+ * canvas lookup, the scrobbler Â— and re-keying them here would break every one
  * of those for no gain, since an unwrapped id already routes to exactly this
  * source by default.
  */
@@ -51,7 +51,7 @@ class YouTubeSource(
     /**
      * [request] is not honoured here, and cannot be.
      *
-     * [StreamRequest.Lossless] has no answer on this source — YouTube publishes
+     * [StreamRequest.Lossless] has no answer on this source Â— YouTube publishes
      * no lossless rendition of anything, which is why [SourceKind.YOUTUBE]
      * declares `canServeLossless = false` and why [SourceResolver] does not ask
      * this source for one unless it is the last one left. The bitrate ceiling

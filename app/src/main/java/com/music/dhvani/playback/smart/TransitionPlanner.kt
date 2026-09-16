@@ -3,11 +3,11 @@
  * TransitionPlanner.kt and WsolaPlanner.kt into one file.
  *
  * Copyright (C) 2026 SFG545 (original Orchard implementation)
- * Copyright (C) 2026 Kushagra Singh (BitChord adaptation)
+ * Copyright (C) 2026 Kushagra Singh (Dhvani adaptation)
  *
  * Orchard's original source is licensed under the GNU Affero General Public
  * License, version 3 or later. Per AGPLv3 section 13, this file is combined
- * here into BitChord -- a work licensed under the GNU General Public
+ * here into Dhvani -- a work licensed under the GNU General Public
  * License, version 3 or later -- and remains itself governed by the AGPLv3
  * as part of that combination.
  *
@@ -39,7 +39,7 @@ import kotlin.math.roundToLong
  * reads the timing fields ([TransitionPlan.transitionStart], [TransitionPlan.fadeSeconds]),
  * cues the incoming track to [TransitionPlan.incomingCueTime] instead of 0,
  * stretches it by [TransitionPlan.incomingPlaybackRate] to align tempo, and
- * renders [TransitionPlan.transitionStyle] as filtering across the blend —
+ * renders [TransitionPlan.transitionStyle] as filtering across the blend Â—
  * a closing low-pass over the outgoing track for [TransitionStyle.DJ_FILTER],
  * a low-end handover at [TransitionPlan.bassSwapFraction] for
  * [TransitionStyle.DJ_BLEND]. The gain curve underneath is equal-power in every
@@ -51,7 +51,7 @@ enum class CrossfadeMode { STANDARD, SMART }
 
 /**
  * The minimal facts about a queue item the planner needs, independent of
- * Media3's `MediaItem` — kept separate so this file stays pure and testable
+ * Media3's `MediaItem` Â— kept separate so this file stays pure and testable
  * without constructing one.
  */
 data class TransitionTrackInfo(
@@ -146,8 +146,8 @@ data class TransitionPlan(
      * through this overlap, 0..1; see [vocalOverlapAmount].
      *
      * Separate from [filterSweep] because they answer to different things.
-     * [filterSweep] is a property of the *style* — a filter ride is what an
-     * unmatched pair gets instead of a beat-matched blend — and a blend
+     * [filterSweep] is a property of the *style* Â— a filter ride is what an
+     * unmatched pair gets instead of a beat-matched blend Â— and a blend
      * deliberately asks for none of it. This is a property of the *material*, and
      * it applies whatever the style: two tempo-matched vocals sitting on the same
      * grid is the case a blend handles worst, precisely because nothing about the
@@ -344,7 +344,7 @@ internal const val ARRANGEMENT_OVERLAP_BEATS = 8
 /**
  * One continuous equal-power fade across the whole overlap. 0.5/0.5 is the
  * plain symmetric crossfade, which is exactly the sin/cos pair
- * [com.music.dhvani.playback.CrossfadeController] rides — so at these values
+ * [com.music.dhvani.playback.CrossfadeController] rides Â— so at these values
  * the renderer already honours them, and anything else would need a two-segment
  * gain curve it does not have.
  */
@@ -760,14 +760,14 @@ private fun phraseSwitch(
         // Deliberately not `planned.filterSweep`. A phrase switch is the one
         // case where both decks are genuinely on the same grid, and the move
         // there is to hand the low end over on a beat, not to hide the outgoing
-        // track behind a filter — filtering a blend this well aligned would
+        // track behind a filter Â— filtering a blend this well aligned would
         // throw away the reason it was worth aligning. The renderer reads a
         // nonzero sweep as "ride the filter instead", so this says zero.
         filterSweep = 0.0,
         // The separation this style *does* need, and the one it cannot get from
         // alignment. Two tracks on a shared grid are the worst case for
         // overlapping voices precisely because nothing about the arrangement
-        // pulls them apart — they sit in the same bar, in the same range, for the
+        // pulls them apart Â— they sit in the same bar, in the same range, for the
         // whole blend. The renderer uses this to deepen the entry high-pass and
         // the exit low-pass without turning the blend into a filter ride.
         vocalOverlap = plannedVocalOverlap(

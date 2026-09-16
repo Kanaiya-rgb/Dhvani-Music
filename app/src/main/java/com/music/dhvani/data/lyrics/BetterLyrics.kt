@@ -2,9 +2,6 @@ package com.music.dhvani.data.lyrics
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /**
@@ -22,43 +19,41 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 object BetterLyrics {
 
     private const val BASE = "https://lyrics-api.boidu.dev/getLyrics"
+    private const val PORTATO = "https://lyrics-api.boidu.dev/qq/getLyrics"
 
     suspend fun lyrics(
         title: String,
         artist: String,
         durationMs: Long,
         album: String? = null,
+    ): List<LyricLine>? = fetch(BASE, title, artist, durationMs, album)
+
+    /** QQ Music's karaoke timings through BetterLyrics' Portato endpoint. */
+    suspend fun portato(
+        title: String,
+        artist: String,
+        durationMs: Long,
+        album: String? = null,
+    ): List<LyricLine>? = fetch(PORTATO, title, artist, durationMs, album)
+
+    private suspend fun fetch(
+        endpoint: String,
+        title: String,
+        artist: String,
+        durationMs: Long,
+        album: String?,
     ): List<LyricLine>? = withContext(Dispatchers.IO) {
-        val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
-        val cleanArtist = LyricsCleaner.cleanArtist(artist)
-        val cleanAlbum = album?.let { LyricsCleaner.cleanAlbum(it) }
-        val seconds = durationMs / 1000
-
-        val ttml = fetchTtml(cleanTitle, cleanArtist, seconds, cleanAlbum)
-            ?: run {
-                // If primary artist misses and there are other artists, try secondary artist
-                val otherArtists = LyricsCleaner.allArtists(artist).drop(1)
-                otherArtists.firstNotNullOfOrNull { fetchTtml(cleanTitle, it, seconds, cleanAlbum) }
-            }
-            ?: return@withContext null
-
-        TtmlLyrics.parse(ttml).takeIf { it.isNotEmpty() }
-    }
-
-    private fun fetchTtml(title: String, artist: String, seconds: Long, album: String?): String? {
-        val url = BASE.toHttpUrl().newBuilder()
+        val url = endpoint.toHttpUrl().newBuilder()
             .addQueryParameter("s", title)
             .addQueryParameter("a", artist)
             .apply {
+                val seconds = durationMs / 1000
                 if (seconds > 0) addQueryParameter("d", seconds.toString())
                 if (!album.isNullOrBlank()) addQueryParameter("al", album)
             }
             .build()
 
-        val body = lyricsGet(url.toString()) ?: return null
-        return runCatching {
-            (lyricsJson.parseToJsonElement(body) as? JsonObject)
-                ?.get("ttml")?.jsonPrimitive?.contentOrNull
-        }.getOrNull()
+        val body = lyricsGet(url.toString()) ?: return@withContext null
+        ProviderLyrics.parse(body)
     }
 }

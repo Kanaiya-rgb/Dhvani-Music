@@ -38,8 +38,8 @@ import androidx.compose.ui.unit.dp
 /**
  * Apple Music's scrubber: a hairline capsule with no thumb knob, which
  * thickens under your finger and settles back when you let go. Material's
- * Slider can't be shaped like this — it always draws a thumb and a tall
- * track — so this is drawn directly.
+ * Slider can't be shaped like this Â— it always draws a thumb and a tall
+ * track Â— so this is drawn directly.
  */
 @Composable
 fun ThinSlider(
@@ -49,7 +49,7 @@ fun ThinSlider(
     onValueChangeFinished: (() -> Unit)? = null,
     /**
      * Sends a sheen travelling along the played portion for as long as it is
-     * true. Reserved for a transition that genuinely mixed — see
+     * true. Reserved for a transition that genuinely mixed Â— see
      * [com.music.dhvani.data.settings.AppSettings.smartMixInProgress].
      */
     mixing: Boolean = false,
@@ -79,10 +79,10 @@ fun ThinSlider(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            // Generous invisible touch target — the visible bar is only ~7dp.
+            // Generous invisible touch target Â— the visible bar is only ~7dp.
             .height(activeHeight + 22.dp)
             // One gesture loop for both taps and drags. Two separate detectors
-            // — a drag one plus a tap one — meant taps never landed: the drag
+            // Â— a drag one plus a tap one Â— meant taps never landed: the drag
             // detector took the pointer and a tap has no drag to report.
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -162,14 +162,14 @@ fun ThinSlider(
  * while two tracks are being mixed.
  *
  * Drawn as a moving gradient rather than an opacity pulse because a pulse reads
- * as "loading" — the thing every shimmer in every app means — and this is the
+ * as "loading" Â— the thing every shimmer in every app means Â— and this is the
  * opposite claim: not that the app is waiting, but that it is doing something.
  * Motion along the bar also points the same way the music is going.
  *
  * Sweeps the **whole** bar rather than the played portion, which the first
  * version did and which made it invisible twice over. A transition happens in
  * the opening seconds of the incoming track, so the played portion is then a
- * few percent of the width — a highlight travelling across that is a flicker at
+ * few percent of the width Â— a highlight travelling across that is a flicker at
  * the far left. And the played portion is already white at 0.92 alpha, so white
  * at 0.55 over it resolves to 0.96: the same hue, four percent brighter. The
  * unplayed track sits at 0.26, and that is where a white band actually reads.

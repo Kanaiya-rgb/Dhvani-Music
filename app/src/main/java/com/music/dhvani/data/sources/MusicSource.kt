@@ -22,6 +22,7 @@ data class StreamFormat(
     val sampleRateHz: Int? = null,
     val bitDepth: Int? = null,
     val isDolbyAtmos: Boolean = false,
+    val source: String? = null,
 ) {
     /**
      * Whether this is a bit-exact copy of the master the source holds.

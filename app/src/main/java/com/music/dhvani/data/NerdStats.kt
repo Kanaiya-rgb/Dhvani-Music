@@ -33,6 +33,8 @@ object NerdStats {
         val bitDepth: Int? = null,
         /** What the source said it would serve, when it came from one that says. */
         val claimed: StreamFormat? = null,
+        /** Authoritative source/provider that supplied this stream. */
+        val sourceName: String? = null,
     ) {
         /**
          * Whether what arrived is measurably worse than what was promised.
@@ -259,6 +261,18 @@ object NerdStats {
         racingLossless.value = emptySet()
         picked.clear()
         declared.clear()
+    }
+
+    fun codecLabel(mimeType: String?): String? {
+        if (mimeType == null) return null
+        return when {
+            mimeType.contains("opus", ignoreCase = true) -> "Opus"
+            mimeType.contains("mp4a", ignoreCase = true) || mimeType.contains("aac", ignoreCase = true) -> "AAC"
+            mimeType.contains("flac", ignoreCase = true) -> "FLAC"
+            mimeType.contains("vorbis", ignoreCase = true) -> "Vorbis"
+            mimeType.contains("mp3", ignoreCase = true) || mimeType.contains("mpeg", ignoreCase = true) -> "MP3"
+            else -> mimeType.substringAfterLast("/").uppercase()
+        }
     }
 
     private const val MAX_REMEMBERED = 64

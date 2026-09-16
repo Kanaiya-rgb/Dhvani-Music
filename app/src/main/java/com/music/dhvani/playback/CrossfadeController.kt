@@ -50,9 +50,9 @@ import java.util.Locale
  * (it backs the MediaSession, holds audio focus and carries the notification)
  * and the other is idle. They swap roles at every transition.
  *
- *  - **[active]** — whichever player the session currently points at. The rest
+ *  - **[active]** Â— whichever player the session currently points at. The rest
  *    of the app only ever sees this one.
- *  - **[standby]** — the idle player. Between transitions it holds nothing. To
+ *  - **[standby]** Â— the idle player. Between transitions it holds nothing. To
  *    arm a transition it is loaded with *the queue, positioned on the incoming
  *    track* at the plan's cue point, and started silently.
  *
@@ -61,7 +61,7 @@ import java.util.Locale
  * next song and the second player carried the old song's tail. That works, but
  * it forces a moment where both players render *the same audio*, and two
  * ExoPlayers cannot be started sample-accurately against each other. Whatever
- * they were misaligned by — measured on real transitions at 9 to 41ms — was
+ * they were misaligned by Â— measured on real transitions at 9 to 41ms Â— was
  * heard as the last instant of the outgoing track playing twice, at the head of
  * every single crossfade. No amount of tuning removes that; the duplication is
  * structural.
@@ -75,7 +75,7 @@ import java.util.Locale
  *
  * Because both players own the queue, finishing a transition is a **role swap**
  * rather than a seek: nothing is re-buffered, nothing is re-sought, and no audio
- * is rendered twice. [onHandoff] is what performs it — the service moves the
+ * is rendered twice. [onHandoff] is what performs it Â— the service moves the
  * MediaSession, audio focus, its listeners and its bookkeeping onto the incoming
  * player.
  *
@@ -84,12 +84,12 @@ import java.util.Locale
  * index, the metadata, the notification and the UI all flip to the incoming song
  * the moment it becomes audible, rather than trailing the song on its way out.
  * From that instant [outgoing] is the idle player, still audible, being faded
- * out — which is exactly what the previous design used its tail player for, at
+ * out Â— which is exactly what the previous design used its tail player for, at
  * none of the cost.
  *
  * ## Curve
  *
- * `sin`/`cos` rather than the old `sqrt`: `sin²+cos²=1` exactly, so two tracks
+ * `sin`/`cos` rather than the old `sqrt`: `sinÂ²+cosÂ²=1` exactly, so two tracks
  * fading past each other hold constant *power* the whole way through and the
  * transition has no dip in the middle. That is the standard crossfade law, and
  * it is what makes a long crossfade sound like a blend instead of a dip.
@@ -108,7 +108,7 @@ class CrossfadeController(
      *
      * Called once per transition, at the instant the incoming track becomes
      * audible. After it returns, [active] must answer `incoming` and [standby]
-     * must answer `outgoing` — this class re-reads neither during a transition,
+     * must answer `outgoing` Â— this class re-reads neither during a transition,
      * but everything else in the service does.
      */
     private val onHandoff: (outgoing: ExoPlayer, incoming: ExoPlayer) -> Unit,
@@ -142,7 +142,7 @@ class CrossfadeController(
     private val filters: TransitionFilters = TransitionFilters.None,
     /**
      * Whether a decode and inference for a media item is running right now.
-     * Only feeds the stats line — nothing about a transition waits on it.
+     * Only feeds the stats line Â— nothing about a transition waits on it.
      */
     private val analysisRunningFor: (MediaItem) -> Boolean = { false },
 ) {
@@ -168,7 +168,7 @@ class CrossfadeController(
     private var phase = Phase.IDLE
 
     /**
-     * The player the session was on when this transition began — the one whose
+     * The player the session was on when this transition began Â— the one whose
      * track is being left. Held explicitly rather than re-read through
      * [standby], because [onHandoff] moves it out from under that name halfway
      * through the fade and the ramp has to keep driving the same two players it
@@ -191,7 +191,7 @@ class CrossfadeController(
      * How many items the queue held when the standby was loaded with a copy of
      * it. AutoPlay appending mid-transition is explicitly allowed, so the
      * difference is reconciled onto the standby before the swap rather than
-     * being allowed to lose the appended tracks — see [reconcileQueue].
+     * being allowed to lose the appended tracks Â— see [reconcileQueue].
      */
     private var queuedItemCount = 0
 
@@ -215,8 +215,8 @@ class CrossfadeController(
      * Which setting armed the fade in flight, so [driveFade] knows which one
      * being switched off mid-blend means "stop now" rather than misreading the
      * other mode's control as the fade having been turned off. Automix
-     * doesn't need [AppSettings.crossfadeSeconds] to be above zero at all —
-     * see [considerSmartTransition] — so treating that as still-zero as a
+     * doesn't need [AppSettings.crossfadeSeconds] to be above zero at all Â—
+     * see [considerSmartTransition] Â— so treating that as still-zero as a
      * reason to cut a Automix short would end every one of them on its
      * first tick.
      */
@@ -224,8 +224,8 @@ class CrossfadeController(
 
     /**
      * Where the incoming track is cued when the lap hands the queue over, in
-     * its own timeline ms. Standard fades always leave this at 0 — a plain
-     * track change starts from the top — and only a Automix plan sets it
+     * its own timeline ms. Standard fades always leave this at 0 Â— a plain
+     * track change starts from the top Â— and only a Automix plan sets it
      * to an analyzed mix-in point instead.
      */
     private var incomingCueTimeMs: Long = 0L
@@ -233,7 +233,7 @@ class CrossfadeController(
     /**
      * The tempo-stretch ratio applied to the incoming track for the
      * transition, stacked on top of whatever [AppSettings.playbackSpeed] the
-     * listener already has set — 1.0 is a no-op. This is what actually
+     * listener already has set Â— 1.0 is a no-op. This is what actually
      * beatmatches a BEATMATCHED-tier plan: without it, the two tracks blend
      * at their own unrelated tempi and the result is a crossfade with
      * smarter timing, not a beatmatch.
@@ -241,7 +241,7 @@ class CrossfadeController(
     private var incomingPlaybackRate: Double = 1.0
 
     /**
-     * The style-specific half of the plan in flight — everything [rideFilters]
+     * The style-specific half of the plan in flight Â— everything [rideFilters]
      * needs and nothing else. Fixed when the transition begins, because a plan
      * is recomputed every tick and a bass swap that moved to a different beat
      * halfway through the blend would be heard as the low end flapping.
@@ -287,7 +287,7 @@ class CrossfadeController(
      * True while a transition is armed or running.
      *
      * For callers about to do something that would otherwise fight this class
-     * for the session player mid-blend — [PlaybackService]'s quality upgrade is
+     * for the session player mid-blend Â— [PlaybackService]'s quality upgrade is
      * the one that does, since `replaceMediaItem` tears the current source down
      * and rebuilds it. Doing that to either player mid-transition breaks the
      * blend rather than merely delaying it, so such a caller should wait for
@@ -302,12 +302,12 @@ class CrossfadeController(
      * that flag can give it. The flag clears on the tick the blend completes,
      * so a source torn down and rebuilt the moment it clears puts its break in
      * the audio a few hundred milliseconds after the incoming track finally
-     * stood alone — not a broken blend, but heard as one. A caller that wants
+     * stood alone Â— not a broken blend, but heard as one. A caller that wants
      * the transition to have been *over* for a while, rather than merely to
      * have ended, waits this out too.
      *
-     * Says nothing about a transition still in flight — it reports whatever the
-     * one before it left behind — so [isTransitioning] stays the first question
+     * Says nothing about a transition still in flight Â— it reports whatever the
+     * one before it left behind Â— so [isTransitioning] stays the first question
      * to ask.
      */
     fun msSinceTransition(): Long? =
@@ -327,8 +327,8 @@ class CrossfadeController(
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             when (reason) {
-                // Something replaced the queue out from under the fade — a new
-                // album, a new search result — so the tail still playing is a
+                // Something replaced the queue out from under the fade Â— a new
+                // album, a new search result Â— so the tail still playing is a
                 // leftover of a session that no longer exists. Note that this
                 // does *not* fire when AutoPlay appends to the end, since the
                 // playing item doesn't change: extending the queue mid-fade is
@@ -390,7 +390,7 @@ class CrossfadeController(
      * Crossfade is deliberately a property of tracks *running out*, not of
      * being changed. Blending a manual skip means the song just left behind
      * stays audible over the one that was asked for, which reads as the app
-     * ignoring the button rather than as a transition — the point of pressing
+     * ignoring the button rather than as a transition Â— the point of pressing
      * next is usually to stop hearing the current track.
      *
      * Called before the skip is carried out, so the outgoing track is already on
@@ -416,7 +416,7 @@ class CrossfadeController(
 
         // Every tick, not only when a transition can be planned. This used to
         // live inside [considerSmartTransition], which needs an idle phase, a
-        // playing player and a known duration — none of which hold during a
+        // playing player and a known duration Â— none of which hold during a
         // transition or during the re-buffer after a quality upgrade. The line
         // simply froze on the previous pair, so a track that had not been
         // analysed kept showing the *departing* track's "analysed" until
@@ -436,7 +436,7 @@ class CrossfadeController(
         val player = active()
         if (!player.isPlaying) return
         // Nothing to transition *into*, so any analysis state left over from the
-        // previous pair is stale — the last track of a queue should not still be
+        // previous pair is stale Â— the last track of a queue should not still be
         // claiming both songs are measured.
         if (!player.hasNextMediaItem()) {
             AppSettings.smartTransitionWindow.value = null
@@ -447,7 +447,7 @@ class CrossfadeController(
         if (duration == C.TIME_UNSET || duration <= 0L) return
 
         // Repeating one track would crossfade it into itself, so nothing is
-        // armed and no window is marked — but the queue behind the loop has not
+        // armed and no window is marked Â— but the queue behind the loop has not
         // moved, and what sits after it is still the track that plays next the
         // moment repeat-one comes off.
         //
@@ -455,7 +455,7 @@ class CrossfadeController(
         // lost an analysis. Analysis is only ever asked for on the way to
         // planning a transition, so for as long as the loop ran nothing asked
         // for the following track at all, and the request that finally arrived
-        // when repeat came off was the *first* one — a whole-track decode
+        // when repeat came off was the *first* one Â— a whole-track decode
         // starting from nothing on a song that was by then seconds away, where
         // an unlooped queue would have had it measured minutes earlier. The
         // measurement is the same either way, so it may as well be made during
@@ -500,7 +500,7 @@ class CrossfadeController(
      * ([com.music.dhvani.playback.smart.TransitionPlan.incomingCueTime]),
      * and the tempo-stretch to align it with the outgoing track
      * ([com.music.dhvani.playback.smart.TransitionPlan.incomingPlaybackRate])
-     * — see [driveLap], which applies both at the handoff — and the style the
+     * Â— see [driveLap], which applies both at the handoff Â— and the style the
      * blend is rendered in
      * ([com.music.dhvani.playback.smart.TransitionPlan.transitionStyle]),
      * which [rideFilters] turns into a filter ride or a bass swap over the same
@@ -570,15 +570,15 @@ class CrossfadeController(
         //
         // Where the window *sits* comes almost entirely from the outgoing track:
         // its content end, its outro, its mix-out anchors. A provisional result
-        // has none of those — [analyzeHead] drops them deliberately rather than
-        // answering confidently about a track it has only seen the opening of —
+        // has none of those Â— [analyzeHead] drops them deliberately rather than
+        // answering confidently about a track it has only seen the opening of Â—
         // so the plan falls back to a plain end-of-track window, and the marker
         // would sit there and then jump backwards when the whole-track pass
         // lands. That is the sliding marker this guard exists for, so the
         // outgoing side still has to be finished.
         //
         // The incoming side is the opposite case. All the planner asks of it is
-        // tempo, confidence and where it is safe to cue in — which are exactly
+        // tempo, confidence and where it is safe to cue in Â— which are exactly
         // the fields a head pass measures, and it measures them over the same
         // opening window the whole-track pass would. Refining will sharpen those
         // numbers but not move them, so holding the marker back for it hid a
@@ -607,7 +607,7 @@ class CrossfadeController(
         val transitionStartMs = (plan.transitionStart * 1000).roundToLong()
         val remaining = transitionStartMs - player.currentPosition
         // Same arm-ahead margin as the standard path, just measured against
-        // the plan's own start rather than a fixed offset from track end —
+        // the plan's own start rather than a fixed offset from track end Â—
         // an analyzed mix-out anchor can place that start well before the
         // file actually ends.
         if (remaining > ARM_LEAD_MS) return
@@ -652,8 +652,8 @@ class CrossfadeController(
     /**
      * Keeps the stats line describing the pair that is actually playing.
      *
-     * Cheap enough to run unconditionally — two concurrent-map lookups and a
-     * set membership test — and running it unconditionally is the point: any
+     * Cheap enough to run unconditionally Â— two concurrent-map lookups and a
+     * set membership test Â— and running it unconditionally is the point: any
      * gating reintroduces the staleness this exists to remove.
      */
     private fun publishAnalysisState() {
@@ -678,7 +678,7 @@ class CrossfadeController(
         // right up to the point a head-only result started arriving before the
         // whole-track one: a track measured off its opening reads as analysed,
         // then finishes caching, then has the full pass run over it to replace
-        // the provisional numbers — and reported "analysing" again throughout.
+        // the provisional numbers Â— and reported "analysing" again throughout.
         // Going backwards from analysed reads as something having broken, when
         // what is happening is a better answer being computed. Confidence on one
         // such track went 0.39 to 0.94 and its cue moved from 0.1s to 9.5s.
@@ -686,7 +686,7 @@ class CrossfadeController(
             if (analysisRunningFor(item)) TrackAnalysisState.REFINING else TrackAnalysisState.ANALYSED
         analysisRunningFor(item) -> TrackAnalysisState.ANALYSING
         // A recorded-but-unusable result is the analyzer's way of saying it
-        // tried and got nothing, and that it will not try again — it writes a
+        // tried and got nothing, and that it will not try again Â— it writes a
         // ready-but-empty entry precisely so the track stops being retried. A
         // track nothing has looked at yet has no status at all, which is the
         // only case that is still merely waiting.
@@ -699,19 +699,19 @@ class CrossfadeController(
      *
      * Media3 fills a timeline window's duration in when the item is *prepared*,
      * which for the track after this one happens a few seconds before it starts
-     * playing. So for almost the whole of the current track this answered zero —
+     * playing. So for almost the whole of the current track this answered zero Â—
      * and zero is not a harmless "don't know" downstream. It reaches
      * [com.music.dhvani.playback.smart.TrackAnalyzer.request] as the next
      * track's duration, and with no duration to check a sibling copy against the
      * analyzer will only read the rendition the cache key resolves to *right
-     * now*, which with source substitution on is the `#alt` entry — while the
+     * now*, which with source substitution on is the `#alt` entry Â— while the
      * copy actually on disk is the plain one its own head fetch just pulled
      * down. Nothing matches, the pass returns silently, and it does that on every
      * tick for the rest of the track. Measured: a fully cached next track sat
      * unread for three minutes and was analysed eight seconds before the fade it
      * was meant to inform, having been analysable the whole time.
      *
-     * The runtime is on the item already — queued from a row that knew it, and
+     * The runtime is on the item already Â— queued from a row that knew it, and
      * carried on the playback URI as `d=` because a cross-source match is made on
      * it (see `Song.matchQuery`). Reading it here costs nothing and is available
      * from the moment the queue is set.
@@ -728,7 +728,7 @@ class CrossfadeController(
 
     /**
      * The runtime the queue row carried, in milliseconds, or 0 when the item
-     * doesn't state one — a local file, or a track queued without a duration.
+     * doesn't state one Â— a local file, or a track queued without a duration.
      *
      * Deliberately forgiving: [Uri.getQueryParameter] throws on an opaque URI,
      * and a missing or unparsable value is simply an absent duration rather than
@@ -740,7 +740,7 @@ class CrossfadeController(
         return if (seconds > 0) seconds * 1000L else 0L
     }
 
-    /** BitChord doesn't carry album metadata on [MediaMetadata] yet, so [TransitionTrackInfo.album] stays blank. */
+    /** Dhvani doesn't carry album metadata on [MediaMetadata] yet, so [TransitionTrackInfo.album] stays blank. */
     private fun MediaItem.toTransitionInfo(durationMs: Long) = TransitionTrackInfo(
         id = mediaId,
         durationMs = durationMs,
@@ -822,7 +822,7 @@ class CrossfadeController(
      * Waits for the standby to have the incoming track ready at its cue point,
      * and for the outgoing track to reach the fade.
      *
-     * There is nothing to align here — the two players hold different songs — so
+     * There is nothing to align here Â— the two players hold different songs Â— so
      * this is only ever waiting on a buffer.
      */
     private fun driveArming() {
@@ -854,8 +854,8 @@ class CrossfadeController(
      * Starts the incoming track and moves the session onto it.
      *
      * The handoff happens *here*, as the first note sounds, not at the end of
-     * the blend. Everything hanging off the session player — queue index,
-     * metadata, the notification, the UI, audio focus — flips to the incoming
+     * the blend. Everything hanging off the session player Â— queue index,
+     * metadata, the notification, the UI, audio focus Â— flips to the incoming
      * song the moment it becomes audible, rather than trailing the song on its
      * way out. From this point [outgoing] is the idle player, still audible,
      * being faded away.
@@ -881,7 +881,7 @@ class CrossfadeController(
         onHandoff(out, into)
 
         // The outgoing player holds the whole queue too, and a standard
-        // crossfade runs right up to its track's natural end — at which point
+        // crossfade runs right up to its track's natural end Â— at which point
         // ExoPlayer would do what it always does and advance to the next item,
         // starting the incoming song a second time, on top of itself, out of the
         // player that is supposed to be going quiet. Truncating the queue at the
@@ -904,15 +904,15 @@ class CrossfadeController(
      * Copies onto the standby anything appended to the queue while it was
      * arming.
      *
-     * AutoPlay extending the queue mid-transition is explicitly allowed — it
+     * AutoPlay extending the queue mid-transition is explicitly allowed Â— it
      * doesn't change the playing item, so it has never been a reason to drop a
      * blend. Under the old design that was free, because only one player ever
      * held the queue. Now the standby is carrying a copy taken at arm time, and
      * that copy is what survives the swap, so the difference has to be carried
      * across or the appended tracks simply vanish when the roles change.
      *
-     * Only a pure append is reconciled. Anything else — a queue replaced, an
-     * item removed or moved — changes what the incoming track *is*, and
+     * Only a pure append is reconciled. Anything else Â— a queue replaced, an
+     * item removed or moved Â— changes what the incoming track *is*, and
      * [listener] has already bailed the transition for it.
      */
     private fun reconcileQueue(out: ExoPlayer, into: ExoPlayer) {
@@ -928,7 +928,7 @@ class CrossfadeController(
      *
      * Driven off the *incoming* track's position rather than off a clock, so a
      * pause parks the transition where it stands and resuming picks it back up
-     * — no timer to reconcile, and neither player left hanging at half volume
+     * Â— no timer to reconcile, and neither player left hanging at half volume
      * while the other waits.
      */
     private fun driveFade() {
@@ -937,15 +937,15 @@ class CrossfadeController(
         // The incoming track gets the same say over the length as the outgoing
         // one did, so a long crossfade into a short track tightens rather than
         // swallowing it. Its duration is often still unknown when the fade
-        // starts — the stream is only being opened — so this is read every tick
+        // starts Â— the stream is only being opened Â— so this is read every tick
         // and simply narrows the span once the answer arrives. Capped only by
-        // the incoming track's own length, not by [configuredFadeMs] — a Smart
+        // the incoming track's own length, not by [configuredFadeMs] Â— a Smart
         // Fade plan already sized itself independently of that setting, and
         // may be running with it at zero.
         // Measured from where the incoming track was *cued*, not from zero. A
         // Automix plan can drop it in mid-arrangement, and reading its raw
         // position as elapsed-fade would put a cue at 0:45 instantly past the
-        // end of an 8-second fade — finishing the blend on its first tick and
+        // end of an 8-second fade Â— finishing the blend on its first tick and
         // landing as an abrupt cut, which is precisely the failure a cued
         // transition is supposed to avoid.
         val remainingIncoming = player.duration
@@ -967,7 +967,7 @@ class CrossfadeController(
         // Whichever comes first: the fade running its course, the old track
         // genuinely ending, the tail failing outright, or whichever setting
         // armed this fade being switched off mid-blend. Checked against the
-        // setting that actually started it — a Automix normally runs with
+        // setting that actually started it Â— a Automix normally runs with
         // [configuredFadeMs] at zero, and reading that as "turned off" would
         // end every Automix on its first tick.
         val settingSwitchedOff = if (smartFadeActive) {
@@ -1005,7 +1005,7 @@ class CrossfadeController(
      * What has to be put back depends entirely on whether [startFade] got as far
      * as swapping the roles. Before the handoff the session player is untouched
      * and the standby is a silent scratch player, so there is nothing to unwind
-     * at all — [finish] just retires it. After the handoff the session has
+     * at all Â— [finish] just retires it. After the handoff the session has
      * already moved and cannot be moved back (the incoming track is playing and
      * has been announced), so the only thing left is to take the outgoing track
      * away gracefully.
@@ -1073,7 +1073,7 @@ class CrossfadeController(
         phase = Phase.IDLE
     }
 
-    /** Still a next track, still playing, still switched on — by whichever setting armed this one. */
+    /** Still a next track, still playing, still switched on Â— by whichever setting armed this one. */
     private fun stillWorthFading(): Boolean {
         val stillOn = if (smartFadeActive) AppSettings.smartFadeEnabled.value else configuredFadeMs() > 0L
         return stillOn && (outgoing ?: active()).hasNextMediaItem()
@@ -1085,7 +1085,7 @@ class CrossfadeController(
      *
      * The volume matters as much as the emptying. A player left at the gain it
      * faded out on is the next transition's *incoming* player, and it would
-     * arrive already turned down — so the reset is part of retiring it, not part
+     * arrive already turned down Â— so the reset is part of retiring it, not part
      * of preparing it.
      */
     private fun retire(player: ExoPlayer) {
@@ -1113,7 +1113,7 @@ class CrossfadeController(
     /**
      * Renders the plan's [TransitionStyle] as filtering across the blend.
      *
-     * The gain curve is the same equal-power pair for every style — this is
+     * The gain curve is the same equal-power pair for every style Â— this is
      * what makes them sound different from each other, and it is the whole of
      * Phase 4. Driven off the same `progress` as the gains so the two stay
      * locked: a pause parks the filter exactly where it parks the fade.
@@ -1124,7 +1124,7 @@ class CrossfadeController(
             TransitionStyle.DJ_BLEND ->
                 if (render.bassSwap) rideBassSwap(progress) else rideVocalSeparation(progress)
             // GAPLESS is an album being played through, where any filtering would
-            // be an edit the record didn't ask for — so it stays open whatever
+            // be an edit the record didn't ask for Â— so it stays open whatever
             // the material does.
             TransitionStyle.GAPLESS -> filters.open()
             // EQUAL_POWER used to be defined the same way: the bottom tier,
@@ -1134,7 +1134,7 @@ class CrossfadeController(
             // That conflated two different kinds of evidence. The tier is decided
             // by tempo and beat confidence; whether both tracks are singing is
             // measured by a separate model that doesn't depend on either. A pair
-            // can have useless tempo evidence — dropping it to this tier — and a
+            // can have useless tempo evidence Â— dropping it to this tier Â— and a
             // perfectly good vocal mask on both sides saying they collide. Every
             // one of those transitions was rendered as a plain crossfade with two
             // full vocals over each other, because the weak half of the evidence
@@ -1147,13 +1147,13 @@ class CrossfadeController(
      * The minimum intervention: pull two colliding vocals apart, and otherwise
      * leave the spectrum alone.
      *
-     * Not a filter ride. [rideFilterSweep] is a *style* — a gesture chosen for a
+     * Not a filter ride. [rideFilterSweep] is a *style* Â— a gesture chosen for a
      * pair that cannot be blended flat, driving to [FILTER_FLOOR_HZ] and taking
      * the outgoing track somewhere distant. This is damage control on a pair that
      * was going to be crossfaded plainly, and it has to stay subtle enough that a
      * listener notices the absence of the clash rather than the presence of a
-     * filter. So it works the same way — complementary bands, outgoing losing its
-     * top while the incoming enters with its body lifted — over a much shorter
+     * filter. So it works the same way Â— complementary bands, outgoing losing its
+     * top while the incoming enters with its body lifted Â— over a much shorter
      * distance, and only as far as the measured collision justifies.
      *
      * Zero overlap leaves both sides open, which is exactly what these styles did
@@ -1191,8 +1191,8 @@ class CrossfadeController(
      * The first version filtered only the outgoing track, and squared the
      * progress so that the sweep was spent almost entirely in the second half.
      * Both halves of that were wrong for the same reason: at the midpoint the
-     * outgoing cutoff was still at 6.9kHz — wide open across the whole vocal
-     * range — and the incoming track was explicitly set to no filtering at all.
+     * outgoing cutoff was still at 6.9kHz Â— wide open across the whole vocal
+     * range Â— and the incoming track was explicitly set to no filtering at all.
      * So for the entire first half of every transition, two complete vocals
      * played over each other at comparable level, and the only thing
      * distinguishing them was gain. That is what a plain crossfade sounds like,
@@ -1200,16 +1200,16 @@ class CrossfadeController(
      *
      * What a DJ does instead is hand the midrange over rather than double it:
      * the outgoing track starts losing its top the moment the blend begins, and
-     * the incoming one enters high-passed — hats and presence only, no vocal
-     * body — opening out as the outgoing track darkens. The two occupy
+     * the incoming one enters high-passed Â— hats and presence only, no vocal
+     * body Â— opening out as the outgoing track darkens. The two occupy
      * complementary bands through the middle of the blend and never compete for
      * the range a voice lives in.
      *
      * [FILTER_SWEEP_SHAPE] is what replaces the squaring: front-loaded now, so
      * the outgoing track's top is gone within the first tenth of the blend
      * rather than somewhere past the midpoint. What keeps that from gutting the
-     * track being left is [FILTER_FLOOR_HZ] — the ride settles onto a 300Hz bed
-     * and stays there — not restraint in the early travel, which is the part the
+     * track being left is [FILTER_FLOOR_HZ] Â— the ride settles onto a 300Hz bed
+     * and stays there Â— not restraint in the early travel, which is the part the
      * listener reads as the transition happening at all.
      */
     private fun rideFilterSweep(progress: Float) {
@@ -1236,7 +1236,7 @@ class CrossfadeController(
      * Where the incoming track's high-pass sits at [progress].
      *
      * Rides from [topHz] down to nothing by [openBy] of the fade, so the track
-     * is whole well before it is alone — the filter is there to keep it out of
+     * is whole well before it is alone Â— the filter is there to keep it out of
      * the outgoing vocal's way during the overlap, not to colour the track the
      * listener is left with. [amount] scales the whole gesture, so a partial
      * sweep lifts proportionally less out.
@@ -1246,7 +1246,7 @@ class CrossfadeController(
      * range is sub-bass nobody hears a filter in: measured, a plain ride was
      * down to 123Hz by a third of the way through, which is to say doing nothing
      * at all for two thirds of the overlap. The exponent spends the travel where
-     * a voice actually is — 772Hz at a sixth of the way in, 436Hz at a third —
+     * a voice actually is Â— 772Hz at a sixth of the way in, 436Hz at a third Â—
      * and still arrives at fully open on time.
      */
     private fun entryHighPass(progress: Float, amount: Double, topHz: Double, openBy: Double): Float {
@@ -1259,7 +1259,7 @@ class CrossfadeController(
      * Geometric interpolation between two cutoffs: [amount] 0 gives [from], 1
      * gives [to].
      *
-     * Geometric rather than linear because pitch is logarithmic — a cutoff
+     * Geometric rather than linear because pitch is logarithmic Â— a cutoff
      * moving in equal Hz steps sounds like it lurches through the bottom of its
      * range and crawls through the top.
      */
@@ -1279,7 +1279,7 @@ class CrossfadeController(
      * The midrange is handled far more lightly than in [rideFilterSweep] but is
      * no longer left alone, which it was. This style is chosen for pairs that
      * are beat-matched and close in tempo, so the two tracks are *meant* to
-     * sound simultaneous — but "simultaneous" and "two lead vocals at once" are
+     * sound simultaneous Â— but "simultaneous" and "two lead vocals at once" are
      * not the same thing, and only the bass was ever being separated. So the
      * incoming track still enters with its body lifted, over a shorter window
      * and from a lower corner, and the outgoing track loses its top in the last
@@ -1295,8 +1295,8 @@ class CrossfadeController(
         // swap, so whichever corner sits higher is the one doing the work.
         // Scaled up by however much the two are actually singing over each other.
         // A blend is chosen for pairs on a shared grid, which is the case where
-        // nothing about the arrangement separates two lead vocals — they sit in
-        // the same bar and the same range for the whole overlap — so the fixed
+        // nothing about the arrangement separates two lead vocals Â— they sit in
+        // the same bar and the same range for the whole overlap Â— so the fixed
         // corner that was here handled a marginal collision and a head-on one
         // identically. At full collision the entry corner reaches
         // [BLEND_ENTRY_CLASH_HIGH_PASS_HZ] and holds longer.
@@ -1339,14 +1339,14 @@ class CrossfadeController(
 
     /**
      * Whether the transition in flight is doing something a plain crossfade
-     * could not — which is what [AppSettings.smartMixInProgress] promises the
+     * could not Â— which is what [AppSettings.smartMixInProgress] promises the
      * listener when it lights the scrubber up.
      *
      * Any one of three things qualifies, because they are the three things
      * analysis buys: a style that filters or swaps bass, an incoming track cued
      * into its arrangement instead of its first frame, or a tempo stretch. The
-     * case this exists to exclude is the fallback — an unanalysed pair, cued at
-     * 0:00, fading equal-power — which is indistinguishable from what the app
+     * case this exists to exclude is the fallback Â— an unanalysed pair, cued at
+     * 0:00, fading equal-power Â— which is indistinguishable from what the app
      * did before Automix existed and would be a lie to advertise.
      */
     private fun isRealMix(): Boolean = smartFadeActive && (
@@ -1356,7 +1356,7 @@ class CrossfadeController(
             incomingPlaybackRate != 1.0
         )
 
-    /** Equal-power pair: [riseGain]² + [fallGain]² = 1, so the blend never dips. */
+    /** Equal-power pair: [riseGain]Â² + [fallGain]Â² = 1, so the blend never dips. */
     private fun riseGain(progress: Float): Float =
         sin(progress.coerceIn(0f, 1f) * PI.toFloat() / 2f)
 
@@ -1375,7 +1375,7 @@ class CrossfadeController(
 
         /**
          * Used only before a pair has been analysed, or when the evidence is
-         * too weak for more than a plain fade — see [considerSmartTransition].
+         * too weak for more than a plain fade Â— see [considerSmartTransition].
          * Once real analysis lands, the overlap is sized from tempo and
          * structure instead and this is never read.
          */
@@ -1389,7 +1389,7 @@ class CrossfadeController(
          * its cue point.
          *
          * Sized for a *stream being opened*, which is the only thing arming
-         * waits on now — there is no alignment to converge. Usually instant, as
+         * waits on now Â— there is no alignment to converge. Usually instant, as
          * the next track has normally been read ahead onto disk by the time it
          * matters, but a cold one has to be resolved and fetched, and a
          * transition that arrives before its incoming track is ready is one that
@@ -1400,8 +1400,8 @@ class CrossfadeController(
         /**
          * States in which a track is measured well enough to be *entered* on.
          *
-         * [TrackAnalysisState.REFINING] belongs here because the entry fields —
-         * tempo, beat confidence, the cue point — are all measured over the
+         * [TrackAnalysisState.REFINING] belongs here because the entry fields Â—
+         * tempo, beat confidence, the cue point Â— are all measured over the
          * track's opening, which is precisely what a head-only pass reads. The
          * whole-track pass it is waiting on adds the *exit* half: content end,
          * outro, mix-out anchors, the energy curve. Those matter when this track
@@ -1427,15 +1427,15 @@ class CrossfadeController(
          * spent crossing a range nobody can hear a filter in: a tenth of the way
          * through the fade the cutoff was still at 17.5kHz, indistinguishable
          * from no filter at all, and the ride only became audible around the
-         * midpoint. Engaging here instead — above the fundamentals of everything
-         * but cymbals, so what goes first is air and shimmer — is what makes the
+         * midpoint. Engaging here instead Â— above the fundamentals of everything
+         * but cymbals, so what goes first is air and shimmer Â— is what makes the
          * gesture read as a hand landing on the filter the moment the blend
          * starts, rather than something remembered late.
          *
          * 9kHz was the first attempt at that and still read as late by ear: it
          * is above everything but cymbals, so engaging there takes the air off
-         * and nothing else, and the outgoing vocal — the thing actually clashing
-         * — was untouched until the sweep had travelled most of the way down.
+         * and nothing else, and the outgoing vocal Â— the thing actually clashing
+         * Â— was untouched until the sweep had travelled most of the way down.
          * 7kHz is inside the presence range, so the gesture is audible on the
          * voice itself from the first instant.
          */
@@ -1451,7 +1451,7 @@ class CrossfadeController(
         /**
          * Where the low end is considered to end. Around the fundamental of a
          * bass guitar's upper register, and the usual corner on a mixer's bass
-         * kill — high enough to clear the kick and the sub, low enough to leave
+         * kill Â— high enough to clear the kick and the sub, low enough to leave
          * the body of the vocal alone.
          */
         const val BASS_SWAP_HZ = 200.0
@@ -1463,22 +1463,22 @@ class CrossfadeController(
          * Shape of the outgoing low-pass against fade progress, between
          * [FILTER_ENTRY_HZ] and [FILTER_FLOOR_HZ].
          *
-         * Was 2.0 — squared — which left the cutoff at 6.9kHz at the midpoint,
+         * Was 2.0 Â— squared Â— which left the cutoff at 6.9kHz at the midpoint,
          * so the outgoing vocal went untouched through the whole first half of
          * every transition. Then 1.3, which was still back-loaded: the exponent
          * held the cutoff near its entry point through the opening of the fade,
          * which is precisely where the two vocals overlap at comparable level.
          *
-         * Below 1 now, so the ride is front-loaded — steepest at the start,
+         * Below 1 now, so the ride is front-loaded Â— steepest at the start,
          * flattening as it approaches the floor. That is the shape of the gesture
          * being imitated: a hand moves a filter knob fast and then eases it in,
          * not the reverse. The old worry that a fast cutoff takes the outgoing
          * track out prematurely is answered by [FILTER_FLOOR_HZ] rather than by
-         * the exponent — the ride bottoms out at 300Hz, which is still a present
+         * the exponent Â— the ride bottoms out at 300Hz, which is still a present
          * bed under the incoming track, not silence.
          *
-         * Crosses 5kHz — about where a low-pass becomes plainly audible on a
-         * full-range mix — a twentieth of the way into the fade, against a
+         * Crosses 5kHz Â— about where a low-pass becomes plainly audible on a
+         * full-range mix Â— a twentieth of the way into the fade, against a
          * quarter of the way at 1.3. Lands at 3.8kHz a tenth of the way in,
          * 2.6kHz at a fifth, 1.0kHz at the midpoint.
          */
@@ -1488,13 +1488,13 @@ class CrossfadeController(
          * Where the incoming track's high-pass starts on a filter ride.
          *
          * Above the fundamental range of most voices and the body of a snare, so
-         * what arrives first is presence and percussion — enough to hear a track
+         * what arrives first is presence and percussion Â— enough to hear a track
          * coming and lock onto its groove, not enough for a second lead vocal.
          *
          * 700Hz was that corner while the outgoing sweep was gentler. It no longer
          * is: the sweep engages at [FILTER_ENTRY_HZ] and is down to 4kHz a tenth
          * of the way in, so a 700Hz entry left the two tracks sharing very nearly
-         * three octaves — and sharing them from 529Hz up, which is exactly where a
+         * three octaves Â— and sharing them from 529Hz up, which is exactly where a
          * lead vocal's fundamentals sit. 1.2kHz takes about an octave off the
          * bottom of that shared band, and it is the octave the collision actually
          * happens in. What is left of the outgoing track then sits *under* the
@@ -1525,8 +1525,8 @@ class CrossfadeController(
          * across the overlap rather than being a flat offset: on a filter ride the
          * corner sits a fourteenth higher a tenth of the way in, a quarter higher
          * at three tenths, a third higher at four. So the hold is back-loaded into
-         * the middle of the blend — where both tracks are near equal gain and the
-         * collision is at its worst — and what gets given up in exchange is the
+         * the middle of the blend Â— where both tracks are near equal gain and the
+         * collision is at its worst Â— and what gets given up in exchange is the
          * bottom of the descent, which is a few hundred hertz of sub-bass nobody
          * hears a high-pass leave. The release into the last of [ENTRY_OPEN_BY] is
          * correspondingly more of an event, which is the point: the arriving track
@@ -1559,7 +1559,7 @@ class CrossfadeController(
          * in practice: a fifth of the way in it was already down to 268Hz, doing
          * nothing about a collision the vocal model had reported at full strength.
          * 700Hz is the corner a filter ride itself used to open at, so it is a
-         * known-restrained one rather than a new guess — and keeping this style a
+         * known-restrained one rather than a new guess Â— and keeping this style a
          * clear step below that one leaves the two ranked the way their tiers are.
          */
         const val VOCAL_SEPARATION_HIGH_PASS_HZ = 700.0
@@ -1573,7 +1573,7 @@ class CrossfadeController(
          * hands and [rideBassSwap] takes whichever corner is higher, so a 320Hz
          * entry was only above that floor for the first sixth of the blend, and
          * only ever by a little. 520Hz gives the arriving track an entry gesture
-         * that outlives the bass kill — clear of it until nearly three tenths in —
+         * that outlives the bass kill Â— clear of it until nearly three tenths in Â—
          * rather than one hiding inside it.
          */
         const val BLEND_ENTRY_HIGH_PASS_HZ = 520.0
@@ -1590,7 +1590,7 @@ class CrossfadeController(
          * tracks are on a shared grid and meant to sound simultaneous; the aim is
          * to stop the two leads occupying one band, not to hide either of them.
          *
-         * Tracks [BLEND_ENTRY_HIGH_PASS_HZ] upward — 620Hz to 950Hz — so how hard
+         * Tracks [BLEND_ENTRY_HIGH_PASS_HZ] upward Â— 620Hz to 950Hz Â— so how hard
          * the two are singing over each other stays the thing that separates a
          * marginal collision from a head-on one, rather than both converging on
          * whatever the bass kill was already doing.
@@ -1607,7 +1607,7 @@ class CrossfadeController(
          * blend.
          *
          * Was 0.5, which left the outgoing track completely unfiltered for the
-         * whole first half — the same "remembered late" complaint that
+         * whole first half Â— the same "remembered late" complaint that
          * [FILTER_ENTRY_HZ] answers on a filter ride, in the one style where
          * both tracks are at their most similar and so most likely to clash.
          * Brought forward rather than to zero: a beat-matched blend is chosen
@@ -1618,8 +1618,8 @@ class CrossfadeController(
 
         /**
          * Where that low-pass lands by the end of the blend. High enough that the
-         * track is still plainly itself — this style is chosen for pairs meant to
-         * sound simultaneous — and low enough to take the sibilance off a voice
+         * track is still plainly itself Â— this style is chosen for pairs meant to
+         * sound simultaneous Â— and low enough to take the sibilance off a voice
          * that is leaving.
          */
         const val BLEND_EXIT_LOW_PASS_HZ = 2_200.0
@@ -1627,7 +1627,7 @@ class CrossfadeController(
         const val IDLE_STEP_MS = 250L
 
         /**
-         * Arming only waits on a buffer now — nothing is being converged — so
+         * Arming only waits on a buffer now Â— nothing is being converged Â— so
          * this is about how promptly the fade can start once the incoming track
          * is ready, not about a control loop's step size.
          */

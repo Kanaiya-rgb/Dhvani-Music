@@ -226,7 +226,7 @@ object StreamResolver {
         }
     }
 
-    private val init by lazy { NewPipe.init(OkHttpDownloader()) }
+    internal val init by lazy { NewPipe.init(OkHttpDownloader()) }
 
     /**
      * The extractor's own leash on [Http.client].
@@ -1787,6 +1787,10 @@ object StreamResolver {
     /** Long enough for a freshly minted visitor id to be worth anything, short enough not to be felt. */
     private const val DOWNLOAD_RETRY_MS = 500L
 
+    fun invalidate(videoId: String) {
+        recent.remove(videoId)
+    }
+
     private fun remember(videoId: String, url: String) {
         if (recent.size >= MAX_REMEMBERED) {
             val cutoff = SystemClock.elapsedRealtime() - URL_TTL_MS
@@ -1796,3 +1800,4 @@ object StreamResolver {
         recent[videoId] = Resolved(url, SystemClock.elapsedRealtime())
     }
 }
+

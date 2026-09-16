@@ -16,7 +16,7 @@ data class ModuleSearchResult(
     @SerialName("duration") val duration: Int = 0,
     @SerialName("trackNumber") val trackNumber: Int = 0,
     /**
-     * Free-text, and every module spells it differently — `LOSSLESS`,
+     * Free-text, and every module spells it differently Â— `LOSSLESS`,
      * `FLAC 16-bit / 44.1kHz`, `HIGH`, `128kbps`. Read through
      * [ModuleSource.qualityTier][com.music.dhvani.data.sources.ModuleSource]
      * rather than compared directly.

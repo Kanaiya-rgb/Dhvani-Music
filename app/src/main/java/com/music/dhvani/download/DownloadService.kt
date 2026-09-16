@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
  * A download is the one thing this app does that a user starts and then leaves:
  * they tap it and put the phone in a pocket. A coroutine on a ViewModel scope
  * would be killed the moment the activity goes, and a plain background service
- * on a modern Android is killed almost as fast — so this is a foreground
+ * on a modern Android is killed almost as fast Â— so this is a foreground
  * service, which is also the only honest arrangement, since a notification is
  * exactly what the user should get for work happening out of sight.
  *
@@ -55,7 +55,7 @@ class DownloadService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Must happen within a few seconds of the start request whatever the
-        // intent turns out to be, the cancel below included — a service started
+        // intent turns out to be, the cancel below included Â— a service started
         // with startForegroundService and never promoted takes the app down
         // with it.
         promote()
@@ -88,16 +88,16 @@ class DownloadService : Service() {
      * already served at line rate and two at once would finish neither sooner.
      * That reasoning was about the *transfer*, and the transfer turned out to
      * be the small half. Working out where a lossless track's bytes come from
-     * — a search across every module in the index, then a stream endpoint
+     * Â— a search across every module in the index, then a stream endpoint
      * opened against the winner, then another when that one answers with a
-     * lossy copy — is tens of seconds a track, and none of it is bandwidth. On
+     * lossy copy Â— is tens of seconds a track, and none of it is bandwidth. On
      * a 300-track queue drained one at a time, that is a connection sitting
      * idle for the great majority of the run: measured at ~19s a track against
      * a few seconds of actual transfer.
      *
      * It is latency, so the answer is overlap. Four in flight means four
      * lookups outstanding at once, and the module engines they land on are
-     * pooled to match — see `QuickJsExecutor.ENGINES_PER_MODULE`, without which
+     * pooled to match Â— see `QuickJsExecutor.ENGINES_PER_MODULE`, without which
      * this would be four workers taking turns on one interpreter and no faster
      * than one.
      *
@@ -105,7 +105,7 @@ class DownloadService : Service() {
      * up rather than exiting on the spot. The queue is filled by a loop of
      * [Downloads.enqueue] calls and the first of them is what starts this
      * service, so at the moment the workers spin up there may be exactly one
-     * track in it — and workers that took "empty" for "finished" would leave a
+     * track in it Â— and workers that took "empty" for "finished" would leave a
      * 300-track download being drained by however many happened to win that
      * race.
      */
@@ -118,7 +118,7 @@ class DownloadService : Service() {
         while (true) {
             val song = Downloads.takeNext()
             if (song == null) {
-                // Nothing to take, but something may still be arriving — or
+                // Nothing to take, but something may still be arriving Â— or
                 // another worker may fail a track back into view. Only a queue
                 // that stays empty, with nothing else in flight, is finished.
                 if (idleFor >= IDLE_GRACE_MS && !Downloads.busy()) return
@@ -188,7 +188,7 @@ class DownloadService : Service() {
         val waiting = active.count { it.value is DownloadState.Queued }
 
         // Several tracks are in flight, so the bar is the average across them
-        // rather than any one track's — a bar that jumped backwards every time
+        // rather than any one track's Â— a bar that jumped backwards every time
         // a different worker happened to report last would be worse than no bar.
         val percent = runningStates
             .takeIf { it.isNotEmpty() }
@@ -205,7 +205,7 @@ class DownloadService : Service() {
             runningStates.size > 1 && waiting > 0 -> "$waiting more queued"
             runningStates.size > 1 -> song?.title.orEmpty()
             song == null -> "Starting"
-            waiting > 0 -> "${song.artist} · $waiting more queued"
+            waiting > 0 -> "${song.artist} Â· $waiting more queued"
             else -> song.artist
         }
 
@@ -264,7 +264,7 @@ class DownloadService : Service() {
          * Sized against what is actually scarce. Bandwidth is not: four
          * lossless tracks at once is comfortably inside a home connection, and
          * the transfers were never the bottleneck. Lookup latency is, and four
-         * is where the module engines stop being the limit — the pool behind
+         * is where the module engines stop being the limit Â— the pool behind
          * them is three deep per module, so a fifth worker would mostly be
          * queueing for an interpreter rather than resolving anything. It is
          * also the point past which a failure gets hard to read: eight rows

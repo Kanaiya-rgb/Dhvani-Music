@@ -10,7 +10,7 @@ import java.io.ByteArrayOutputStream
  *
  * The simplest of the three taggers, and the reason is worth stating because it
  * is the opposite of what the other two are shaped by. A FLAC is `fLaC`, then a
- * chain of length-prefixed metadata blocks, then the audio frames — and nothing
+ * chain of length-prefixed metadata blocks, then the audio frames Â— and nothing
  * in the format addresses anything by an absolute file offset. `SEEKTABLE`
  * *looks* like the exception, but its offsets are measured from the first byte
  * of the first frame header rather than from the start of the file, so growing
@@ -21,14 +21,14 @@ import java.io.ByteArrayOutputStream
  *
  * What comes out is the magic, `STREAMINFO`, every other block the file already
  * had, then a fresh `VORBIS_COMMENT` and `PICTURE`. The old copies of those two
- * are dropped rather than added to — a second `VORBIS_COMMENT` is illegal, and
+ * are dropped rather than added to Â— a second `VORBIS_COMMENT` is illegal, and
  * two front covers is a coin toss over which one a player shows. `PADDING` is
  * dropped as well, which is what it is there for: it exists to be spent on
  * exactly this.
  *
- * Anything that doesn't fit the shape above — a file that doesn't open with
+ * Anything that doesn't fit the shape above Â— a file that doesn't open with
  * `fLaC`, a block that claims more bytes than the file has, a first block that
- * isn't `STREAMINFO` — comes back as the input, unchanged and by reference, so
+ * isn't `STREAMINFO` Â— comes back as the input, unchanged and by reference, so
  * [MediaTagger] leaves the downloaded file alone.
  */
 object FlacTagger {
@@ -41,7 +41,7 @@ object FlacTagger {
         lyrics: String?,
         cover: ByteArray?,
         coverMime: String,
-        /** The A2 form, under a name of this app's own — see [WORD_LYRICS_FIELD]. */
+        /** The A2 form, under a name of this app's own Â— see [WORD_LYRICS_FIELD]. */
         wordLyrics: String? = null,
     ): ByteArray = runCatching {
         rewrite(bytes, title, artist, album, lyrics, cover, coverMime, wordLyrics)
@@ -59,8 +59,8 @@ object FlacTagger {
     ): ByteArray {
         if (!bytes.regionMatches(0, MAGIC)) return bytes
 
-        // The block chain. Each header is one byte of flags — bit 7 marks the
-        // last block, bits 0-6 are the type — and three big-endian bytes of
+        // The block chain. Each header is one byte of flags Â— bit 7 marks the
+        // last block, bits 0-6 are the type Â— and three big-endian bytes of
         // payload length.
         val blocks = mutableListOf<Block>()
         var offset = MAGIC.size
@@ -86,8 +86,8 @@ object FlacTagger {
         )
             // A payload past what three bytes of length can describe costs that
             // one block and nothing else. Only a cover could realistically reach
-            // 16MB — `LyricsTag` caps what it hands over at a small fraction of
-            // it — and losing the cover is a better outcome than losing the tags.
+            // 16MB Â— `LyricsTag` caps what it hands over at a small fraction of
+            // it Â— and losing the cover is a better outcome than losing the tags.
             .filter { it.second.size <= MAX_BLOCK_BYTES }
         if (additions.isEmpty()) return bytes
 
@@ -113,7 +113,7 @@ object FlacTagger {
      * A `VORBIS_COMMENT` payload, or null when there is nothing to say.
      *
      * Every length in here is **little-endian**, which is the one surprise in an
-     * otherwise big-endian format — the block reuses Ogg Vorbis' comment layout
+     * otherwise big-endian format Â— the block reuses Ogg Vorbis' comment layout
      * wholesale, and that layout is little-endian.
      *
      * It does *not* reuse the trailing framing bit. That byte belongs to the
@@ -162,7 +162,7 @@ object FlacTagger {
      *
      * Big-endian throughout, unlike the comment block above. The dimensions and
      * colour fields are all written as zero, which the format defines as
-     * "unstated" rather than as a claim about a 0x0 image — decoding the JPEG
+     * "unstated" rather than as a claim about a 0x0 image Â— decoding the JPEG
      * here to fill them in would buy nothing, since every player that draws the
      * image has to decode it anyway.
      */
@@ -176,7 +176,7 @@ object FlacTagger {
         out.writeBe(0) // width
         out.writeBe(0) // height
         out.writeBe(0) // colour depth
-        out.writeBe(0) // colours used — zero for anything that isn't paletted
+        out.writeBe(0) // colours used Â— zero for anything that isn't paletted
         out.writeBe(cover.size)
         out.write(cover)
         return out.toByteArray()

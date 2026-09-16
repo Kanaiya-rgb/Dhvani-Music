@@ -34,7 +34,7 @@ import kotlinx.coroutines.withContext
  * one play; a nonce reused across tracks gets the second play discarded.
  *
  * Best-effort only: any failure here must never affect playback itself. That is
- * a constraint on how failures are handled, not permission to ignore them —
+ * a constraint on how failures are handled, not permission to ignore them Â—
  * everything below is retried, because the alternative is what this file did
  * before, which was to lose a play to a single momentary refusal and never
  * mention it again.
@@ -65,7 +65,7 @@ object PlaybackTracker {
      * Local files carry their `content://` URI as an id, and a module source
      * carries whatever that module uses. Asking Google to register a play of one
      * of those is a request that cannot succeed, made once per track, and it was
-     * being made — the guard is here rather than at the call site because this
+     * being made Â— the guard is here rather than at the call site because this
      * object is the thing that knows what an id has to look like to be useful.
      */
     private val VIDEO_ID = Regex("""[A-Za-z0-9_-]{11}""")
@@ -90,7 +90,7 @@ object PlaybackTracker {
     /**
      * Bumped each time a play lands in the account's history. The home feed's
      * lead shelf is built from that history, so it has gone stale whenever this
-     * moves — the counter is the signal to re-fetch, and carries no meaning
+     * moves Â— the counter is the signal to re-fetch, and carries no meaning
      * beyond having changed.
      */
     val registeredPlays: StateFlow<Int> = _registeredPlays.asStateFlow()
@@ -106,15 +106,15 @@ object PlaybackTracker {
     private var opening: String? = null
 
     /**
-     * Call when [videoId] becomes audible — both on play/resume and when the
+     * Call when [videoId] becomes audible Â— both on play/resume and when the
      * queue moves on. A no-op while the same track is already being tracked, so
      * a pause/resume does not register a second play.
      */
     fun onPlaying(videoId: String) {
         if (!VIDEO_ID.matches(videoId)) return
         if (Innertube.cookie == null) return
-        // A downloaded track plays perfectly well with the radio off — the
-        // whole point of downloading it — so this is the one place that has
+        // A downloaded track plays perfectly well with the radio off Â— the
+        // whole point of downloading it Â— so this is the one place that has
         // to ask before trying rather than let a request find out the hard
         // way. [meteredConnection] is null exactly when there is no active
         // network, which is the one case worth skipping outright rather than
@@ -151,7 +151,7 @@ object PlaybackTracker {
 
     /**
      * Periodic progress report for the current track, in seconds played.
-     * Cheap to call often — it only hits the network every
+     * Cheap to call often Â— it only hits the network every
      * [REPORT_INTERVAL_SECONDS] of new audio.
      */
     fun onProgress(videoId: String, positionSeconds: Long) {
@@ -179,7 +179,7 @@ object PlaybackTracker {
     }
 
     /**
-     * Close out the current play for good — the queue running dry, or the
+     * Close out the current play for good Â— the queue running dry, or the
      * service going away.
      *
      * Neither of those fires a track transition, so without this a session that
@@ -232,12 +232,12 @@ object PlaybackTracker {
 
     /**
      * @return whether there is anything left to try. False means the attempt is
-     *   worth repeating — the answer was a failure, not a verdict.
+     *   worth repeating Â— the answer was a failure, not a verdict.
      */
     private suspend fun open(videoId: String): Boolean = lock.withLock {
         // The one thing the tracking request cannot be answered without. Fetched
-        // through [StreamResolver] so it is shared with — and usually already
-        // warmed by — the resolve that is starting this very track.
+        // through [StreamResolver] so it is shared with Â— and usually already
+        // warmed by Â— the resolve that is starting this very track.
         val signatureTimestamp = StreamResolver.signatureTimestamp(videoId)
         if (signatureTimestamp == null) {
             TrackLog.w(TAG, "no signature timestamp yet; retrying history for $videoId")
@@ -246,7 +246,7 @@ object PlaybackTracker {
         val tracking = Innertube.playbackTracking(videoId, signatureTimestamp)
         if (tracking == null) {
             TrackLog.d(TAG, "no playback tracking for $videoId (guest, or the player declined)")
-            // A verdict, not a failure — asking again with the same timestamp
+            // A verdict, not a failure Â— asking again with the same timestamp
             // gets the same answer.
             return@withLock true
         }

@@ -12,21 +12,21 @@ import java.util.Locale
  * layer that is a judgement rather than plumbing, and because both of its
  * failure modes are silent:
  *
- *  - **Too loose** and the wrong recording plays under the right title — a
- *    cover, a remix, an hour-long loop — with nothing on screen to say so.
+ *  - **Too loose** and the wrong recording plays under the right title Â— a
+ *    cover, a remix, an hour-long loop Â— with nothing on screen to say so.
  *  - **Too strict** and the module the user configured is quietly never used,
  *    which is what "Paniyon Sa (From "Satyamev Jayate")" by Atif Aslam did
  *    against a catalogue holding the same audio as "Paniyon Sa" by
  *    Atif Aslam, Tulsi Kumar.
  *
  * The way out of both is to be explicit about *what part of a title carries
- * identity*. Services disagree constantly about the packaging — the film a
+ * identity*. Services disagree constantly about the packaging Â— the film a
  * song is from, the "Official Audio" tag, which of the credited singers make
- * it into the title — and agree about the recording underneath. So the title
+ * it into the title Â— and agree about the recording underneath. So the title
  * is taken apart into three pieces:
  *
  *  - [TitleParts.words], the title proper. Must agree exactly.
- *  - [TitleParts.versions], the words that mean *a different take* — remix,
+ *  - [TitleParts.versions], the words that mean *a different take* Â— remix,
  *    live, acoustic. Must agree exactly, in both directions: "Song (Live)"
  *    is not "Song", and neither is the other way round.
  *  - [TitleParts.context], everything else thrown away with the brackets.
@@ -55,7 +55,7 @@ object TrackMatcher {
      * What to put to a source's search box, best query first.
      *
      * The raw title is deliberately *not* one of them. A YouTube title carries
-     * the packaging — `Paniyon Sa (From "Satyamev Jayate")` — and handing that
+     * the packaging Â— `Paniyon Sa (From "Satyamev Jayate")` Â— and handing that
      * verbatim to a catalogue that lists the track as `Paniyon Sa` is asking it
      * to match on words it has never stored. Most search backends score that as
      * a poor hit or no hit at all, and the track was then written off as
@@ -77,7 +77,7 @@ object TrackMatcher {
     internal fun searchableTitle(title: String, artist: String = ""): String =
         parseTitle(title, artist).let { (it.words + it.versions).joinToString(" ") }
 
-    /** The first credited artist — who a catalogue is most likely to file the track under. */
+    /** The first credited artist Â— who a catalogue is most likely to file the track under. */
     internal fun primaryArtist(artist: String): String =
         artist.lowercase(Locale.ROOT).split(ARTIST_SEPARATORS).firstOrNull()?.trim().orEmpty()
 
@@ -88,7 +88,7 @@ object TrackMatcher {
      *
      * Best, not first. A search for a track routinely answers with the single,
      * the album cut, a sped-up edit and a karaoke version, in whatever order
-     * the backend felt like — and taking the first acceptable one means the
+     * the backend felt like Â— and taking the first acceptable one means the
      * ranking of somebody else's search engine decides which copy plays.
      * Scoring them all and taking the top lets the runtime and the fuller
      * artist credit break that tie instead.
@@ -114,8 +114,8 @@ object TrackMatcher {
      * How confident this is the same recording, or null when it is not one.
      *
      * Null is the common answer and the safe one: it costs a source its turn,
-     * and the next source — ultimately YouTube, which by definition has the
-     * track — still plays what the user asked for.
+     * and the next source Â— ultimately YouTube, which by definition has the
+     * track Â— still plays what the user asked for.
      */
     fun score(candidate: Song, target: Target): Int? {
         val wanted = parseTitle(target.title, target.artist)
@@ -131,7 +131,7 @@ object TrackMatcher {
             ?: return null
         val artist = artistScore(target.artist, candidate.artist)
             // The credits don't merely differ in spelling, they name different
-            // people — and sometimes that is because they are describing the
+            // people Â— and sometimes that is because they are describing the
             // same recording from different ends of it. Film catalogues are
             // full of this: YouTube Music files "Jhak Maar Ke" under Pritam,
             // who *wrote* it, while every store files it under Neeraj
@@ -142,7 +142,7 @@ object TrackMatcher {
             // What breaks the tie is length. Two recordings that share an
             // exact title and agree on their runtime to the second are the
             // same master; a cover, a remix or a re-recording essentially
-            // never lands there — of the four candidates for that track, the
+            // never lands there Â— of the four candidates for that track, the
             // remix ran 241s and the acoustic cover 66s against the 233s being
             // played. So an exact runtime is allowed to stand in for a shared
             // credit, and *only* an exact one: with no runtime on either side
@@ -159,7 +159,7 @@ object TrackMatcher {
      * [target]'s.
      *
      * Both halves are requirements. A candidate that doesn't say how long it
-     * is fails this — for the callers that ask, an unstated runtime is not a
+     * is fails this Â— for the callers that ask, an unstated runtime is not a
      * near miss, it is a candidate that cannot be checked, and the whole
      * reason to ask is that the check is the last thing standing between a
      * listener and the wrong recording.
@@ -171,7 +171,7 @@ object TrackMatcher {
     }
 
     /**
-     * Kept for the callers that only want a yes or no — the YouTube seed
+     * Kept for the callers that only want a yes or no Â— the YouTube seed
      * lookup behind AutoPlay, and the tests.
      */
     fun matches(candidate: Song, title: String, artist: String, durationSec: Int? = null): Boolean =
@@ -186,7 +186,7 @@ object TrackMatcher {
     internal data class TitleParts(
         /** The title proper, lowercased, one entry per word. */
         val words: List<String>,
-        /** [words] with everything but letters and digits removed — what identity is compared on. */
+        /** [words] with everything but letters and digits removed Â— what identity is compared on. */
         val core: String,
         /** Markers that mean a different take of the same song: `remix`, `live`, `acoustic`. */
         val versions: Set<String>,
@@ -208,7 +208,7 @@ object TrackMatcher {
                 " "
             }
         }
-        // An unbalanced bracket — a title truncated mid-aside — takes the rest
+        // An unbalanced bracket Â— a title truncated mid-aside Â— takes the rest
         // of the line with it rather than leaving half an aside in the core.
         text.indexOfFirst { it == '(' || it == '[' }.takeIf { it >= 0 }?.let { open ->
             classify(text.substring(open), versions, context)
@@ -239,7 +239,7 @@ object TrackMatcher {
         var words = text.split(WORD_SPLIT)
             .map { it.replace(NON_ALNUM, "") }
             .filter { it.isNotEmpty() && it !in JOINING_WORDS }
-        // "Paniyon Sa Full Song", "Tum Hi Ho Audio" — an upload's trailing
+        // "Paniyon Sa Full Song", "Tum Hi Ho Audio" Â— an upload's trailing
         // label, printed without brackets to hang it on. Never stripped down
         // to nothing: a track really called "Song" keeps its name.
         while (words.size > 1 && words.last() in TRAILING_NOISE) {
@@ -257,7 +257,7 @@ object TrackMatcher {
     /**
      * Files one dropped segment under [versions] or [context].
      *
-     * A segment naming a take — `Remix`, `Live at Wembley`, `Slowed + Reverb` —
+     * A segment naming a take Â— `Remix`, `Live at Wembley`, `Slowed + Reverb` Â—
      * is identity and is kept. Everything else is packaging: the film, the
      * label, `Official Video`, the remaster note. The phrases in
      * [NEUTRAL_SEGMENTS] are the exceptions that read like takes and aren't:
@@ -283,7 +283,7 @@ object TrackMatcher {
         context += words.filter { it.length > 2 && it !in NOISE_WORDS }
     }
 
-    /** Whether [text] is nothing but (part of) [artist] — the "Artist - Title" upload shape. */
+    /** Whether [text] is nothing but (part of) [artist] Â— the "Artist - Title" upload shape. */
     private fun isArtistName(text: String, artist: String): Boolean {
         if (artist.isBlank()) return false
         val words = text.split(WORD_SPLIT).map { it.replace(NON_ALNUM, "") }.filter { it.isNotEmpty() }
@@ -302,7 +302,7 @@ object TrackMatcher {
      *
      * The disagreement that matters is a cover: same title, different singer.
      * The agreement that has to survive is a *partial* credit, because which
-     * of a duet's singers reaches the title is a formatting choice — YouTube's
+     * of a duet's singers reaches the title is a formatting choice Â— YouTube's
      * "Atif Aslam" and a module's "Atif Aslam, Tulsi Kumar" are one recording
      * with two spellings of its credit, and refusing that pairing is what kept
      * the module out of the way of the very tracks it held.
@@ -323,9 +323,9 @@ object TrackMatcher {
      * The credited artists, each as its own list of words.
      *
      * Words rather than one run-together string, so that containment is
-     * checked on whole names: "Queen" is inside "Queensrÿche" as text and is
+     * checked on whole names: "Queen" is inside "QueensrÃ¿che" as text and is
      * not one of its artists, while "Atif Aslam" is genuinely one of
-     * "Atif Aslam, Tulsi Kumar". Single letters go — an initialled
+     * "Atif Aslam, Tulsi Kumar". Single letters go Â— an initialled
      * "A. R. Rahman" and a plain "AR Rahman" are the same person.
      */
     internal fun artistNames(value: String): Set<List<String>> = value
@@ -357,7 +357,7 @@ object TrackMatcher {
      *
      * The strongest signal available, and the one that catches what titles
      * cannot: the ten-minute loop, the album-side upload, the snippet. Only
-     * consulted when both sides state a runtime — most module rows do, and a
+     * consulted when both sides state a runtime Â— most module rows do, and a
      * queue row usually does.
      */
     private fun durationScore(wanted: Int?, got: Int?): Int? {
@@ -400,7 +400,7 @@ object TrackMatcher {
 
     /**
      * How exactly two runtimes must agree before that is allowed to stand in
-     * for a shared credit. To the second, near enough — this is the only
+     * for a shared credit. To the second, near enough Â— this is the only
      * evidence there is in that case, so it has to be the strong kind.
      */
     private const val CREDIT_OVERRIDE_SEC = 2
@@ -422,12 +422,12 @@ object TrackMatcher {
     private const val DASH_PASSES = 3
 
     private val BRACKETED = Regex("""[(\[]([^()\[\]]*)[)\]]""")
-    private val DASH = Regex("""\s+[-–—|]+\s+""")
+    private val DASH = Regex("""\s+[-Â–Â—|]+\s+""")
     private val FEATURING = Regex("""\b(feat|ft|featuring|with)\b.*""")
-    private val WORD_SPLIT = Regex("""[\s.·]+""")
+    private val WORD_SPLIT = Regex("""[\s.Â·]+""")
     private val NON_ALNUM = Regex("""[^a-z0-9]""")
     private val ARTIST_SEPARATORS =
-        Regex("""\s*(?:[,&/;·|]|\band\b|\bx\b|\bvs\.?\b|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)\s*""")
+        Regex("""\s*(?:[,&/;Â·|]|\band\b|\bx\b|\bvs\.?\b|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)\s*""")
 
     /**
      * What makes a listing a different recording rather than a different
@@ -449,7 +449,7 @@ object TrackMatcher {
 
     /**
      * Asides that read like a version and describe the ordinary release. The
-     * exception list to [VERSION_WORDS] — without it, "Song (Album Version)"
+     * exception list to [VERSION_WORDS] Â— without it, "Song (Album Version)"
      * and "Song" would be two different recordings.
      */
     private val NEUTRAL_SEGMENTS = setOf(

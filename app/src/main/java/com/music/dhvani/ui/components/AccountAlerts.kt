@@ -49,8 +49,8 @@ import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 
 /**
- * Same UIAlertController shape as [UpdateAvailableDialog] — frosted card,
- * hairline rules, full-width stacked actions — but with a text field for the
+ * Same UIAlertController shape as [UpdateAvailableDialog] Â— frosted card,
+ * hairline rules, full-width stacked actions Â— but with a text field for the
  * one bit of input this alert needs.
  */
 @OptIn(ExperimentalHazeMaterialsApi::class)
@@ -163,7 +163,7 @@ fun LastfmLoginAlert(
 }
 
 /**
- * Manual token entry, for when the in-app login can't run — a WebView an OEM
+ * Manual token entry, for when the in-app login can't run Â— a WebView an OEM
  * has broken, or a token lifted from a desktop client.
  *
  * [error] carries back what the verification attempt said, because a token that
@@ -226,7 +226,7 @@ fun DiscordTokenAlert(
 }
 
 /**
- * One free-text presence field — an activity name, a button label.
+ * One free-text presence field Â— an activity name, a button label.
  *
  * [message] is where the caller explains the field, including which `{...}`
  * variables it accepts, since that is the only place a user would find out.
@@ -242,7 +242,7 @@ fun TextValueAlert(
     onValueChange: (String) -> Unit,
     onSave: () -> Unit,
     onDismiss: () -> Unit,
-    /** False greys Save out — for a field that isn't worth saving empty. */
+    /** False greys Save out Â— for a field that isn't worth saving empty. */
     saveEnabled: Boolean = true,
     /** A third action between Save and Cancel, for a value that can be cleared. */
     onRemove: (() -> Unit)? = null,
@@ -288,7 +288,7 @@ fun TextValueAlert(
 
 /**
  * Single-select list, ticked like [LyricsSourcesDialog] rather than with radio
- * buttons — same reasoning: a column of Material radios would be the one
+ * buttons Â— same reasoning: a column of Material radios would be the one
  * Material thing left on an otherwise Apple-shaped alert.
  *
  * Picking commits immediately and closes, so there is no Save action to reach

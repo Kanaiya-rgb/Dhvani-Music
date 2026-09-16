@@ -2,11 +2,11 @@
  * Ported from Orchard (https://github.com/SFG5453/Orchard).
  *
  * Copyright (C) 2026 SFG545 (original Orchard implementation)
- * Copyright (C) 2026 Kushagra Singh (BitChord adaptation)
+ * Copyright (C) 2026 Kushagra Singh (Dhvani adaptation)
  *
  * Orchard's original source is licensed under the GNU Affero General Public
  * License, version 3 or later. Per AGPLv3 section 13, this file is combined
- * here into BitChord -- a work licensed under the GNU General Public
+ * here into Dhvani -- a work licensed under the GNU General Public
  * License, version 3 or later -- and remains itself governed by the AGPLv3
  * as part of that combination.
  *
@@ -33,7 +33,7 @@ package com.music.dhvani.playback.smart
  *
  * Phase 1 fills every field from DSP alone (see native/analyzer/), so
  * [beatConfidence] and [vocalActivityMask] are heuristics rather than a
- * trained model's output — the policy already treats them with the same
+ * trained model's output Â— the policy already treats them with the same
  * scrutiny it would a model that failed to load.
  */
 data class TrackAnalysis(
@@ -100,8 +100,8 @@ data class TrackAnalysis(
      * track nothing has looked at yet has a blank [status], while one whose
      * decode failed is recorded [STATUS_READY] with every field at its default
      * so it is not retried forever. A zero [bpm] is what separates the second
-     * from a real result — and it is also the threshold the policy uses, since
-     * a tempo outside 40–220 drops a pairing to a plain crossfade anyway.
+     * from a real result Â— and it is also the threshold the policy uses, since
+     * a tempo outside 40Â–220 drops a pairing to a plain crossfade anyway.
      */
     val isUsable: Boolean get() = status == STATUS_READY && bpm > 0
 

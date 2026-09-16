@@ -24,8 +24,8 @@ import java.util.Locale
  *
  * So the whole rendition apparatus the analyzer is built on answered "nothing
  * cached" for a track that was entirely present, and
- * [com.music.dhvani.playback.AudioCache.requestAnalysisHead] — the fallback
- * for that answer — is a no-op for anything without a YouTube id. Between them,
+ * [com.music.dhvani.playback.AudioCache.requestAnalysisHead] Â— the fallback
+ * for that answer Â— is a no-op for anything without a YouTube id. Between them,
  * a local file was never queued for analysis at all: it sat at "waiting" for as
  * long as it stayed queued, both tracks of every transition read as no
  * evidence, and the policy ladder answered that the only way it can, with a
@@ -46,7 +46,7 @@ import java.util.Locale
  *
  * Reads go through `pread` rather than seek-then-read, so the descriptor
  * carries no shared position: [android.media.MediaExtractor] jumps around a
- * container freely — header, then trailer, then back — and two reads
+ * container freely Â— header, then trailer, then back Â— and two reads
  * interfering would present as a corrupt file rather than as a bug.
  */
 internal object LocalAudioSource {
@@ -64,7 +64,7 @@ internal object LocalAudioSource {
      *
      * Best-effort like the rest of the analysis: a permission the user has since
      * revoked, a row MediaStore still lists for a file that is gone, a provider
-     * that only offers a forward-only stream — all answer null, and the caller
+     * that only offers a forward-only stream Â— all answer null, and the caller
      * falls back to no analysis, which the transition policy already handles as
      * its bottom rung.
      *

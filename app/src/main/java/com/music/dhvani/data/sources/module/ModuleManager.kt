@@ -15,7 +15,7 @@ import okhttp3.Request
  * Fetches a module index, downloads and loads module JS, and calls the
  * module's exported search/stream functions.
  *
- * Ported from Convx's `ModuleManager`, adapted to use BitChord's shared
+ * Ported from Convx's `ModuleManager`, adapted to use Dhvani's shared
  * [Http.client] OkHttp instance rather than a separate Ktor client.
  *
  * One instance should be held per [ModuleSource] config so that loaded
@@ -51,8 +51,8 @@ class ModuleManager {
     /**
      * Parsed indexes, keyed by source URL.
      *
-     * Substituting one track asks for the index twice — once to search, once
-     * to turn the match into a stream URL — and every track after it asks
+     * Substituting one track asks for the index twice Â— once to search, once
+     * to turn the match into a stream URL Â— and every track after it asks
      * again. That is two network round trips per play for a document that
      * changes when someone publishes a module, which is to say hardly ever:
      * measured at ~460ms of a ~2.1s substitution, or roughly a fifth of the
@@ -69,7 +69,7 @@ class ModuleManager {
      * GETs [sourceUrl], parses every `"category:*"` key, returns all modules.
      *
      * Served from [indexCache] while an earlier answer is still inside
-     * [INDEX_TTL_MS]. A failed fetch is never cached — a source that was
+     * [INDEX_TTL_MS]. A failed fetch is never cached Â— a source that was
      * briefly unreachable should be retried on the next track, not written
      * off for the rest of the window.
      */
@@ -80,7 +80,7 @@ class ModuleManager {
                 if (cached != null &&
                     System.currentTimeMillis() - cached.fetchedAtMs < INDEX_TTL_MS
                 ) {
-                    TrackLog.d(TAG, "? fetchIndex($sourceUrl) — CACHE HIT (${cached.modules.size} modules)")
+                    TrackLog.d(TAG, "? fetchIndex($sourceUrl) Â— CACHE HIT (${cached.modules.size} modules)")
                     return@withContext Result.success(cached.modules)
                 }
 
@@ -111,13 +111,13 @@ class ModuleManager {
      * Downloads a module's JS and initialises a QuickJS engine for it.
      *
      * [resolveBaseUrl] turns a relative `module.download` filename into an
-     * absolute base — callers pass `{ sourceUrl.substringBeforeLast("/") }`.
+     * absolute base Â— callers pass `{ sourceUrl.substringBeforeLast("/") }`.
      *
      * Results are cached; a second call for the same id returns immediately.
      *
      * The cache is checked against the executor rather than on its own. Engines
      * are LRU-capped over there and this map is not told when one is evicted,
-     * so a hit here could name a module whose engine had already been closed —
+     * so a hit here could name a module whose engine had already been closed Â—
      * and the caller then went straight to a `callExport` that could only fail
      * with "not loaded". Re-initialising costs a JS evaluation, but not the
      * download: the source is what this map is really holding.
@@ -129,7 +129,7 @@ class ModuleManager {
         val cached = loadedModules[module.id]
         if (cached != null) {
             if (QuickJsExecutor.isLoaded(module.id)) {
-                TrackLog.d(TAG, "? loadModule(${module.id}) — CACHE HIT")
+                TrackLog.d(TAG, "? loadModule(${module.id}) Â— CACHE HIT")
                 return@withContext Result.success(cached)
             }
             val revived = QuickJsExecutor
@@ -196,7 +196,7 @@ class ModuleManager {
     // -- Stream ------------------------------------------------------------
 
     /**
-     * @param quality the tier to ask for — `LOSSLESS`, `HIGH` or `LOW`.
+     * @param quality the tier to ask for Â— `LOSSLESS`, `HIGH` or `LOW`.
      *   Passed as the export's second argument *and* as a setting, because
      *   modules read it from whichever of the two they were written against:
      *   `getTrackStreamUrl(id, preferredQuality, context)` takes the argument,
@@ -233,7 +233,7 @@ class ModuleManager {
      * Re-throws a cancellation that [runCatching] caught.
      *
      * `runCatching` catches `Throwable`, which includes the
-     * `CancellationException` a coroutine is cancelled with — so a caller
+     * `CancellationException` a coroutine is cancelled with Â— so a caller
      * giving up on a lookup came back through here as a *module failure*,
      * logged with a stack trace as though somebody's server had misbehaved.
      * It sent debugging in the wrong direction more than once: a lookup
@@ -250,11 +250,11 @@ class ModuleManager {
     /**
      * The `context` argument every export takes.
      *
-     * A module reads a setting as `context.settings.<key>.value` — the extra
+     * A module reads a setting as `context.settings.<key>.value` Â— the extra
      * `value` wrapper is there because a module's own settings schema
      * describes each key as an object with a type, a label and a current
      * value, and the host hands back the same shape it was given. This was
-     * previously built as `{settings:{value:{…}}}`, one level short and with
+     * previously built as `{settings:{value:{Â…}}}`, one level short and with
      * the wrapper on the wrong side, so *no* module could read *any* setting
      * out of it: every lookup landed on undefined and fell through to the
      * module's own default. Silent, and worth exactly one misplaced brace.

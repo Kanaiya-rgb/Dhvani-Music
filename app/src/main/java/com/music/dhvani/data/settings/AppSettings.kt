@@ -30,6 +30,11 @@ enum class AudioQuality(
     LOSSLESS(Int.MAX_VALUE, "Lossless", "Hi-Res / FLAC · bit-exact if source has it", "~350 MB/hr"),
 }
 
+enum class OutputPcmMode(val label: String) {
+    PCM_16("16-bit PCM"),
+    FLOAT_32("32-bit float"),
+}
+
 /**
  * Listening mode preferences allowing users to quickly switch their acoustic experience:
  * - [DOLBY_ATMOS]: 3D surround soundstage and spatial acoustic processing
@@ -386,6 +391,12 @@ object AppSettings {
     val defaultOpenTab = MutableStateFlow(0)
     val gridItemSize = MutableStateFlow(GridItemSize.SMALL)
     val slimNavBar = MutableStateFlow(false)
+    val dynamicIslandEnabled = MutableStateFlow(true)
+    val systemDynamicIslandEnabled = MutableStateFlow(false)
+    val translationLanguage = MutableStateFlow("")
+    val lyricsTranslationLanguage = translationLanguage
+    val paxSenixApiKey = MutableStateFlow("")
+    val equalizerPreset get() = com.music.dhvani.playback.eq.EqualizerManager.selectedPreset
     val showRecognizeButton = MutableStateFlow(true)
     val showPlayRandomButton = MutableStateFlow(true)
     val showLikedPlaylist = MutableStateFlow(true)
@@ -420,32 +431,7 @@ object AppSettings {
     /** Drops haze blur (status bar, mini player, bottom fade, lyrics focus) for a solid-fill look. */
     val reduceDynamicBlur = MutableStateFlow(false)
 
-    /**
-     * Plays a looping video behind the cover art on the player when one is
-     * published for the track — Spotify's Canvas, Apple's motion artwork.
-     *
-     * Costs a video stream on top of the audio one and reaches three
-     * services that have nothing to do with playback, so it stays a switch —
-     * but it is the better default, and most tracks resolve to no canvas at
-     * all. See [CanvasRepository][com.music.dhvani.data.canvas.CanvasRepository].
-     */
-    val animatedCanvas = MutableStateFlow(true)
 
-    /**
-     * Whether [animatedCanvas] is allowed to actually stream on a metered
-     * connection, as distinct from the switch that turns the feature off
-     * altogether.
-     *
-     * Off by default. A canvas clip loops for as long as its track plays,
-     * and every loop past the first re-fetches the same few seconds of video
-     * — see [CanvasCache][com.music.dhvani.data.canvas.CanvasCache] for why
-     * that costs network at all rather than being answered from a buffer —
-     * so a few-second clip behind a four-minute track on cellular is not a
-     * flat video cost, it is that cost repeated dozens of times per song.
-     * That is the shape of the reported 8GB day: still art costs nothing
-     * here and stays up regardless of this setting.
-     */
-    val canvasOverCellular = MutableStateFlow(false)
 
     /**
      * Blows the player's cover art out to a full-bleed banner running off the
@@ -555,6 +541,8 @@ object AppSettings {
     val listenBrainzEnabled = MutableStateFlow(false)
     val listenBrainzToken = MutableStateFlow("")
     val spotifySpdcToken = MutableStateFlow("")
+    val appleMusicUserToken = MutableStateFlow(DEFAULT_APPLE_MUSIC_USER_TOKEN)
+    val appleMusicDevToken = MutableStateFlow(DEFAULT_APPLE_MUSIC_DEV_TOKEN)
 
     // ── Discord Rich Presence ───────────────────────────────────────────
 
@@ -790,6 +778,8 @@ object AppSettings {
             GridItemSize.valueOf(prefs.getString(KEY_GRID_ITEM_SIZE, null) ?: "SMALL")
         }.getOrDefault(GridItemSize.SMALL)
         slimNavBar.value = prefs.getBoolean(KEY_SLIM_NAV_BAR, false)
+        dynamicIslandEnabled.value = prefs.getBoolean(KEY_DYNAMIC_ISLAND_ENABLED, true)
+        systemDynamicIslandEnabled.value = prefs.getBoolean(KEY_SYSTEM_DYNAMIC_ISLAND_ENABLED, false)
         showRecognizeButton.value = prefs.getBoolean(KEY_SHOW_RECOGNIZE_BUTTON, true)
         showPlayRandomButton.value = prefs.getBoolean(KEY_SHOW_PLAY_RANDOM_BUTTON, true)
         showLikedPlaylist.value = prefs.getBoolean(KEY_SHOW_LIKED_PLAYLIST, true)
@@ -797,14 +787,15 @@ object AppSettings {
         showTopPlaylist.value = prefs.getBoolean(KEY_SHOW_TOP_PLAYLIST, true)
         showCachedPlaylist.value = prefs.getBoolean(KEY_SHOW_CACHED_PLAYLIST, true)
         showUploadedPlaylist.value = prefs.getBoolean(KEY_SHOW_UPLOADED_PLAYLIST, true)
-        animatedCanvas.value = prefs.getBoolean(KEY_ANIMATED_CANVAS, true)
-        canvasOverCellular.value = prefs.getBoolean(KEY_CANVAS_OVER_CELLULAR, false)
         fullBleedArtwork.value = prefs.getBoolean(KEY_FULL_BLEED_ARTWORK, true)
         showStatusBarIcon.value = prefs.getBoolean(KEY_SHOW_STATUS_BAR_ICON, true)
         syncedLyrics.value = prefs.getBoolean(KEY_SYNCED_LYRICS, true)
         lyricsSources.value = readLyricsSources()
         lyricsSourceOrder.value = readLyricsSourceOrder()
         prioritizeSyllableSync.value = prefs.getBoolean(KEY_PRIORITIZE_SYLLABLE_SYNC, false)
+        translationLanguage.value = prefs.getString(KEY_TRANSLATION_LANGUAGE, "").orEmpty()
+        paxSenixApiKey.value = prefs.getString(KEY_PAXSENIX_API_KEY, "").orEmpty()
+        com.music.dhvani.data.lyrics.PaxSenix.setApiKey(paxSenixApiKey.value)
         audioCacheLimitBytes.value = prefs.getLong(KEY_CACHE_LIMIT, DEFAULT_CACHE_LIMIT_BYTES)
             .coerceIn(DEFAULT_CACHE_LIMIT_BYTES, MAX_CACHE_LIMIT_BYTES)
         lastfmEnabled.value = prefs.getBoolean(KEY_LASTFM_ENABLED, false)
@@ -821,6 +812,8 @@ object AppSettings {
         listenBrainzEnabled.value = prefs.getBoolean(KEY_LISTENBRAINZ_ENABLED, false)
         listenBrainzToken.value = prefs.getString(KEY_LISTENBRAINZ_TOKEN, "").orEmpty()
         spotifySpdcToken.value = prefs.getString(KEY_SPOTIFY_SPDC_TOKEN, "").orEmpty()
+        appleMusicUserToken.value = prefs.getString(KEY_APPLE_MUSIC_USER_TOKEN, DEFAULT_APPLE_MUSIC_USER_TOKEN).orEmpty()
+        appleMusicDevToken.value = prefs.getString(KEY_APPLE_MUSIC_DEV_TOKEN, DEFAULT_APPLE_MUSIC_DEV_TOKEN).orEmpty()
         replayGenres.value = prefs.getBoolean(KEY_REPLAY_GENRES, true)
         pinnedPlaylists.value = readPinnedPlaylists()
         discordToken.value = authStore.discordToken.orEmpty()
@@ -858,7 +851,7 @@ object AppSettings {
      * the very first call seeds the stored value from [currentVersionCode]
      * rather than reporting an update.
      *
-     * BitChord ships sideloaded (see [com.music.dhvani.data.AppUpdateChecker]),
+     * Dhvani ships sideloaded (see [com.music.dhvani.data.AppUpdateChecker]),
      * so installing a new APK over the old one is the only "update" there is —
      * app data, this pref included, survives it exactly like a Play Store
      * update. Call once per process start, before anything reads a cache that
@@ -1189,6 +1182,27 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_HIDE_STATUS_BAR_ON_FULLSCREEN, value).apply()
     }
 
+    fun setDynamicIslandEnabled(value: Boolean) {
+        dynamicIslandEnabled.value = value
+        prefs.edit().putBoolean(KEY_DYNAMIC_ISLAND_ENABLED, value).apply()
+    }
+
+    fun setSystemDynamicIslandEnabled(value: Boolean) {
+        systemDynamicIslandEnabled.value = value
+        prefs.edit().putBoolean(KEY_SYSTEM_DYNAMIC_ISLAND_ENABLED, value).apply()
+    }
+
+    private const val KEY_FLOATING_ISLAND_PROMPTED_VERSION = "floating_island_prompted_version"
+
+    fun shouldPromptFloatingIslandPermission(currentVersionCode: Int): Boolean {
+        val last = prefs.getInt(KEY_FLOATING_ISLAND_PROMPTED_VERSION, -1)
+        return last < currentVersionCode
+    }
+
+    fun markFloatingIslandPrompted(currentVersionCode: Int) {
+        prefs.edit().putInt(KEY_FLOATING_ISLAND_PROMPTED_VERSION, currentVersionCode).apply()
+    }
+
     fun setSwipeThumbnail(value: Boolean) {
         swipeThumbnail.value = value
         prefs.edit().putBoolean(KEY_SWIPE_THUMBNAIL, value).apply()
@@ -1241,6 +1255,23 @@ object AppSettings {
         } else {
             prefs.edit().putLong("lyrics_offset_$videoId", offsetMs).apply()
         }
+    }
+
+    private const val KEY_TRANSLATION_LANGUAGE = "translation_language"
+    private const val KEY_PAXSENIX_API_KEY = "paxsenix_api_key"
+
+    fun setTranslationLanguage(value: String) {
+        translationLanguage.value = value
+        prefs.edit().putString(KEY_TRANSLATION_LANGUAGE, value).apply()
+    }
+
+    fun setLyricsTranslationLanguage(lang: String) = setTranslationLanguage(lang)
+
+    fun setPaxSenixApiKey(value: String) {
+        val normalized = com.music.dhvani.data.lyrics.normalizePaxSenixApiKey(value)
+        paxSenixApiKey.value = normalized
+        prefs.edit().putString(KEY_PAXSENIX_API_KEY, normalized).apply()
+        com.music.dhvani.data.lyrics.PaxSenix.setApiKey(normalized)
     }
 
     fun saveLocalPlaylist(title: String, songs: List<Song>): String {
@@ -1397,9 +1428,10 @@ object AppSettings {
     private fun readLyricsSources(): Set<LyricsSource> {
         val stored = prefs.getString(KEY_LYRICS_SOURCES, null)
             ?: return LyricsSource.entries.toSet()
-        return stored.split(",")
+        val saved = stored.split(",")
             .mapNotNull { name -> LyricsSource.entries.firstOrNull { it.name == name } }
             .toSet()
+        return if (saved.isEmpty()) LyricsSource.entries.toSet() else saved
     }
 
     fun setLyricsSourceOrder(value: List<LyricsSource>) {
@@ -1437,15 +1469,7 @@ object AppSettings {
         setPrioritizeSyllableSync(false)
     }
 
-    fun setAnimatedCanvas(value: Boolean) {
-        animatedCanvas.value = value
-        prefs.edit().putBoolean(KEY_ANIMATED_CANVAS, value).apply()
-    }
 
-    fun setCanvasOverCellular(value: Boolean) {
-        canvasOverCellular.value = value
-        prefs.edit().putBoolean(KEY_CANVAS_OVER_CELLULAR, value).apply()
-    }
 
     fun setFullBleedArtwork(value: Boolean) {
         fullBleedArtwork.value = value
@@ -1497,6 +1521,16 @@ object AppSettings {
     fun setSpotifySpdcToken(value: String) {
         spotifySpdcToken.value = value
         prefs.edit().putString(KEY_SPOTIFY_SPDC_TOKEN, value).apply()
+    }
+
+    fun setAppleMusicUserToken(value: String) {
+        appleMusicUserToken.value = value
+        prefs.edit().putString(KEY_APPLE_MUSIC_USER_TOKEN, value).apply()
+    }
+
+    fun setAppleMusicDevToken(value: String) {
+        appleMusicDevToken.value = value
+        prefs.edit().putString(KEY_APPLE_MUSIC_DEV_TOKEN, value).apply()
     }
 
     fun setLastfmScrobbleEnabled(value: Boolean) {
@@ -1805,8 +1839,10 @@ object AppSettings {
     private const val KEY_DONT_REPEAT_SUGGESTIONS = "dont_repeat_suggestions"
     private const val KEY_CONVERT_VIDEO_TO_AUDIO = "convert_video_to_audio"
     private const val KEY_REDUCE_BLUR = "reduce_dynamic_blur"
-    private const val KEY_ANIMATED_CANVAS = "animated_canvas"
-    private const val KEY_CANVAS_OVER_CELLULAR = "canvas_over_cellular"
+    private const val KEY_DEFAULT_TO_SONG_ON_CELLULAR = "default_to_song_on_cellular"
+    private const val KEY_VIDEO_BACKDROP_QUALITY = "video_backdrop_quality"
+    private const val KEY_VIDEO_BACKDROP_LOOP_MODE = "video_backdrop_loop_mode"
+    private const val KEY_DEFAULT_PLAYER_MODE = "default_player_mode"
     private const val KEY_FULL_BLEED_ARTWORK = "full_bleed_artwork"
     private const val KEY_SHOW_STATUS_BAR_ICON = "show_status_bar_icon"
     private const val KEY_SYNCED_LYRICS = "synced_lyrics"
@@ -1866,6 +1902,10 @@ object AppSettings {
     private const val KEY_LISTENBRAINZ_ENABLED = "listenbrainz_enabled"
     private const val KEY_LISTENBRAINZ_TOKEN = "listenbrainz_token"
     private const val KEY_SPOTIFY_SPDC_TOKEN = "spotify_spdc_token"
+    const val DEFAULT_APPLE_MUSIC_USER_TOKEN = "0.AtD3rSsiNHsC6xGrKVuH9D8Q3wLfagnppQVNecUb8c4urIsjzfQjX6NRY4hl04yQ/KfFYuTiiX09EGrnFGsjaK1EUQNWEU6l5smve9Md4kVQ9oz5VUN4uVPHYzwAcbEs6hp17uRNAG1TzE2tSeEKm/P/4BqhRNHsH3nxFdPYyN8n2pjGUx6xMwGOku3qNcMVWxIf4Hw3glOhfWAFbA0Eit3x03Z89D24dUn0MBJ/bRIwO0I7dg="
+    const val DEFAULT_APPLE_MUSIC_DEV_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzg2NjMyOTI0LCJleHAiOjE3OTI2ODA5MjQsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.hBgj61sZf-y7bmuvT-joXAUAcf7TVJ51732xnH5vFkLHOmsQHxVqGMYUuI4h8c0-RX3fRY3moylhLW8fewFJyw"
+    private const val KEY_APPLE_MUSIC_USER_TOKEN = "apple_music_user_token"
+    private const val KEY_APPLE_MUSIC_DEV_TOKEN = "apple_music_dev_token"
 
     private const val KEY_DISCORD_USERNAME = "discord_username"
     private const val KEY_DISCORD_NAME = "discord_name"
@@ -1891,6 +1931,8 @@ object AppSettings {
     private const val KEY_LISTEN_TOGETHER_USER_ID = "listen_together_user_id"
     private const val KEY_LISTEN_TOGETHER_IS_HOST = "listen_together_is_host"
     private const val KEY_LISTEN_TOGETHER_SESSION_TIMESTAMP = "listen_together_session_timestamp"
+    private const val KEY_DYNAMIC_ISLAND_ENABLED = "dynamic_island_enabled"
+    private const val KEY_SYSTEM_DYNAMIC_ISLAND_ENABLED = "system_dynamic_island_enabled"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"
 }
 

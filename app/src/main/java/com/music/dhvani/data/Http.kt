@@ -24,14 +24,14 @@ import java.util.concurrent.atomic.AtomicLong
  * address family and connection pooling identical for both.
  *
  * That sharing has a cost the defaults don't budget for. Every request the
- * app makes — [Innertube]'s player/browse calls, NewPipe's own signature and
+ * app makes Â— [Innertube]'s player/browse calls, NewPipe's own signature and
  * `next`-endpoint fetches, [ChunkedDataSource][com.music.dhvani.playback.ChunkedDataSource]
  * and [AudioCache][com.music.dhvani.playback.AudioCache]'s multi-megabyte
- * chunk downloads, and every [StreamResolver] probe — funnels through this
+ * chunk downloads, and every [StreamResolver] probe Â— funnels through this
  * one client, and OkHttp's stock [Dispatcher] allows only 5 requests in
  * flight to a single host at a time. A track streaming while its successor
  * pre-caches is two or three of those requests already; a resolve running
- * alongside them queues behind whichever is occupying the rest — invisibly,
+ * alongside them queues behind whichever is occupying the rest Â— invisibly,
  * since a request stuck in OkHttp's queue and a slow server both just look
  * like a request that took several extra seconds. Sized well past anything
  * this app actually drives concurrently, so the queue is never the reason a
@@ -45,7 +45,7 @@ object Http {
     // this app's network callers actually account for the reported data
     // usage (issue #48): every request funnels through this one client, so
     // a network interceptor here sees every byte the app receives,
-    // regardless of which subsystem asked for it. Categorised by host —
+    // regardless of which subsystem asked for it. Categorised by host Â—
     // googlevideo.com is YouTube's own audio bytes (and StreamResolver's
     // probes, distinguishable by their small actual read against a 2MB
     // Range ask), a canvas provider's CDN is motion artwork, youtube.com /
@@ -53,8 +53,8 @@ object Http {
     // during a play session; each line is one response with its actual
     // transferred bytes and the running total for its host.
     //
-    // Left in place rather than deleted — the investigation this served is
-    // not the last one this app will need — but off by default: flip to
+    // Left in place rather than deleted Â— the investigation this served is
+    // not the last one this app will need Â— but off by default: flip to
     // true only while actively measuring. Wrapping every response body in a
     // counting source and writing a log line per request is not free, and
     // paying that on every install for a question already answered is the

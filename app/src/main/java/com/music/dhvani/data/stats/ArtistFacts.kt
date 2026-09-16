@@ -36,18 +36,18 @@ import java.util.concurrent.TimeUnit
  * ## Why any of this needs looking up
  *
  * Listening is counted per *name*, because a name is the only thing every track
- * carries — see [ListeningStats]. That is enough to rank artists and nothing
+ * carries Â— see [ListeningStats]. That is enough to rank artists and nothing
  * else. Three things the artist chart wants are simply not in the listening:
  *
  *  - **A picture of the artist.** Every track carries its own sleeve, and using
- *    that gave an artist chart illustrated with album covers — the same cover as
+ *    that gave an artist chart illustrated with album covers Â— the same cover as
  *    the song chart above it, which reads as the page having drawn the wrong
  *    list rather than as a deliberate choice.
  *  - **A page to open.** A browse id only rides along when the row that queued
  *    the track happened to have one, which for a home-feed card or an AutoPlay
  *    suggestion it does not.
  *  - **A genre.** Nothing this app already talks to states one. YouTube Music's
- *    browse responses carry none — an album page bills itself "Album • 2023" —
+ *    browse responses carry none Â— an album page bills itself "Album Â• 2023" Â—
  *    and the source modules hand back audio, not taxonomy.
  *
  * ## One store, two sources, two gates
@@ -56,8 +56,8 @@ import java.util.concurrent.TimeUnit
  * app is already talking to constantly and which is therefore not worth a
  * setting. The genre comes from Last.fm's `artist.getTopTags`, which is a
  * different service and *is* a setting ([AppSettings.replayGenres]): it sends an
- * artist's name and nothing else — no track, no time, no id, no indication that
- * anything was played — and turned off, the genre chart simply isn't drawn while
+ * artist's name and nothing else Â— no track, no time, no id, no indication that
+ * anything was played Â— and turned off, the genre chart simply isn't drawn while
  * every other chart is unaffected.
  *
  * Both are asked once per artist and kept on this device for good, so the cost
@@ -69,7 +69,7 @@ import java.util.concurrent.TimeUnit
  * live", "favourites", "albums i own" and several thousand more that describe
  * the tagger rather than the music. Taking the top tag verbatim produces a chart
  * whose leading genre is "awesome". So a tag only counts if it matches
- * [VOCABULARY] — a fixed list of things that are actually genres — and an artist
+ * [VOCABULARY] Â— a fixed list of things that are actually genres Â— and an artist
  * with no matching tag contributes nothing rather than a wrong answer.
  */
 object ArtistFacts {
@@ -95,7 +95,7 @@ object ArtistFacts {
      *
      * The Replay reads these facts once, while it is building its charts, so a
      * picture that arrives a second after the page opened would otherwise not
-     * appear until the page was opened again — which for a page opened a few
+     * appear until the page was opened again Â— which for a page opened a few
      * times a year means never. Watching this lets it rebuild.
      */
     private val _revision = MutableStateFlow(0)
@@ -109,7 +109,7 @@ object ArtistFacts {
         }
         // Writes are on a timer rather than one per answer. The cache holds
         // every artist ever played, so rewriting it after each lookup meant a
-        // few hundred kilobytes per artist during a backfill — for a file that
+        // few hundred kilobytes per artist during a backfill Â— for a file that
         // is only read once, at launch.
         scope.launch {
             while (true) {
@@ -260,8 +260,8 @@ object ArtistFacts {
      * A tag as a genre, or null if it isn't one.
      *
      * Matched against [VOCABULARY] after normalising punctuation and a handful
-     * of spellings that are the same genre — "hip-hop" and "hip hop", "r&b" and
-     * "rnb" — because splitting one genre across two rows is the same failure as
+     * of spellings that are the same genre Â— "hip-hop" and "hip hop", "r&b" and
+     * "rnb" Â— because splitting one genre across two rows is the same failure as
      * admitting "seen live", just less obvious on the page.
      */
     private fun canonical(tag: String): String? {

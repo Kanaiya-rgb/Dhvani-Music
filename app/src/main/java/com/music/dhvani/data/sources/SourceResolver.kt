@@ -217,7 +217,7 @@ object SourceResolver {
             "substituted: '${target.title}' served by ${source.displayName} over YouTube" +
                 " at ${stream.format.summary}" + if (stream.belowRequest) " (below request)" else "",
         )
-        return stream
+        return stream.copy(format = stream.format.copy(source = source.displayName))
     }
 
     /**
@@ -256,7 +256,7 @@ object SourceResolver {
             TAG,
             "warmed: '${target.title}' from ${source.displayName} at ${stream.format.summary}",
         )
-        return stream
+        return stream.copy(format = stream.format.copy(source = source.displayName))
     }
 
     /**
@@ -364,7 +364,7 @@ object SourceResolver {
             }
         } ?: return null
         TrackLog.d(TAG, "upgrade found: '${target.title}' at ${chosen.format.summary} from ${source.displayName}")
-        return chosen
+        return chosen.copy(format = chosen.format.copy(source = source.displayName))
     }
 
     /**

@@ -50,6 +50,7 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LocalOffer
 import androidx.compose.material.icons.rounded.MusicOff
@@ -65,6 +66,7 @@ import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.content.ComponentName
@@ -188,9 +190,9 @@ fun SettingsScreen(
     onAccountScrobbling: () -> Unit,
     onOpenReplay: () -> Unit,
     onLyricsSources: () -> Unit,
+    onTranslationLanguage: () -> Unit = {},
     onSources: () -> Unit,
     onOpenAppearance: () -> Unit,
-    onSpotifyCanvasAuth: () -> Unit,
     onAppLanguage: () -> Unit,
     onSubScreenChange: (title: String?, onBack: (() -> Unit)?) -> Unit = { _, _ -> },
     onCheckForUpdates: () -> Unit = {},
@@ -212,11 +214,10 @@ fun SettingsScreen(
     val nerdStats by AppSettings.showNerdStats.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
-    val canvasOverCellular by AppSettings.canvasOverCellular.collectAsStateWithLifecycle()
     val fullBleedArtwork by AppSettings.fullBleedArtwork.collectAsStateWithLifecycle()
     val syncedLyrics by AppSettings.syncedLyrics.collectAsStateWithLifecycle()
     val lyricsSources by AppSettings.lyricsSources.collectAsStateWithLifecycle()
+    val translationLanguage by AppSettings.translationLanguage.collectAsStateWithLifecycle()
     val lyricsPosition by AppSettings.lyricsPosition.collectAsStateWithLifecycle()
     val lyricsAnimationStyle by AppSettings.lyricsAnimationStyle.collectAsStateWithLifecycle()
     val lyricsGlowEffect by AppSettings.lyricsGlowEffect.collectAsStateWithLifecycle()
@@ -409,13 +410,6 @@ fun SettingsScreen(
                 icon = Icons.Rounded.Tune,
                 onClick = { showSliderStyleDialog = true },
             ),
-            SearchableSettingItem(
-                title = "Spotify Canvas loop",
-                subtitle = "Looping video canvas background for supported songs",
-                category = "Appearance",
-                icon = Icons.Rounded.SmartDisplay,
-                onClick = onSpotifyCanvasAuth,
-            ),
 
             // Playback & Audio
             SearchableSettingItem(
@@ -547,10 +541,17 @@ fun SettingsScreen(
             ),
             SearchableSettingItem(
                 title = "Lyrics sources",
-                subtitle = "LrcLib, Better Lyrics, YouTube Music provider order",
+                subtitle = "BiniLyrics, BetterLyrics, PaxSenix, YouTube, Musixmatch, LRCLIB",
                 category = "Lyrics & Content",
                 icon = Icons.Rounded.LocalOffer,
                 onClick = onLyricsSources,
+            ),
+            SearchableSettingItem(
+                title = "Translation language",
+                subtitle = "The language the translate button turns lyrics into",
+                category = "Lyrics & Content",
+                icon = Icons.Rounded.Translate,
+                onClick = onTranslationLanguage,
             ),
             SearchableSettingItem(
                 title = "Lyrics animation style",
@@ -1306,10 +1307,25 @@ fun SettingsScreen(
                         RowDivider()
                         SettingsRow(
                             icon = Icons.Rounded.LocalOffer,
-                            title = "Lyrics sources",
+                            title = stringResource(R.string.lyrics_sources),
                             subtitle = lyricsSources.sortedBy { it.ordinal }.joinToString(", ") { it.label },
                             trailing = { Chevron() },
                             onClick = onLyricsSources,
+                        )
+                        RowDivider()
+                        SettingsRow(
+                            icon = Icons.Rounded.Translate,
+                            title = stringResource(R.string.translation_language),
+                            subtitle = if (translationLanguage.isBlank()) {
+                                stringResource(R.string.translation_language_subtitle)
+                            } else {
+                                com.music.dhvani.data.lyrics.translationLanguageName(
+                                    translationLanguage,
+                                    androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0) ?: java.util.Locale.getDefault(),
+                                )
+                            },
+                            trailing = { Chevron() },
+                            onClick = onTranslationLanguage,
                         )
                     }
 
@@ -1555,14 +1571,6 @@ fun SettingsScreen(
                             subtitle = "Manage Listen Together, Discord RPC and scrobbling hub",
                             trailing = { Chevron() },
                             onClick = onAccountScrobbling,
-                        )
-                        RowDivider()
-                        SettingsRow(
-                            icon = Icons.Rounded.SmartDisplay,
-                            title = "Spotify Canvas authorization",
-                            subtitle = "Connect Spotify account for looping canvas videos",
-                            trailing = { Chevron() },
-                            onClick = onSpotifyCanvasAuth,
                         )
                     }
 
@@ -2598,7 +2606,6 @@ private val APP_RELEASES = listOf(
             "🎵 Grand Rebrand to Dhvani Music: Complete UI/UX redesign with Meld-style Material 3 settings hub.",
             "🎚️ Next-Gen Sliders: Fluid wavy and squiggly player seekbars with amplitude control.",
             "🎙️ Voice Search & Explore: YouTube Music moods, genres, new releases, and charts.",
-            "🎥 Spotify Canvas: Full-screen looping video background canvases for supported tracks.",
             "📊 Last.fm & ListenBrainz: Comprehensive scrobbling integration and listening history.",
             "💾 Offline Library & Playlists: Full local music manager, playlist export/import, and batch downloads.",
         ),

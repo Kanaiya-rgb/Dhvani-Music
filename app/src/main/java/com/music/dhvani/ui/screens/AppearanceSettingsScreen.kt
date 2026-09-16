@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -40,6 +43,7 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.HideImage
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Lock
@@ -101,7 +105,6 @@ import kotlin.math.roundToInt
 fun AppearanceSettingsScreen(
     windowWidth: Dp,
     onBack: () -> Unit,
-    onSpotifyCanvasAuth: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -123,8 +126,6 @@ fun AppearanceSettingsScreen(
     val hideStatusBarOnFullscreen by AppSettings.hideStatusBarOnFullscreen.collectAsStateWithLifecycle()
     val fullBleedArtwork by AppSettings.fullBleedArtwork.collectAsStateWithLifecycle()
     val showStatusBarIcon by AppSettings.showStatusBarIcon.collectAsStateWithLifecycle()
-    val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
-    val canvasOverCellular by AppSettings.canvasOverCellular.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
 
@@ -134,6 +135,8 @@ fun AppearanceSettingsScreen(
     val defaultOpenTab by AppSettings.defaultOpenTab.collectAsStateWithLifecycle()
     val gridItemSize by AppSettings.gridItemSize.collectAsStateWithLifecycle()
     val slimNavBar by AppSettings.slimNavBar.collectAsStateWithLifecycle()
+    val dynamicIslandEnabled by AppSettings.dynamicIslandEnabled.collectAsStateWithLifecycle()
+    val systemDynamicIslandEnabled by AppSettings.systemDynamicIslandEnabled.collectAsStateWithLifecycle()
     val showRecognizeButton by AppSettings.showRecognizeButton.collectAsStateWithLifecycle()
     val showPlayRandomButton by AppSettings.showPlayRandomButton.collectAsStateWithLifecycle()
 
@@ -153,6 +156,27 @@ fun AppearanceSettingsScreen(
     var showSensitivityDialog by remember { mutableStateOf(false) }
     var showDefaultTabDialog by remember { mutableStateOf(false) }
     var showGridSizeDialog by remember { mutableStateOf(false) }
+
+    val handleSystemDynamicIslandToggle: (Boolean) -> Unit = { enable ->
+        if (enable) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
+                Toast.makeText(
+                    context,
+                    "Please grant 'Display over other apps' to show Dynamic Island everywhere",
+                    Toast.LENGTH_LONG,
+                ).show()
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:${context.packageName}"),
+                )
+                context.startActivity(intent)
+            } else {
+                AppSettings.setSystemDynamicIslandEnabled(true)
+            }
+        } else {
+            AppSettings.setSystemDynamicIslandEnabled(false)
+        }
+    }
 
     Column(
         modifier = modifier
@@ -372,47 +396,6 @@ fun AppearanceSettingsScreen(
             )
             RowDivider()
             SettingsRow(
-                icon = Icons.Rounded.Animation,
-                title = stringResource(R.string.animated_cover_art),
-                subtitle = stringResource(R.string.animated_cover_art_subtitle),
-                trailing = {
-                    Switch(
-                        checked = animatedCanvas,
-                        onCheckedChange = AppSettings::setAnimatedCanvas,
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = MaterialTheme.colorScheme.primary,
-                            checkedBorderColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    )
-                },
-                onClick = { AppSettings.setAnimatedCanvas(!animatedCanvas) },
-            )
-            if (animatedCanvas) {
-                SettingsSubRow(
-                    title = stringResource(R.string.animated_cover_cellular),
-                    checked = canvasOverCellular,
-                    onCheckedChange = AppSettings::setCanvasOverCellular,
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onSpotifyCanvasAuth)
-                        .padding(start = ROW_INSET, end = ROW_INSET, top = 4.dp, bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Integrate Spotify Canvas",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Chevron()
-                }
-            }
-            RowDivider()
-            SettingsRow(
                 icon = Icons.Rounded.MotionPhotosOff,
                 title = stringResource(R.string.reduce_animation),
                 subtitle = stringResource(R.string.reduce_animation_subtitle),
@@ -464,7 +447,44 @@ fun AppearanceSettingsScreen(
             )
         }
 
-        // ── 4. Navigation & Miscellaneous ───────────────────────────────
+        // ── 4. Dynamic Island ───────────────────────────────────────────
+        SettingsGroup(header = "Dynamic Island") {
+            SettingsRow(
+                icon = Icons.Rounded.GraphicEq,
+                title = "Dynamic Island Notch Player",
+                subtitle = "iPhone-style floating capsule with live equalizer while playing",
+                trailing = {
+                    Switch(
+                        checked = dynamicIslandEnabled,
+                        onCheckedChange = AppSettings::setDynamicIslandEnabled,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = { AppSettings.setDynamicIslandEnabled(!dynamicIslandEnabled) },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.Layers,
+                title = "System-Wide Floating Island",
+                subtitle = "Float Dynamic Island over other apps with swipe-up to hide",
+                trailing = {
+                    Switch(
+                        checked = systemDynamicIslandEnabled,
+                        onCheckedChange = handleSystemDynamicIslandToggle,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = { handleSystemDynamicIslandToggle(!systemDynamicIslandEnabled) },
+            )
+        }
+
+        // ── 5. Navigation & Miscellaneous ───────────────────────────────
         SettingsGroup(header = stringResource(R.string.miscellaneous)) {
             SettingsRow(
                 icon = Icons.Rounded.Dashboard,

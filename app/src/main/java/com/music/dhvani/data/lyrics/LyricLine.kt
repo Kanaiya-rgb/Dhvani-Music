@@ -31,6 +31,8 @@ data class LyricWord(val startMs: Long, val endMs: Long, val text: String)
  * underneath the lead on its own clock. Never nested: a background line's own
  * [background] is always null.
  */
+enum class LyricAlignment { Start, End }
+
 data class LyricLine(
     val timeMs: Long,
     val text: String,
@@ -38,6 +40,7 @@ data class LyricLine(
     val sungUntilMs: Long? = null,
     val background: LyricLine? = null,
     val timingSource: LyricLine? = null,
+    val alignment: LyricAlignment = LyricAlignment.Start,
     val isEstimatedTiming: Boolean = false,
 ) {
     val isGap: Boolean get() = text.isEmpty()

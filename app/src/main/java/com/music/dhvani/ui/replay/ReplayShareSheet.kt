@@ -63,7 +63,7 @@ import java.util.Locale
  *
  * Deliberately not the system chooser on its own. A chooser is a modal list of
  * app names with no sight of what is about to be sent, and what is about to be
- * sent here is the entire point — nobody shares a Replay they have not looked
+ * sent here is the entire point Â— nobody shares a Replay they have not looked
  * at. So the image is the sheet, full size, and the apps sit under it as a row
  * of icons the way every story-sharing surface does.
  *
@@ -152,7 +152,7 @@ fun ReplayShareSheet(
         //
         // Resolving the apps that accept an image and drawing their launcher
         // icons was the first version. It looked like a share sheet because it
-        // was imitating one — and the system already has a share sheet, kept up
+        // was imitating one Â— and the system already has a share sheet, kept up
         // to date, ordered by what this user actually shares to, and reachable
         // in one tap. Reimplementing it meant asking the package manager for
         // every app on the device, loading five icons out of other APKs, and
@@ -248,7 +248,7 @@ private fun sendIntent(uri: Uri) = Intent(Intent.ACTION_SEND)
  *
  * The app's own cache, exposed through a [FileProvider] rather than by handing
  * out a `file://` path: that has been illegal since API 24, and a content URI is
- * what lets the read grant travel with the intent and expire with it — the other
+ * what lets the read grant travel with the intent and expire with it Â— the other
  * app gets this one picture and nothing else in the folder.
  */
 private suspend fun cacheForSharing(context: Context, bitmap: Bitmap): Uri? =
@@ -268,7 +268,7 @@ private suspend fun cacheForSharing(context: Context, bitmap: Bitmap): Uri? =
  *
  * Through MediaStore, which from API 29 needs no permission at all for a row the
  * app created. Below that it writes into the public Pictures folder directly,
- * which is why the legacy branch exists — and why saving is offered rather than
+ * which is why the legacy branch exists Â— and why saving is offered rather than
  * assumed: on an older device it can fail on a permission this app doesn't ask
  * for until a download is started.
  */

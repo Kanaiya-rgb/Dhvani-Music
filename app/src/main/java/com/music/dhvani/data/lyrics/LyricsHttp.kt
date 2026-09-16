@@ -22,7 +22,7 @@ internal val lyricsJson = Json { ignoreUnknownKeys = true; isLenient = true }
 
 private val client by lazy {
     // Derived from the shared client, so the connection pool and DNS stay
-    // common — only the deadline differs.
+    // common â€” only the deadline differs.
     Http.client.newBuilder()
         .callTimeout(LYRICS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .connectTimeout(3, TimeUnit.SECONDS)
@@ -40,9 +40,29 @@ internal fun lyricsGet(url: String): String? = runCatching {
     }
 }.getOrNull()
 
+private val authenticatedClient by lazy {
+    client.newBuilder()
+        .callTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .build()
+}
+
+/** Body of an authenticated provider GET without service-specific browser headers. */
+internal fun lyricsGetBearer(url: String, bearer: String): String? = runCatching {
+    if (bearer.isBlank()) return null
+    val request = Request.Builder().url(url)
+        .header("User-Agent", LYRICS_AGENT)
+        .header("Accept", "application/json, text/plain, */*")
+        .header("Authorization", "Bearer $bearer")
+        .build()
+    authenticatedClient.newCall(request).execute().use { response ->
+        if (response.isSuccessful) response.body?.string() else null
+    }
+}.getOrNull()
+
 /**
  * [lyricsGet], with a bearer token and the headers Apple's own web player
- * sends alongside one — `amp-api.music.apple.com` answers a token with no
+ * sends alongside one â€” `amp-api.music.apple.com` answers a token with no
  * `Origin` at all the same way it answers a wrong one, with a 403.
  */
 internal fun lyricsGetAuthorized(url: String, bearer: String): String? = runCatching {

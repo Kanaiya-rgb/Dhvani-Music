@@ -8,9 +8,9 @@ import java.util.Locale
  *
  * Two problems this exists to solve:
  *
- *  - YouTube's watch queues routinely carry the same recording twice — the
+ *  - YouTube's watch queues routinely carry the same recording twice Â— the
  *    official audio and the music video are separate videoIds with near
- *    identical titles — so de-duping on id alone lets a track play, then play
+ *    identical titles Â— so de-duping on id alone lets a track play, then play
  *    again as its video. Songs are matched on a normalised title plus lead
  *    artist instead.
  *
@@ -36,7 +36,7 @@ object QueueBuilder {
         val seedArtists = existing.lastOrNull()?.artist?.let(::artistSet).orEmpty()
         val out = mutableListOf<Song>()
 
-        // A mix pairs all but every track with its own music-video upload —
+        // A mix pairs all but every track with its own music-video upload Â—
         // the same recording under a different id, titled far enough apart
         // ("Dildaara (Stand By Me)" against "Lyrical Video: Dildara Song")
         // that no title match will catch it. The catalogue cut is the one a
@@ -76,7 +76,7 @@ object QueueBuilder {
         val title = normalisedTitle(a.title)
         if (title.isEmpty() || title != normalisedTitle(b.title)) return false
         // One shared name is enough. The two cuts of a track get billed in
-        // whatever order the upload used — "Pritam, Arijit Singh & Shilpa Rao"
+        // whatever order the upload used Â— "Pritam, Arijit Singh & Shilpa Rao"
         // against "Shilpa Rao, Arijit Singh, & Pritam" is one song, twice.
         val left = artistSet(a.artist)
         val right = artistSet(b.artist)
@@ -86,7 +86,7 @@ object QueueBuilder {
     /**
      * `Kesariya (From "Brahmastra") | Official Video` and `Kesariya` are one
      * recording as far as a queue is concerned. Remix and cover markers are
-     * deliberately left in — those really are different tracks.
+     * deliberately left in Â— those really are different tracks.
      */
     internal fun normalisedTitle(raw: String): String = raw.lowercase(Locale.ROOT)
         .substringBefore(" | ")
@@ -98,7 +98,7 @@ object QueueBuilder {
     /** The cast behind a credit, split out so billing order stops mattering. */
     internal fun artistSet(raw: String): Set<String> = raw.lowercase(Locale.ROOT)
         .replace(TOPIC, " ")
-        .split(",", "&", "·", "•", ";", " feat", " ft.", " ft ", " x ", " with ")
+        .split(",", "&", "Â·", "Â•", ";", " feat", " ft.", " ft ", " x ", " with ")
         .map { it.replace(PUNCTUATION, " ").replace(SPACES, " ").trim() }
         .filter { it.isNotEmpty() }
         .toSet()

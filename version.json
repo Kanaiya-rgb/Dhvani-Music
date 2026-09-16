@@ -1,7 +1,7 @@
 {
-  "version": "2.0.7",
-  "versionCode": 27,
-  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.0.7",
-  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.0.7/DhvaniMusic-v2.0.7.apk",
-  "notes": "v2.0.7: Status bar playback icon with appearance toggle, Android 13 Go / 32-bit (armeabi-v7a) compatibility, POST_NOTIFICATIONS runtime prompt, and stream recovery fixes."
+  "version": "2.1.0",
+  "versionCode": 28,
+  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.1.0",
+  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.1.0/DhvaniMusic-v2.1.0.apk",
+  "notes": "v2.1.0: Brand-new futuristic Listen Together front-screen experience, smart background prefetch for next 2 queue songs (instant synced lyrics, audio chunks, and artwork), real-time release notifications upon Wi-Fi/data connection, studio karaoke mic lyrics icon, and floating dynamic island overlay permission guidance."
 }

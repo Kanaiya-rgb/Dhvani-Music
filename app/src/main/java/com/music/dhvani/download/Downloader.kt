@@ -19,7 +19,7 @@ import kotlin.coroutines.coroutineContext
  * Two things here are not obvious and both are load-bearing:
  *
  *  - **Bounded ranges, not one long GET.** googlevideo paces a continuous
- *    response down to roughly playback speed — about 15kB/s, against 5.7MB/s
+ *    response down to roughly playback speed Â— about 15kB/s, against 5.7MB/s
  *    for the same bytes asked for as ranges. That is the difference between a
  *    four-minute track saving in a second and saving in four minutes, and it is
  *    the same finding [ChunkedDataSource][com.music.dhvani.playback.ChunkedDataSource]
@@ -27,7 +27,7 @@ import kotlin.coroutines.coroutineContext
  *  - **The client's own headers.** googlevideo bakes the identity that minted a
  *    URL into it as `c=`/`cver=` and compares that against the headers of the
  *    request that comes back for the bytes. Fetching with anything else is a
- *    403 — so the fetch is dressed as whatever the URL says made it, which
+ *    403 Â— so the fetch is dressed as whatever the URL says made it, which
  *    [PlayerClient.forStreamUrl] can recover from the URL alone.
  *
  * Sequential rather than parallel. Ranges are served at line rate, and a
@@ -101,7 +101,7 @@ object Downloader {
                 // one stream into the middle of another produces a file that is
                 // the right length and unplayable, so a length that has moved
                 // is a failure rather than something to work around.
-                if (contentLength(url) != total) error("The stream changed mid-download — try again")
+                if (contentLength(url) != total) error("The stream changed mid-download Â— try again")
                 continue
             }
 
@@ -120,8 +120,8 @@ object Downloader {
                     position += read
                     onProgress(position, total)
                 }
-                // A range that stops short is not fatal on its own — the next
-                // pass simply asks for what is left — but one that yields
+                // A range that stops short is not fatal on its own Â— the next
+                // pass simply asks for what is left Â— but one that yields
                 // nothing at all would loop here forever.
                 if (readForChunk == 0L) error("Download stalled at ${position}B")
             }
@@ -139,12 +139,12 @@ object Downloader {
      *  - **One GET, not ranges.** The chunk loop above exists to defeat
      *    googlevideo's pacing, and nothing else paces bytes that way. Worse, a
      *    server that ignores `Range` answers 200 with the whole file rather
-     *    than 206 with the slice asked for — and that loop would then write the
+     *    than 206 with the slice asked for Â— and that loop would then write the
      *    opening of the file into the middle of the output and commit something
      *    the right length and unplayable.
      *  - **The source's own headers.** A source hands them over alongside the
-     *    URL — see [SourceStream.headers][com.music.dhvani.data.sources.SourceStream.headers]
-     *    — and they are whatever that server binds its links to. The
+     *    URL Â— see [SourceStream.headers][com.music.dhvani.data.sources.SourceStream.headers]
+     *    Â— and they are whatever that server binds its links to. The
      *    [PlayerClient] identity [fetch] recovers from a googlevideo URL means
      *    nothing here.
      *
@@ -155,7 +155,7 @@ object Downloader {
      * answer than asking again.
      *
      * @param onProgress called as bytes land, and only when the response stated
-     *   a length to measure against — an unstated one leaves the progress
+     *   a length to measure against Â— an unstated one leaves the progress
      *   indeterminate rather than dividing by zero.
      * @return how many bytes were written.
      */
@@ -192,7 +192,7 @@ object Downloader {
             // committing would publish a file that looks whole and stops
             // halfway through the song.
             if (total != null && written < total) {
-                error("Download stopped at ${written}B of $total — try again")
+                error("Download stopped at ${written}B of $total Â— try again")
             }
             if (written == 0L) error("Download failed: nothing was sent")
             Log.d(TAG, "fetched ${written}B directly")
@@ -218,7 +218,7 @@ object Downloader {
      *
      * Every progressive googlevideo URL carries it as `clen`, which costs no
      * request at all. The `bytes=0-0` probe behind it is for the URLs that
-     * don't — the extraction failsafe can produce one — and reads the total out
+     * don't Â— the extraction failsafe can produce one Â— and reads the total out
      * of the `Content-Range` header of a one-byte response.
      */
     private fun contentLength(url: String): Long? {

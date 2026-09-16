@@ -20,7 +20,7 @@ import org.xml.sax.InputSource
  * ```
  *
  * Syllables of one word are written as adjacent spans with no whitespace
- * between them ("e" + "nough"), so whitespace — not the span boundary — is
+ * between them ("e" + "nough"), so whitespace Â— not the span boundary Â— is
  * what separates words. That is the whole trick to reading this format.
  *
  * Parsed with DOM rather than a pull parser so this stays plain JVM code and
@@ -37,7 +37,7 @@ object TtmlLyrics {
     /**
      * The answering vocal. It is this line, sung by a second voice over the
      * lead and often past the *next* line's stamp, so it is collected apart
-     * and carried as [LyricLine.background] — run into the lead's own words it
+     * and carried as [LyricLine.background] Â— run into the lead's own words it
      * dragged the sweep along and the tail of the line was skipped.
      */
     private const val BACKGROUND_ROLE = "x-bg"
@@ -78,13 +78,13 @@ object TtmlLyrics {
         if (words.isEmpty()) {
             // Line-synced TTML: a <p> with a stamp and bare text, no spans.
             // textContent is the whole paragraph, backing vocal included, so
-            // there is nothing here to hang underneath — the bracket in the
+            // there is nothing here to hang underneath Â— the bracket in the
             // text is all the separation the document gave.
             val text = paragraph.textContent?.trim().orEmpty()
             val begin = time(paragraph.getAttribute("begin")) ?: return null
             if (text.isEmpty()) return null
             // The paragraph's own end is the only thing that says when the
-            // singing stops, so carry it — a break can't be found without it.
+            // singing stops, so carry it Â— a break can't be found without it.
             val end = time(paragraph.getAttribute("end"))?.takeIf { it > begin }
             return LyricLine(timeMs = begin, text = text, sungUntilMs = end)
         }
@@ -105,7 +105,7 @@ object TtmlLyrics {
      * Flattens a paragraph into timed spans and the whitespace between them.
      * Nested spans (Apple wraps background vocals, and occasionally whole
      * phrases, in an outer timed span) recurse to their leaves, so only the
-     * innermost timings — the ones actually per-syllable — survive.
+     * innermost timings Â— the ones actually per-syllable Â— survive.
      *
      * Spans marked [BACKGROUND_ROLE] and everything under them go to
      * [backing] instead of [out], which is what keeps the two voices apart.
@@ -118,7 +118,7 @@ object TtmlLyrics {
                     val role = child.getAttribute("ttm:role")
                     if (role in SKIPPED_ROLES) continue
                     // Inside a backing span every leaf is backing, so the sink
-                    // switches for the whole of that subtree — whether the
+                    // switches for the whole of that subtree Â— whether the
                     // span holds its own syllables or is a single timed leaf.
                     val sink = if (role == BACKGROUND_ROLE) backing else out
                     val begin = time(child.getAttribute("begin"))
@@ -148,8 +148,8 @@ object TtmlLyrics {
 
     /**
      * Glues syllables back into words. A word ends at the first whitespace
-     * after it — whether that whitespace is a text node between two spans or
-     * part of a span's own text — and its span runs from the first syllable's
+     * after it Â— whether that whitespace is a text node between two spans or
+     * part of a span's own text Â— and its span runs from the first syllable's
      * start to the last one's end.
      */
     private fun mergeIntoWords(pieces: List<Piece>): List<LyricWord> {
@@ -159,7 +159,7 @@ object TtmlLyrics {
         var end = 0L
         // Untimed text is punctuation hanging off a span, or a line that was
         // never word-timed at all. Either way it can't carry a word of its
-        // own — a word needs a span to get its timing from.
+        // own Â— a word needs a span to get its timing from.
         var timed = false
 
         fun flush() {

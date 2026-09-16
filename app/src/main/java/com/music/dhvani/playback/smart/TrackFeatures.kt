@@ -2,11 +2,11 @@
  * Ported from Orchard (https://github.com/SFG5453/Orchard).
  *
  * Copyright (C) 2026 SFG545 (original Orchard implementation)
- * Copyright (C) 2026 Kushagra Singh (BitChord adaptation)
+ * Copyright (C) 2026 Kushagra Singh (Dhvani adaptation)
  *
  * Orchard's original source is licensed under the GNU Affero General Public
  * License, version 3 or later. Per AGPLv3 section 13, this file is combined
- * here into BitChord -- a work licensed under the GNU General Public
+ * here into Dhvani -- a work licensed under the GNU General Public
  * License, version 3 or later -- and remains itself governed by the AGPLv3
  * as part of that combination.
  *
@@ -30,7 +30,7 @@ import org.json.JSONObject
  * analyzer (`native/analyzer/audio_analysis.cpp`).
  *
  * This answers "where does the music actually end, where can a transition
- * enter and leave, how loud is it there, and is anyone singing" — the
+ * enter and leave, how loud is it there, and is anyone singing" Â— the
  * transition policy needs a beat grid (also produced here, from
  * autocorrelation) to know how to mix, and these features to know *where*,
  * and through the energy curve, whether an interior mix-out anchor would
@@ -67,7 +67,7 @@ object TrackFeatures {
 
     /**
      * Converts mono float PCM from [inputRate] to [sampleRate] (or any other
-     * target), with an anti-aliasing windowed-sinc filter — see
+     * target), with an anti-aliasing windowed-sinc filter Â— see
      * `native/analyzer/resampler.cpp`.
      *
      * Returns the input unchanged when the rates already match, and null when

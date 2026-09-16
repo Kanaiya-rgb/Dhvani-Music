@@ -41,7 +41,7 @@ import java.util.Locale
  * Buckets are calendar months in the device's own time zone, one JSON file
  * each. That is what makes "this year" and "all time" the same operation on
  * different numbers of files, and it means the only bucket held in memory is
- * the one being written to — the rest are read, merged and released.
+ * the one being written to Â— the rest are read, merged and released.
  *
  * A month is also the granularity below which nothing on the Replay page asks a
  * question. Days are still counted, as a total per day inside the bucket, which
@@ -109,7 +109,7 @@ object ListeningStats {
     fun init(context: Context) {
         directory = File(context.filesDir, DIRECTORY)
         // Opening a month means reading and parsing it, and the first thing to
-        // ask for one is the playback sampler — on the main thread, a few
+        // ask for one is the playback sampler Â— on the main thread, a few
         // seconds into the first track. Done here instead, it has happened long
         // before anything is playing.
         writer.launch { synchronized(lock) { bucketFor(YearMonth.now()) } }
@@ -125,7 +125,7 @@ object ListeningStats {
      * [countsAsPlay] separates the two things a listener means by "played". The
      * minutes are what actually came out of the speaker and are added on every
      * sample; a *play* is a whole listen and is counted once, by whoever is
-     * watching the track rather than here — see [ListeningRecorder], which holds
+     * watching the track rather than here Â— see [ListeningRecorder], which holds
      * the same threshold the scrobbler uses.
      */
     fun record(song: Song, playedMs: Long, countsAsPlay: Boolean) {
@@ -161,7 +161,7 @@ object ListeningStats {
             // The lead artist, not the credit as a string. A track billed
             // "Cheema Y & Gur Sidhu" is not a third artist who happens to share
             // both their names, and filing it as one is how a chart lists the
-            // same person twice — once solo and again in each collaboration —
+            // same person twice Â— once solo and again in each collaboration Â—
             // with their listening split between the rows.
             //
             // The *lead* rather than everyone named, which is the reading the
@@ -233,7 +233,7 @@ object ListeningStats {
      * Serialises a month and swaps it into place.
      *
      * Never on the caller's thread. The caller is the playback service's
-     * sampler, which runs on the main thread — see its `reportProgress` — so
+     * sampler, which runs on the main thread Â— see its `reportProgress` Â— so
      * encoding a month of listening and writing it there was a JSON pass and a
      * file write on the UI thread every thirty seconds of playback, growing
      * with the size of the month.
@@ -288,8 +288,8 @@ object ListeningStats {
         val facts = ArtistFacts.revision.value
         // Every input to the merge, so the cache cannot be stale: which months
         // are on disk and what is in them ([version]), what is known about the
-        // artists in them, which period was asked for, and — because "this
-        // month" and "this year" are relative — what day it is. Opening the
+        // artists in them, which period was asked for, and Â— because "this
+        // month" and "this year" are relative Â— what day it is. Opening the
         // Library tab asks for this, so it is asked often and usually for an
         // answer that has not changed.
         cached?.takeIf {
@@ -350,7 +350,7 @@ object ListeningStats {
      * together rather than overwriting.
      *
      * Needed because a key is *recomputed* on load rather than read back from
-     * the file — see [NameEntry.key]. Two entries written under different keys
+     * the file Â— see [NameEntry.key]. Two entries written under different keys
      * by an older build can therefore arrive at the same key now, and the
      * obvious `associateByTo` would silently drop one of their totals.
      */
@@ -527,7 +527,7 @@ object ListeningStats {
                 .sortedWith(compareByDescending<NameEntry> { it.ms }.thenByDescending { it.plays })
                 .map { RankedEntry(it.name, it.sub, it.art, it.id, it.ms, it.plays) }
 
-            // Genres are derived rather than stored — see [ArtistFacts]. An
+            // Genres are derived rather than stored Â— see [ArtistFacts]. An
             // artist with no tag yet simply doesn't vote, which is why this can
             // be an empty list on a page whose other charts are full.
             val genreMs = LinkedHashMap<String, Long>()
@@ -541,7 +541,7 @@ object ListeningStats {
                 }
             }
             // Anything still missing a picture is asked about now, so opening
-            // the page is a second way for these to fill in — the first being
+            // the page is a second way for these to fill in Â— the first being
             // playing the music, which is no help to someone who has just
             // installed a build that started collecting them.
             rankedArtists.take(ARTISTS_TO_RESOLVE)
@@ -591,7 +591,7 @@ object ListeningStats {
      * bug is not, and a separator that cannot collide costs nothing.
      *
      * Concatenated rather than interpolated so the separator is visible in the
-     * source — a NUL inside a template string is an invisible character in the
+     * source Â— a NUL inside a template string is an invisible character in the
      * middle of a line, which is exactly how this file spent a while being
      * treated as a binary by every tool that looked at it.
      */
@@ -617,7 +617,7 @@ object ListeningStats {
      * Split conservatively, and on punctuation rather than on words: `,`, `&`,
      * `x` and the feature markers are how every catalogue this app reads joins
      * two artists, while " and " and " with " are as often part of a band's
-     * actual name — "Florence and the Machine", "Nick Cave and the Bad Seeds" —
+     * actual name Â— "Florence and the Machine", "Nick Cave and the Bad Seeds" Â—
      * so they are left alone. A name is still split wrongly now and then
      * ("Simon & Garfunkel"), which costs one duplicated chart row; not splitting
      * at all costs a row for every collaboration anyone has ever recorded.
@@ -696,7 +696,7 @@ data class TrackEntry(
  * be spelt differently by a later build. What that actually buys is the
  * opposite: an entry keyed by an older build keeps its old key forever, so the
  * same artist ends up in two rows the moment the spelling changes and there is
- * no way back. Recomputing on load means a change heals itself — see
+ * no way back. Recomputing on load means a change heals itself Â— see
  * [OpenBucket.of] and the merge it does on the way in.
  */
 @Serializable
@@ -797,8 +797,8 @@ data class ReplaySummary(
     /**
      * Whether there is anything at all to draw.
      *
-     * One track is enough. There was a minimum here — five minutes, on the
-     * reasoning that a chart of two songs is not a chart — and it was wrong in
+     * One track is enough. There was a minimum here Â— five minutes, on the
+     * reasoning that a chart of two songs is not a chart Â— and it was wrong in
      * the only way that matters: someone who has just played a couple of songs
      * and gone looking for the page they heard about is told they have not
      * listened to anything, which is both untrue and indistinguishable from the

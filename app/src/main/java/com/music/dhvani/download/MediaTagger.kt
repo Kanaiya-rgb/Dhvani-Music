@@ -23,7 +23,7 @@ import kotlin.math.max
  * already succeeded, and [Mp4Tagger], [WebmTagger] and [FlacTagger] all fall
  * back to returning their input unchanged on anything they don't recognise.
  * Every step here is caught rather than left to propagate, because a download
- * this runs after has already landed — a tagging failure should cost the tags,
+ * this runs after has already landed Â— a tagging failure should cost the tags,
  * not the file.
  *
  * The lyrics are the one thing not fetched here. They come in as text from
@@ -35,14 +35,14 @@ object MediaTagger {
 
     private const val TAG = "DhvaniMusic"
 
-    /** Long side of the embedded cover — plenty for a lock screen or a car head unit, without ballooning the file. */
+    /** Long side of the embedded cover Â— plenty for a lock screen or a car head unit, without ballooning the file. */
     private const val COVER_MAX_SIDE = 1000
 
     /**
      * The containers there is a tagger for.
      *
-     * A download can land as something else — `.wav` from a source that serves
-     * it, see [DownloadStore.storable] — and that file keeps the tags its
+     * A download can land as something else Â— `.wav` from a source that serves
+     * it, see [DownloadStore.storable] Â— and that file keeps the tags its
      * filename carries and nothing more. Worth having no tagger for rather than
      * a half-written one: a WAV's metadata lives in RIFF chunks that a good
      * number of players ignore outright.
@@ -110,7 +110,7 @@ object MediaTagger {
         }.getOrNull() ?: return
 
         // Every tagger hands back the same array reference when there was
-        // nothing safe to do — cheaper than a byte comparison, and exact
+        // nothing safe to do Â— cheaper than a byte comparison, and exact
         // where it matters: it means "don't touch the file that just finished
         // downloading" rather than "these bytes happen to be equal".
         if (tagged === original) return

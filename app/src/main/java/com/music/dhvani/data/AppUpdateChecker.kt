@@ -7,6 +7,11 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -22,7 +27,9 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.music.dhvani.BuildConfig
 import com.music.dhvani.R
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
@@ -36,7 +43,7 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
- * BitChord ships as a sideloaded APK off GitHub Releases rather than through
+ * Dhvani ships as a sideloaded APK off GitHub Releases rather than through
  * a store, so there's nothing to push an update notice on its own — this
  * polls the repo's "latest release" once per launch and compares its tag
  * against the running build.
@@ -125,9 +132,13 @@ object AppUpdateChecker {
     }
 
     private fun fetchFromCdn(): UpdateInfo? = runCatching {
+        // Append a timestamp query parameter to bust any CDN / ISP-level cache
+        val bustUrl = "$CDN_VERSION_URL?_t=${System.currentTimeMillis()}"
         val req = Request.Builder()
-            .url(CDN_VERSION_URL)
+            .url(bustUrl)
             .header("User-Agent", "Dhvani-Music/${BuildConfig.VERSION_NAME}")
+            .header("Cache-Control", "no-cache, no-store, must-revalidate")
+            .header("Pragma", "no-cache")
             .build()
         Http.client.newCall(req).execute().use { res ->
             if (!res.isSuccessful) return null
@@ -329,16 +340,86 @@ object AppUpdateChecker {
     private const val PREF_LAST_NOTIFIED_TIME = "last_notified_update_time"
     private const val REMINDER_INTERVAL_MS = 24 * 60 * 60 * 1000L // 24 hours
 
+    fun ensureNotificationChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+            val channel = NotificationChannel(
+                UPDATE_CHANNEL_ID,
+                "App Updates",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Instant alerts when a new Dhvani Music update is released"
+                enableLights(true)
+                lightColor = 0xFFF97316.toInt()
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 200, 100, 200)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            }
+            manager.createNotificationChannel(channel)
+        }
+    }
+
     /**
-     * Schedules periodic and immediate background checks via WorkManager
-     * to check for updates whenever device has active internet connectivity.
+     * Actively listens for device network transitions (Wi-Fi or Mobile Data connecting).
+     * The moment the device validates internet access, it checks for new GitHub releases
+     * and immediately posts a rich system notification if an update is found.
+     */
+    fun startNetworkUpdateObserver(context: Context) {
+        ensureNotificationChannel(context)
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        var lastCheckTime = 0L
+
+        val triggerCheck = {
+            val now = System.currentTimeMillis()
+            // 5-minute debounce to prevent rapid network toggles from flooding checks
+            if (now - lastCheckTime > 5 * 60 * 1000L) {
+                lastCheckTime = now
+                CoroutineScope(Dispatchers.IO).launch {
+                    runCatching {
+                        check(context)
+                    }
+                }
+            }
+        }
+
+        runCatching {
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+
+            connectivityManager.registerNetworkCallback(
+                request,
+                object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        triggerCheck()
+                    }
+
+                    override fun onCapabilitiesChanged(
+                        network: Network,
+                        networkCapabilities: NetworkCapabilities,
+                    ) {
+                        if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                            networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                        ) {
+                            triggerCheck()
+                        }
+                    }
+                },
+            )
+        }
+    }
+
+    /**
+     * Schedules background checks via WorkManager to inspect GitHub Releases
+     * whenever the device is connected to the internet, even if the app is closed.
      */
     fun schedulePeriodicCheck(context: Context) {
+        ensureNotificationChannel(context)
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val periodicRequest = PeriodicWorkRequestBuilder<AppUpdateWorker>(4, TimeUnit.HOURS)
+        val periodicRequest = PeriodicWorkRequestBuilder<AppUpdateWorker>(2, TimeUnit.HOURS)
             .setConstraints(constraints)
             .build()
 
@@ -360,8 +441,8 @@ object AppUpdateChecker {
     }
 
     /**
-     * Posts a high-priority system notification when a new update is found.
-     * Includes rate-limiting (maximum once per 24 hours per version) so it doesn't spam.
+     * Posts a beautifully styled high-priority system notification when a new update is found.
+     * Fires immediately on any newly released version, with 24-hour reminder intervals if dismissed.
      */
     fun postUpdateNotification(context: Context, info: UpdateInfo) {
         val prefs = context.getSharedPreferences("app_updates", Context.MODE_PRIVATE)
@@ -369,52 +450,86 @@ object AppUpdateChecker {
         val lastNotifiedTime = prefs.getLong(PREF_LAST_NOTIFIED_TIME, 0L)
         val now = System.currentTimeMillis()
 
+        // Always fire immediately for a brand-new release version; rate-limit repeat reminders to 24h
         if (lastNotifiedVersion == info.version && (now - lastNotifiedTime) < REMINDER_INTERVAL_MS) {
             return
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            if (manager != null) {
-                val channel = NotificationChannel(
-                    UPDATE_CHANNEL_ID,
-                    "App Updates",
-                    NotificationManager.IMPORTANCE_HIGH,
-                ).apply {
-                    description = "Notifies when a new Dhvani Music update is available on GitHub"
-                    enableLights(true)
-                    enableVibration(true)
-                }
-                manager.createNotificationChannel(channel)
-            }
-        }
+        ensureNotificationChannel(context)
 
-        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
             putExtra("open_update_dialog", true)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
-        val pendingIntent = PendingIntent.getActivity(
+        val updatePendingIntent = PendingIntent.getActivity(
             context,
             0,
-            intent,
+            launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        val releasePageUrl = info.releaseUrl.takeIf { it.isNotBlank() } ?: "https://github.com/Kanaiya-rgb/Dhvani-Music/releases"
+        val releaseIntent = Intent(Intent.ACTION_VIEW, Uri.parse(releasePageUrl)).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        val releasePendingIntent = PendingIntent.getActivity(
+            context,
+            1,
+            releaseIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val largeIcon = runCatching {
+            BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher)
+        }.getOrNull()
+
+        val cleanNotes = info.notes?.trim()?.takeIf { it.isNotEmpty() }
+        val bodyBuilder = buildString {
+            append("🎉 Dhvani Music v").append(info.version).append(" is ready to install!\n")
+            if (cleanNotes != null) {
+                append("\nHighlights:\n")
+                append(cleanNotes.take(280))
+                if (cleanNotes.length > 280) append("...")
+            } else {
+                append("\nIncludes faster streaming, synced lyrics enhancements, and bug fixes.")
+            }
+            append("\n\n⚡ Tap 'Update Now' to download and install instantly.")
+        }
+
+        val updateAction = NotificationCompat.Action.Builder(
+            R.drawable.ic_notification_logo,
+            "⚡ Update Now",
+            updatePendingIntent,
+        ).build()
+
+        val releaseAction = NotificationCompat.Action.Builder(
+            R.drawable.ic_notification_logo,
+            "🌐 What's New",
+            releasePendingIntent,
+        ).build()
+
         val notification = NotificationCompat.Builder(context, UPDATE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_logo)
+            .apply {
+                if (largeIcon != null) setLargeIcon(largeIcon)
+            }
+            .setColor(0xFFF97316.toInt()) // Dhvani Orange
+            .setColorized(false)
+            .setSubText("✨ Update Available • v${info.version}")
             .setContentTitle("🎵 New Update: Dhvani Music v${info.version}")
             .setContentText("Version ${info.version} is now available! Tap to download & install.")
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText(
-                        "Dhvani Music v${info.version} is now available!\n" +
-                            (info.notes?.take(180)?.let { "\n$it\n\n" } ?: "") +
-                            "Tap to open and install the new update.",
-                    ),
+                    .setBigContentTitle("🚀 Dhvani Music v${info.version} is here!")
+                    .setSummaryText("Tap to update")
+                    .bigText(bodyBuilder),
             )
-            .setContentIntent(pendingIntent)
+            .setContentIntent(updatePendingIntent)
+            .addAction(updateAction)
+            .addAction(releaseAction)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()

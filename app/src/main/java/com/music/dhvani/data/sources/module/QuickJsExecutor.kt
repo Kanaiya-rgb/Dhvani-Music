@@ -25,7 +25,7 @@ import java.util.Locale
  * Modules commonly stash session/auth state in top-level variables set up
  * once at load time (e.g. an eager token pre-fetch). The old one-shot
  * executor re-evaluated the whole script on every function call, so that
- * state never survived from `searchTracks()` to `getStreamUrl()` — each
+ * state never survived from `searchTracks()` to `getStreamUrl()` Â— each
  * ran in its own throwaway VM. Keeping one engine alive per loaded module,
  * reused across calls, is what a normal module host does and what these
  * modules assume. LRU-capped at [MAX_MODULES]; least-recently-used is
@@ -38,14 +38,14 @@ import java.util.Locale
  * Both of those make one engine strictly one call at a time: two callers
  * sharing it would interleave their `evaluate`s inside the interpreter, and
  * even if they didn't, the second would overwrite `__spine_resolved_json`
- * before the first had read it — so one track's download would quietly receive
+ * before the first had read it Â— so one track's download would quietly receive
  * another track's stream URL. That was survivable while downloads drained one
  * at a time and playback asked for one track at a time; it is not survivable
  * with several downloads in flight.
  *
  * Serialising on a single engine would be correct and would also give all the
  * concurrency back, since a module's own HTTP fetches happen *inside* the VM
- * and hold it for their whole duration — measured at 7.7s for one module on
+ * and hold it for their whole duration Â— measured at 7.7s for one module on
  * one query. So each module gets a small pool instead: [ENGINES_PER_MODULE]
  * independent VMs, each handed to one caller at a time, growing lazily so a
  * module nobody is hammering still costs exactly one.
@@ -61,10 +61,10 @@ internal object QuickJsExecutor {
      *
      * Has to cover a whole index, not a working set. A search fans out to
      * *every* module at once, so a cap below the index size means each search
-     * evicts engines the same search is still using — and the eviction is
+     * evicts engines the same search is still using Â— and the eviction is
      * invisible to [ModuleManager], which caches the load separately and goes
      * on reporting a hit for an engine that is gone. What that produced was
-     * `Module … is not loaded` on the stream call for whichever modules lost
+     * `Module Â… is not loaded` on the stream call for whichever modules lost
      * the race, one wasted attempt per track, on every track. Four was the
      * ported default and is below the size of a real index.
      */
@@ -74,7 +74,7 @@ internal object QuickJsExecutor {
      * How many callers one module can serve at once.
      *
      * Each is a whole interpreter with the module's script evaluated into it,
-     * so this is not free — and each costs whatever the module does at load
+     * so this is not free Â— and each costs whatever the module does at load
      * time, which for several of them is an eager token fetch. Three is sized
      * against the download queue's own width: enough that the workers are not
      * queueing behind each other on the one slow module in the index, few
@@ -92,7 +92,7 @@ internal object QuickJsExecutor {
     private class Pool(val jsCode: String, val fetchBase: String) {
         val free = Channel<QuickJs>(Channel.UNLIMITED)
         val lock = Mutex()
-        /** Engines made or being made — the claim that stops two callers both growing the pool. */
+        /** Engines made or being made Â— the claim that stops two callers both growing the pool. */
         var started = 0
         /** Engines actually made, for closing them on unload. Guarded by [lock]. */
         val made = mutableListOf<QuickJs>()
@@ -119,7 +119,7 @@ internal object QuickJsExecutor {
     suspend fun loadModule(moduleId: String, jsCode: String, fetchBase: String = ""): Result<Unit> {
         val evicted = synchronized(engineLock) {
             if (pools.containsKey(moduleId)) {
-                TrackLog.d(TAG, "QuickJsExecutor.loadModule($moduleId) — ENGINE CACHE HIT")
+                TrackLog.d(TAG, "QuickJsExecutor.loadModule($moduleId) Â— ENGINE CACHE HIT")
                 return Result.success(Unit)
             }
             buildList {
@@ -321,7 +321,7 @@ internal object QuickJsExecutor {
      * that wraps it in a CommonJS-style `module.exports` object.
      *
      * Also handles the template-literal export format some Spine sources use:
-     * `export const x = \`…actual JS…\``
+     * `export const x = \`Â…actual JSÂ…\``
      */
     private fun preprocessModuleCode(jsCode: String): String {
         val code = jsCode.trim()

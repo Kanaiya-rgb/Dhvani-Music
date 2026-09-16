@@ -20,7 +20,7 @@ object DhvaniIcons {
 
     val Play: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_play",
+            name = "dhvani_play",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -41,7 +41,7 @@ object DhvaniIcons {
 
     val Search: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_search",
+            name = "dhvani_search",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -64,7 +64,7 @@ object DhvaniIcons {
 
     val Explore: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_explore",
+            name = "dhvani_explore",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -153,7 +153,7 @@ object DhvaniIcons {
 
     val Shuffle: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_shuffle",
+            name = "dhvani_shuffle",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -174,7 +174,7 @@ object DhvaniIcons {
         }.build()
     }
 
-    val Repeat: ImageVector by lazy { repeatLoop("bc_repeat") }
+    val Repeat: ImageVector by lazy { repeatLoop("dhvani_repeat") }
 
     /**
      * Two straight runs joined by semicircles, with the arrow heads lying flat
@@ -208,7 +208,7 @@ object DhvaniIcons {
     /** AutoPlay's lemniscate. */
     val Infinity: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_infinity",
+            name = "dhvani_infinity",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -232,7 +232,7 @@ object DhvaniIcons {
     /** Beamed pair of notes, for instrumental stretches in the lyrics. */
     val MusicNote: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_music_note",
+            name = "dhvani_music_note",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -260,10 +260,10 @@ object DhvaniIcons {
         }.build()
     }
 
-    /** Speech bubble with two lines of words. */
+    /** Apple Music Style Speech Bubble with stylized double quotation marks for Lyrics. */
     val Lyrics: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_lyrics",
+            name = "dhvani_lyrics_quote",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -273,21 +273,29 @@ object DhvaniIcons {
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Round,
             ) {
-                moveTo(6.2f, 4.6f)
-                lineTo(17.8f, 4.6f)
-                arcToRelative(2.8f, 2.8f, 0f, isMoreThanHalf = false, isPositiveArc = true, 2.8f, 2.8f)
-                lineTo(20.6f, 13.6f)
-                arcToRelative(2.8f, 2.8f, 0f, isMoreThanHalf = false, isPositiveArc = true, -2.8f, 2.8f)
-                lineTo(10.6f, 16.4f)
-                lineTo(6.8f, 19.6f)
-                lineTo(6.8f, 16.4f)
-                lineTo(6.2f, 16.4f)
-                arcToRelative(2.8f, 2.8f, 0f, isMoreThanHalf = false, isPositiveArc = true, -2.8f, -2.8f)
-                lineTo(3.4f, 7.4f)
-                arcToRelative(2.8f, 2.8f, 0f, isMoreThanHalf = false, isPositiveArc = true, 2.8f, -2.8f)
+                // Speech bubble outline
+                moveTo(6.5f, 4.5f)
+                lineTo(17.5f, 4.5f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = true, 3f, 3f)
+                lineTo(20.5f, 13.5f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = true, -3f, 3f)
+                lineTo(10.8f, 16.5f)
+                lineTo(6.6f, 19.8f)
+                lineTo(6.6f, 16.5f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = true, -3.1f, -3f)
+                lineTo(3.5f, 7.5f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = true, 3f, -3f)
                 close()
-                moveTo(7.6f, 9f); lineTo(16.4f, 9f)
-                moveTo(7.6f, 12.1f); lineTo(13.2f, 12.1f)
+
+                // Left quotation mark “
+                moveTo(9.2f, 8.8f)
+                arcToRelative(1.4f, 1.4f, 0f, isMoreThanHalf = true, isPositiveArc = true, 0f, 2.6f)
+                lineTo(8.2f, 12.8f)
+
+                // Right quotation mark ”
+                moveTo(14.8f, 8.8f)
+                arcToRelative(1.4f, 1.4f, 0f, isMoreThanHalf = true, isPositiveArc = true, 0f, 2.6f)
+                lineTo(13.8f, 12.8f)
             }
         }.build()
     }
@@ -295,7 +303,7 @@ object DhvaniIcons {
     /** Plain chevron — a disclosure hint, not a directional arrow. */
     val ChevronRight: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_chevron_right",
+            name = "dhvani_chevron_right",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -319,9 +327,9 @@ object DhvaniIcons {
      * white on artwork, where a colour change alone is the one signal the
      * backdrop can swallow. A shape change survives any album cover.
      */
-    val Heart: ImageVector by lazy { heart("bc_heart", filled = false) }
+    val Heart: ImageVector by lazy { heart("dhvani_heart", filled = false) }
 
-    val HeartFilled: ImageVector by lazy { heart("bc_heart_filled", filled = true) }
+    val HeartFilled: ImageVector by lazy { heart("dhvani_heart_filled", filled = true) }
 
     private fun heart(name: String, filled: Boolean): ImageVector =
         ImageVector.Builder(
@@ -349,7 +357,7 @@ object DhvaniIcons {
     /** Adding something — a new playlist, on the library shelf. */
     val Plus: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_plus",
+            name = "dhvani_plus",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -372,7 +380,7 @@ object DhvaniIcons {
      */
     val Check: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_check",
+            name = "dhvani_check",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -390,7 +398,7 @@ object DhvaniIcons {
     /** Arrow pointing down into a tray — offline download. */
     val Download: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_download",
+            name = "dhvani_download",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -421,7 +429,7 @@ object DhvaniIcons {
      */
     val Clock: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_clock",
+            name = "dhvani_clock",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -449,7 +457,7 @@ object DhvaniIcons {
      */
     val Pin: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_pin",
+            name = "dhvani_pin",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -472,7 +480,7 @@ object DhvaniIcons {
 
     val Library: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_library",
+            name = "dhvani_library",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
@@ -518,7 +526,7 @@ object DhvaniIcons {
     /** Notification Bell icon matching Stitch mockup. */
     val Bell: ImageVector by lazy {
         ImageVector.Builder(
-            name = "bc_bell",
+            name = "dhvani_bell",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {

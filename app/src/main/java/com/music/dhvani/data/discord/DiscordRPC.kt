@@ -21,12 +21,12 @@ import java.util.Locale
  * The presence Discord renders from one [updateSong] call:
  *
  * ```
- *   Listening to BitChord          <- activityName, or the app's own name
+ *   Listening to Dhvani          <- activityName, or the app's own name
  *   ┌────┐  Song title             <- details
  *   │art │  Artist                 <- state
  *   └────┘  ▁▁▁▁▁▁ 1:04 / 3:47     <- from the timestamps
  *   [ Listen on YouTube Music ]    <- button 1
- *   [ Visit BitChord           ]   <- button 2
+ *   [ Visit Dhvani           ]   <- button 2
  * ```
  */
 class DiscordRPC(
@@ -131,7 +131,7 @@ class DiscordRPC(
     /**
      * The name Discord puts after "Listening to". Taken from the app's own
      * label so it tracks a rename, with the dev flavor's suffix dropped —
-     * a side-by-side dev install should still look like bitchord to everyone
+     * a side-by-side dev install should still look like dhvani to everyone
      * else on Discord.
      */
     private fun appName(): String =

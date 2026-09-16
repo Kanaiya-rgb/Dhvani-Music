@@ -11,8 +11,6 @@ import coil3.disk.directory
 import coil3.memory.MemoryCache
 import coil3.request.crossfade
 import com.music.dhvani.auth.AuthStore
-import com.music.dhvani.data.canvas.CanvasCache
-import com.music.dhvani.data.canvas.SpotifyToken
 import com.music.dhvani.playback.AudioCache
 import com.music.dhvani.playback.LastPlayed
 import com.music.dhvani.data.innertube.Innertube
@@ -36,6 +34,7 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         AppUpdateChecker.schedulePeriodicCheck(this)
+        AppUpdateChecker.startNetworkUpdateObserver(this)
         // PlaybackService shares this process, so seeding the cookie here means
         // stream resolution is authenticated from the first play onwards.
         authStore = AuthStore(this)
@@ -70,17 +69,6 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
         // One cache directory can only be opened once per process, and
         // PlaybackService shares this one — so it's opened here, not there.
         AudioCache.init(this)
-        // Same reasoning, its own directory: canvas clips are looping video,
-        // not audio, and belong in a cache AudioCache's own limit and eviction
-        // policy were never sized for. See CanvasCache's doc for why this one
-        // exists at all — it is the fix for canvas clips re-fetching the same
-        // few seconds of video from the network on every loop.
-        CanvasCache.init(this)
-        // The offscreen WebView that mints a Spotify access token from the
-        // listener's own session cookie needs a Context, and nothing in the
-        // suspend call chain that reaches it (a track's canvas lookup) has
-        // one to hand — see SpotifyToken's doc for why.
-        SpotifyToken.init(this)
         com.music.dhvani.listentogether.ListenTogetherManager.init(this)
         // A sideloaded update is just a new APK over the old one, so app data —
         // including whatever the old build left in these caches — survives it

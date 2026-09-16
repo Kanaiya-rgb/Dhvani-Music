@@ -1,10 +1,6 @@
 package com.music.dhvani.data.lyrics
 
-import com.music.dhvani.data.YtMusicRepository
 import com.music.dhvani.data.innertube.Innertube
-import com.music.dhvani.data.model.SearchFilter
-import com.music.dhvani.data.model.SearchResult
-import com.music.dhvani.data.model.durationMillis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
@@ -12,161 +8,67 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.longOrNull
 
-/**
- * Lyrics directly from YouTube Music's official catalogue.
- *
- * YouTube Music licenses official lyrics from LyricFind and Musixmatch across
- * hundreds of thousands of songs (especially Bollywood, Indian regional tracks,
- * Western pop, and international releases) that community LRC databases lack.
- *
- * If the currently playing track is a music video or user upload whose lyrics
- * tab is unselectable, this automatically searches for the corresponding official
- * audio track on YouTube Music and retrieves its lyrics instead.
- */
-object YouTubeLyrics {
-
-    suspend fun lyrics(
-        videoId: String,
-        title: String,
-        artist: String,
-        durationMs: Long,
-    ): List<LyricLine>? = withContext(Dispatchers.IO) {
-        val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
-        val cleanArtist = LyricsCleaner.cleanArtist(artist)
-
-        // 1. Try currently playing videoId directly
-        if (videoId.isNotBlank()) {
-            val directBrowseId = runCatching {
-                val nextResp = Innertube.next(videoId)
-                extractLyricsBrowseId(nextResp)
-            }.getOrNull()
-
-            if (!directBrowseId.isNullOrBlank()) {
-                fetchLyricsFromBrowse(directBrowseId, durationMs)?.let { return@withContext it }
+/** Lyrics exposed by YouTube Music's Lyrics tab for the exact playing video. */
+object YouTubeMusicLyrics {
+    suspend fun lyrics(videoId: String): List<LyricLine>? = withContext(Dispatchers.IO) {
+        if (!YOUTUBE_ID.matches(videoId)) return@withContext null
+        val next = runCatching { Innertube.next(videoId) }.getOrNull() ?: return@withContext null
+        val endpoint = next.objectsNamed("tabRenderer")
+            .firstOrNull { it.youtubeStrings().any { text -> text.equals("Lyrics", ignoreCase = true) } }
+            ?.objectsNamed("browseEndpoint")?.firstOrNull()
+            ?: next.objectsNamed("tabRenderer").drop(1).firstNotNullOfOrNull {
+                it.objectsNamed("browseEndpoint").firstOrNull()
             }
-        }
-
-        // 2. If missing or unselectable (music video / user upload), search official audio track
-        val query = listOf(cleanTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
-        if (query.isNotBlank()) {
-            val searchResults = runCatching {
-                YtMusicRepository.search(query, SearchFilter.SONGS).getOrNull()
-            }.getOrNull().orEmpty()
-
-            val topSong = searchResults.filterIsInstance<SearchResult.Track>()
-                .firstOrNull { candidate ->
-                    val candidateArtist = candidate.song.artist
-                    val targetSec = (durationMs / 1000).toInt()
-                    val candSec = (candidate.song.durationMillis() / 1000).toInt()
-                    candidate.song.videoId != videoId &&
-                        LyricsCleaner.isTitleMatch(candidate.song.title, cleanTitle) &&
-                        (cleanArtist.isBlank() || LyricsCleaner.isArtistMatch(candidateArtist, cleanArtist)) &&
-                        (targetSec <= 0 || candSec <= 0 || LyricsCleaner.isDurationMatch(candSec, targetSec, 15))
-                }
-
-            if (topSong != null) {
-                val altBrowseId = runCatching {
-                    val altNext = Innertube.next(topSong.song.videoId)
-                    extractLyricsBrowseId(altNext)
-                }.getOrNull()
-
-                if (!altBrowseId.isNullOrBlank()) {
-                    fetchLyricsFromBrowse(altBrowseId, durationMs)?.let { return@withContext it }
-                }
-            }
-        }
-
-        null
+            ?: return@withContext null
+        val browseId = (endpoint["browseId"] as? JsonPrimitive)?.contentOrNull
+            ?: return@withContext null
+        val params = (endpoint["params"] as? JsonPrimitive)?.contentOrNull
+        val page = runCatching { Innertube.browse(browseId, params) }.getOrNull() ?: return@withContext null
+        val shelf = page.objectsNamed("musicDescriptionShelfRenderer").firstOrNull()
+            ?: return@withContext null
+        val text = shelf["description"]?.youtubeStrings()?.joinToString("").orEmpty().trim()
+        text.lineSequence().map(String::trim).filter(String::isNotEmpty)
+            .map { LyricLine(0L, it) }.toList().takeIf { it.isNotEmpty() }
     }
+}
 
-    private suspend fun fetchLyricsFromBrowse(browseId: String, durationMs: Long): List<LyricLine>? {
-        val browseResp = runCatching { Innertube.browse(browseId) }.getOrNull() ?: return null
-        val timedData = findTimedLyricsData(browseResp)
-        if (timedData != null && timedData.isNotEmpty()) {
-            val lines = parseTimedLyricsData(timedData)
-            if (lines.isNotEmpty()) return lines
-        }
-        return null
-    }
-
-    private fun findTimedLyricsData(element: JsonElement?): JsonArray? {
-        if (element is JsonObject) {
-            val direct = element["timedLyricsData"] as? JsonArray
-            if (!direct.isNullOrEmpty()) return direct
-            for ((_, child) in element) {
-                val found = findTimedLyricsData(child)
-                if (found != null) return found
-            }
-        } else if (element is JsonArray) {
-            for (child in element) {
-                val found = findTimedLyricsData(child)
-                if (found != null) return found
-            }
-        }
-        return null
-    }
-
-    private fun extractLyricsBrowseId(nextResponse: JsonObject): String? {
-        val tabs = nextResponse.o("contents")
-            ?.o("singleColumnMusicWatchNextResultsRenderer")
-            ?.o("tabbedRenderer")
-            ?.o("watchNextTabbedResultsRenderer")
-            ?.a("tabs") ?: return null
-
-        for (element in tabs) {
-            val tabRenderer = element.o("tabRenderer") ?: continue
-            val title = tabRenderer.o("title")?.firstRunText()
-                ?: tabRenderer.s("title").orEmpty()
-            val pageType = tabRenderer.o("endpoint")
-                ?.o("browseEndpoint")
-                ?.o("browseEndpointContextSupportedConfigs")
-                ?.o("browseEndpointContextMusicConfig")
-                ?.s("pageType")
-
-            val isLyricsTab = pageType == "MUSIC_PAGE_TYPE_TRACK_LYRICS" ||
-                title.contains("lyrics", ignoreCase = true)
-            val isUnselectable = tabRenderer.s("unselectable")?.toBooleanStrictOrNull() == true
-
-            if (isLyricsTab && !isUnselectable) {
-                val browseId = tabRenderer.o("endpoint")?.o("browseEndpoint")?.s("browseId")
-                if (!browseId.isNullOrBlank()) return browseId
-            }
-        }
-        return null
-    }
-
-    private fun parseTimedLyricsData(timedData: JsonArray): List<LyricLine> {
-        return timedData.mapNotNull { item ->
-            val text = item.s("lyricLine")?.trim()
-                ?: item.o("lyricLine")?.runs()?.trim()
-                ?: item.firstRunText()?.trim()
+/** Timed YouTube transcript/captions for the exact playing video. */
+object YouTubeTranscriptLyrics {
+    suspend fun lyrics(videoId: String): List<LyricLine>? = withContext(Dispatchers.IO) {
+        if (!YOUTUBE_ID.matches(videoId)) return@withContext null
+        val response = runCatching { Innertube.transcript(videoId) }.getOrNull()
+            ?: return@withContext null
+        response.objectsNamed("transcriptCueRenderer").mapNotNull { cue ->
+            val start = (cue["startOffsetMs"] as? JsonPrimitive)?.longOrNull
                 ?: return@mapNotNull null
-            val cue = item.o("cueRange")
-            val startMs = cue?.s("startTimeMilliseconds")?.toLongOrNull() ?: return@mapNotNull null
-            val endMs = cue.s("endTimeMilliseconds")?.toLongOrNull()
-            LyricLine(
-                timeMs = startMs,
-                text = text,
-                sungUntilMs = endMs,
-                isEstimatedTiming = false,
-            )
-        }.sortedBy { it.timeMs }
+            val text = cue["cue"]?.youtubeStrings()?.joinToString("").orEmpty()
+                .trim(' ', '\n', '♪')
+            text.takeIf { it.isNotEmpty() }?.let { LyricLine(start, it) }
+        }.sortedBy { it.timeMs }.toList().takeIf { it.isNotEmpty() }
     }
+}
 
-    // JSON parsing helpers
-    private fun JsonElement?.o(key: String): JsonObject? =
-        (this as? JsonObject)?.get(key) as? JsonObject
+private val YOUTUBE_ID = Regex("""[A-Za-z0-9_-]{11}""")
 
-    private fun JsonElement?.a(key: String): JsonArray? =
-        (this as? JsonObject)?.get(key) as? JsonArray
+private fun JsonElement.objectsNamed(name: String): Sequence<JsonObject> = sequence {
+    when (this@objectsNamed) {
+        is JsonObject -> for ((key, value) in this@objectsNamed) {
+            if (key == name && value is JsonObject) yield(value)
+            yieldAll(value.objectsNamed(name))
+        }
+        is JsonArray -> for (value in this@objectsNamed) yieldAll(value.objectsNamed(name))
+        else -> Unit
+    }
+}
 
-    private fun JsonElement?.s(key: String): String? =
-        ((this as? JsonObject)?.get(key) as? JsonPrimitive)?.contentOrNull
-
-    private fun JsonElement?.firstRunText(): String? =
-        this.a("runs")?.firstOrNull().s("text")
-
-    private fun JsonElement?.runs(): String =
-        this.a("runs")?.joinToString("") { it.s("text").orEmpty() }.orEmpty()
+internal fun JsonElement.youtubeStrings(): List<String> = when (this) {
+    is JsonPrimitive -> contentOrNull?.let(::listOf).orEmpty()
+    is JsonArray -> flatMap { it.youtubeStrings() }
+    is JsonObject -> {
+        val direct = (this["text"] as? JsonPrimitive)?.contentOrNull
+            ?: (this["simpleText"] as? JsonPrimitive)?.contentOrNull
+        direct?.let(::listOf) ?: values.flatMap { it.youtubeStrings() }
+    }
 }

@@ -20,16 +20,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Playback is reached by **binding** the session, never by starting it. That is
  * the whole reason this is possible at all: `startService` and
  * `startForegroundService` are refused from the background on API 26+ and 31+,
- * and a tap on a home-screen widget is the background — but `bindService` is not
+ * and a tap on a home-screen widget is the background Â— but `bindService` is not
  * restricted, and a `MediaController` binds. Same handshake the app itself uses,
  * from [rememberMediaController][com.music.dhvani.playback.rememberMediaController].
  *
  * It also means **play works with the app dead**, with nothing extra plumbed in:
  * the bind creates [PlaybackService], whose `onCreate` already restores the last
  * queue, so by the time the controller connects there is something to play. The
- * one thing that restore deliberately leaves undone is `prepare()` — it exists so
+ * one thing that restore deliberately leaves undone is `prepare()` Â— it exists so
  * a cold app can *show* where you left off without pulling a stream for a track
- * nobody has asked for yet — so that is done here, at the point somebody has.
+ * nobody has asked for yet Â— so that is done here, at the point somebody has.
  */
 class MediaWidgetActions : BroadcastReceiver() {
 
@@ -65,7 +65,7 @@ class MediaWidgetActions : BroadcastReceiver() {
             },
             ContextCompat.getMainExecutor(app),
         )
-        // If the service never comes up, nothing above ever runs — and a
+        // If the service never comes up, nothing above ever runs Â— and a
         // PendingResult that is never finished is a broadcast the system waits out
         // and then reports as not responding.
         handler.postDelayed(::release, GIVE_UP_MS)
@@ -85,7 +85,7 @@ class MediaWidgetActions : BroadcastReceiver() {
                 prepareIfIdle()
                 play()
             }
-            // Skipping does not start anything that wasn't already started —
+            // Skipping does not start anything that wasn't already started Â—
             // skipping while paused leaves you paused, here as everywhere else.
             // The prepare is so the new track actually loads, and so the session
             // reports it and the widget follows.
@@ -118,7 +118,7 @@ class MediaWidgetActions : BroadcastReceiver() {
             PendingIntent.getBroadcast(
                 context,
                 // Distinct per action, so the three buttons cannot collapse into
-                // one PendingIntent — extras are ignored when they are compared,
+                // one PendingIntent Â— extras are ignored when they are compared,
                 // and only the request code and the action tell them apart.
                 REQUEST_BASE + ACTIONS.indexOf(action),
                 Intent(context, MediaWidgetActions::class.java).setAction(action),

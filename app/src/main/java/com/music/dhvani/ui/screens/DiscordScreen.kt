@@ -73,8 +73,8 @@ import java.util.Locale
 /** Which dot Discord draws on the avatar, and what it tells other people. */
 enum class DiscordPresenceStatus(val value: String, val label: String, val detail: String) {
     ONLINE("online", "Online", "Green dot"),
-    IDLE("idle", "Idle", "Amber crescent — as if away"),
-    DND("dnd", "Do not disturb", "Red dash — suppresses their notifications too"),
+    IDLE("idle", "Idle", "Amber crescent Â— as if away"),
+    DND("dnd", "Do not disturb", "Red dash Â— suppresses their notifications too"),
 }
 
 /**
@@ -106,7 +106,7 @@ private fun kindOf(value: String) =
  * live preview of it.
  *
  * The preview is the point of the screen. Every field here changes something
- * about a card the user cannot see from inside this app — so it draws the card
+ * about a card the user cannot see from inside this app Â— so it draws the card
  * as Discord will, from the track actually playing, and updates as they type.
  */
 @Composable
@@ -198,7 +198,7 @@ fun DiscordScreen(
             NoticeCard(
                 text = "Discord has no API for an app to set your presence, so this " +
                     "signs in as your account and speaks its protocol. Your token is " +
-                    "stored encrypted on this device and only ever sent to Discord — " +
+                    "stored encrypted on this device and only ever sent to Discord Â— " +
                     "but it is your whole account, and automating one is against " +
                     "Discord's terms of service. Bans for presence alone aren't a " +
                     "thing anyone reports; it's still your call.",
@@ -208,7 +208,7 @@ fun DiscordScreen(
 
         SettingsGroup(
             header = "Rich presence",
-            footer = "The card updates on every track change, seek, and pause — and " +
+            footer = "The card updates on every track change, seek, and pause Â— and " +
                 "clears itself when playback stops.",
         ) {
             SettingsRow(
@@ -503,7 +503,7 @@ private fun NoticeCard(text: String, onDismiss: () -> Unit) {
  * The card as Discord will draw it: heading, sleeve, three lines of text, a
  * countdown, and up to two buttons.
  *
- * Deliberately not built from our own row primitives — this is a picture of
+ * Deliberately not built from our own row primitives Â— this is a picture of
  * another app's UI, and the only way it does its job is by looking like one.
  * The buttons work, so it doubles as a way to check the links land.
  */
@@ -554,7 +554,7 @@ private fun RichPresencePreview(
             Column(Modifier.weight(1f)) {
                 // Discord bolds whichever line `status_display_type` names, and
                 // that is the one it also repeats next to the user's name in a
-                // member list — so which of these is emphasised is the whole
+                // member list Â— so which of these is emphasised is the whole
                 // point of the "Lead with the song" switch.
                 Text(
                     text = title,

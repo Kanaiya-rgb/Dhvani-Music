@@ -40,8 +40,9 @@ app/google-services.json
 .shots/
 .tmp_verify/
 .debug/
-.ref_bitchord/
 .ref_meld/
+.agents/
 *.apk
-!apk/*.apk
 *.idsig
+apk/
+screen_*.png

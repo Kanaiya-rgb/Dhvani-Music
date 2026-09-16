@@ -41,9 +41,9 @@ object LocalMediaRepository {
      * Retrieves all songs in the `Music/DhvaniMusic` directory, combining app downloads
      * with any local audio files present in that folder.
      *
-     * The download record is the better source for a title and a credit — it
+     * The download record is the better source for a title and a credit Â— it
      * holds what the catalogue row said, not what a scanner guessed off a
-     * filename — but it only started carrying the album at all recently, and
+     * filename Â— but it only started carrying the album at all recently, and
      * an album page's rows never name their own release. So whatever the media
      * scanner read off each file is collected alongside and used to fill the
      * gaps, which is what keeps the Albums tab from being empty for everything
@@ -132,7 +132,7 @@ object LocalMediaRepository {
     }
 
     /**
-     * The parts of a scanner row worth reading back — everything else about a
+     * The parts of a scanner row worth reading back Â— everything else about a
      * download is better known from the record that made it.
      */
     private class ScannedTags(val albumName: String?, val artworkUrl: String?)
@@ -150,12 +150,12 @@ object LocalMediaRepository {
         val songs = mutableListOf<Song>()
         // This scan runs over every audio file on the device, which includes
         // whatever this app has downloaded into Music/DhvaniMusic alongside
-        // everything else — but by content URI, the only thing MediaStore
+        // everything else Â— but by content URI, the only thing MediaStore
         // offers here, that download is indistinguishable from a file the
         // user copied on by hand. Reversing [Downloads.saved] hands a
         // downloaded track its real YouTube id back, which is what lets
         // PlaybackTracker recognise it as a video worth registering a play
-        // for — a content URI fails its id check on purpose, since most rows
+        // for Â— a content URI fails its id check on purpose, since most rows
         // here really are just local files with nothing to sync.
         val videoIdByUri = Downloads.saved.value.entries.associate { (id, uri) -> uri to id }
         val projection = arrayOf(
@@ -235,7 +235,7 @@ object LocalMediaRepository {
 
     /**
      * A song built from a file in the downloads folder the app has no record of
-     * — one copied in by hand, or left behind by an install whose record is
+     * Â— one copied in by hand, or left behind by an install whose record is
      * gone. The file's own tags are the only thing there is to go on; [scanned]
      * fills in what the retriever couldn't read, since the media scanner and
      * `MediaMetadataRetriever` do not agree on every container.

@@ -127,7 +127,6 @@ import com.music.dhvani.ui.screens.ListenTogetherScreen
 import com.music.dhvani.listentogether.ListenTogetherManager
 import com.music.dhvani.ui.screens.SettingsScreen
 import com.music.dhvani.ui.screens.SourcesScreen
-import com.music.dhvani.ui.screens.SpotifyCanvasAuthScreen
 import com.music.dhvani.playback.LinkRequest
 import com.music.dhvani.playback.MusicLink
 import com.music.dhvani.playback.PlayerDeepLink
@@ -151,6 +150,7 @@ import com.music.dhvani.ui.components.PlaylistPickerSheet
 import com.music.dhvani.ui.components.SongActionsSheet
 import com.music.dhvani.playback.rememberMediaController
 import com.music.dhvani.playback.rememberPlayerState
+import com.music.dhvani.playback.DynamicIslandOverlayManager
 import com.music.dhvani.ui.MainViewModel
 import com.music.dhvani.ui.components.BottomFadeScrim
 import com.music.dhvani.ui.components.BottomTab
@@ -162,14 +162,20 @@ import com.music.dhvani.data.sources.SourceRegistry
 import com.music.dhvani.ui.components.ListenBrainzTokenAlert
 import com.music.dhvani.ui.components.TextValueAlert
 import com.music.dhvani.ui.components.MiniPlayer
+import com.music.dhvani.ui.components.DynamicIslandPlayer
 import com.music.dhvani.ui.components.TopBarAccountButton
 import com.music.dhvani.ui.components.TopBarDownloadButton
 import com.music.dhvani.ui.components.TopFadeBlur
 import com.music.dhvani.ui.components.topBarContentPadding
 import com.music.dhvani.ui.components.AppLanguageDialog
 import com.music.dhvani.ui.components.LyricsSourcesDialog
+import com.music.dhvani.ui.components.TranslationLanguageDialog
 import com.music.dhvani.ui.components.UpdateAvailableDialog
 import com.music.dhvani.ui.components.EqualizerSheet
+import com.music.dhvani.ui.components.FloatingDynamicIslandPermissionDialog
+import android.provider.Settings
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.music.dhvani.ui.icons.DhvaniIcons
 import androidx.media3.common.Player
 import com.music.dhvani.data.YtMusicRepository
@@ -236,6 +242,17 @@ class MainActivity : AppCompatActivity() {
         if (intent?.getBooleanExtra("open_update_dialog", false) == true) {
             AppUpdateChecker.triggerDialog()
         }
+        if (intent?.getBooleanExtra("test_update_notification", false) == true) {
+            AppUpdateChecker.postUpdateNotification(
+                this,
+                AppUpdateChecker.UpdateInfo(
+                    version = "2.0.8",
+                    releaseUrl = "https://github.com/Kanaiya-rgb/Dhvani-Music/releases",
+                    apkUrl = null,
+                    notes = "• Instant update alert on Wi-Fi & data connect\n• Background lyrics & audio prefetching for zero latency\n• Sleek Listen Together UI with front-screen sync\n• Seamless performance and battery optimizations",
+                ),
+            )
+        }
     }
 
     /**
@@ -253,6 +270,32 @@ class MainActivity : AppCompatActivity() {
         if (intent.getBooleanExtra("open_update_dialog", false)) {
             AppUpdateChecker.triggerDialog()
         }
+        if (intent.getBooleanExtra("test_update_notification", false)) {
+            AppUpdateChecker.postUpdateNotification(
+                this,
+                AppUpdateChecker.UpdateInfo(
+                    version = "2.0.8",
+                    releaseUrl = "https://github.com/Kanaiya-rgb/Dhvani-Music/releases",
+                    apkUrl = null,
+                    notes = "• Instant update alert on Wi-Fi & data connect\n• Background lyrics & audio prefetching for zero latency\n• Sleek Listen Together UI with front-screen sync\n• Seamless performance and battery optimizations",
+                ),
+            )
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        DynamicIslandOverlayManager.setAppForeground(true)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        DynamicIslandOverlayManager.setAppForeground(false)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        DynamicIslandOverlayManager.setAppForeground(false)
     }
 }
 
@@ -271,10 +314,17 @@ private fun DhvaniApp(
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { /* handled */ }
     )
+    var showFloatingIslandPermissionDialog by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 notifyPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val hasOverlay = Settings.canDrawOverlays(context)
+            if (!hasOverlay && AppSettings.shouldPromptFloatingIslandPermission(BuildConfig.VERSION_CODE)) {
+                showFloatingIslandPermissionDialog = true
             }
         }
     }
@@ -321,7 +371,6 @@ private fun DhvaniApp(
     var showAccountScrobbling by remember { mutableStateOf(false) }
     var showSources by remember { mutableStateOf(false) }
     var showAppearanceSettings by remember { mutableStateOf(false) }
-    var showSpotifyCanvasAuth by remember { mutableStateOf(false) }
     var settingsSubScreenTitle by remember { mutableStateOf<String?>(null) }
     var settingsSubScreenOnBack by remember { mutableStateOf<(() -> Unit)?>(null) }
     
@@ -334,6 +383,7 @@ private fun DhvaniApp(
     // cards can be laid out again as a full-screen grid. See [LibraryGridPage].
     var libraryShowAll by remember { mutableStateOf<HomeShelf?>(null) }
     var showLyricsSources by remember { mutableStateOf(false) }
+    var showTranslationLanguage by remember { mutableStateOf(false) }
     var showAppLanguage by remember { mutableStateOf(false) }
     var showListenBrainzLogin by remember { mutableStateOf(false) }
     var showLastfmLogin by remember { mutableStateOf(false) }
@@ -394,6 +444,7 @@ private fun DhvaniApp(
     // page's own overflow — because only one of them can be held at a time.
     var browseActions by remember { mutableStateOf<BrowseTarget?>(null) }
     val autoplay by AppSettings.autoplay.collectAsStateWithLifecycle()
+    val dynamicIslandEnabled by AppSettings.dynamicIslandEnabled.collectAsStateWithLifecycle()
     val listenBrainzToken by AppSettings.listenBrainzToken.collectAsStateWithLifecycle()
     // Incremented each time the search tab is re-tapped while already selected,
     // which SearchScreen uses as a signal to focus the input field.
@@ -834,7 +885,7 @@ private fun DhvaniApp(
 
     /**
      * A YouTube Music link tapped elsewhere on the device, a link shared into
-     * BitChord, or "play something" said to the assistant — see [MusicLink].
+     * Dhvani, or "play something" said to the assistant — see [MusicLink].
      *
      * Keyed on the controller as well as the request, because a link is as
      * often as not what cold-starts the app: the session it has to play into is
@@ -1221,6 +1272,18 @@ private fun DhvaniApp(
         }
     }
 
+    // Prefetch next 2 songs' lyrics and artwork in the background
+    // so transitioning to upcoming songs happens seamlessly with zero wait time.
+    LaunchedEffect(player.song?.videoId, player.queueIndex, player.queue.size) {
+        val currentIdx = player.queueIndex
+        if (currentIdx >= 0 && currentIdx + 1 < player.queue.size) {
+            val upcoming = player.queue.subList(currentIdx + 1, (currentIdx + 3).coerceAtMost(player.queue.size))
+            if (upcoming.isNotEmpty()) {
+                viewModel.prefetchNextTracks(upcoming)
+            }
+        }
+    }
+
     // The player's whole parameter list, in one place because there are two
     // places it can be mounted: the sheet a phone raises over the page, and
     // the pane a tablet keeps beside it. [docked] is the only difference
@@ -1349,6 +1412,9 @@ private fun DhvaniApp(
                     song.localUri,
                 )
             },
+            onListenTogether = {
+                showListenTogether = true
+            },
             docked = docked,
             onClearQueue = {
                 // Keep what's playing; drop everything queued after it.
@@ -1415,7 +1481,6 @@ private fun DhvaniApp(
         BackHandler(enabled = discordDialog != null) { discordDialog = null }
         BackHandler(enabled = customModuleAlert) { customModuleAlert = false }
         BackHandler(enabled = showHistory) { showHistory = false }
-        BackHandler(enabled = showListenTogether) { showListenTogether = false }
         // Disabled while a detail page is open over the grid: that one's own
         // BackHandler below has to close first, or back would skip past it
         // straight to Library. See [onLibraryItemClick].
@@ -1430,7 +1495,6 @@ private fun DhvaniApp(
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 AnimatedContent(
                     targetState = when {
-                        showListenTogether -> "listen_together"
                         showDiscord -> "discord"
                         showHistory -> "history"
                         // `&& detail == null`: a card opened from the grid
@@ -1495,7 +1559,7 @@ private fun DhvaniApp(
                         it.browseId == key && key != "settings" && key != "account_scrobbling" &&
                             key != "sources" && key != "appearance_settings" &&
                             key != "discord" && key != "replay" && key != "history" &&
-                            key != "library_show_all" && key != "listen_together"
+                            key != "library_show_all"
                     }
                     // Held for the same reason, one step further on: a popped
                     // page is off the stack before it has finished animating
@@ -1563,15 +1627,6 @@ private fun DhvaniApp(
                             contentPadding = listPadding,
                             listState = replayListState,
                         )
-                    } else if (key == "listen_together") {
-                        ListenTogetherScreen(
-                            onBack = { showListenTogether = false },
-                            onOpenSettings = {
-                                showListenTogether = false
-                                showAccountScrobbling = true
-                            },
-                            contentPadding = listPadding,
-                        )
                     } else if (key == "discord") {
                         DiscordScreen(
                             song = player.song,
@@ -1613,7 +1668,6 @@ private fun DhvaniApp(
                         AppearanceSettingsScreen(
                             windowWidth = windowWidth,
                             onBack = { showAppearanceSettings = false },
-                            onSpotifyCanvasAuth = { showSpotifyCanvasAuth = true },
                             contentPadding = listPadding,
                         )
                     } else if (key == "settings") {
@@ -1632,9 +1686,9 @@ private fun DhvaniApp(
                                 showReplay = true
                             },
                             onLyricsSources = { showLyricsSources = true },
+                            onTranslationLanguage = { showTranslationLanguage = true },
                             onSources = { showSources = true },
                             onOpenAppearance = { showAppearanceSettings = true },
-                            onSpotifyCanvasAuth = { showSpotifyCanvasAuth = true },
                             onAppLanguage = { showAppLanguage = true },
                             onSubScreenChange = { title, onBackAction ->
                                 settingsSubScreenTitle = title
@@ -1968,7 +2022,6 @@ private fun DhvaniApp(
 
                 FrostedTopBar(
                     title = when {
-                        showListenTogether -> "Listen Together"
                         showDiscord -> "Discord"
                         showHistory -> "History"
                         libraryShowAll != null && detail == null -> libraryShowAll?.title.orEmpty()
@@ -1987,7 +2040,7 @@ private fun DhvaniApp(
                     // the field takes that space — so its bar title is always up.
                     scrolled = when {
                         showSettings || showAccountScrobbling || showSources || showAppearanceSettings ||
-                            settingsSubScreenTitle != null || showDiscord || showHistory || showListenTogether ||
+                            settingsSubScreenTitle != null || showDiscord || showHistory ||
                             (libraryShowAll != null && detail == null) -> true
                         // The page leads with its own large "Replay", so the bar
                         // stays out of the way until that has been scrolled off.
@@ -1998,7 +2051,6 @@ private fun DhvaniApp(
                     refreshing = currentFeed != null && currentFeed in refreshing,
                     pullFraction = { currentPull?.distanceFraction ?: 0f },
                     onBack = when {
-                        showListenTogether -> ({ showListenTogether = false })
                         showDiscord -> ({ showDiscord = false })
                         showHistory -> ({ showHistory = false })
                         libraryShowAll != null && detail == null -> ({ libraryShowAll = null })
@@ -2086,7 +2138,7 @@ private fun DhvaniApp(
                     },
                 )
 
-                val hideBottomBar = showSettings || showAppearanceSettings || showSources || showAccountScrobbling || showDiscord || showListenTogether
+                val hideBottomBar = showSettings || showAppearanceSettings || showSources || showAccountScrobbling || showDiscord
 
                 // Drawn before the bars so their own glass reads on top of it.
                 if (!hideBottomBar || (player.song != null && !playerDocked)) {
@@ -2174,6 +2226,27 @@ private fun DhvaniApp(
                         )
                     }
                 }
+
+                DynamicIslandPlayer(
+                    song = player.song,
+                    isPlaying = player.isPlaying,
+                    isLoading = player.isLoading,
+                    position = player.position,
+                    durationMs = player.durationMs,
+                    visible = dynamicIslandEnabled &&
+                        player.isPlaying &&
+                        player.song != null &&
+                        !showNowPlaying &&
+                        !playerDocked &&
+                        replayStory == null,
+                    onPlayPause = {
+                        controller?.let { if (it.isPlaying) it.pause() else it.play() }
+                    },
+                    onNext = { controller?.seekToNextMediaItem() },
+                    onPrevious = { controller?.seekToPreviousMediaItem() },
+                    onOpenFullPlayer = { showNowPlaying = true },
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
             }
 
             // The player, open for as long as the app is. There is no way to
@@ -2851,6 +2924,38 @@ private fun DhvaniApp(
             )
         }
 
+        if (showTranslationLanguage) {
+            BackHandler { showTranslationLanguage = false }
+            TranslationLanguageDialog(
+                hazeState = hazeState,
+                onDismiss = { showTranslationLanguage = false },
+            )
+        }
+
+        if (showFloatingIslandPermissionDialog) {
+            FloatingDynamicIslandPermissionDialog(
+                onDismiss = { showFloatingIslandPermissionDialog = false },
+            )
+        }
+
+        if (showListenTogether) {
+            Dialog(
+                onDismissRequest = { showListenTogether = false },
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false,
+                ),
+            ) {
+                ListenTogetherScreen(
+                    onBack = { showListenTogether = false },
+                    onOpenSettings = {
+                        showListenTogether = false
+                        showAccountScrobbling = true
+                    },
+                )
+            }
+        }
+
         if (showAppLanguage) {
             BackHandler { showAppLanguage = false }
             AppLanguageDialog(
@@ -2949,13 +3054,6 @@ private fun DhvaniApp(
                     )
                 }
             }
-        }
-
-        if (showSpotifyCanvasAuth) {
-            BackHandler { showSpotifyCanvasAuth = false }
-            SpotifyCanvasAuthScreen(
-                onNavigateUp = { showSpotifyCanvasAuth = false }
-            )
         }
 
         discordDialog?.let { which ->

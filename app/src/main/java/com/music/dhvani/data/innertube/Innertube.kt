@@ -409,6 +409,12 @@ object Innertube {
         put("isAudioOnly", true)
     }
 
+    suspend fun transcript(videoId: String): JsonObject = postMusic("get_transcript") {
+        // get_transcript expects a tiny protobuf: field 1, length, video id.
+        val bytes = byteArrayOf(10, videoId.toByteArray().size.toByte()) + videoId.toByteArray()
+        put("params", java.util.Base64.getEncoder().encodeToString(bytes))
+    }
+
     /**
      * Calls YouTube Web's `next` endpoint (like Meld app does) to fetch
      * rich track metadata such as full song description, credits, and views.

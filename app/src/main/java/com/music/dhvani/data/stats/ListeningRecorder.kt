@@ -38,7 +38,7 @@ import kotlin.math.min
  * ## Minutes and plays are different questions
  *
  * Minutes accumulate continuously. A *play* is counted once, when enough of the
- * track has gone by to call it listened to — the same half-or-four-minutes rule
+ * track has gone by to call it listened to Â— the same half-or-four-minutes rule
  * the scrobbler uses, so the two never disagree about what a play is.
  */
 object ListeningRecorder {
@@ -60,7 +60,7 @@ object ListeningRecorder {
     fun onSample(song: Song, durationMs: Long) {
         val now = System.currentTimeMillis()
         if (song.videoId != currentId) {
-            // A new track anchors the clock and contributes nothing yet — see
+            // A new track anchors the clock and contributes nothing yet Â— see
             // the class note on undercounting.
             currentId = song.videoId
             lastSampleAt = now
@@ -114,14 +114,14 @@ object ListeningRecorder {
      * ## Why a lookup is needed at all
      *
      * Most tracks reach the player without an album. A row off the home feed,
-     * a search hit, an AutoPlay suggestion — none of them state one, because
+     * a search hit, an AutoPlay suggestion Â— none of them state one, because
      * nothing on those surfaces draws one. That is invisible everywhere else in
      * the app and fatal here: an album chart counted off what the queue carries
      * is empty for almost everybody, and the artist rows have no page to open.
      *
      * The player already asks this same question, but only while its screen is
-     * up (see MainActivity's `links`), so listening with the phone in a pocket —
-     * which is most listening — would be exactly the listening that went
+     * up (see MainActivity's `links`), so listening with the phone in a pocket Â—
+     * which is most listening Â— would be exactly the listening that went
      * uncredited.
      *
      * One request per track, kept for the life of the process, and the answer is
@@ -169,7 +169,7 @@ object ListeningRecorder {
      * The most a single tick may contribute.
      *
      * A shade over the sampler's interval, so an ordinary tick that arrived late
-     * — a busy main thread, a device coming out of doze — is still counted in
+     * Â— a busy main thread, a device coming out of doze Â— is still counted in
      * full, while the unbounded gap across a pause is not.
      */
     private const val MAX_STEP_MS = 8_000L
@@ -180,7 +180,7 @@ object ListeningRecorder {
     /** Past four minutes, half a track is more listening than anyone disputes. */
     private const val PLAY_CEILING_MS = 4 * 60 * 1000L
 
-    /** Six ticks — about half a minute of listening between disk writes. */
+    /** Six ticks Â— about half a minute of listening between disk writes. */
     private const val FLUSH_EVERY = 6
 
     /** What a YouTube video id looks like, and nothing else this app plays does. */

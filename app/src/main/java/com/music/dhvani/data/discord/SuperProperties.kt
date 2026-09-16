@@ -13,7 +13,7 @@ import java.util.UUID
  * The gateway will accept a presence without it, but the REST endpoint that
  * proxies external artwork (see
  * [fetchExternalAsset][com.my.kizzy.rpc.fetchExternalAsset]) treats a request
- * with no client fingerprint as suspicious and starts returning 401s — so the
+ * with no client fingerprint as suspicious and starts returning 401s Â— so the
  * cover art silently stops appearing while the rest of the presence keeps
  * working. Sending this makes the call look like what it is impersonating.
  *

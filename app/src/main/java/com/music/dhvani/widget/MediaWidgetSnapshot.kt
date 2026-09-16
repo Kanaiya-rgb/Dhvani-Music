@@ -8,7 +8,7 @@ import com.music.dhvani.playback.LastPlayed
  *
  * Persisted rather than read live, because a widget outlives the app. It is on
  * screen while the process is dead, after a reboot, and in the seconds before a
- * launcher's first update reaches us — none of which a
+ * launcher's first update reaches us Â— none of which a
  * [MediaController][androidx.media3.session.MediaController] can serve, since
  * connecting one means starting [PlaybackService][com.music.dhvani.playback.PlaybackService]
  * just to find out what to draw. So the service writes here whenever the answer
@@ -28,7 +28,7 @@ internal data class MediaWidgetSnapshot(
      * YouTube track has to be resolved through NewPipe before it can buffer, and
      * that can run for seconds, all of which `isPlaying` spends false. Keyed on
      * it, a widget would answer a tap by leaving the play glyph exactly where it
-     * was — the one thing that makes a control feel broken. `playWhenReady`
+     * was Â— the one thing that makes a control feel broken. `playWhenReady`
      * flips the instant the command lands, which is also what the media
      * notification shows.
      */
@@ -64,7 +64,7 @@ internal data class MediaWidgetSnapshot(
         }
 
         /**
-         * The last published state, or — if nothing has been published yet — the
+         * The last published state, or Â— if nothing has been published yet Â— the
          * track the app would resume on.
          *
          * The fallback is what a widget placed before the service has ever run

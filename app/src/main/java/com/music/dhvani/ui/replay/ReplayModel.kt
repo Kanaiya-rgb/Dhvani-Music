@@ -48,7 +48,7 @@ class ReplayState(
 )
 
 /**
- * @param active whether the Replay is open in any of its three forms — the
+ * @param active whether the Replay is open in any of its three forms Â— the
  *   page, the stories, the share sheet. The state is hoisted to the app so all
  *   three read one set of numbers, and this is what stops that hoisting from
  *   costing a file merge on every cold start for a page most launches never
@@ -74,19 +74,19 @@ fun rememberReplayState(active: Boolean): Pair<ReplayState, (ReplayPeriod) -> Un
     LaunchedEffect(period, active) {
         if (!active) return@LaunchedEffect
         // Only the first read shows a spinner. Switching period must not blank
-        // the charts for the beat it takes to merge the files — that reads as
+        // the charts for the beat it takes to merge the files Â— that reads as
         // the page breaking rather than as it answering a different question.
         loading = summary == null
         summary = ListeningStats.summary(period)
         loading = false
 
-        // Artist pictures and pages arrive after the page has been built — see
-        // [ArtistFacts.revision] — so the charts are rebuilt when they do.
+        // Artist pictures and pages arrive after the page has been built Â— see
+        // [ArtistFacts.revision] Â— so the charts are rebuilt when they do.
         //
         // Collected inside the effect rather than as composed state on purpose:
         // this function is called from the app's root, so a revision held as
         // state would recompose the whole tree every time a lookup landed, even
-        // with the Replay closed. `collectLatest` gives the debounce for free —
+        // with the Replay closed. `collectLatest` gives the debounce for free Â—
         // a burst of lookups cancels each pending delay and only the last one
         // gets as far as a rebuild.
         ArtistFacts.revision.drop(1).collectLatest {
@@ -105,8 +105,8 @@ private const val SETTLE_MILLIS = 1_200L
  * One run of a card's headline, and whether it is the emphasised part.
  *
  * The sentence lives here rather than in the story that draws it because it is
- * drawn twice — once on screen and once into the picture the share button
- * produces — and a card that says something different in the version people
+ * drawn twice Â— once on screen and once into the picture the share button
+ * produces Â— and a card that says something different in the version people
  * send is worse than no picture at all.
  */
 data class HeadlineRun(val text: String, val bold: Boolean)
@@ -119,7 +119,7 @@ fun ReplaySummary.storyHeadline(page: ReplayStoryPage): List<HeadlineRun> = when
     ReplayStoryPage.INTRO -> runs(
         "This is your " to false,
         "Replay" to true,
-        " — the year in music you actually played." to false,
+        " Â— the year in music you actually played." to false,
     )
     ReplayStoryPage.MINUTES -> runs(
         "You listened to " to false,
@@ -184,7 +184,7 @@ fun ReplaySummary.storyArtwork(page: ReplayStoryPage): String? {
  * How far a card's palette is turned around the colour wheel.
  *
  * The mesh is sampled from artwork, and a Replay is frequently four covers by
- * two artists with the same art direction — which is a run of eight cards in one
+ * two artists with the same art direction Â— which is a run of eight cards in one
  * shade of blue. Rotating the hue per card is what makes the story *look* like a
  * story: every one arrives a different colour, and because only the hue moves,
  * the saturation and lightness the mesh was tuned for are untouched, so no card
@@ -237,7 +237,7 @@ fun formatMinutes(ms: Long): String = grouped(ms / 60_000)
 
 fun grouped(value: Long): String = String.format(Locale.US, "%,d", value)
 
-/** "3 pm", "midnight" — an hour of the day said the way anyone would say it. */
+/** "3 pm", "midnight" Â— an hour of the day said the way anyone would say it. */
 fun formatHour(hour: Int): String = when (hour) {
     0 -> "midnight"
     12 -> "midday"
@@ -263,7 +263,7 @@ fun countOf(count: Int, noun: String): String =
  * Songs, artists, albums and genres are unlike enough in the data layer to be
  * kept apart there and alike enough on screen to be drawn once. [rank] is
  * carried on the row rather than derived from its index because the same row is
- * drawn in three places — the page, a story, the shared poster — and only one of
+ * drawn in three places Â— the page, a story, the shared poster Â— and only one of
  * them has an index to hand.
  */
 data class ReplayRow(
@@ -349,7 +349,7 @@ data class ReplayHeroCard(
  *
  * Minutes leads because it is the one figure that needs no context to mean
  * something. A category with nothing in it is left out rather than shown empty:
- * a Replay of loose singles has no album chart, and a card reading "—" is worse
+ * a Replay of loose singles has no album chart, and a card reading "Â—" is worse
  * than three cards.
  */
 fun ReplaySummary.cards(): List<ReplayHeroCard> = buildList {
@@ -357,7 +357,7 @@ fun ReplaySummary.cards(): List<ReplayHeroCard> = buildList {
         ReplayHeroCard(
             label = "Minutes listened",
             value = formatMinutes(totalMs),
-            detail = "${countOf(totalPlays, "play")} · $label",
+            detail = "${countOf(totalPlays, "play")} Â· $label",
             artworkUrl = songs.firstOrNull()?.song?.thumbnailUrl,
             page = ReplayStoryPage.MINUTES,
         ),
@@ -367,7 +367,7 @@ fun ReplaySummary.cards(): List<ReplayHeroCard> = buildList {
             ReplayHeroCard(
                 label = "Top artist",
                 value = it.title,
-                detail = "${formatListening(it.ms)} · ${countOf(it.plays, "play")}",
+                detail = "${formatListening(it.ms)} Â· ${countOf(it.plays, "play")}",
                 artworkUrl = it.artworkUrl,
                 page = ReplayStoryPage.ARTISTS,
             ),
@@ -378,7 +378,7 @@ fun ReplaySummary.cards(): List<ReplayHeroCard> = buildList {
             ReplayHeroCard(
                 label = "Top song",
                 value = it.song.title,
-                detail = "${it.song.artist} · ${countOf(it.plays, "play")}",
+                detail = "${it.song.artist} Â· ${countOf(it.plays, "play")}",
                 artworkUrl = it.song.thumbnailUrl,
                 page = ReplayStoryPage.SONGS,
             ),
@@ -389,7 +389,7 @@ fun ReplaySummary.cards(): List<ReplayHeroCard> = buildList {
             ReplayHeroCard(
                 label = "Top album",
                 value = it.title,
-                detail = listOfNotNull(it.subtitle, formatListening(it.ms)).joinToString(" · "),
+                detail = listOfNotNull(it.subtitle, formatListening(it.ms)).joinToString(" Â· "),
                 artworkUrl = it.artworkUrl,
                 page = ReplayStoryPage.ALBUMS,
             ),

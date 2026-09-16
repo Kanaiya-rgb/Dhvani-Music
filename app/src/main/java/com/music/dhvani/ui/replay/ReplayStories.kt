@@ -103,7 +103,7 @@ import kotlinx.coroutines.launch
  * is explained on screen: it is the same everywhere, and explaining it would be
  * the first thing on a page whose whole job is to be effortless.
  *
- * The auto-advance stops at the last card rather than closing — closing on a
+ * The auto-advance stops at the last card rather than closing Â— closing on a
  * timer takes the share button away from someone reaching for it.
  */
 @Composable
@@ -118,7 +118,7 @@ fun ReplayStories(
      *
      * The share sheet is the case: it covers the lower half of the card, takes a
      * second to draw its picture, and behind it the story was still counting
-     * down — so by the time anyone had chosen an app, the card they were sending
+     * down Â— so by the time anyone had chosen an app, the card they were sending
      * was two cards further on than the one on screen.
      */
     paused: Boolean = false,
@@ -152,12 +152,12 @@ fun ReplayStories(
      *  - **The step is taken from [PagerState.settledPage], not `currentPage`.**
      *    `currentPage` flips to the destination halfway through a scroll, so a
      *    tap landing during the auto-advance was computing "next" from the page
-     *    the story was already on its way to — and skipping one. `settledPage`
+     *    the story was already on its way to Â— and skipping one. `settledPage`
      *    is the last page that actually came to rest, so the worst a mistimed
      *    tap can do is ask for the transition already in flight.
      *  - **It snaps rather than animating.** An `animateScrollToPage` that gets
-     *    cancelled mid-flight — which is exactly what a second scroll request
-     *    does to it — leaves the pager wherever it had got to, which is the
+     *    cancelled mid-flight Â— which is exactly what a second scroll request
+     *    does to it Â— leaves the pager wherever it had got to, which is the
      *    story sitting between two cards with neither readable. A snap has no
      *    in-between state to be interrupted in. It is also what every story
      *    player does: tapping is meant to feel like turning a page, not like
@@ -186,7 +186,7 @@ fun ReplayStories(
         // fix for a card that stopped three-quarters of the way across on its
         // own but slid cleanly when tapped. This effect is keyed on the current
         // page; `animateScrollToPage` flips that key at the halfway mark, which
-        // cancels the effect — and with it the very animation that flipped it.
+        // cancels the effect Â— and with it the very animation that flipped it.
         // The pager was left wherever the cancellation caught it. [goTo] runs on
         // the composition's scope, which the page change has no bearing on.
         goTo(current + 1, animate = true)
@@ -196,7 +196,7 @@ fun ReplayStories(
     val page = pages.getOrElse(current) { ReplayStoryPage.INTRO }
     val artwork = summary.storyArtwork(page)
     // Rotated per card, so the backdrop is visibly a different colour on every
-    // one — see [storyHue].
+    // one Â— see [storyHue].
     val palette = rememberArtworkColors(artwork).rotated(storyHue(page))
 
     // The system bars are kept outside the frame rather than padded for inside
@@ -241,7 +241,7 @@ fun ReplayStories(
  * image comes out as, so a card the user sends looks like the card they were
  * looking at when they tapped share.
  *
- * Fitted rather than filled — whichever of width and height runs out first is
+ * Fitted rather than filled Â— whichever of width and height runs out first is
  * the one that sets the size, and the rest is black. Letterboxing is the honest
  * failure here: cropping would take the headline or the share button off the
  * edge of the screen on the exact devices most likely to be running this.
@@ -290,7 +290,7 @@ private fun Stage(
                     // Supplied, and deliberately empty. Without an
                     // `onLongPress`, `detectTapGestures` has no notion of a long
                     // press at all and reports every press-and-release as a tap
-                    // — so holding to pause the story turned the page the
+                    // Â— so holding to pause the story turned the page the
                     // instant the finger came off it, which is the opposite of
                     // what holding is for. Handing it a callback is what makes
                     // it draw the line at the long-press timeout.
@@ -302,7 +302,7 @@ private fun Stage(
             },
     ) {
         // The soft colour behind everything, drawn from whatever the card is
-        // about and rotated per card — so no two backdrops in the run are the
+        // about and rotated per card Â— so no two backdrops in the run are the
         // same colour. Keyed on the page as well as the artwork, or a card
         // sharing a cover with the one before it would not crossfade at all.
         MeshGradientBackground(palette = palette, trackKey = page.name, animated = false)
@@ -345,7 +345,7 @@ private fun Stage(
  * segments, and the two words saying what this is.
  *
  * Drawn over the pager rather than inside each page so it stays put while the
- * cards slide under it — a header that swipes with its page reads as eight
+ * cards slide under it Â— a header that swipes with its page reads as eight
  * headers rather than one.
  */
 @Composable
@@ -391,7 +391,7 @@ private fun StoryChrome(
                 text = if (label.length == 4 && label.all { it.isDigit() }) {
                     "Replay'${label.takeLast(2)}"
                 } else {
-                    "Replay · $label"
+                    "Replay Â· $label"
                 },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.W700,
@@ -468,7 +468,7 @@ private fun StoryPage(
         // The share button is on every card, not only the last one: the card
         // somebody wants to send is whichever one surprised them, and making
         // them sit through the rest to reach a button is how a share doesn't
-        // happen. It sends *this* card — the one being looked at — because that
+        // happen. It sends *this* card Â— the one being looked at Â— because that
         // is the one that prompted the tap; the whole-Replay picture is what the
         // button at the foot of the Replay page produces.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -603,7 +603,7 @@ private fun ColumnScope.Leaderboard(
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "${formatListening(lead.ms)} · ${countOf(lead.plays, "play")}",
+                text = "${formatListening(lead.ms)} Â· ${countOf(lead.plays, "play")}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.55f),
             )
@@ -689,7 +689,7 @@ private fun ColumnScope.Habits(summary: ReplaySummary, headline: List<HeadlineRu
         BigStat(grouped(summary.distinctAlbums.toLong()), "different albums")
     }
     summary.busiestDay?.let {
-        BigStat(formatDay(it), "your biggest day — ${formatListening(summary.busiestDayMs)}")
+        BigStat(formatDay(it), "your biggest day Â— ${formatListening(summary.busiestDayMs)}")
     }
     summary.peakHour?.let { BigStat(formatHour(it), "when you listen most") }
     Spacer(Modifier.height(8.dp))
@@ -787,7 +787,7 @@ private fun Cover(
  * Deliberately hand-placed rather than laid out. A grid of the top six looks
  * like a search result; the point of this is to look like a pile of records
  * someone has been through, which needs overlap, rotation and inconsistent
- * sizes — none of which any layout the framework offers will produce, and all of
+ * sizes Â— none of which any layout the framework offers will produce, and all of
  * which are stable here because the offsets are fractions of the box rather than
  * pixel positions.
  *
@@ -811,7 +811,7 @@ private fun ArtworkCollage(summary: ReplaySummary, modifier: Modifier = Modifier
         val h = maxHeight
         // Top-left corner as a fraction of the box, then the size and the tilt.
         // Every anchor is chosen so `fraction * width + size` lands inside the
-        // box on the narrowest frame this is drawn in — a piece cropped by the
+        // box on the narrowest frame this is drawn in Â— a piece cropped by the
         // edge reads as a layout that overflowed, not as a pile.
         val squares = listOf(
             Triple(0.26f to 0.34f, 168.dp, -3f),
@@ -866,7 +866,7 @@ private fun MeshPalette.rotated(degrees: Float): MeshPalette {
 }
 
 /**
- * How much room [StoryChrome] takes above a card's content — the cross, the
+ * How much room [StoryChrome] takes above a card's content Â— the cross, the
  * segments and the two words, measured rather than guessed at because the
  * chrome is drawn over the pager and cannot push anything down.
  */
@@ -884,5 +884,5 @@ private const val STORY_ASPECT = 9f / 16f
 /** How long a card holds before moving on, unless a finger is on the screen. */
 private const val PAGE_MILLIS = 6_000f
 
-/** The share of the width that means "back" — the left edge, as everywhere else. */
+/** The share of the width that means "back" Â— the left edge, as everywhere else. */
 private const val BACK_ZONE = 0.32f

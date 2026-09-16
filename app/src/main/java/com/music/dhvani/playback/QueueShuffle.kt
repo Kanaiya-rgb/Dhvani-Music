@@ -11,13 +11,13 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * ExoPlayer's own `shuffleModeEnabled` leaves the queue exactly as it is and
  * draws the next track from a hidden random order, so the queue panel shows
- * one running order while the player follows another — the user sees the album
+ * one running order while the player follows another Â— the user sees the album
  * listed in order and hears it jumping about. Toggling shuffle here rearranges
  * the queue itself and leaves playback strictly sequential: what the queue
  * shows is what plays, in that order.
  *
  * The order the queue was in beforehand is kept so the toggle can be undone.
- * The player's own shuffle mode is deliberately never enabled — it would
+ * The player's own shuffle mode is deliberately never enabled Â— it would
  * randomise on top of the order set here.
  *
  * AutoPlay's tracks are shuffled among themselves and stay below the ones the
@@ -39,7 +39,7 @@ object QueueShuffle {
     }
 
     /**
-     * Turns shuffle on without touching the current queue — for the Shuffle
+     * Turns shuffle on without touching the current queue Â— for the Shuffle
      * button on an album or playlist page, where the queue it applies to is the
      * one about to replace this one. [playSongs] builds that one shuffled.
      */
@@ -61,7 +61,7 @@ object QueueShuffle {
 
     /**
      * Rearranges everything after the playing track. That track keeps playing,
-     * and whatever sits above it stays there — those have had their turn.
+     * and whatever sits above it stays there Â— those have had their turn.
      */
     private fun shuffle(player: Player) {
         original = player.queueIds()
@@ -92,7 +92,7 @@ object QueueShuffle {
     /**
      * Rearranges the live queue from [from] onwards into [target], one move at
      * a time. Moving items leaves the playing track's own source untouched;
-     * setting the queue afresh would restart it — and re-resolve its stream.
+     * setting the queue afresh would restart it Â— and re-resolve its stream.
      */
     private fun applyOrder(player: Player, from: Int, target: List<String>) {
         moves(player.queueIds(), from, target).forEach { (at, to) ->
@@ -102,7 +102,7 @@ object QueueShuffle {
 
     /**
      * The moves that take [current] into [target] from [from] onwards, each a
-     * `from index to index` pair as [Player.moveMediaItem] takes them — the
+     * `from index to index` pair as [Player.moveMediaItem] takes them Â— the
      * item at the first index lands on the second, the rest shifting along.
      *
      * Only the positions [target] names are placed; anything it doesn't

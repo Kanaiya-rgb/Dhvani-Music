@@ -9,8 +9,8 @@ import androidx.security.crypto.MasterKey
 /**
  * Encrypted-at-rest storage for credentials.
  *
- * Two live here: the YouTube Music session cookie, and — if the user turns on
- * the Discord integration — that account's own bearer token. Neither is a
+ * Two live here: the YouTube Music session cookie, and Â— if the user turns on
+ * the Discord integration Â— that account's own bearer token. Neither is a
  * password: the Google one is typed into accounts.google.com inside a WebView,
  * and the Discord one is read out of a completed login session. But both grant
  * full access to their account, so they don't go in the plain prefs the
@@ -49,7 +49,7 @@ class AuthStore(context: Context) {
         set(value) = prefs.edit().putString(KEY_DISCORD_TOKEN, value).apply()
 
     /**
-     * Signs out of YouTube Music only — the Discord login is a separate account.
+     * Signs out of YouTube Music only Â— the Discord login is a separate account.
      */
     fun signOut() = prefs.edit().remove(KEY_COOKIE).apply()
 
@@ -60,7 +60,7 @@ class AuthStore(context: Context) {
          *
          * Matched on the cookie *name*, which reads as pedantry and is not. The
          * test used to be `cookie.contains("SAPISID")`, and `__Secure-3PAPISID`
-         * contains "SAPISID" — so a jar holding only the `__Secure-` forms, which
+         * contains "SAPISID" Â— so a jar holding only the `__Secure-` forms, which
          * is what a partitioned-cookie login produces, passed a check for a
          * cookie it did not have. The app then declared itself signed in and made
          * every request unsigned, which Google answers as a stranger. Library

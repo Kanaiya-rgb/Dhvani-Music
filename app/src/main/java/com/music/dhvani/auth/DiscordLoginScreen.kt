@@ -26,7 +26,7 @@ import com.music.dhvani.data.TrackLog
  * top-level window once the app boots, specifically so a snippet like this
  * can't read it. A fresh same-origin iframe gets an untouched handle on the
  * same store, where the key is still there. And `alert` is the channel because
- * it needs no `addJavascriptInterface` bridge — the string arrives in
+ * it needs no `addJavascriptInterface` bridge Â— the string arrives in
  * [WebChromeClient.onJsAlert].
  *
  * Alerting `''` rather than throwing on a miss matters: the caller retries, and
@@ -69,7 +69,7 @@ private const val FALLBACK_USER_AGENT =
  * Strips the two tokens that mark a user agent as coming from a WebView.
  *
  * Discord's parser reads the `; wv` and `Version/4.0` pair as "Android Browser
- * 4.0" — something it dropped support for years ago — and serves a shell that
+ * 4.0" Â— something it dropped support for years ago Â— and serves a shell that
  * never renders the login form, leaving the screen blank. Confirmed on a Galaxy
  * S22, where the page logs `WebRTC is not supported on Android Browser 4.0` and
  * then paints nothing. Kizzy hit the same wall and read it as a Motorola quirk
@@ -105,7 +105,7 @@ private fun isSignedIn(url: String?): Boolean =
 /**
  * In-app Discord sign-in for Rich Presence.
  *
- * Loads discord.com/login and lets the real page handle authentication — 2FA,
+ * Loads discord.com/login and lets the real page handle authentication Â— 2FA,
  * passkeys, the lot. Once the page leaves the sign-in flow this starts lifting
  * the session token out of it, handing it to [onTokenCaptured] once.
  *
@@ -127,8 +127,8 @@ fun DiscordLoginScreen(
         factory = { context ->
             WebView(context).apply {
                 // Not cosmetic, and not redundant with the modifier above.
-                // A WebView whose LayoutParams height is WRAP_CONTENT — which is
-                // what Compose hands a bare view — makes Chromium set
+                // A WebView whose LayoutParams height is WRAP_CONTENT Â— which is
+                // what Compose hands a bare view Â— makes Chromium set
                 // force_zero_layout_height, so the *layout* viewport becomes 0
                 // while the visual one stays correct. Discord sizes its entire
                 // client off a `height: 100%` chain, so every box in it collapses
@@ -173,7 +173,7 @@ fun DiscordLoginScreen(
                      * The one hook that also fires for `pushState`. Discord's
                      * client routes itself from the login form to the app without
                      * a real navigation, so [shouldOverrideUrlLoading] alone can
-                     * miss the moment the token appears — and which URL it lands
+                     * miss the moment the token appears Â— and which URL it lands
                      * on differs between `/app` and `/channels/@me` depending on
                      * how the session was established.
                      */
@@ -205,7 +205,7 @@ fun DiscordLoginScreen(
                             it.isBlank() || it == "null" || it == "undefined"
                         }
                         if (token == null) {
-                            // Client still booting — the key isn't written yet.
+                            // Client still booting Â— the key isn't written yet.
                             view.postDelayed({ harvestToken() }, TOKEN_RETRY_MS)
                             return true
                         }

@@ -11,7 +11,7 @@ import kotlinx.serialization.json.JsonObject
  * keys (e.g. "category:music", "category:debrid_modules",
  * "category:ricky_modules"). A fixed-field data class would silently drop
  * every module under an unrecognised key; scanning for any key that starts
- * with "category:" picks them all up — the same approach Convx takes.
+ * with "category:" picks them all up Â— the same approach Convx takes.
  */
 object ModuleIndex {
 

@@ -98,7 +98,7 @@ private fun SkeletonLine(fraction: Float, height: Dp, modifier: Modifier = Modif
 }
 
 /**
- * Stands in for a section heading. Only the title line is drawn — most shelves
+ * Stands in for a section heading. Only the title line is drawn Â— most shelves
  * come back without a subtitle, and guessing wrong shifts everything under it.
  */
 @Composable
@@ -149,7 +149,7 @@ fun LazyListScope.songListSkeleton(
  *
  * Both carousels below are built on a [LazyRow] with scrolling off rather than a
  * plain [Row], so a card running past the right edge is measured and clipped
- * exactly as the real shelf's is — which is the whole point of a skeleton.
+ * exactly as the real shelf's is Â— which is the whole point of a skeleton.
  */
 @Composable
 private fun HeroShelfSkeleton() {
@@ -239,7 +239,7 @@ private fun DetailActionsSkeleton(isArtist: Boolean) {
 }
 
 /**
- * An album, playlist or artist page below its header — the header itself is
+ * An album, playlist or artist page below its header Â— the header itself is
  * drawn from what the row that was tapped already knew, so it never waits.
  */
 fun LazyListScope.detailSkeleton(isArtist: Boolean) {

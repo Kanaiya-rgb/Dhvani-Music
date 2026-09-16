@@ -3,7 +3,7 @@ package com.music.dhvani.data.lyrics
 /**
  * Turns parsed lines back into the text of an LRC file.
  *
- * The counterpart to [LrcLib.parseLrc], and the only writer in this package —
+ * The counterpart to [LrcLib.parseLrc], and the only writer in this package Â—
  * everything else here reads. It exists for the download path, which embeds
  * what it gets into the saved file's own metadata (see
  * `com.music.dhvani.download.LyricsTag`), and LRC is what that field is read
@@ -12,7 +12,7 @@ package com.music.dhvani.data.lyrics
  *
  * **Word timings are deliberately dropped.** Three of the four providers carry
  * them and the player uses them, but the way to keep them in a file is the
- * "enhanced" A2 extension — `<mm:ss.xx>` runs inside the line — and a reader
+ * "enhanced" A2 extension Â— `<mm:ss.xx>` runs inside the line Â— and a reader
  * that doesn't implement it does not ignore those stamps, it *shows* them, so
  * every line reads as angle-bracket noise with words scattered through it.
  * Line stamps degrade to plain text in the same reader; word stamps corrupt it.
@@ -28,15 +28,15 @@ internal fun List<LyricLine>.toLrc(): String {
     if (isEmpty()) return ""
     // Sorted here rather than assumed: the providers each sort their own output,
     // but this is one line of insurance against a file whose stamps run
-    // backwards — which every reader renders as lyrics that jump about.
+    // backwards Â— which every reader renders as lyrics that jump about.
     return sortedBy { it.timeMs }.joinToString("\n") { line -> stamp(line.timeMs) + line.flattened() }
 }
 
 /**
  * The line as one row of text, answering vocal and all.
  *
- * [LyricLine.background] is a display split — the backing voice drawn under the
- * lead rather than run into it, see [withBackgroundVocals] — and LRC has no way
+ * [LyricLine.background] is a display split Â— the backing voice drawn under the
+ * lead rather than run into it, see [withBackgroundVocals] Â— and LRC has no way
  * to say that. Giving it a stamp of its own would put a second line into the
  * file where the song has one, so it goes back where every provider that
  * doesn't mark it structurally had it: on the end of the lead.
@@ -45,14 +45,14 @@ private fun LyricLine.flattened(): String =
     background?.let { (text + " " + it.text).trim() } ?: text
 
 /**
- * The same lines as [toLrc], with the word timings kept — the "enhanced" A2
+ * The same lines as [toLrc], with the word timings kept Â— the "enhanced" A2
  * extension, `<mm:ss.xx>` runs inside each line.
  *
  * This does **not** replace [toLrc], and the reason is the one that function
  * documents: a reader without A2 does not ignore a word stamp, it shows it, so
  * a file carrying only this reads as angle-bracket noise everywhere else. The
- * two are written to different fields — plain LRC to the container's own lyrics
- * atom, where every other player looks, and this to a BitChord-specific one
+ * two are written to different fields Â— plain LRC to the container's own lyrics
+ * atom, where every other player looks, and this to a Dhvani-specific one
  * they don't read (see `Mp4Tagger`, `FlacTagger`, `WebmTagger`). Other players
  * are unaffected; this app gets the timings back off the file instead of the
  * network, which is what lets a downloaded song light up word by word offline.
@@ -62,7 +62,7 @@ private fun LyricLine.flattened(): String =
  * spent to learn nothing.
  *
  * Each line closes with a bare `<stamp>` at its end, which is what carries
- * [LyricLine.endMs] across — without it the last word of every line would come
+ * [LyricLine.endMs] across Â— without it the last word of every line would come
  * back with no end, and the player reads a silence out of that.
  */
 internal const val WORD_LYRICS_FIELD = "FLUX_LYRICS"
@@ -77,7 +77,7 @@ internal fun List<LyricLine>.toEnhancedLrc(): String {
  * One line as stamped word runs, or its plain text when it has none.
  *
  * The answering vocal rides along on the end exactly as it does in [flattened],
- * for the same reason — one line of the song is one line of the file — but here
+ * for the same reason Â— one line of the song is one line of the file Â— but here
  * it keeps its own stamps, so the backing voice is still timed rather than
  * pinned to the lead's last word. A background with text but no timings of its
  * own becomes a single run at its own stamp, which is the most that can be said
@@ -89,7 +89,7 @@ private fun LyricLine.enhancedBody(): String {
     val out = StringBuilder()
     // Clamped to run forwards. A background vocal legitimately starts partway
     // through the lead it answers, so concatenating the two can hand us a stamp
-    // earlier than the one before it — and a reader taking each run's end from
+    // earlier than the one before it Â— and a reader taking each run's end from
     // the next one's start would read that as a negative-length word.
     var previous = timeMs
     runs.forEachIndexed { index, word ->
@@ -103,7 +103,7 @@ private fun LyricLine.enhancedBody(): String {
 }
 
 /**
- * The line's words, the answering vocal's after them — or nothing, when the
+ * The line's words, the answering vocal's after them Â— or nothing, when the
  * lead has no timings to anchor them to.
  *
  * The lead is required rather than merely preferred: its words are what the
@@ -121,14 +121,14 @@ private fun LyricLine.timedRuns(): List<LyricWord> {
 }
 
 /**
- * `[mm:ss.xx]`, in centiseconds — the two-digit fraction, which is the form
+ * `[mm:ss.xx]`, in centiseconds Â— the two-digit fraction, which is the form
  * with the widest support. [LrcLib.parseLrc] reads three digits too, but
  * writing them is a millisecond of precision bought at the cost of the readers
  * that only accept two.
  *
  * Assembled with [padStart] rather than `String.format`, which is not a style
  * preference: `%02d` formats through the default locale, and under a locale
- * with its own numerals — Arabic, Bengali, several Indic ones — that emits
+ * with its own numerals Â— Arabic, Bengali, several Indic ones Â— that emits
  * digits no LRC parser on earth matches, including this package's own. The
  * output has to be ASCII wherever the device is.
  *
@@ -138,7 +138,7 @@ private fun LyricLine.timedRuns(): List<LyricWord> {
  */
 private fun stamp(timeMs: Long): String = "[" + clock(timeMs) + "]"
 
-/** The same clock inside angle brackets — one word's start, in A2. */
+/** The same clock inside angle brackets Â— one word's start, in A2. */
 private fun wordStamp(timeMs: Long): String = "<" + clock(timeMs) + ">"
 
 private fun clock(timeMs: Long): String {

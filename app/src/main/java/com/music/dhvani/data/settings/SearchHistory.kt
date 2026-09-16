@@ -13,7 +13,7 @@ import kotlinx.serialization.json.Json
  * What's been searched for lately, kept on this device only.
  *
  * YouTube Music has an account-level search history, but reading it back needs
- * a separate signed-in call on every keystroke's worth of empty query — and it
+ * a separate signed-in call on every keystroke's worth of empty query Â— and it
  * would be wrong for a signed-out user. A local list is instant, works either
  * way, and is what Spotify and Apple Music show in the same spot.
  *
@@ -43,7 +43,7 @@ object SearchHistory {
      * Re-reads the list off disk.
      *
      * This shares its preference file with [AppSettings], so an import replaces
-     * what is stored here without ever calling [record] — and the flow above
+     * what is stored here without ever calling [record] Â— and the flow above
      * would otherwise go on serving the list the old device had.
      */
     fun reload() {

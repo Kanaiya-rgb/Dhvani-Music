@@ -3,24 +3,24 @@ package com.music.dhvani.download
 import com.music.dhvani.data.lyrics.WORD_LYRICS_FIELD
 
 /**
- * Appends Matroska `Tags` and `Attachments` elements — title, artist, album,
- * lyrics, cover — to an already-downloaded WebM file, in place.
+ * Appends Matroska `Tags` and `Attachments` elements Â— title, artist, album,
+ * lyrics, cover Â— to an already-downloaded WebM file, in place.
  *
  * The insertion is always a plain append at the end of the file, never a
  * splice in the middle, which is what makes this simpler than [Mp4Tagger]:
  * a downloaded track is one `EBML` header followed by one `Segment`, and
  * `Tags`/`Attachments` are ordinary children of that `Segment` with nothing
  * else addressing them by absolute offset (unlike MP4's `stco`/`co64`, an
- * optional `SeekHead` records where things are, but it is advisory — a
+ * optional `SeekHead` records where things are, but it is advisory Â— a
  * player without an entry for `Tags` in it still finds the element by
  * reading on, which is exactly what appending at the end relies on).
  *
  * The one field that can need touching is `Segment`'s own size, if it
- * declared one — a WebM served as a live remux typically declares it
+ * declared one Â— a WebM served as a live remux typically declares it
  * "unknown" (an all-ones size, meaning "read to the end"), in which case
  * appending needs no further change at all. A declared size is only ever
  * widened in place, keeping its original byte width, because growing that
- * width would shift the size field itself and everything after it — the
+ * width would shift the size field itself and everything after it Â— the
  * same offset cascade [Mp4Tagger] exists to handle, which nothing here
  * reaches for. If the value doesn't fit the existing width, or the file
  * doesn't match the single-header/single-segment shape this assumes, the
@@ -52,7 +52,7 @@ object WebmTagger {
         lyrics: String?,
         cover: ByteArray?,
         coverMime: String,
-        /** The A2 form, under a name of this app's own — see [WORD_LYRICS_FIELD]. */
+        /** The A2 form, under a name of this app's own Â— see [WORD_LYRICS_FIELD]. */
         wordLyrics: String? = null,
     ): ByteArray = runCatching {
         insert(bytes, buildTail(title, artist, album, lyrics, cover, coverMime, wordLyrics))
@@ -76,7 +76,7 @@ object WebmTagger {
         }
 
         // A declared size only matches this shape when it accounts for every
-        // byte already in the file — anything else (trailing padding, more
+        // byte already in the file Â— anything else (trailing padding, more
         // top-level elements after Segment) isn't a layout worth guessing at.
         val declaredEnd = segmentContentStart + segmentSize.value
         if (declaredEnd != bytes.size.toLong()) return bytes
@@ -107,14 +107,14 @@ object WebmTagger {
         if (artist.isNotBlank()) simple += simpleTag("ARTIST", artist)
         if (!album.isNullOrBlank()) simple += simpleTag("ALBUM", album)
         // `LYRICS` is Matroska's own name for the field, and `TagString` is a
-        // UTF-8 element with an explicit length — so the LRC's newlines need no
+        // UTF-8 element with an explicit length Â— so the LRC's newlines need no
         // escaping and there is no ceiling worth worrying about here.
         if (!lyrics.isNullOrBlank()) simple += simpleTag("LYRICS", lyrics)
         // Beside `LYRICS`, never instead of it: a SimpleTag with a name a
         // player doesn't know is skipped, so the portable field is untouched.
         if (!wordLyrics.isNullOrBlank()) simple += simpleTag(WORD_LYRICS_FIELD, wordLyrics)
         if (simple.isNotEmpty()) {
-            // An empty Targets applies the tag to the whole file — there is no
+            // An empty Targets applies the tag to the whole file Â— there is no
             // track/chapter to single out in a lone-audio-stream download.
             val targets = elem(ID_TARGETS, ByteArray(0))
             val tagPayload = simple.fold(targets) { acc, s -> acc + s }

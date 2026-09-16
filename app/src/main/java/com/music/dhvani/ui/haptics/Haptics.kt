@@ -16,7 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * What a touch *meant*, not what it should feel like — the shape of the buzz is
+ * What a touch *meant*, not what it should feel like Â— the shape of the buzz is
  * this file's business, so a screen never has to know what the motor under it
  * can do.
  *
@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 enum class Haptic {
     /**
      * The lightest single beat, for something that repeats while a finger is
-     * still down — a drag crossing a tab boundary, say. Anything firmer becomes
+     * still down Â— a drag crossing a tab boundary, say. Anything firmer becomes
      * a rattle once it fires ten times in a row.
      */
     Tick,
@@ -38,10 +38,10 @@ enum class Haptic {
     /** A discrete choice landing: a tab, a filter pill, the end of a scrub. */
     Select,
 
-    /** Switching something on — a light lead-in *rising* into a firm beat. */
+    /** Switching something on Â— a light lead-in *rising* into a firm beat. */
     ToggleOn,
 
-    /** Switching it back off — the same pair mirrored, so it falls away. */
+    /** Switching it back off Â— the same pair mirrored, so it falls away. */
     ToggleOff,
 
     /** Forward through the queue: an accelerating triplet. */
@@ -50,10 +50,10 @@ enum class Haptic {
     /** Backward: [SkipNext] reversed, which is what makes the pair legible. */
     SkipPrevious,
 
-    /** Playback starting — swells into the beat that lands. */
+    /** Playback starting Â— swells into the beat that lands. */
     Resume,
 
-    /** Playback stopping — lands first, then releases. */
+    /** Playback stopping Â— lands first, then releases. */
     Pause,
 
     /** Something growing to fill the screen, e.g. the mini player opening. */
@@ -89,7 +89,7 @@ fun rememberHaptics(): Haptics {
  * after the previous beat before striking it.
  *
  * Only the three genuinely *short* primitives are used. The platform also
- * offers rises, falls, thuds and a spin, and all of them run 80–500ms — long
+ * offers rises, falls, thuds and a spin, and all of them run 80Â–500ms Â— long
  * enough that a two-beat pattern built from them would still be vibrating well
  * after the screen had finished responding.
  */
@@ -152,7 +152,7 @@ private fun rhythmOf(haptic: Haptic): List<Beat> = when (haptic) {
  * Resolves what this particular phone can do once, then renders every [Haptic]
  * into the best [VibrationEffect] available to it:
  *
- *  1. **Composition** (API 30+, primitives supported). Real rhythmic haptics —
+ *  1. **Composition** (API 30+, primitives supported). Real rhythmic haptics Â—
  *     the beats are handed to the vibrator as primitives and it reproduces
  *     their character, not just their timing. This is the Pixel / recent
  *     Samsung path and what the patterns above were written for.
@@ -160,7 +160,7 @@ private fun rhythmOf(haptic: Haptic): List<Beat> = when (haptic) {
  *     rhythm as on-pulses of varying strength. Cruder, still clearly a pattern
  *     rather than a buzz.
  *  3. **Plain waveform**. An on/off pattern on a motor with one volume, so only
- *     the timing survives — and the pulses have to be longer to be felt at all,
+ *     the timing survives Â— and the pulses have to be longer to be felt at all,
  *     which is why this tier drops a three-beat pattern to its two outer beats
  *     rather than letting the total run past ~80ms.
  *
@@ -192,7 +192,7 @@ private class HapticDevice private constructor(
     }
 
     private fun compile(beats: List<Beat>): VibrationEffect = when {
-        // [canCompose] already implies API 30 — see the probe. The version check
+        // [canCompose] already implies API 30 Â— see the probe. The version check
         // is repeated because it's the only form lint can follow, and a
         // suppression here would hide a real mistake later.
         canCompose && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
@@ -270,7 +270,7 @@ private class HapticDevice private constructor(
             }
             if (vibrator == null || !vibrator.hasVibrator()) return null
 
-            // Claiming API 30 isn't enough — plenty of phones on 30+ have an
+            // Claiming API 30 isn't enough Â— plenty of phones on 30+ have an
             // ERM motor that supports no primitives, and asking for a
             // composition there produces silence rather than a fallback.
             val canCompose = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
@@ -320,7 +320,7 @@ private class HapticDevice private constructor(
 
 /**
  * Everything that touches [VibrationEffect.Composition], kept in a class of its
- * own so that class — which does not exist below API 30 — is only ever *loaded*
+ * own so that class Â— which does not exist below API 30 Â— is only ever *loaded*
  * on a device that has it. Gating the call sites would very likely be enough on
  * its own; keeping the references out of [HapticDevice] entirely means it can't
  * come down to how eagerly a particular runtime resolves them.
@@ -328,7 +328,7 @@ private class HapticDevice private constructor(
 private object Primitives {
     /**
      * Only the two primitives that exist on API 30 are checked, because they're
-     * the only two ever asked for there — see [primitive].
+     * the only two ever asked for there Â— see [primitive].
      */
     fun supportedBy(vibrator: Vibrator): Boolean = vibrator.areAllPrimitivesSupported(
         VibrationEffect.Composition.PRIMITIVE_TICK,
@@ -364,8 +364,8 @@ private object Primitives {
  * Tells the platform this buzz is touch feedback, which is what lets the system
  * scale or mute it alongside every other tap in the OS.
  *
- * Held by an object for the same reason as [Primitives] — [VibrationAttributes]
- * arrived in API 30, and the two-argument `vibrate` in 33 — so neither type is
+ * Held by an object for the same reason as [Primitives] Â— [VibrationAttributes]
+ * arrived in API 30, and the two-argument `vibrate` in 33 Â— so neither type is
  * named anywhere that loads on an older phone. A Kotlin `object` initialises on
  * first access, which makes this the cache as well.
  */

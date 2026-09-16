@@ -1,8 +1,8 @@
 /*
  * Modeled on Orchard's own AudioDecoder (https://github.com/SFG5453/Orchard),
- * scoped down to the platform MediaCodec path — Orchard prefers a native
+ * scoped down to the platform MediaCodec path Â— Orchard prefers a native
  * libopus decode with the platform decoder as its documented fallback; this
- * only needs the fallback, since BitChord has no reason to carry a second
+ * only needs the fallback, since Dhvani has no reason to carry a second
  * Opus decoder purely for background analysis.
  *
  * Copyright (C) 2026 Kushagra Singh
@@ -41,7 +41,7 @@ import kotlin.math.max
  * battery for nothing.
  *
  * Everything here is best-effort. A codec that will not configure, a
- * container Android cannot parse, a region past the end — all return null,
+ * container Android cannot parse, a region past the end Â— all return null,
  * and the caller falls back to no analysis, which the transition policy
  * already handles as its bottom rung.
  */
@@ -270,8 +270,8 @@ object AudioDecoder {
      *
      * A mono source is widened by giving both sides the same samples, and
      * anything above two channels keeps only the first two: the model's input
-     * is stereo, and a downmix of a 5.1 track would put the centre channel —
-     * where the vocal usually is — into both sides at half level, which is
+     * is stereo, and a downmix of a 5.1 track would put the centre channel Â—
+     * where the vocal usually is Â— into both sides at half level, which is
      * the opposite of helpful for telling a vocal apart from the bed.
      */
     private fun toStereo(

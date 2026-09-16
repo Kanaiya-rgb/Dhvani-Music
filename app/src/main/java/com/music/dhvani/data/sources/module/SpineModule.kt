@@ -9,7 +9,7 @@ import java.util.Locale
  *
  * Matches the exact JSON shape compatible index servers produce.
  * [download] is either an absolute URL or a filename relative to the
- * index's own base URL — [ModuleManager] resolves it either way.
+ * index's own base URL Â— [ModuleManager] resolves it either way.
  */
 @Serializable
 data class SpineModule(
@@ -23,7 +23,7 @@ data class SpineModule(
     /**
      * Some sources publish capabilities under "labels" instead of "tags".
      * Reading only "tags" left those modules with empty lists, so we merge
-     * whichever key is present — same fix as Convx.
+     * whichever key is present Â— same fix as Convx.
      */
     @SerialName("tags") private val declaredTags: List<String> = emptyList(),
     @SerialName("labels") private val declaredLabels: List<String> = emptyList(),

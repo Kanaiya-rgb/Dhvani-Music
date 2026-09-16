@@ -31,6 +31,7 @@ import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.SongMenu
 import com.music.dhvani.data.model.UiState
 import com.music.dhvani.data.model.UserPlaylist
+import com.music.dhvani.data.model.durationMillis
 import com.music.dhvani.data.history.PlaybackHistory
 import com.music.dhvani.data.settings.SearchHistory
 import com.music.dhvani.download.Downloads
@@ -191,10 +192,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun translateCurrentLyrics() {
         val current = _lyrics.value ?: return
+        val trackId = lyricsFor?.first ?: return
+        val targetLang = AppSettings.lyricsTranslationLanguage.value
         viewModelScope.launch {
             _lyricsTranslating.value = true
-            val result = com.music.dhvani.data.lyrics.LyricsTranslation.translate(current)
-            _translatedLyrics.value = result.getOrNull()
+            val result = com.music.dhvani.data.lyrics.LyricsTranslation.translate(
+                context = getApplication(),
+                trackId = trackId,
+                lines = current,
+                targetLanguageTag = targetLang,
+            )
+            _translatedLyrics.value = (result as? com.music.dhvani.data.lyrics.LyricsTranslation.Result.Translated)?.lines
             _lyricsTranslating.value = false
         }
     }
@@ -306,6 +314,54 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     ) {
         lyricsFor = null
         loadLyrics(videoId, title, artist, durationMs, album, localUri)
+    }
+
+    private var prefetchJob: Job? = null
+
+    /**
+     * Preloads lyrics, artwork, and audio in the background for the next 2 upcoming queue tracks.
+     * Ensures instant transition with pre-cached lyrics and images.
+     */
+    fun prefetchNextTracks(upcoming: List<Song>) {
+        if (upcoming.isEmpty()) return
+        prefetchJob?.cancel()
+        prefetchJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val context = getApplication<Application>()
+            val imageLoader = coil3.SingletonImageLoader.get(context)
+            val sources = AppSettings.lyricsSources.value
+            val order = AppSettings.lyricsSourceOrder.value
+            val prioritizeSyllable = AppSettings.prioritizeSyllableSync.value
+
+            upcoming.take(2).forEach { song ->
+                // 1. Prefetch image into Coil memory and disk cache
+                if (!song.thumbnailUrl.isNullOrBlank()) {
+                    runCatching {
+                        val req = coil3.request.ImageRequest.Builder(context)
+                            .data(song.thumbnailUrl)
+                            .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
+                            .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
+                            .build()
+                        imageLoader.enqueue(req)
+                    }
+                }
+
+                // 2. Prefetch lyrics into LyricsRepository LRU cache
+                if (song.videoId.isNotBlank() && !LyricsRepository.hasCached(song.videoId)) {
+                    runCatching {
+                        LyricsRepository.lyrics(
+                            videoId = song.videoId,
+                            title = song.title,
+                            artist = song.artist,
+                            durationMs = song.durationMillis().takeIf { it > 0L } ?: 180_000L,
+                            album = song.albumName,
+                            sources = sources,
+                            order = order,
+                            prioritizeSyllableSync = prioritizeSyllable,
+                        )
+                    }
+                }
+            }
+        }
     }
 
     private val _account = MutableStateFlow<Account?>(null)

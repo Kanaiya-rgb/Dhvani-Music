@@ -223,7 +223,7 @@ Dhvani Music is completely free, open-source, and ad-free. If you love using the
 
 Dhvani Music is built with immense gratitude to the open-source community and is inspired by these remarkable projects:
 
-* **[BitChord](https://github.com/kushagrasinghx/BitChord)** by [Kushagra Singh](https://github.com/kushagrasinghx) — For pioneering architectural foundations, sophisticated audio playback pipelines, YouTube Music stream integration, and inspiring aesthetic UI concepts.
+* **[Dhvani](https://github.com/kushagrasinghx/Dhvani)** by [Kushagra Singh](https://github.com/kushagrasinghx) — For pioneering architectural foundations, sophisticated audio playback pipelines, YouTube Music stream integration, and inspiring aesthetic UI concepts.
 * **[Meld](https://github.com/FrancescoGrazioso/Meld)** by [Francesco Grazioso](https://github.com/FrancescoGrazioso) — For elegant Material 3 design implementations, intuitive playlist & library management workflows, and exceptional contributions to the open-source Android music ecosystem.
 * **[NewPipe](https://github.com/TeamNewPipe/NewPipeExtractor)** — For robust, lightweight YouTube stream extraction infrastructure.
 * **[Jetpack Compose](https://developer.android.com/jetpack/compose)** & **[AndroidX Media3](https://developer.android.com/media/media3)** — The modern foundation powering our audio engine and UI components.

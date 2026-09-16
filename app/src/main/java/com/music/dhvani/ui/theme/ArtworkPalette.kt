@@ -34,7 +34,7 @@ import kotlin.math.sqrt
 /**
  * The colours an album, playlist or artist page paints itself in.
  *
- * Apple Music's release pages are not one design tinted five ways — the whole
+ * Apple Music's release pages are not one design tinted five ways Â— the whole
  * page is derived from the sleeve, down to which grey the metadata line is. So
  * rather than hand callers a raw swatch and let each of them guess, this is the
  * finished set: a page tint, an accent that is legible *on that tint*, and the
@@ -55,12 +55,12 @@ data class ArtworkPalette(
      * sampled, so a page that starts from this colour where the artwork stops
      * reads as that blur carrying on rather than as a second surface beginning.
      * Lighter than [background], which the page still settles into further
-     * down — the artwork's colour is strongest right under the artwork.
+     * down Â— the artwork's colour is strongest right under the artwork.
      */
     val wash: Color,
     /** Fill for the glass buttons and chips that sit on [background]. */
     val elevated: Color,
-    /** The artwork's own colour, contrast-corrected — titles, icons, Play. */
+    /** The artwork's own colour, contrast-corrected Â— titles, icons, Play. */
     val accent: Color,
     val onBackground: Color,
     val onBackgroundVariant: Color,
@@ -71,7 +71,7 @@ data class ArtworkPalette(
  * Pulls [ArtworkPalette] out of the artwork at [imageUrl].
  *
  * Artwork that has already been read once is tinted on the very first frame,
- * off [seedCache] — a sheet opened from a page it shares a cover with, or a
+ * off [seedCache] Â— a sheet opened from a page it shares a cover with, or a
  * page opened twice, has nothing to wait for and nothing to fade. Only a sleeve
  * genuinely being seen for the first time starts from the theme's own colours
  * and warms into the artwork's, so it never flashes a placeholder tint.
@@ -108,7 +108,7 @@ fun rememberArtworkPalette(
             // The size the artwork is *displayed* at, deliberately: the fetch
             // then shares a disk-cache entry with the row, card or backdrop
             // drawing the same artwork, instead of pulling its own copy over
-            // the wire — which is the difference between a surface that is
+            // the wire Â— which is the difference between a surface that is
             // tinted as it opens and one that turns colour a second later.
             .data(imageUrl.artworkAt(artPx))
             .size(PALETTE_PX) // palette quality holds up here, and it's far faster
@@ -116,8 +116,8 @@ fun rememberArtworkPalette(
             .build()
         val result = SingletonImageLoader.get(context).execute(request)
         val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return@LaunchedEffect
-        // Quantising 128² pixels is not free, and this coroutine is on the main
-        // dispatcher — left there it stutters whatever is animating the surface in.
+        // Quantising 128Â² pixels is not free, and this coroutine is on the main
+        // dispatcher Â— left there it stutters whatever is animating the surface in.
         val found = withContext(Dispatchers.Default) { seedOf(bitmap) } ?: return@LaunchedEffect
         seedCache[imageUrl] = found
         seed = found
@@ -155,7 +155,7 @@ fun rememberArtworkPalette(
  * Colours already read, keyed by artwork URL.
  *
  * Reading them again costs a decode and a quantise for an answer that cannot
- * have changed — the artwork at a URL is the artwork at that URL. Access is
+ * have changed Â— the artwork at a URL is the artwork at that URL. Access is
  * from composition and from the resumption of [rememberArtworkPalette]'s
  * effect, both on the main thread, so it needs no locking of its own.
  */
@@ -182,7 +182,7 @@ private fun seedOf(bitmap: Bitmap): Seed? {
         builder.maximumColorCount(SWATCH_COUNT).generate().swatches
 
     // The default filter throws away near-black and near-white, which on a
-    // monochrome sleeve is the entire image — see MeshGradientBackground, which
+    // monochrome sleeve is the entire image Â— see MeshGradientBackground, which
     // hit the same wall.
     val found = swatches(Palette.from(bitmap)).ifEmpty {
         swatches(Palette.from(bitmap).clearFilters())
@@ -204,7 +204,7 @@ private fun seedOf(bitmap: Bitmap): Seed? {
 private const val SWATCH_COUNT = 24
 
 /**
- * The mean of the artwork's bottom band — what a blur wide enough to lose the
+ * The mean of the artwork's bottom band Â— what a blur wide enough to lose the
  * picture leaves behind at that edge.
  *
  * A flat mean rather than a quantised swatch on purpose: a blur has no notion
@@ -238,7 +238,7 @@ private const val EDGE_BAND = 0.18f
 private fun Seed.toPalette(dark: Boolean): ArtworkPalette = if (dark) {
     ArtworkPalette(
         // Deep enough that white body text clears contrast on any sleeve, but
-        // not so deep the hue is gone — the whole point is that the page is
+        // not so deep the hue is gone Â— the whole point is that the page is
         // recognisably *this* record's colour.
         background = dominant.withHsl(saturation = { it.coerceIn(0.20f, 0.62f) }, lightness = { 0.13f }),
         // Follows the edge's own brightness within a band that stays clear of
@@ -257,7 +257,7 @@ private fun Seed.toPalette(dark: Boolean): ArtworkPalette = if (dark) {
         onBackground = Color.White,
         // Well above the grey the untinted screens use for secondary text. A
         // tint is a *coloured* background, not a black one, so the contrast a
-        // dim grey has against black is not the contrast it has here — artist
+        // dim grey has against black is not the contrast it has here Â— artist
         // names were sinking into the wash on mid-toned sleeves.
         onBackgroundVariant = Color.White.copy(alpha = 0.80f),
         divider = Color.White.copy(alpha = 0.12f),

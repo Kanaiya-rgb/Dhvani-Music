@@ -6,8 +6,8 @@ import com.music.dhvani.BuildConfig
 /**
  * `android.util.Log`, minus the release build.
  *
- * For call sites outside the playback/resolve path that [TrackLog] covers —
- * feeds, artwork, library scans, scrobbling — where there's no Copy Log
+ * For call sites outside the playback/resolve path that [TrackLog] covers Â—
+ * feeds, artwork, library scans, scrobbling Â— where there's no Copy Log
  * reader depending on the output, so there's nothing to preserve in prod.
  * Import as `import com.music.dhvani.data.DebugLog as Log` to drop in
  * without touching call sites.

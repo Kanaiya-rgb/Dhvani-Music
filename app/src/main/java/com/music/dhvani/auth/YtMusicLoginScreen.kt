@@ -16,7 +16,7 @@ private const val MUSIC_ORIGIN = "https://music.youtube.com"
  *
  * Flow: load the standard Google web login with `continue=music.youtube.com`.
  * The user authenticates directly against accounts.google.com (2FA, passkeys
- * etc. all work — it's the real page). When Google redirects back to
+ * etc. all work Â— it's the real page). When Google redirects back to
  * music.youtube.com, the session cookies (SAPISID, __Secure-3PAPISID, ...)
  * land in the WebView's CookieManager; we lift the cookie header for the
  * music.youtube.com origin and hand it to [onCookiesCaptured] exactly once.
@@ -41,7 +41,7 @@ fun YtMusicLoginScreen(
                     override fun onPageFinished(view: WebView?, url: String?) {
                         if (captured || url?.startsWith(MUSIC_ORIGIN) != true) return
                         val cookies = CookieManager.getInstance().getCookie(MUSIC_ORIGIN)
-                        // Not a substring test. See [AuthStore.hasApiSid] — the
+                        // Not a substring test. See [AuthStore.hasApiSid] Â— the
                         // one this replaces accepted a jar with no signing
                         // secret in it, and the sign-in then appeared to
                         // succeed while every request stayed anonymous.

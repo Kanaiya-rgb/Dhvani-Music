@@ -24,7 +24,7 @@ object ListenBrainzManager {
             try {
                 val durationMs = durationMsOverride ?: parseDurationMs(song.durationText)
                 // The API rejects a zero/negative duration_ms, and it is
-                // optional — so only send it when it is actually known.
+                // optional Â— so only send it when it is actually known.
                 val durationPart = if (durationMs > 0) "\"duration_ms\":$durationMs," else ""
                 val releaseName = song.albumName.orEmpty()
                 val releasePart = if (releaseName.isBlank()) "" else "\"release_name\":\"${escapeJson(releaseName)}\","

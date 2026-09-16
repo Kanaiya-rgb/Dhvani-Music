@@ -41,7 +41,7 @@ import kotlin.math.tan
  * second-order sections cascaded to a 24 dB/octave Butterworth response. Chosen
  * over the more familiar Chamberlin SVF because the trapezoidal form is stable
  * at every cutoff up to Nyquist, while Chamberlin's is only well behaved below
- * about a sixth of the sample rate — a low-pass parked wide open at 20 kHz sits
+ * about a sixth of the sample rate Â— a low-pass parked wide open at 20 kHz sits
  * far outside that, so the naive form would have to be special-cased at exactly
  * the setting it spends most of its time at.
  *
@@ -95,11 +95,11 @@ class TransitionFilterProcessor : BaseAudioProcessor() {
         targetHighPassHz = highPassHz.coerceIn(OFF_HZ, MAX_HIGH_PASS_HZ)
     }
 
-    /** Parks both filters. Glided, not snapped — see the class doc. */
+    /** Parks both filters. Glided, not snapped Â— see the class doc. */
     fun open() = setCutoffs(OPEN_HZ, OFF_HZ)
 
     /**
-     * 16-bit PCM only, matching [SpatialAudioProcessor] — and bowing out with
+     * 16-bit PCM only, matching [SpatialAudioProcessor] Â— and bowing out with
      * [AudioProcessor.AudioFormat.NOT_SET] rather than throwing for the same
      * reason it does: `DefaultAudioSink` configures every processor in its chain
      * whether or not the effect is switched on, and a throw from any of them
@@ -155,7 +155,7 @@ class TransitionFilterProcessor : BaseAudioProcessor() {
         val targetHigh = targetHighPassHz
         // Parked at both ends *and* already settled there: nothing to do but
         // hand the buffer straight through. The "already settled" half matters
-        // — a transition that has just finished is still gliding back open, and
+        // Â— a transition that has just finished is still gliding back open, and
         // cutting the filter out from under that glide is the click it exists
         // to avoid.
         val parked = targetLow >= OPEN_HZ && targetHigh <= OFF_HZ &&
@@ -307,10 +307,10 @@ class TransitionFilterProcessor : BaseAudioProcessor() {
  * lap.
  */
 interface TransitionFilters {
-    /** The track fading up — the session player, once the lap has handed the queue over. */
+    /** The track fading up Â— the session player, once the lap has handed the queue over. */
     fun incoming(lowPassHz: Float, highPassHz: Float)
 
-    /** The track fading out — the ghost player. */
+    /** The track fading out Â— the ghost player. */
     fun outgoing(lowPassHz: Float, highPassHz: Float)
 
     /** Parks both. Called whenever a transition ends, however it ended. */
@@ -319,7 +319,7 @@ interface TransitionFilters {
         outgoing(TransitionFilterProcessor.OPEN_HZ, TransitionFilterProcessor.OFF_HZ)
     }
 
-    /** For callers with no audio sink to filter — tests, and the default wiring. */
+    /** For callers with no audio sink to filter Â— tests, and the default wiring. */
     object None : TransitionFilters {
         override fun incoming(lowPassHz: Float, highPassHz: Float) = Unit
         override fun outgoing(lowPassHz: Float, highPassHz: Float) = Unit

@@ -9,13 +9,13 @@ import kotlin.math.roundToInt
 
 /**
  * Cheap stand-in for "spatial audio": widens the mid/side image and mixes in
- * a short, low-passed cross-feed between channels — the same trick most
+ * a short, low-passed cross-feed between channels Â— the same trick most
  * consumer virtual-surround plugins use. O(1) per sample, no FFT or
  * convolution, so it costs nothing worth measuring on a phone CPU.
  *
  * Exists because the platform [android.media.audiofx.Virtualizer] produced no
- * audible difference on the reference device — likely swallowed by the OEM's
- * own audio effect chain — so this runs inside ExoPlayer's own audio
+ * audible difference on the reference device Â— likely swallowed by the OEM's
+ * own audio effect chain Â— so this runs inside ExoPlayer's own audio
  * processor pipeline instead, where nothing else can intercept it.
  */
 @UnstableApi
@@ -33,7 +33,7 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
     /** How much of the delayed, low-passed opposite channel gets mixed back in. */
     private val crossfeedGain = 0.2f
 
-    /** One-pole lowpass factor applied to the cross-fed signal — dulls it, like a far ear would. */
+    /** One-pole lowpass factor applied to the cross-fed signal Â— dulls it, like a far ear would. */
     private val lowpassCoeff = 0.3f
 
     private var delayLeft = ShortArray(0)
@@ -53,7 +53,7 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
      * [DefaultAudioSink][androidx.media3.exoplayer.audio.DefaultAudioSink]
      * configures every processor in its chain whether or not the effect is
      * switched on, and a throw from any
-     * of them fails the whole sink — the renderer dies with
+     * of them fails the whole sink Â— the renderer dies with
      * "MediaCodecAudioRenderer error" before a sample is written. NOT_SET
      * means "inactive for this format" and the chain routes around this
      * processor instead.

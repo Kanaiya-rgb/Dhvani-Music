@@ -2,11 +2,11 @@
  * Ported from Orchard (https://github.com/SFG5453/Orchard).
  *
  * Copyright (C) 2026 SFG545 (original Orchard implementation)
- * Copyright (C) 2026 Kushagra Singh (BitChord adaptation)
+ * Copyright (C) 2026 Kushagra Singh (Dhvani adaptation)
  *
  * Orchard's original source is licensed under the GNU Affero General Public
  * License, version 3 or later. Per AGPLv3 section 13, this file is combined
- * here into BitChord -- a work licensed under the GNU General Public
+ * here into Dhvani -- a work licensed under the GNU General Public
  * License, version 3 or later -- and remains itself governed by the AGPLv3
  * as part of that combination.
  *
@@ -161,7 +161,7 @@ fun isVocalClash(outgoingActivity: Double?, incomingActivity: Double?): Boolean 
  * 1 for two fully vocal passages landing on one another.
  *
  * [isVocalClash]'s graded counterpart, and the reason for having both. A boolean
- * is the right shape for a routing decision — shorten the overlap or don't — but
+ * is the right shape for a routing decision Â— shorten the overlap or don't Â— but
  * it is the wrong shape for the renderer, which has to decide *how hard* to pull
  * the two voices apart. A pair scraping over the threshold and two choruses
  * colliding are the same `true` and want visibly different treatment.
@@ -171,7 +171,7 @@ fun isVocalClash(outgoingActivity: Double?, incomingActivity: Double?): Boolean 
  * and taking a mean would let one strong side manufacture one.
  *
  * Null on either side is no evidence and answers zero, which leaves whatever the
- * caller would have done anyway. Absence of a mask is not absence of a vocal —
+ * caller would have done anyway. Absence of a mask is not absence of a vocal Â—
  * but acting on it would filter every track a fallback analyzer handled.
  */
 fun vocalOverlapAmount(outgoingActivity: Double?, incomingActivity: Double?): Double {
@@ -188,7 +188,7 @@ fun vocalOverlapAmount(outgoingActivity: Double?, incomingActivity: Double?): Do
  * Why this exists alongside [vocalActivityBetween]: that one answers with a
  * *mean* over the window, and a mean is the wrong statistic for a clash. Twelve
  * seconds holding three seconds of vocal and nine of instrumental averages well
- * under [VOCAL_ACTIVE_THRESHOLD] and reads as clear — while the listener plainly
+ * under [VOCAL_ACTIVE_THRESHOLD] and reads as clear Â— while the listener plainly
  * hears two voices for those three seconds. Every clash short of about half the
  * overlap was being averaged into silence, which is why a transition could be
  * planned as clean and still land two vocals on top of each other.

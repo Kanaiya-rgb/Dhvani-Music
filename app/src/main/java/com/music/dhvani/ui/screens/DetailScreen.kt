@@ -77,8 +77,6 @@ import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
-import com.music.dhvani.data.canvas.CanvasArtwork
-import com.music.dhvani.data.canvas.CanvasRepository
 import com.music.dhvani.data.model.BrowseType
 import com.music.dhvani.data.model.DetailPage
 import com.music.dhvani.data.model.CARD_ART_PX
@@ -102,7 +100,6 @@ import com.music.dhvani.ui.components.topBarContentPadding
 import com.music.dhvani.ui.haptics.Haptic
 import com.music.dhvani.ui.haptics.rememberHaptics
 import com.music.dhvani.ui.icons.DhvaniIcons
-import com.music.dhvani.ui.player.CanvasArtworkPlayer
 import com.music.dhvani.ui.theme.ArtworkPalette
 import com.music.dhvani.ui.theme.rememberArtworkPalette
 import kotlin.math.roundToInt
@@ -242,28 +239,6 @@ fun DetailScreen(
     // qualifies and the badge would be decoration rather than information.
     val downloadedTint = palette.accent.takeUnless { page.browseId.startsWith("local:") }
 
-    // Animated cover art on the header, the same feature the player has.
-    // Albums only: a playlist's artwork is a collage and an artist page's is a
-    // photograph, and neither is something a label publishes a canvas for.
-    val canvasEnabled by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
-    // The credit line the header shows is the artist as far as the catalogue
-    // services are concerned. A browse card's subtitle sometimes omits it, in
-    // which case the tracks themselves know who it is.
-    val credit = remember(page.subtitle, songs) {
-        page.headerLines(songs.size).first.ifBlank { songs.firstOrNull()?.artist.orEmpty() }
-    }
-    var canvas by remember(page.browseId) { mutableStateOf<CanvasArtwork?>(null) }
-    LaunchedEffect(page.browseId, page.title, credit, canvasEnabled) {
-        if (!canvasEnabled || page.type != BrowseType.ALBUM) {
-            canvas = null
-            return@LaunchedEffect
-        }
-        // As on the player: the credit fills in once the tracks load, so this
-        // can run twice. Keep a clip that is already playing if the second
-        // pass comes back empty.
-        canvas = CanvasRepository.canvasForAlbum(page.title, credit) ?: canvas
-    }
-
     val pageHaze = remember { HazeState() }
 
     // Opening the search carries the page up to it, so the field lands just
@@ -291,7 +266,6 @@ fun DetailScreen(
         PageBackground(
             page = page,
             palette = palette,
-            canvas = canvas,
             artHeight = artHeight,
             listState = listState,
             hazeState = pageHaze,
@@ -837,7 +811,6 @@ private fun ArtistHeader(page: DetailPage, palette: ArtworkPalette, artHeight: D
 private fun PageBackground(
     page: DetailPage,
     palette: ArtworkPalette,
-    canvas: CanvasArtwork?,
     artHeight: Dp,
     listState: LazyListState,
     hazeState: HazeState,
@@ -864,18 +837,6 @@ private fun PageBackground(
                     .matchParentSize()
                     .background(palette.elevated),
             )
-
-            // Above the still art but below both gradients, so the scrim and
-            // the wash that blend the header into the page still sit over it.
-            // Always running: unlike the player's sleeve there is no transport
-            // here to follow, and the page is only up while it's being read.
-            canvas?.let { clip ->
-                CanvasArtworkPlayer(
-                    canvas = clip,
-                    isPlaying = true,
-                    modifier = Modifier.matchParentSize(),
-                )
-            }
 
             // Shade under the glass bar. Drawn in the page's own tint rather
             // than in black, so the back arrow — which is themed, not always

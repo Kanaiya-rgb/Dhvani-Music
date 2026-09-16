@@ -19,7 +19,7 @@ import kotlin.coroutines.CoroutineContext
  * paste somewhere.
  *
  * Diagnosing why a track played from the wrong source, at the wrong bitrate,
- * or not at all has meant plugging the phone in and reading `adb logcat` — and
+ * or not at all has meant plugging the phone in and reading `adb logcat` Â— and
  * the answer is usually in a stretch lasting a few seconds that has already
  * scrolled past by the time anyone notices something sounded wrong. This keeps
  * that stretch.
@@ -27,8 +27,8 @@ import kotlin.coroutines.CoroutineContext
  * ### Why not read logcat
  *
  * The obvious implementation shells out to `logcat`, and it works. But from
- * Android 13 an app that does so trips a system consent dialog — *"Allow
- * BitChord to access all device logs?"* — which appears whenever the process
+ * Android 13 an app that does so trips a system consent dialog Â— *"Allow
+ * Dhvani to access all device logs?"* Â— which appears whenever the process
  * happens to spawn, asks for far more than this needs, and puts every other
  * app's output within reach of a paste made from a music player. None of that
  * is a reasonable price for a debug button.
@@ -41,14 +41,14 @@ import kotlin.coroutines.CoroutineContext
  *
  * Only the paths that decide how a track plays: the resolver, the module
  * sandbox, the source ladder, the cache and the player. Deliberately not the
- * feeds, the artwork, the lyrics or the library — a paste that includes
+ * feeds, the artwork, the lyrics or the library Â— a paste that includes
  * everything is one nobody reads to the end of, and none of it has ever been
  * the answer to "why did this song sound wrong".
  *
  * ### Which lines are whose
  *
  * Every line is filed against the track it is about, and reading the log back
- * is a question about a track rather than about a stretch of time — see
+ * is a question about a track rather than about a stretch of time Â— see
  * [about] and [forTrack]. This app does most of a track's work nowhere near
  * the moment that track is playing: it is resolved while the one before it
  * plays, and the first seconds of every track are spent resolving the *next*
@@ -57,13 +57,13 @@ import kotlin.coroutines.CoroutineContext
  * song's log almost every time.
  *
  * Call [d], [w] and [e] exactly where `Log.d`/`w`/`e` would go; they forward
- * to logcat as well, so `adb logcat -s BitChord` is unchanged.
+ * to logcat as well, so `adb logcat -s Dhvani` is unchanged.
  */
 object TrackLog {
 
     // -- Writing -------------------------------------------------------------
 
-    // logcat is only worth writing to in a debug build — nothing in prod ever
+    // logcat is only worth writing to in a debug build Â— nothing in prod ever
     // reads it (see the class doc), so a release build skips straight to
     // record(), which is what Copy Log actually depends on.
 
@@ -105,7 +105,7 @@ object TrackLog {
     /**
      * A coroutine context that files everything logged inside it against [id].
      *
-     *     scope.async(Dispatchers.IO + TrackLog.about(videoId)) { … }
+     *     scope.async(Dispatchers.IO + TrackLog.about(videoId)) { Â… }
      *
      * The alternative is passing an id down to every call that logs, and the
      * lines worth having are exactly the ones furthest from anyone who knows
@@ -115,8 +115,8 @@ object TrackLog {
      * would be a worse trade than the button is worth.
      *
      * Carried as a [kotlinx.coroutines.ThreadContextElement] rather than a bare
-     * thread local because that work hops threads constantly —
-     * `withContext(IO)` for a fetch, `Dispatchers.Default` for the JS engine —
+     * thread local because that work hops threads constantly Â—
+     * `withContext(IO)` for a fetch, `Dispatchers.Default` for the JS engine Â—
      * and this follows it, including into every child coroutine.
      */
     fun about(id: String?): CoroutineContext = working.asContextElement(id)
@@ -136,7 +136,7 @@ object TrackLog {
      */
     private fun record(level: Char, message: String, about: String?) {
         val text = if (message.length > MAX_LINE_CHARS) {
-            message.take(MAX_LINE_CHARS) + "…(${message.length - MAX_LINE_CHARS} more)"
+            message.take(MAX_LINE_CHARS) + "Â…(${message.length - MAX_LINE_CHARS} more)"
         } else {
             message
         }
@@ -173,7 +173,7 @@ object TrackLog {
      * gets both of them wrong:
      *
      *  - **Where it starts.** A track is resolved while the track *before* it
-     *    is still playing — that is what read-ahead is — so the resolve that
+     *    is still playing Â— that is what read-ahead is Â— so the resolve that
      *    decides its source, its bitrate and whether it plays at all sits
      *    minutes earlier than the moment the queue reached it. No window
      *    measured back from the selection reaches that.
@@ -184,7 +184,7 @@ object TrackLog {
      *    was almost entirely made of.
      *
      * Falling back to everything held is still the right way to be wrong for a
-     * track nothing was ever filed against — one served whole from the disk
+     * track nothing was ever filed against Â— one served whole from the disk
      * cache, or the track a cold start resumes on.
      */
     suspend fun forTrack(song: Song, stats: NerdStats.Snapshot?): String = withContext(Dispatchers.Default) {
@@ -218,7 +218,7 @@ object TrackLog {
         count: Int,
         elsewhere: Int,
     ) = buildString {
-        appendLine("Dhvani Music log — ${song.title} — ${song.artist}")
+        appendLine("Dhvani Music log Â— ${song.title} Â— ${song.artist}")
         appendLine("id=${song.videoId} duration=${song.durationText ?: "?"} album=${song.albumName ?: "?"}")
         appendLine("playing: ${stats.describe()}")
         appendLine(
@@ -242,7 +242,7 @@ object TrackLog {
             bitrateKbps?.let { "$it kbps" },
             sampleRateHz?.let { "$it Hz" },
             channels?.let { "${it}ch" },
-        ).joinToString(" · ").ifEmpty { "nothing reported" }
+        ).joinToString(" Â· ").ifEmpty { "nothing reported" }
         val promised = claimed?.summary?.let { " (source said: $it)" }.orEmpty()
         val tier = when {
             isHiRes -> " [Hi-Res Lossless]"
@@ -257,7 +257,7 @@ object TrackLog {
 
     /**
      * How far back of a track's selection to reach when nothing was ever filed
-     * against it — see [startedAt].
+     * against it Â— see [startedAt].
      *
      * Only a fallback now. It used to be the whole of the window, on the
      * reasoning that the resolve runs a moment before the player reports the

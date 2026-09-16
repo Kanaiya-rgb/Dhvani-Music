@@ -5,8 +5,8 @@ package com.music.dhvani.data.lyrics
  * [LyricLine.background].
  *
  * Only Apple's TTML says outright which spans are the backing voice
- * (`ttm:role="x-bg"`, read in [TtmlLyrics]). Every other provider — LyricsPlus,
- * SimpMusic's rich sync, LRCLIB — writes it into the line as a bracket:
+ * (`ttm:role="x-bg"`, read in [TtmlLyrics]). Every other provider Â— LyricsPlus,
+ * SimpMusic's rich sync, LRCLIB Â— writes it into the line as a bracket:
  *
  * ```
  * I'm foolishly patient (Foolishly patient)
@@ -39,7 +39,7 @@ private fun LyricLine.splitTrailingBracket(): LyricLine {
 
     if (words.isEmpty()) {
         // Line-synced: there is no timing to divide, so the two halves share
-        // the line's stamp and simply stack. Both keep the stated end — it is
+        // the line's stamp and simply stack. Both keep the stated end Â— it is
         // the line's end, and the line is both of them.
         return copy(
             text = lead,
@@ -48,7 +48,7 @@ private fun LyricLine.splitTrailingBracket(): LyricLine {
     }
 
     // [text] is the words joined by single spaces in every word-synced parser
-    // here, so the bracket's character offset is a word boundary — unless the
+    // here, so the bracket's character offset is a word boundary Â— unless the
     // bracket opens mid-word ("wait(ing)"), in which case it isn't one and
     // there is nothing to hand the backing line for timing. Leave those be.
     val split = words.indexOfFirstStartingAt(open) ?: return this

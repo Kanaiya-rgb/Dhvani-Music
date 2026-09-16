@@ -27,17 +27,17 @@ import dev.chrisbanes.haze.materials.HazeMaterials
  *
  * Shortened from 120: the page's first heading sits a fixed distance down the
  * screen, well inside this run, and over 120dp the ramp still had something
- * like a tenth of its blur left there — enough to leave a heavy 30sp title
+ * like a tenth of its blur left there Â— enough to leave a heavy 30sp title
  * looking soft before it had been scrolled anywhere. The tail is what hides the
  * layer's end, so it cannot simply be cut; 88 is as short as it goes before the
  * ramp starts to be findable. The rest of the clearance is bought by starting
- * the page's content lower — the two are tuned against each other, and neither
+ * the page's content lower Â— the two are tuned against each other, and neither
  * fixes it alone.
  */
 private val FADE_RUN = 88.dp
 
 /**
- * How much blur the fade reaches at its outer edge — short of all of it.
+ * How much blur the fade reaches at its outer edge Â— short of all of it.
  *
  * The last quarter buys almost nothing visually and costs the most: a blur has
  * nothing to sample past the edge of its own layer, so the harder it is pushed
@@ -66,7 +66,7 @@ private const val SCRIM_STOPS = 12
  * A bar carrying a uniform pane is a rectangle sitting on the page, and its
  * bottom edge is a line drawn across whatever scrolls under it. That reads
  * worst on a detail page, whose artwork runs up under the status bar, but it
- * is the same hard edge on a feed — so the fade is what every page gets, and
+ * is the same hard edge on a feed Â— so the fade is what every page gets, and
  * [FrostedTopBar] paints no backdrop of its own anywhere.
  *
  * Fading out instead leaves the title and back arrow something to be legible
@@ -86,7 +86,7 @@ fun TopFadeBlur(
     /**
      * A wash laid over the blur to keep the bar's glyphs readable.
      *
-     * Blur alone does not settle contrast — it makes a pale sleeve into a pale
+     * Blur alone does not settle contrast Â— it makes a pale sleeve into a pale
      * blur, and a row of bright artwork scrolling under a feed's title into a
      * bright smear. The scrim gives the glyphs a floor to sit on whatever
      * happens to pass beneath them.
@@ -116,8 +116,8 @@ fun TopFadeBlur(
                 // Both halves of this material are flat colour: the style's
                 // background is painted as an opaque rect under the sampled
                 // content, and its tint is a film over that. The progressive
-                // gradient reaches neither — it ramps only the blur radius and
-                // the tint's alpha — so wherever the blur has least to say,
+                // gradient reaches neither Â— it ramps only the blur radius and
+                // the tint's alpha Â— so wherever the blur has least to say,
                 // that flat colour is most of what is left. A blur has nothing
                 // to sample past the top
                 // of its own layer, so the first blur-radius of this strip is
@@ -137,7 +137,7 @@ fun TopFadeBlur(
                     endIntensity = 0f,
                 )
                 // Uniform across the layer, so it would show as texture over
-                // the untouched foot of the ramp — the edge being hidden.
+                // the untouched foot of the ramp Â— the edge being hidden.
                 noiseFactor = 0f
             },
     )
@@ -146,7 +146,7 @@ fun TopFadeBlur(
         Brush.verticalGradient(
             // The same eased-out shape as the blur above it, so the two arrive
             // at nothing together. A scrim that outlasted the blur would leave
-            // a tinted band hanging below a fade that had already finished —
+            // a tinted band hanging below a fade that had already finished Â—
             // the one artefact this bar exists to avoid.
             colorStops = Array(SCRIM_STOPS) { i ->
                 val t = i / (SCRIM_STOPS - 1f)

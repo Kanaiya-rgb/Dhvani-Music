@@ -1,8 +1,12 @@
 package com.music.dhvani.ui.components
 
+import com.music.dhvani.R
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
@@ -20,8 +24,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -30,12 +37,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -45,7 +57,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.dhvani.data.lyrics.LyricsSource
 import com.music.dhvani.data.settings.AppSettings
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 
@@ -61,7 +72,7 @@ import dev.chrisbanes.haze.materials.HazeMaterials
  *
  * The order shown is the order they are tried, and it is the user's to set:
  * drag a row by its handle to move it, which reorders independently of
- * whether the row is ticked — priority and participation are different
+ * whether the row is ticked â€” priority and participation are different
  * questions, and this is the one dialog for both.
  */
 @OptIn(ExperimentalHazeMaterialsApi::class)
@@ -75,6 +86,8 @@ fun LyricsSourcesDialog(
     val selected by AppSettings.lyricsSources.collectAsStateWithLifecycle()
     val savedOrder by AppSettings.lyricsSourceOrder.collectAsStateWithLifecycle()
     val prioritizeSyllableSync by AppSettings.prioritizeSyllableSync.collectAsStateWithLifecycle()
+    val paxSenixApiKey by AppSettings.paxSenixApiKey.collectAsStateWithLifecycle()
+    var showPaxSenixKeyDialog by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(ALERT_CORNER)
 
     Box(
@@ -96,7 +109,7 @@ fun LyricsSourcesDialog(
                     if (reduceDynamicBlur) {
                         Modifier.background(MaterialTheme.colorScheme.surface)
                     } else {
-                        Modifier.hazeEffect(
+                        Modifier.optimizedHazeEffect(
                             state = hazeState,
                             style = HazeMaterials.regular(MaterialTheme.colorScheme.surface),
                         )
@@ -117,7 +130,7 @@ fun LyricsSourcesDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    text = "Lyrics Sources",
+                    text = stringResource(R.string.lyrics_sources),
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontSize = 17.sp,
                         fontWeight = FontWeight.W600,
@@ -126,9 +139,7 @@ fun LyricsSourcesDialog(
                     textAlign = TextAlign.Center,
                 )
                 Text(
-                    text = "Tried in this order — drag to reorder. The highest-priority " +
-                        "source to answer at all wins, unless Prioritize Syllable Lyrics says " +
-                        "to keep looking for a word-synced one.",
+                    text = stringResource(R.string.lyrics_sources_order),
                     modifier = Modifier.padding(top = 4.dp),
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontSize = 13.sp,
@@ -139,22 +150,44 @@ fun LyricsSourcesDialog(
                 )
             }
 
-            ReorderableSourceList(
-                order = savedOrder,
-                selected = selected,
-                onReorder = AppSettings::setLyricsSourceOrder,
-                onToggle = { source ->
-                    val checked = source in selected
-                    // The last one standing can't be unchecked — an empty list
-                    // is indistinguishable from switching lyrics off, and there
-                    // is already a switch for that a row above this dialog.
-                    if (checked && selected.size <= 1) return@ReorderableSourceList
-                    AppSettings.setLyricsSources(
-                        if (checked) selected - source else selected + source,
-                    )
-                },
-            )
+            // Capped and scrolled rather than laid out at full height: there
+            // are enough providers now that the card ran off both ends of a
+            // phone, taking Reset and Done with it. Still a plain Column
+            // inside â€” the drag measures itself against a fixed row pitch and
+            // a lazy list would recycle the row being dragged out from under
+            // the finger.
+            Box(
+                modifier = Modifier
+                    .heightIn(max = SOURCES_MAX_HEIGHT)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                ReorderableSourceList(
+                    order = savedOrder,
+                    selected = selected,
+                    onReorder = AppSettings::setLyricsSourceOrder,
+                    onToggle = { source ->
+                        val checked = source in selected
+                        // The last one standing can't be unchecked â€” an empty
+                        // list is indistinguishable from switching lyrics off,
+                        // and there is already a switch for that a row above
+                        // this dialog.
+                        if (checked && selected.size <= 1) return@ReorderableSourceList
+                        AppSettings.setLyricsSources(
+                            if (checked) selected - source else selected + source,
+                        )
+                    },
+                )
+            }
 
+            AlertRule()
+            AlertAction(
+                label = stringResource(
+                    if (paxSenixApiKey.isBlank()) R.string.paxsenix_api_key_missing
+                    else R.string.paxsenix_api_key_configured,
+                ),
+                emphasised = false,
+                onClick = { showPaxSenixKeyDialog = true },
+            )
             AlertRule()
             SyllableSyncToggle(
                 checked = prioritizeSyllableSync,
@@ -163,19 +196,51 @@ fun LyricsSourcesDialog(
 
             AlertRule()
             AlertAction(
-                label = "Reset to Default",
+                label = stringResource(R.string.reset_to_default),
                 emphasised = false,
                 onClick = AppSettings::resetLyricsSourceSettings,
             )
             AlertRule()
-            AlertAction(label = "Done", emphasised = true, onClick = onDismiss)
+            AlertAction(label = stringResource(R.string.done), emphasised = true, onClick = onDismiss)
         }
+    }
+
+    if (showPaxSenixKeyDialog) {
+        var input by remember(paxSenixApiKey) { mutableStateOf(paxSenixApiKey) }
+        AlertDialog(
+            onDismissRequest = { showPaxSenixKeyDialog = false },
+            title = { Text(stringResource(R.string.paxsenix_api_key)) },
+            text = {
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    AppSettings.setPaxSenixApiKey(input)
+                    showPaxSenixKeyDialog = false
+                }) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPaxSenixKeyDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 }
 
 /**
  * Whether a merely line-synced answer is good enough on its own, or worth
- * holding out on for a word-synced one further down the priority order —
+ * holding out on for a word-synced one further down the priority order â€”
  * see the note on [AppSettings.prioritizeSyllableSync]. A single row rather
  * than one more entry in the checkable list above: this isn't a source to
  * ask or not, it's a rule about what to do once one has answered.
@@ -201,13 +266,12 @@ private fun SyllableSyncToggle(checked: Boolean, onToggle: () -> Unit) {
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                text = "Prioritize Syllable Lyrics",
+                text = stringResource(R.string.prioritize_syllable_lyrics),
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "Keep searching past a whole-line match for a word-by-word one, " +
-                    "wherever it falls in the order above",
+                text = stringResource(R.string.prioritize_syllable_lyrics_subtitle),
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp, lineHeight = 15.sp),
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
             )
@@ -216,7 +280,7 @@ private fun SyllableSyncToggle(checked: Boolean, onToggle: () -> Unit) {
         if (checked) {
             Icon(
                 imageVector = Icons.Rounded.Check,
-                contentDescription = "Enabled",
+                contentDescription = stringResource(R.string.enabled),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(19.dp),
             )
@@ -227,7 +291,7 @@ private fun SyllableSyncToggle(checked: Boolean, onToggle: () -> Unit) {
 /**
  * The checkable, drag-reorderable list of sources.
  *
- * Reordering is entirely local until a drag ends — [liveOrder] tracks the
+ * Reordering is entirely local until a drag ends â€” [liveOrder] tracks the
  * list as rows are dragged past each other, and only the finished order is
  * written back through [onReorder]. Writing on every intermediate swap would
  * mean [AppSettings] round-tripping the list back down through
@@ -257,7 +321,7 @@ private fun ReorderableSourceList(
     /** Which slot of [liveOrder] it began on. */
     var startIndex by remember { mutableStateOf(0) }
 
-    // The distance from one row's top to the next one's — which is the row
+    // The distance from one row's top to the next one's â€” which is the row
     // *plus* the hairline above it, not the row alone. Measured off a wrapper
     // holding both, because measuring the row by itself left every swap
     // short by the width of a rule and the error compounded down the list.
@@ -273,7 +337,7 @@ private fun ReorderableSourceList(
     Column {
         liveOrder.forEach { source ->
             // Without this, Compose matches each row to its slot by position
-            // rather than by which source it is — so the instant a swap moved
+            // rather than by which source it is â€” so the instant a swap moved
             // a different [LyricsSource] into the slot the finger was on,
             // that slot's `pointerInput` saw its key change and restarted the
             // coroutine mid-gesture, which is indistinguishable from letting
@@ -284,8 +348,8 @@ private fun ReorderableSourceList(
             // slot instead of being torn down and rebuilt in place.
             key(source) {
                 val checked = source in selected
-                // The last one enabled can't be unticked — see the guard in
-                // [onToggle] — so it reads the same disabled way the toggle
+                // The last one enabled can't be unticked â€” see the guard in
+                // [onToggle] â€” so it reads the same disabled way the toggle
                 // itself already treats it, rather than looking clickable and
                 // silently doing nothing.
                 val toggleable = !checked || selected.size > 1
@@ -302,7 +366,7 @@ private fun ReorderableSourceList(
                             //
                             // The row sits wherever the finger has carried it
                             // from where it was picked up, less whatever the
-                            // swaps have already moved its slot — so a swap
+                            // swaps have already moved its slot â€” so a swap
                             // relocates the slot and shortens this offset by
                             // exactly as much, and the row does not budge.
                             translationY = if (dragging) {
@@ -328,12 +392,12 @@ private fun ReorderableSourceList(
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.DragHandle,
-                            contentDescription = "Drag to reorder",
+                            contentDescription = stringResource(R.string.drag_to_reorder),
                             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
                             modifier = Modifier
                                 .padding(horizontal = 6.dp)
                                 .size(18.dp)
-                                // A constant key on purpose — see the note above.
+                                // A constant key on purpose â€” see the note above.
                                 // The row this coroutine belongs to is now pinned
                                 // by [key], so nothing about a reorder should ever
                                 // restart it; only the handle's own identity
@@ -421,7 +485,7 @@ private fun ReorderableSourceList(
                         if (checked) {
                             Icon(
                                 imageVector = Icons.Rounded.Check,
-                                contentDescription = "Enabled",
+                                contentDescription = stringResource(R.string.enabled),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(19.dp),
                             )
@@ -438,7 +502,7 @@ private fun ReorderableSourceList(
  * places, as a share of one row's pitch.
  *
  * Deliberately more than half. At exactly half, a row that has just swapped
- * lands with its offset sitting precisely on the boundary of swapping *back* —
+ * lands with its offset sitting precisely on the boundary of swapping *back* â€”
  * so a single pixel of the shake any real finger has flipped it, and the
  * compensating shift put it straight back on the forward boundary again. The
  * row juddered between two slots for as long as it was held near a crossing,
@@ -447,3 +511,6 @@ private fun ReorderableSourceList(
  * to swallow the shake without the swap feeling reluctant.
  */
 private const val SWAP_THRESHOLD = 0.6f
+
+/** How tall the source list may get before it scrolls inside the card. */
+private val SOURCES_MAX_HEIGHT = 340.dp

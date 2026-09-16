@@ -341,4 +341,65 @@
     <string name="download_network_wifi_only_desc">Only download songs when connected to Wi-Fi</string>
     <string name="download_network_cellular_only">Mobile Data Only</string>
     <string name="download_network_cellular_only_desc">Only download songs using mobile data</string>
+    <!-- Audio Pipeline & Lyrics Translation -->
+    <string name="audio_pipeline">Audio Pipeline</string>
+    <string name="pipeline_channels">Channels</string>
+    <string name="pipeline_resampler">Resampler</string>
+    <string name="pipeline_dsp">DSP</string>
+    <string name="pipeline_sample_rate">Sample Rate</string>
+    <string name="pipeline_decoder">Decoder</string>
+    <string name="pipeline_format">Format</string>
+    <string name="pipeline_buffers">Buffers</string>
+    <string name="pipeline_device_name">Device Name</string>
+    <string name="pipeline_pcm_format">PCM Format</string>
+    <string name="pipeline_decoder_name">Decoder Name</string>
+    <string name="pipeline_type">Type</string>
+    <string name="pipeline_bitrate">Bitrate</string>
+    <string name="pipeline_output_api">Output API</string>
+    <string name="pipeline_bit_depth">Bit Depth</string>
+    <string name="pipeline_cutoff">Cutoff</string>
+    <string name="pipeline_io_rate">I/O Rate</string>
+    <string name="pipeline_source">Source</string>
+    <string name="mono">Mono</string>
+    <string name="pipeline_stereo_expand">Stereo Expand</string>
+    <string name="pipeline_track_info">Track Info</string>
+    <string name="stereo">Stereo</string>
+    <string name="pipeline_quality">Quality</string>
+    <string name="pipeline_output_device">Output Device</string>
+    <string name="pipeline_eq_preset">EQ Preset</string>
+    <!-- Lyrics Translation Strings -->
+    <string name="show_original_lyrics">Show original lyrics</string>
+    <string name="translate_lyrics">Translate lyrics</string>
+    <string name="lyrics_already_in_language">Lyrics are already in %1$s</string>
+    <string name="lyrics_translation_unavailable">Lyrics translation unavailable</string>
+    <string name="translating_lyrics_to">Translating lyrics to %1$s…</string>
+    <string name="lyrics_translated_to">Lyrics translated to %1$s</string>
+    <string name="lyrics_by">Lyrics provided by %1$s</string>
+    <string name="no_lyrics_found">No lyrics found for this track</string>
+    <string name="lyrics_saved_with_download">Saved with download</string>
+    <string name="lyrics_translation">Lyrics Translation</string>
+    <string name="lyrics_translation_subtitle">Translate lyrics on the fly using online translation</string>
+    <string name="translation_language">Translation language</string>
+    <string name="translation_language_description">The language the translate button turns lyrics into.</string>
+    <string name="translation_language_app_default">App language</string>
+    <string name="translation_language_subtitle">Follows the app language</string>
+    <string name="search_languages">Search languages</string>
+    <string name="no_languages_match">No languages match</string>
+    <string name="lyrics_sources_order">Sources are tried in this order. Drag to reorder them. The first source with lyrics wins unless syllable lyrics are prioritized.</string>
+    <string name="paxsenix_api_key_missing">PaxSenix API key - optional, not configured</string>
+    <string name="paxsenix_api_key_configured">PaxSenix API key - configured</string>
+    <string name="reset_to_default">Reset to default</string>
+    <string name="done">Done</string>
+    <string name="paxsenix_api_key">PaxSenix API key</string>
+    <string name="prioritize_syllable_lyrics">Prioritize syllable lyrics</string>
+    <string name="prioritize_syllable_lyrics_subtitle">Keep searching past a line-synced match for word-by-word lyrics</string>
+    <string name="enabled">Enabled</string>
+    <string name="drag_to_reorder">Drag to reorder</string>
+
+    <string-array name="lyrics_loading_lines">
+        <item>Listening for words…</item>
+        <item>Transcribing syllables…</item>
+        <item>Syncing with vocal tracks…</item>
+        <item>Tuning into the performance…</item>
+    </string-array>
 </resources>

@@ -33,12 +33,12 @@ import com.music.dhvani.ui.theme.ArtworkPalette
  * everywhere, with the artwork itself blurred across the top and dissolved
  * down into that tint.
  *
- * For surfaces that show no artwork of their own — a sheet, whose whole top is
+ * For surfaces that show no artwork of their own Â— a sheet, whose whole top is
  * this wash. A page that has the real sleeve above it wants [ArtworkWash]
  * instead: a second, blurrier copy of a picture already on screen only reads as
  * the picture again.
  *
- * Sized entirely by [modifier] — inside a wrap-content parent, pass
+ * Sized entirely by [modifier] Â— inside a wrap-content parent, pass
  * `Modifier.matchParentSize()` so the wash follows the content rather than
  * stretching it to the full screen.
  *
@@ -110,7 +110,7 @@ fun ArtworkBackdrop(
 /**
  * The colour a detail page is made of below its artwork.
  *
- * Holds [ArtworkPalette.wash] — the colour the sleeve's own blur ends on —
+ * Holds [ArtworkPalette.wash] Â— the colour the sleeve's own blur ends on Â—
  * across the height the artwork occupies and a little past it, so the page
  * reads as that blur carrying on rather than as a second surface starting, and
  * then settles into the flat page tint on the way down.
@@ -119,7 +119,7 @@ fun ArtworkBackdrop(
  * vertical ramp. They are radial gradients rather than a blurred copy of the
  * sleeve, which is the whole point: a full-screen blur of a picture that is
  * *also on screen* still reads as the picture, and the faces in it show through
- * the song list. Nothing here is an image, so there is nothing to recognise —
+ * the song list. Nothing here is an image, so there is nothing to recognise Â—
  * and no full-screen `RenderEffect` behind a scrolling list either, so it costs
  * the same on every API level and under "reduce dynamic blur".
  */
@@ -128,7 +128,7 @@ fun ArtworkWash(
     palette: ArtworkPalette,
     modifier: Modifier = Modifier,
     /**
-     * Where the artwork above stops, as a fraction of the surface's height —
+     * Where the artwork above stops, as a fraction of the surface's height Â—
      * the point past which the wash is allowed to start letting go.
      *
      * Defaulted past where a detail header lands on a phone: both headers are

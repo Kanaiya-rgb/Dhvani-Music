@@ -143,6 +143,7 @@ class PlaybackService : MediaSessionService() {
     private var spare: ExoPlayer? = null
 
     private var crossfade: CrossfadeController? = null
+    private var overlayManager: DynamicIslandOverlayManager? = null
 
     private var audioDeviceCallback: AudioDeviceCallback? = null
 
@@ -379,6 +380,8 @@ class PlaybackService : MediaSessionService() {
                 clearDiscordPresence()
             }
             updateStatusBarNotification()
+            overlayManager?.onIsPlayingChanged(isPlaying)
+            overlayManager?.onSongChanged(exoPlayer.currentMediaItem?.toSong())
         }
 
         /**
@@ -436,6 +439,7 @@ class PlaybackService : MediaSessionService() {
                 swappingMediaId = null
                 return
             }
+            overlayManager?.onSongChanged(mediaItem?.toSong())
 
             // No crossfade case to allow for here any more. A blended advance
             // never reaches this callback — the incoming track starts as the
@@ -540,6 +544,7 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+
     /** Registered alongside [playbackListener], and moved with it. */
     private val formatListener = object : AnalyticsListener {
         override fun onAudioInputFormatChanged(
@@ -566,6 +571,9 @@ class PlaybackService : MediaSessionService() {
                 "$audioFormatFor <- ${format.sampleMimeType} $khz $kbps $depth ${format.channelCount}ch",
                 about = audioFormatFor,
             )
+            val sampleRate = format.sampleRate.takeIf { it != Format.NO_VALUE } ?: 44100
+            val pcmEncoding = format.pcmEncoding.takeIf { it != Format.NO_VALUE } ?: android.media.AudioFormat.ENCODING_PCM_16BIT
+            AudioOutputStatus.publishAudioTrack(pcmEncoding, sampleRate)
             publishNerdStats()
         }
 
@@ -614,6 +622,7 @@ class PlaybackService : MediaSessionService() {
             initializedTimestampMs: Long,
             initializationDurationMs: Long,
         ) {
+            AudioOutputStatus.publishDecoder(decoderName)
             val cutAt = swapCutAt ?: return
             TrackLog.d(
                 "DhvaniMusic",
@@ -948,6 +957,7 @@ class PlaybackService : MediaSessionService() {
         )
         crossfade = controller
         controller.start()
+        overlayManager = DynamicIslandOverlayManager(this) { player }
 
         val coilBitmapLoader = CoilBitmapLoader(this, scope)
         mediaSession = MediaSession.Builder(this, SessionPlayer(exoPlayer, controller))
@@ -1974,7 +1984,7 @@ class PlaybackService : MediaSessionService() {
      * Two measurements, in order of directness:
      *
      *  - **What the decoder says.** `Format.bitrate` is populated for the
-     *    containers that carry the field, which for what BitChord plays means
+     *    containers that carry the field, which for what Dhvani plays means
      *    MP4/AAC — the 320kbps copy a module served last session reports itself
      *    exactly.
      *  - **What the cache entry weighs.** Opus in WebM, which is what YouTube
@@ -2710,15 +2720,27 @@ class PlaybackService : MediaSessionService() {
         val player = player ?: return
         val format = player.audioFormat
         val mediaId = player.currentMediaItem?.mediaId
+        val declared = NerdStats.declaredFormat(mediaId)
+        val uri = player.currentMediaItem?.localConfiguration?.uri
+        val resolvedSource = when {
+            !declared?.source.isNullOrBlank() -> declared?.source
+            uri?.host?.contains("saavn", ignoreCase = true) == true -> "JioSaavn"
+            uri?.scheme == "file" || uri?.scheme == "content" || mediaId?.startsWith("local_") == true -> "Local Audio"
+            format?.sampleMimeType?.contains("flac", ignoreCase = true) == true -> "Lossless Plugin"
+            format?.sampleMimeType?.contains("mp4", ignoreCase = true) == true && ((format.bitrate ?: 0) >= 250_000 || declared?.kbps == 320) -> "JioSaavn"
+            uri?.host?.contains("googlevideo", ignoreCase = true) == true || uri?.host?.contains("youtube", ignoreCase = true) == true -> "YouTube Music"
+            else -> declared?.source ?: "YouTube Music"
+        }
         NerdStats.current.value = NerdStats.Snapshot(
             mimeType = format?.sampleMimeType,
             bitrateKbps = format?.bitrate?.takeIf { it != Format.NO_VALUE }?.div(1000)
-                ?: NerdStats.declaredFormat(mediaId)?.kbps
+                ?: declared?.kbps
                 ?: NerdStats.pickedBitrateKbps(mediaId),
             sampleRateHz = format?.sampleRate?.takeIf { it != Format.NO_VALUE },
             channels = format?.channelCount?.takeIf { it != Format.NO_VALUE },
             bitDepth = format?.pcmEncoding?.let(::bitDepthOf),
-            claimed = NerdStats.declaredFormat(mediaId),
+            claimed = declared,
+            sourceName = resolvedSource,
         )
     }
 
@@ -3399,6 +3421,8 @@ class PlaybackService : MediaSessionService() {
         player?.removeAnalyticsListener(formatListener)
         player?.release()
         player = null
+        overlayManager?.destroy()
+        overlayManager = null
         // Released too, and not conditionally: mid-crossfade it is holding a
         // decoder and an open audio track of its own, and the service going away
         // is not a reason to leave either behind.
@@ -3410,9 +3434,14 @@ class PlaybackService : MediaSessionService() {
     private fun registerAudioDeviceCallback() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        AudioOutputStatus.updateDevice(this, audioManager)
+        AudioOutputStatus.onRouteSelectedListener = { routeId ->
+            applyAudioRoute(routeId)
+        }
         audioDeviceCallback = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
                 super.onAudioDevicesAdded(addedDevices)
+                AudioOutputStatus.updateDevice(this@PlaybackService, audioManager)
                 if (!AppSettings.resumeOnBluetooth.value) return
                 val hasTargetDevice = addedDevices?.any { dev ->
                     dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
@@ -3436,8 +3465,66 @@ class PlaybackService : MediaSessionService() {
                     }, 400L)
                 }
             }
+
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+                super.onAudioDevicesRemoved(removedDevices)
+                AudioOutputStatus.updateDevice(this@PlaybackService, audioManager)
+            }
         }
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, Handler(Looper.getMainLooper()))
+    }
+
+    private fun applyAudioRoute(routeId: String) {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+
+        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        when (routeId) {
+            "speaker" -> {
+                val speaker = outputs.firstOrNull {
+                    it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER ||
+                    it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE
+                }
+                player?.setPreferredAudioDevice(speaker)
+                spare?.setPreferredAudioDevice(speaker)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && speaker != null) {
+                    audioManager.setCommunicationDevice(speaker)
+                }
+            }
+            "bluetooth" -> {
+                val bt = outputs.firstOrNull {
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
+                        it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                        it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
+                    ))
+                }
+                player?.setPreferredAudioDevice(bt)
+                spare?.setPreferredAudioDevice(bt)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    audioManager.clearCommunicationDevice()
+                }
+            }
+            "wired" -> {
+                val wired = outputs.firstOrNull {
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                }
+                player?.setPreferredAudioDevice(wired)
+                spare?.setPreferredAudioDevice(wired)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    audioManager.clearCommunicationDevice()
+                }
+            }
+            else -> {
+                player?.setPreferredAudioDevice(null)
+                spare?.setPreferredAudioDevice(null)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    audioManager.clearCommunicationDevice()
+                }
+            }
+        }
+        AudioOutputStatus.updateDevice(this, audioManager)
     }
 
     private fun unregisterAudioDeviceCallback() {

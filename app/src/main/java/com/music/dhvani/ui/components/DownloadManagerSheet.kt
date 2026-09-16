@@ -61,7 +61,7 @@ import com.music.dhvani.ui.haptics.rememberHaptics
  * The download indicator in the top bar, beside the account photo.
  *
  * Absent until something is actually downloading, and absent again once the user
- * has looked at the result — neither of which is this composable's decision.
+ * has looked at the result Â— neither of which is this composable's decision.
  * [DownloadSession.State.visible] owns both, because "should this be on screen"
  * is a question about a batch of work rather than about a bar, and the same
  * answer has to hold whichever page is showing.
@@ -70,7 +70,7 @@ import com.music.dhvani.ui.haptics.rememberHaptics
  * track is what the notification reports on; from here the interesting number is
  * how much of the *album* is left, and a ring that restarts from zero forty
  * times says nothing about that. Once the queue is quiet the ring is dropped for
- * a tick or a warning — a full circle and a finished job look identical, and only
+ * a tick or a warning Â— a full circle and a finished job look identical, and only
  * one of them is worth walking over to.
  */
 @Composable
@@ -79,8 +79,8 @@ fun TopBarDownloadButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     if (!session.visible) return
 
     val haptics = rememberHaptics()
-    // Animated, because the fraction lands in steps — one track at a time, plus
-    // whatever the running one reports — and a ring that jumps in twenty-fifths
+    // Animated, because the fraction lands in steps Â— one track at a time, plus
+    // whatever the running one reports Â— and a ring that jumps in twenty-fifths
     // reads as a stutter rather than as progress.
     val progress by animateFloatAsState(
         targetValue = session.fraction,
@@ -125,9 +125,9 @@ fun TopBarDownloadButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
                     else -> Icons.Rounded.DownloadDone
                 },
                 contentDescription = when {
-                    session.busy -> "Downloads · ${(session.fraction * 100).toInt()}%"
-                    failed -> "Downloads · ${session.failed} failed"
-                    else -> "Downloads · finished"
+                    session.busy -> "Downloads Â· ${(session.fraction * 100).toInt()}%"
+                    failed -> "Downloads Â· ${session.failed} failed"
+                    else -> "Downloads Â· finished"
                 },
                 tint = tint,
                 modifier = Modifier.size(if (session.busy) GLYPH_IN_RING else GLYPH_SIZE),
@@ -143,8 +143,8 @@ fun TopBarDownloadButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
  * A list rather than a single line because the thing being reported on is a
  * batch. `SongActionsSheet`'s download row already answers "what about *this*
  * song" perfectly well and is the right size for that question; the question
- * here is the one it cannot answer — forty tracks were asked for, which of them
- * arrived — and that has as many answers as there were tracks.
+ * here is the one it cannot answer Â— forty tracks were asked for, which of them
+ * arrived Â— and that has as many answers as there were tracks.
  *
  * Rows carry the cover, the title and the credit because a filename is not how
  * anybody remembers a song, and because a batch download is precisely when a
@@ -153,7 +153,7 @@ fun TopBarDownloadButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
  *
  * @param onDismiss closes the sheet. Called by the header's own control rather
  *   than left to the drag, so there is something obvious to press once the list
- *   is read — and the host marks the batch seen on the way out, which is what
+ *   is read Â— and the host marks the batch seen on the way out, which is what
  *   takes the indicator down.
  */
 @Composable
@@ -317,7 +317,7 @@ private fun DownloadManagerRow(
                 text = listOfNotNull(
                     item.song.artist.takeIf { it.isNotBlank() },
                     item.from?.takeIf { it.isNotBlank() && it != item.song.artist },
-                ).joinToString(" · ").ifBlank { "Unknown artist" },
+                ).joinToString(" Â· ").ifBlank { "Unknown artist" },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -329,7 +329,7 @@ private fun DownloadManagerRow(
                 is DownloadProgress.Running -> {
                     LinearProgressIndicator(
                         // Indeterminate until the first response names a
-                        // length — a bar frozen at nothing reads as broken.
+                        // length Â— a bar frozen at nothing reads as broken.
                         progress = { progress.fraction },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -343,7 +343,7 @@ private fun DownloadManagerRow(
                     Spacer(Modifier.height(3.dp))
                     RowStatus(
                         if (progress.fraction > 0f) {
-                            "Downloading · ${(progress.fraction * 100).toInt()}%"
+                            "Downloading Â· ${(progress.fraction * 100).toInt()}%"
                         } else {
                             "Starting"
                         },
@@ -400,7 +400,7 @@ private fun RowAction(
 }
 
 /**
- * The one line under the heading — what state the batch as a whole is in.
+ * The one line under the heading Â— what state the batch as a whole is in.
  *
  * Counts rather than a percentage: the sheet already draws the percentage as a
  * bar, and what a percentage cannot say is that thirty-nine of forty arrived and
@@ -414,8 +414,8 @@ private fun DownloadSession.State.summary(): String {
     }
     return when {
         parts.isEmpty() -> "Nothing downloading"
-        busy -> parts.joinToString(" · ")
-        failed > 0 -> parts.joinToString(" · ")
+        busy -> parts.joinToString(" Â· ")
+        failed > 0 -> parts.joinToString(" Â· ")
         else -> "All $finished ${if (finished == 1) "song" else "songs"} downloaded"
     }
 }

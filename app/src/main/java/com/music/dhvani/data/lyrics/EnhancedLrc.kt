@@ -1,7 +1,7 @@
 package com.music.dhvani.data.lyrics
 
 /**
- * Enhanced ("A2") LRC — a normal LRC line with a stamp in front of each word:
+ * Enhanced ("A2") LRC Â— a normal LRC line with a stamp in front of each word:
  *
  * ```
  * [00:27.39]<00:27.39>I <00:27.54>been <00:27.74>tryna <00:28.07>call
@@ -16,7 +16,7 @@ object EnhancedLrc {
     private val LINE = Regex("""^\[(\d{1,3}):(\d{2})[.:](\d{2,3})](.*)$""")
     private val WORD = Regex("""<(\d{1,3}):(\d{2})[.:](\d{2,3})>([^<]*)""")
 
-    /** Empty when [lrc] carries no word stamps — the caller can then fall back. */
+    /** Empty when [lrc] carries no word stamps Â— the caller can then fall back. */
     fun parse(lrc: String): List<LyricLine> {
         val rows = lrc.lineSequence()
             .mapNotNull { line -> LINE.matchEntire(line.trim()) }
@@ -39,8 +39,8 @@ object EnhancedLrc {
                 return@mapIndexedNotNull if (text.isEmpty()) null else LyricLine(row.timeMs, text)
             }
             // A word runs until the next one starts; the last runs until the
-            // next line does. Without a next line — the closing word of the
-            // song — give it a beat rather than zero, or its sweep never runs.
+            // next line does. Without a next line Â— the closing word of the
+            // song Â— give it a beat rather than zero, or its sweep never runs.
             val lineEnd = rows.getOrNull(index + 1)?.timeMs
                 ?: (stamp(row.words.last()) + TAIL_MS)
 

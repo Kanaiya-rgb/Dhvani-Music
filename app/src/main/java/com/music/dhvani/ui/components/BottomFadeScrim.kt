@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 private val FADE_HEIGHT = 180.dp
 
 /**
- * Taller once the mini player is stacked on top of the tab bar — by the 56dp
+ * Taller once the mini player is stacked on top of the tab bar Â— by the 56dp
  * the pill-shaped bar now stands, plus the 8dp gap above it and the run the
  * ramp wants over both.
  */
@@ -37,7 +37,7 @@ private val FADE_HEIGHT_WITH_MINI_PLAYER = 254.dp
  * How many colour stops the ramp is cut into.
  *
  * A two-stop gradient is interpolated linearly in the shader, which is both the
- * wrong curve and — across a strip this tall in a near-flat colour — enough of
+ * wrong curve and Â— across a strip this tall in a near-flat colour Â— enough of
  * a straight line through the low alphas to band visibly on an 8-bit display.
  * Sampling the curve at intervals hands the shader short spans to interpolate
  * across instead, and the banding goes with them.
@@ -51,7 +51,7 @@ private const val STOPS = 16
  * Flat colour rather than glass, deliberately. A blur here has to sample the
  * feed scrolling under it, and what it costs is paid on every frame of that
  * scroll; a gradient costs one shader over a fixed rect. The bars themselves
- * still carry glass, so the frosted look survives where it is actually read —
+ * still carry glass, so the frosted look survives where it is actually read Â—
  * on the pill and the mini player, against a floor that is only ever a wash of
  * the colour already behind them.
  *
@@ -68,7 +68,7 @@ fun BottomFadeScrim(
     modifier: Modifier = Modifier,
     withMiniPlayer: Boolean = false,
     /**
-     * The colour to fade in — whatever the page is painting at the foot of the
+     * The colour to fade in Â— whatever the page is painting at the foot of the
      * screen. The theme's background on a tab, and on a detail page the tint
      * its wash has settled into down here rather than the wash itself.
      */
@@ -90,7 +90,7 @@ fun BottomFadeScrim(
             // A cubic ease-in rather than a straight ramp: the alpha then holds
             // under a few percent for the first half of the strip, which is what
             // stops the eye from finding the line where the layer starts. Its
-            // whole run is spent arriving — the same curve the blur it replaced
+            // whole run is spent arriving Â— the same curve the blur it replaced
             // ramped its radius along, so the strip reads at the same weight.
             colorStops = Array(STOPS) { i ->
                 val t = i / (STOPS - 1f)

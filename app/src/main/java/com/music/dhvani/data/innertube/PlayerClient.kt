@@ -10,7 +10,7 @@ import java.util.Locale
  * changes without notice: an identity that returns `OK` today answers
  * `LOGIN_REQUIRED` next month, and one that is merely *old* is refused with a
  * bare HTTP 400 before playability is even considered. So this is a list to
- * walk rather than a constant — see [StreamResolver].
+ * walk rather than a constant Â— see [StreamResolver].
  *
  * Three things travel together and must not be separated:
  *
@@ -71,7 +71,7 @@ data class PlayerClient(
         /**
          * iPhone YouTube, and the one that carries the session in practice: it
          * is answered without a login, without a proof of origin token and
-         * without a signature timestamp, and it returns plain `url` fields —
+         * without a signature timestamp, and it returns plain `url` fields Â—
          * so a stream is one POST away with no player JavaScript in the path.
          *
          * The version is the whole ballgame. Anything Google considers stale is
@@ -99,7 +99,7 @@ data class PlayerClient(
 
         /**
          * The phone YouTube app. Answers `OK` where the others are turned away,
-         * but every format comes back ciphered — so reaching it costs a
+         * but every format comes back ciphered Â— so reaching it costs a
          * download of YouTube's player JavaScript and a signature to solve.
          * Worth it as a fallback; not worth it first.
          */
@@ -120,7 +120,7 @@ data class PlayerClient(
         /**
          * YouTube Music Android app. Returns plain URLs without ciphering.
          * As of mid-2026, this client is not subject to the po_token
-         * enforcement that blocks stream fetches from other clients —
+         * enforcement that blocks stream fetches from other clients Â—
          * the only known client that still serves HTTPS streams freely.
          */
         val ANDROID_MUSIC = PlayerClient(
@@ -149,7 +149,7 @@ data class PlayerClient(
          * not a bot". A check run from anywhere but the device is measuring
          * the wrong thing.
          *
-         * Version MUST be =1.65.10 — versions >1.65 trigger SABR-only
+         * Version MUST be =1.65.10 Â— versions >1.65 trigger SABR-only
          * streaming (no HTTPS URLs returned).
          */
         val ANDROID_VR = PlayerClient(
@@ -189,7 +189,7 @@ data class PlayerClient(
          */
         /**
          * The browser identity music.youtube.com itself runs as. Not part of
-         * [StreamResolver]'s anonymous walk — sent bare, it is ciphered and
+         * [StreamResolver]'s anonymous walk Â— sent bare, it is ciphered and
          * refused about as often as it works. Worth reaching for on its own,
          * ahead of anything else, when there is a signed-in session to send
          * with it: a session cookie is what a browser-shaped client is
@@ -214,7 +214,7 @@ data class PlayerClient(
         )
 
         /**
-         * TV Cobalt v7 — the most reliable client for flagged IPs. No PO Token
+         * TV Cobalt v7 Â— the most reliable client for flagged IPs. No PO Token
          * needed, no login required. Uses cookie-based auth when available.
          */
         val TVHTML5 = PlayerClient(
@@ -228,7 +228,7 @@ data class PlayerClient(
 
         /**
          * The client a googlevideo URL says minted it, so the media fetch can
-         * be dressed as that client whatever produced the URL — including the
+         * be dressed as that client whatever produced the URL Â— including the
          * extraction failsafe, which picks a client of its own choosing.
          *
          * Falls back to [IOS] when the URL names a client we don't model: it is

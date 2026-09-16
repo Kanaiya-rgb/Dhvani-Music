@@ -31,7 +31,7 @@ sealed interface LinkRequest {
 }
 
 /**
- * Links and voice requests handed to BitChord from elsewhere on the device.
+ * Links and voice requests handed to Dhvani from elsewhere on the device.
  *
  * The same relay [PlayerDeepLink] is, and for the same reason: what has to
  * happen — start a queue, push a page, run a search — is all inside

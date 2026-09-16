@@ -15,12 +15,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
  *
  * The distinction this exists to draw is one Compose does not draw on its own:
  * a `LaunchedEffect` belongs to the *composition*, not to the lifecycle, and a
- * composition outlives the activity being stopped — it is torn down only when
+ * composition outlives the activity being stopped Â— it is torn down only when
  * the activity is destroyed. So every loop the UI starts goes on running with
  * the screen off: position polls, frame clocks, a video decoder feeding a
  * surface nobody is looking at.
  *
- * None of that work has a viewer, and none of it survives being skipped —
+ * None of that work has a viewer, and none of it survives being skipped Â—
  * whatever it was keeping up to date is re-read the moment the screen comes
  * back. Gating on this is the difference between "cheap while visible" and
  * "cheap", and it costs nothing on screen.
@@ -29,7 +29,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
  * dialog or in the background half of split screen, which is not a case worth
  * animating for either.
  *
- * Playback itself is not gated on this and must not be — audio comes from
+ * Playback itself is not gated on this and must not be Â— audio comes from
  * [com.music.dhvani.playback.PlaybackService], which is a foreground service
  * precisely so that it goes on running when this does not.
  */
