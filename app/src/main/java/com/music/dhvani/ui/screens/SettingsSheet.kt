@@ -101,6 +101,11 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import com.music.dhvani.data.changelog.ChangelogRepository
+import com.music.dhvani.data.changelog.ReleaseChangelog
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -345,9 +350,16 @@ fun SettingsScreen(
     var currentSubScreen by rememberSaveable { mutableStateOf<SettingsSubScreen?>(null) }
     var searchQuery by remember { mutableStateOf("") }
 
+    val changelogReleases by ChangelogRepository.releases.collectAsStateWithLifecycle()
+    val isChangelogLoading by ChangelogRepository.isLoading.collectAsStateWithLifecycle()
+    val changelogScope = rememberCoroutineScope()
+
     LaunchedEffect(currentSubScreen) {
         if (currentSubScreen != null) {
             onSubScreenChange(currentSubScreen!!.title) { currentSubScreen = null }
+            if (currentSubScreen == SettingsSubScreen.CHANGELOG) {
+                ChangelogRepository.refresh()
+            }
         } else {
             onSubScreenChange(null, null)
         }
@@ -1740,8 +1752,72 @@ fun SettingsScreen(
                 }
 
                 SettingsSubScreen.CHANGELOG -> {
-                    val latestRelease = APP_RELEASES.firstOrNull { it.isLatest } ?: APP_RELEASES.first()
-                    val pastReleases = APP_RELEASES.filter { it != latestRelease }
+                    val releases = changelogReleases.ifEmpty { ChangelogRepository.FALLBACK_RELEASES }
+                    val latestRelease = releases.firstOrNull { it.isLatest } ?: releases.first()
+                    val pastReleases = releases.filter { it != latestRelease }
+
+                    // Header row with Live status & Manual Refresh button
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isChangelogLoading) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary),
+                            )
+                            Text(
+                                text = if (isChangelogLoading) "Fetching from GitHub..." else "Live from GitHub Releases",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                changelogScope.launch {
+                                    ChangelogRepository.refresh(force = true)
+                                }
+                            },
+                            enabled = !isChangelogLoading,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            if (isChangelogLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = "Refresh from GitHub",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    if (isChangelogLoading) {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .height(2.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        )
+                        Spacer(Modifier.height(4.dp))
+                    }
 
                     // 1. Top Featured Latest Release
                     SettingsGroup(header = "Latest Release") {
@@ -1805,62 +1881,64 @@ fun SettingsScreen(
                         }
                     }
 
-                    // 2. Previous Releases History
-                    SettingsGroup(header = "Previous Releases") {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                        ) {
-                            pastReleases.forEachIndexed { index, release ->
-                                if (index > 0) {
-                                    HorizontalDivider(
-                                        modifier = Modifier.padding(vertical = 14.dp),
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                                    )
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        text = "Dhvani Music ${release.version}",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                    Text(
-                                        text = release.date,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = release.summary,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                release.items.forEach { item ->
+                    if (pastReleases.isNotEmpty()) {
+                        // 2. Previous Releases History
+                        SettingsGroup(header = "Previous Releases") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                            ) {
+                                pastReleases.forEachIndexed { index, release ->
+                                    if (index > 0) {
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(vertical = 14.dp),
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                        )
+                                    }
                                     Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 3.dp),
-                                        verticalAlignment = Alignment.Top,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
                                     ) {
                                         Text(
-                                            text = "•",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(end = 8.dp),
+                                            text = "Dhvani Music ${release.version}",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
                                         )
                                         Text(
-                                            text = item,
-                                            style = MaterialTheme.typography.bodySmall,
+                                            text = release.date,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
+                                    }
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = release.summary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    release.items.forEach { item ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 3.dp),
+                                            verticalAlignment = Alignment.Top,
+                                        ) {
+                                            Text(
+                                                text = "•",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(end = 8.dp),
+                                            )
+                                            Text(
+                                                text = item,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -2517,100 +2595,7 @@ private data class SearchableSettingItem(
     val onClick: () -> Unit,
 )
 
-private data class ReleaseChangelog(
-    val version: String,
-    val date: String,
-    val isLatest: Boolean = false,
-    val summary: String,
-    val items: List<String>,
-)
 
-private val APP_RELEASES = listOf(
-    ReleaseChangelog(
-        version = "v2.0.6",
-        date = "September 2026",
-        isLatest = true,
-        summary = "Download Network Controls, CDN Update Notifications & Storage Fixes",
-        items = listOf(
-            "🌐 Song Download Network Policy: Download songs over Mobile Data & Wi-Fi (default), Only Wi-Fi, or Mobile Data Only with a smooth settings selector.",
-            "🔔 High-Reliability Update Notifications: Fast CDN-backed update detection engine with heads-up notifications that bypass GitHub API rate-limits on all carriers.",
-            "📊 Dynamic Offline Playback Statistics: Fixed download page stats to calculate live song counts and accurate cumulative playback duration.",
-            "🇮🇳 Multilingual Support: Complete Hindi & English localization across download preferences, storage, and settings.",
-            "✨ 12+ Kinetic Text-Effects Lyrics Engine: Full shader rendering with 12 distinctive visual animations inspired by text-effects.",
-        ),
-    ),
-    ReleaseChangelog(
-        version = "v2.0.5",
-        date = "September 2026",
-        isLatest = false,
-        summary = "Text-Effects Showcase Engine & UI Navigation Polish",
-        items = listOf(
-            "✨ 12+ Unique Text-Effects (inspired by text-effects.colorion.co): Neon Electric (tube bloom & voltage flicker), Digital Glitch (RGB slices & scanline interference), Ocean Liquid Wave (sloshing fluid meniscus in letters), Cosmic Aurora (rotating holographic rainbow), Volcanic Ember (molten magma pulse), Liquid Chrome (specular lens glare), Retro CRT Terminal (phosphor scanlines), Dancing Wave (fluid bouncy typography), Smoke-Signal, Equalizer, Ghostwrite, and Typewriter.",
-            "🎯 Persistent Line-Sync Stylization: All active lyric lines instantly ignite in their distinctive signature shaders even for songs without word timestamps.",
-            "🧹 Settings Navigation Overhaul: Eliminated duplicate back buttons on Appearance and sub-settings pages for a unified frosted top bar.",
-            "🔒 Lockscreen & Wallpaper Safety: Fully purged lock screen wallpaper services to guarantee personal lockscreen wallpapers remain completely untouched.",
-            "⚡ Playback & Animation Smoothness: Optimized Compose canvas draw scopes and shaders for flawless 60/120fps lyrics motion.",
-        ),
-    ),
-    ReleaseChangelog(
-        version = "v2.0.4",
-        date = "September 2026",
-        isLatest = false,
-        summary = "Lyrics Styles & Settings Polish",
-        items = listOf(
-            "🎨 Initial kinetic lyrics animations and settings navigation groundwork.",
-            "🧹 Unified top app bar navigation architecture for all sub-settings.",
-            "⚡ Background update notifications and playback stability improvements.",
-        ),
-    ),
-    ReleaseChangelog(
-        version = "v2.0.3",
-        date = "September 2026",
-        isLatest = false,
-        summary = "Live Karaoke & Lyrics Seek",
-        items = listOf(
-            "🎤 Live Syllable Karaoke: Real-time Apple Music Sing-along with word-by-word progressive highlights.",
-            "⏱️ Tap-to-Seek Lyrics: Tap any lyric line or individual word to jump playback instantly.",
-            "🌊 Dynamic Artwork & Waveform Visualizer: Live audio visualizer and adaptive artwork background.",
-            "📝 Offline Lyrics Engine: Enhanced local LRC parsing and resilient offline lyrics fallback.",
-        ),
-    ),
-    ReleaseChangelog(
-        version = "v2.0.2",
-        date = "September 2026",
-        isLatest = false,
-        summary = "Background Updates & Automix",
-        items = listOf(
-            "🔔 Periodic Update Worker: Background update checker with system notifications for new releases.",
-            "🔄 In-App Updater: Direct download and seamless APK installation with progress feedback.",
-            "⚡ Crossfade & Smart Fade: Intelligent gapless automix engine between consecutive songs.",
-        ),
-    ),
-    ReleaseChangelog(
-        version = "v2.0.1",
-        date = "September 2026",
-        isLatest = false,
-        summary = "Lyrics Styles & Search Revamp",
-        items = listOf(
-            "✨ Lyrics Animation Styles: Initial launch of kinetic lyrics animations (Typewriter, Reveal, Step Fade).",
-            "🔍 Search Experience Overhaul: Instant search suggestions, history removal, and refined filter chips.",
-            "📱 UI Polishing: Settings bottom bar auto-hiding and updated community documentation links.",
-        ),
-    ),
-    ReleaseChangelog(
-        version = "v2.0.0",
-        date = "September 2026",
-        isLatest = false,
-        summary = "Grand Rebrand to Dhvani Music",
-        items = listOf(
-            "🎵 Grand Rebrand to Dhvani Music: Complete UI/UX redesign with Meld-style Material 3 settings hub.",
-            "🎚️ Next-Gen Sliders: Fluid wavy and squiggly player seekbars with amplitude control.",
-            "🎙️ Voice Search & Explore: YouTube Music moods, genres, new releases, and charts.",
-            "📊 Last.fm & ListenBrainz: Comprehensive scrobbling integration and listening history.",
-            "💾 Offline Library & Playlists: Full local music manager, playlist export/import, and batch downloads.",
-        ),
-    ),
-)
 
 private data class MeldSettingsItemData(
     val icon: ImageVector,
