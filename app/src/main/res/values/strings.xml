@@ -391,6 +391,8 @@
     <string name="reset_to_default">Reset to default</string>
     <string name="done">Done</string>
     <string name="paxsenix_api_key">PaxSenix API key</string>
+    <string name="musixmatch_user_token">Musixmatch user token</string>
+    <string name="musixmatch_user_token_subtitle">Optional user token from Musixmatch desktop/web or Spicetify</string>
     <string name="prioritize_syllable_lyrics">Prioritize syllable lyrics</string>
     <string name="prioritize_syllable_lyrics_subtitle">Keep searching past a line-synced match for word-by-word lyrics</string>
     <string name="enabled">Enabled</string>

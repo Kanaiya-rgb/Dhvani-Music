@@ -163,27 +163,72 @@ fun MiniPlayer(
             }
         }
     }
+    val uiStyle = com.music.dhvani.ui.theme.LocalUiDesignStyle.current
+    val miniElevation = when (uiStyle) {
+        com.music.dhvani.data.settings.UiDesignStyle.MINIMALISM -> 0.dp
+        com.music.dhvani.data.settings.UiDesignStyle.GLASSMORPHISM -> 6.dp
+        com.music.dhvani.data.settings.UiDesignStyle.NEUMORPHISM -> 10.dp
+        com.music.dhvani.data.settings.UiDesignStyle.CLAYMORPHISM -> 18.dp
+        com.music.dhvani.data.settings.UiDesignStyle.SPATIAL_UI -> 20.dp
+        else -> 16.dp
+    }
+    val miniSpotColor = when (uiStyle) {
+        com.music.dhvani.data.settings.UiDesignStyle.SPATIAL_UI -> Color(0xFF00E5FF).copy(alpha = 0.55f)
+        com.music.dhvani.data.settings.UiDesignStyle.LIQUID_GLASS -> Color(0xFF80D0C7).copy(alpha = 0.40f)
+        com.music.dhvani.data.settings.UiDesignStyle.CLAYMORPHISM -> MaterialTheme.colorScheme.primary.copy(alpha = 0.50f)
+        com.music.dhvani.data.settings.UiDesignStyle.NEUMORPHISM -> Color.Black.copy(alpha = 0.90f)
+        com.music.dhvani.data.settings.UiDesignStyle.MINIMALISM -> Color.Transparent
+        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+    }
+    val miniBorderBrush = when (uiStyle) {
+        com.music.dhvani.data.settings.UiDesignStyle.SPATIAL_UI -> androidx.compose.ui.graphics.Brush.sweepGradient(
+            listOf(Color(0xFF00E5FF).copy(alpha = 0.5f), Color(0xFFFF4081).copy(alpha = 0.4f), Color(0xFF7C4DFF).copy(alpha = 0.5f), Color(0xFF00E5FF).copy(alpha = 0.5f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.LIQUID_GLASS -> androidx.compose.ui.graphics.Brush.linearGradient(
+            listOf(Color(0xFF80D0C7).copy(alpha = 0.7f), Color(0xFFFF8A3D).copy(alpha = 0.6f), Color(0xFF9B51E0).copy(alpha = 0.7f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.GLASSMORPHISM -> androidx.compose.ui.graphics.Brush.linearGradient(
+            listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.10f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.SKEUOMORPHISM -> androidx.compose.ui.graphics.Brush.verticalGradient(
+            listOf(Color.White.copy(alpha = 0.40f), Color.Black.copy(alpha = 0.65f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.NEUMORPHISM -> androidx.compose.ui.graphics.Brush.linearGradient(
+            listOf(Color.White.copy(alpha = 0.18f), Color.Black.copy(alpha = 0.55f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.MINIMALISM -> androidx.compose.ui.graphics.Brush.linearGradient(
+            listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.20f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.BENTO_GRID -> androidx.compose.ui.graphics.Brush.verticalGradient(
+            listOf(Color.White.copy(alpha = 0.25f), Color.White.copy(alpha = 0.08f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.CLAYMORPHISM -> androidx.compose.ui.graphics.Brush.verticalGradient(
+            listOf(Color.White.copy(alpha = 0.32f), Color.White.copy(alpha = 0.08f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.DEFAULT -> androidx.compose.ui.graphics.Brush.verticalGradient(
+            listOf(
+                Color.White.copy(alpha = 0.15f),
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                Color.White.copy(alpha = 0.05f),
+            )
+        )
+    }
+
     Box(
         modifier = modifier
             .padding(horizontal = PAGE_GUTTER)
             .shadow(
-                elevation = 16.dp,
+                elevation = miniElevation,
                 shape = shape,
-                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                spotColor = miniSpotColor,
                 ambientColor = Color.Black.copy(alpha = 0.60f),
             )
             .clip(shape)
             .then(backgroundModifier)
             .border(
                 1.dp,
-                androidx.compose.ui.graphics.Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.15f),
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                        Color.White.copy(alpha = 0.05f),
-                    )
-                ),
-                shape
+                miniBorderBrush,
+                shape,
             )
             .clickable(onClick = onExpand),
     ) {

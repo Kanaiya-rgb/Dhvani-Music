@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.border
+import com.music.dhvani.ui.theme.uiDesignCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -677,9 +678,7 @@ private fun HeroCard(
     Box(
         modifier = modifier
             .aspectRatio(0.95f) // Generous atmospheric card ratio matching Stitch
-            .clip(RoundedCornerShape(22.dp))
-            .background(Color(0xFF16181D))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(22.dp))
+            .uiDesignCard(shape = RoundedCornerShape(22.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongPress),
     ) {
         AsyncImage(
@@ -1095,17 +1094,22 @@ internal fun ShelfCard(
                 }
             }
             else -> {
-                AsyncImage(
-                    model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
-                    contentDescription = null,
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .thumbnailBorder(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                )
+                        .uiDesignCard(shape = RoundedCornerShape(16.dp)),
+                ) {
+                    AsyncImage(
+                        model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(16.dp))
+                            .thumbnailBorder(RoundedCornerShape(16.dp)),
+                    )
+                }
             }
         }
         Spacer(Modifier.height(10.dp))

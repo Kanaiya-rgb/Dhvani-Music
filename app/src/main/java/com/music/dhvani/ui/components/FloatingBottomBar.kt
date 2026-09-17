@@ -188,6 +188,57 @@ fun FloatingBottomBar(
 
     LaunchedEffect(selectedIndex) { dragOffset = 0f }
 
+    val uiStyle = com.music.dhvani.ui.theme.LocalUiDesignStyle.current
+    val barElevation = when (uiStyle) {
+        com.music.dhvani.data.settings.UiDesignStyle.MINIMALISM -> 0.dp
+        com.music.dhvani.data.settings.UiDesignStyle.GLASSMORPHISM -> 6.dp
+        com.music.dhvani.data.settings.UiDesignStyle.NEUMORPHISM -> 8.dp
+        com.music.dhvani.data.settings.UiDesignStyle.CLAYMORPHISM -> 14.dp
+        com.music.dhvani.data.settings.UiDesignStyle.SPATIAL_UI -> 16.dp
+        else -> 12.dp
+    }
+    val barSpotColor = when (uiStyle) {
+        com.music.dhvani.data.settings.UiDesignStyle.SPATIAL_UI -> Color(0xFF00E5FF).copy(alpha = 0.50f)
+        com.music.dhvani.data.settings.UiDesignStyle.LIQUID_GLASS -> Color(0xFF80D0C7).copy(alpha = 0.35f)
+        com.music.dhvani.data.settings.UiDesignStyle.CLAYMORPHISM -> MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+        com.music.dhvani.data.settings.UiDesignStyle.NEUMORPHISM -> Color.Black.copy(alpha = 0.85f)
+        com.music.dhvani.data.settings.UiDesignStyle.MINIMALISM -> Color.Transparent
+        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+    }
+    val barBorderBrush = when (uiStyle) {
+        com.music.dhvani.data.settings.UiDesignStyle.SPATIAL_UI -> androidx.compose.ui.graphics.Brush.sweepGradient(
+            listOf(Color(0xFF00E5FF).copy(alpha = 0.5f), Color(0xFFFF4081).copy(alpha = 0.4f), Color(0xFF7C4DFF).copy(alpha = 0.5f), Color(0xFF00E5FF).copy(alpha = 0.5f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.LIQUID_GLASS -> androidx.compose.ui.graphics.Brush.linearGradient(
+            listOf(Color(0xFF80D0C7).copy(alpha = 0.7f), Color(0xFFFF8A3D).copy(alpha = 0.6f), Color(0xFF9B51E0).copy(alpha = 0.7f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.GLASSMORPHISM -> androidx.compose.ui.graphics.Brush.linearGradient(
+            listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.10f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.SKEUOMORPHISM -> androidx.compose.ui.graphics.Brush.verticalGradient(
+            listOf(Color.White.copy(alpha = 0.40f), Color.Black.copy(alpha = 0.65f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.NEUMORPHISM -> androidx.compose.ui.graphics.Brush.linearGradient(
+            listOf(Color.White.copy(alpha = 0.18f), Color.Black.copy(alpha = 0.55f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.MINIMALISM -> androidx.compose.ui.graphics.Brush.linearGradient(
+            listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.20f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.BENTO_GRID -> androidx.compose.ui.graphics.Brush.verticalGradient(
+            listOf(Color.White.copy(alpha = 0.25f), Color.White.copy(alpha = 0.08f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.CLAYMORPHISM -> androidx.compose.ui.graphics.Brush.verticalGradient(
+            listOf(Color.White.copy(alpha = 0.32f), Color.White.copy(alpha = 0.08f))
+        )
+        com.music.dhvani.data.settings.UiDesignStyle.DEFAULT -> androidx.compose.ui.graphics.Brush.verticalGradient(
+            listOf(
+                Color.White.copy(alpha = 0.25f),
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                Color.White.copy(alpha = 0.06f),
+            )
+        )
+    }
+
     Box(
         modifier = modifier
             .navigationBarsPadding()
@@ -195,9 +246,9 @@ fun FloatingBottomBar(
             .padding(bottom = 2.dp)
             .fillMaxWidth()
             .shadow(
-                elevation = 12.dp,
+                elevation = barElevation,
                 shape = pillShape,
-                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                spotColor = barSpotColor,
                 ambientColor = Color.Black.copy(alpha = 0.45f),
             )
             .clip(pillShape)
@@ -213,14 +264,8 @@ fun FloatingBottomBar(
             )
             .border(
                 1.dp,
-                androidx.compose.ui.graphics.Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.25f),
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
-                        Color.White.copy(alpha = 0.06f),
-                    )
-                ),
-                pillShape
+                barBorderBrush,
+                pillShape,
             )
             .padding(horizontal = PILL_INSET, vertical = PILL_INSET),
     ) {

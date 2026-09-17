@@ -218,6 +218,29 @@ enum class LockscreenStyle(val label: String) {
     CINEMATIC("Cinematic Full Bleed"),
 }
 
+enum class UiDesignStyle(
+    val id: String,
+    val displayName: String,
+    val tagLine: String,
+    val description: String,
+) {
+    DEFAULT("default", "Dhvani Classic", "Midnight Raag", "Obsidian depth with warm saffron & peacock emerald accents"),
+    SKEUOMORPHISM("skeuomorphism", "Skeuomorphism", "Tactile & Realistic", "Rich physical bevels, tactile surfaces, chrome/leather trims & depth"),
+    NEUMORPHISM("neumorphism", "Neumorphism", "Soft Extrusion", "Dual soft light highlights and drop shadows on smooth matte surfaces"),
+    GLASSMORPHISM("glassmorphism", "Glassmorphism", "Frosted Glass Blur", "Translucent frosted glass blur, specular white border sheens & transparency"),
+    CLAYMORPHISM("claymorphism", "Claymorphism", "Bubbly 3D Clay", "Inflated soft rounded 3D clay pill cards, pastel inner glow and playful depth"),
+    MINIMALISM("minimalism", "Minimalism", "Pure & Clean", "Razor-thin borders, monochrome contrast, flat geometric surfaces & zero noise"),
+    LIQUID_GLASS("liquid_glass", "Liquid Glass UI", "Fluid Chromatic Sheen", "Flowing luminous watery refractions, glossy highlights & iridescent borders"),
+    BENTO_GRID("bento_grid", "Bento Grid", "Modular Compartments", "Structured compartmentalized bento cards, micro-borders & modern hierarchy"),
+    SPATIAL_UI("spatial_ui", "Spatial UI", "VisionOS Spatial Glass", "Futuristic floating spatial glass planes, elevated depth layers & neon halos");
+
+    companion object {
+        fun fromId(id: String?): UiDesignStyle =
+            entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: DEFAULT
+    }
+}
+
+
 enum class DensityScale(val value: Float, val label: String) {
     NATIVE(1.0f, "Native (100%)"),
     SLIGHTLY_COMPACT(0.85f, "Slightly Compact (85%)"),
@@ -364,6 +387,7 @@ object AppSettings {
 
     // ── Appearance & Theming (Meld features) ───────────────────────────
     val dynamicTheme = MutableStateFlow(true)
+    val uiDesignStyle = MutableStateFlow(UiDesignStyle.DEFAULT)
     val enableHighRefreshRate = MutableStateFlow(true)
     val densityScale = MutableStateFlow(1.0f)
     val sliderStyle = MutableStateFlow(SliderStyle.DEFAULT)
@@ -396,6 +420,7 @@ object AppSettings {
     val translationLanguage = MutableStateFlow("")
     val lyricsTranslationLanguage = translationLanguage
     val paxSenixApiKey = MutableStateFlow("")
+    val musixmatchUserToken = MutableStateFlow("")
     val equalizerPreset get() = com.music.dhvani.playback.eq.EqualizerManager.selectedPreset
     val showRecognizeButton = MutableStateFlow(true)
     val showPlayRandomButton = MutableStateFlow(true)
@@ -404,6 +429,10 @@ object AppSettings {
     val showTopPlaylist = MutableStateFlow(true)
     val showCachedPlaylist = MutableStateFlow(true)
     val showUploadedPlaylist = MutableStateFlow(true)
+
+    /** Motion artwork canvas video player settings */
+    val animatedCanvas = MutableStateFlow(true)
+    val canvasOverCellular = MutableStateFlow(true)
 
     /** Stop playback when the app is swiped away from the recent apps screen. */
     val stopOnTaskRemoved = MutableStateFlow(false)
@@ -737,6 +766,7 @@ object AppSettings {
         convertVideoToAudio.value = prefs.getBoolean(KEY_CONVERT_VIDEO_TO_AUDIO, true)
         reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, false)
         dynamicTheme.value = prefs.getBoolean(KEY_DYNAMIC_THEME, true)
+        uiDesignStyle.value = UiDesignStyle.fromId(prefs.getString(KEY_UI_DESIGN_STYLE, null))
         enableHighRefreshRate.value = prefs.getBoolean(KEY_ENABLE_HIGH_REFRESH_RATE, true)
         densityScale.value = prefs.getFloat(KEY_DENSITY_SCALE, 1.0f)
         sliderStyle.value = runCatching {
@@ -787,6 +817,8 @@ object AppSettings {
         showTopPlaylist.value = prefs.getBoolean(KEY_SHOW_TOP_PLAYLIST, true)
         showCachedPlaylist.value = prefs.getBoolean(KEY_SHOW_CACHED_PLAYLIST, true)
         showUploadedPlaylist.value = prefs.getBoolean(KEY_SHOW_UPLOADED_PLAYLIST, true)
+        animatedCanvas.value = prefs.getBoolean(KEY_ANIMATED_CANVAS, true)
+        canvasOverCellular.value = prefs.getBoolean(KEY_CANVAS_OVER_CELLULAR, true)
         fullBleedArtwork.value = prefs.getBoolean(KEY_FULL_BLEED_ARTWORK, true)
         showStatusBarIcon.value = prefs.getBoolean(KEY_SHOW_STATUS_BAR_ICON, true)
         syncedLyrics.value = prefs.getBoolean(KEY_SYNCED_LYRICS, true)
@@ -796,6 +828,8 @@ object AppSettings {
         translationLanguage.value = prefs.getString(KEY_TRANSLATION_LANGUAGE, "").orEmpty()
         paxSenixApiKey.value = prefs.getString(KEY_PAXSENIX_API_KEY, "").orEmpty()
         com.music.dhvani.data.lyrics.PaxSenix.setApiKey(paxSenixApiKey.value)
+        musixmatchUserToken.value = prefs.getString(KEY_MUSIXMATCH_USER_TOKEN, "").orEmpty()
+        com.music.dhvani.data.lyrics.Musixmatch.setUserToken(musixmatchUserToken.value)
         audioCacheLimitBytes.value = prefs.getLong(KEY_CACHE_LIMIT, DEFAULT_CACHE_LIMIT_BYTES)
             .coerceIn(DEFAULT_CACHE_LIMIT_BYTES, MAX_CACHE_LIMIT_BYTES)
         lastfmEnabled.value = prefs.getBoolean(KEY_LASTFM_ENABLED, false)
@@ -841,6 +875,8 @@ object AppSettings {
         listenTogetherUserId.value = prefs.getString(KEY_LISTEN_TOGETHER_USER_ID, null) ?: ""
         listenTogetherIsHost.value = prefs.getBoolean(KEY_LISTEN_TOGETHER_IS_HOST, false)
         listenTogetherSessionTimestamp.value = prefs.getLong(KEY_LISTEN_TOGETHER_SESSION_TIMESTAMP, 0L)
+        animatedCanvas.value = prefs.getBoolean(KEY_ANIMATED_CANVAS, true)
+        canvasOverCellular.value = prefs.getBoolean(KEY_CANVAS_OVER_CELLULAR, true)
         localCustomPlaylists.value = readLocalCustomPlaylists()
     }
 
@@ -1108,6 +1144,11 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_DYNAMIC_THEME, value).apply()
     }
 
+    fun setUiDesignStyle(value: UiDesignStyle) {
+        uiDesignStyle.value = value
+        prefs.edit().putString(KEY_UI_DESIGN_STYLE, value.id).apply()
+    }
+
     fun setEnableHighRefreshRate(value: Boolean) {
         enableHighRefreshRate.value = value
         prefs.edit().putBoolean(KEY_ENABLE_HIGH_REFRESH_RATE, value).apply()
@@ -1192,6 +1233,16 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_SYSTEM_DYNAMIC_ISLAND_ENABLED, value).apply()
     }
 
+    fun setAnimatedCanvas(value: Boolean) {
+        animatedCanvas.value = value
+        prefs.edit().putBoolean(KEY_ANIMATED_CANVAS, value).apply()
+    }
+
+    fun setCanvasOverCellular(value: Boolean) {
+        canvasOverCellular.value = value
+        prefs.edit().putBoolean(KEY_CANVAS_OVER_CELLULAR, value).apply()
+    }
+
     private const val KEY_FLOATING_ISLAND_PROMPTED_VERSION = "floating_island_prompted_version"
 
     fun shouldPromptFloatingIslandPermission(currentVersionCode: Int): Boolean {
@@ -1259,6 +1310,7 @@ object AppSettings {
 
     private const val KEY_TRANSLATION_LANGUAGE = "translation_language"
     private const val KEY_PAXSENIX_API_KEY = "paxsenix_api_key"
+    private const val KEY_MUSIXMATCH_USER_TOKEN = "musixmatch_user_token"
 
     fun setTranslationLanguage(value: String) {
         translationLanguage.value = value
@@ -1272,6 +1324,13 @@ object AppSettings {
         paxSenixApiKey.value = normalized
         prefs.edit().putString(KEY_PAXSENIX_API_KEY, normalized).apply()
         com.music.dhvani.data.lyrics.PaxSenix.setApiKey(normalized)
+    }
+
+    fun setMusixmatchUserToken(value: String) {
+        val trimmed = value.trim()
+        musixmatchUserToken.value = trimmed
+        prefs.edit().putString(KEY_MUSIXMATCH_USER_TOKEN, trimmed).apply()
+        com.music.dhvani.data.lyrics.Musixmatch.setUserToken(trimmed)
     }
 
     fun saveLocalPlaylist(title: String, songs: List<Song>): String {
@@ -1828,6 +1887,7 @@ object AppSettings {
     private const val KEY_AUDIO_LISTENING_MODE = "audio_listening_mode"
     private const val KEY_SPEED = "playback_speed"
     private const val KEY_THEME = "theme_mode"
+    private const val KEY_UI_DESIGN_STYLE = "ui_design_style"
     private const val KEY_AUTOPLAY = "autoplay"
     private const val KEY_NERD_STATS = "show_nerd_stats"
     private const val KEY_CACHE_LIMIT = "audio_cache_limit_bytes"
@@ -1931,6 +1991,8 @@ object AppSettings {
     private const val KEY_LISTEN_TOGETHER_USER_ID = "listen_together_user_id"
     private const val KEY_LISTEN_TOGETHER_IS_HOST = "listen_together_is_host"
     private const val KEY_LISTEN_TOGETHER_SESSION_TIMESTAMP = "listen_together_session_timestamp"
+    private const val KEY_ANIMATED_CANVAS = "animated_canvas"
+    private const val KEY_CANVAS_OVER_CELLULAR = "canvas_over_cellular"
     private const val KEY_DYNAMIC_ISLAND_ENABLED = "dynamic_island_enabled"
     private const val KEY_SYSTEM_DYNAMIC_ISLAND_ENABLED = "system_dynamic_island_enabled"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"

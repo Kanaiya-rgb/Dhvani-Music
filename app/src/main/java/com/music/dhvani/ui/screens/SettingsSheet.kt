@@ -58,6 +58,7 @@ import androidx.compose.material.icons.rounded.LocalOffer
 import androidx.compose.material.icons.rounded.MusicOff
 import androidx.compose.material.icons.rounded.MotionPhotosOff
 import androidx.compose.material.icons.rounded.BluetoothAudio
+import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.SignalCellularAlt
@@ -236,11 +237,15 @@ fun SettingsScreen(
     val lyricsClickSeek by AppSettings.lyricsClickSeek.collectAsStateWithLifecycle()
     val lyricsAutoScroll by AppSettings.lyricsAutoScroll.collectAsStateWithLifecycle()
     val respectAgentPositioning by AppSettings.respectAgentPositioning.collectAsStateWithLifecycle()
+    val paxSenixApiKey by AppSettings.paxSenixApiKey.collectAsStateWithLifecycle()
+    val musixmatchUserToken by AppSettings.musixmatchUserToken.collectAsStateWithLifecycle()
 
     var showLyricsPositionDialog by remember { mutableStateOf(false) }
     var showLyricsAnimDialog by remember { mutableStateOf(false) }
     var showLyricsTextSizeDialog by remember { mutableStateOf(false) }
     var showLyricsLineSpacingDialog by remember { mutableStateOf(false) }
+    var showPaxSenixKeyDialog by remember { mutableStateOf(false) }
+    var showMusixmatchTokenDialog by remember { mutableStateOf(false) }
 
     val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
     val sessionId by AppSettings.audioSessionId.collectAsStateWithLifecycle()
@@ -562,6 +567,26 @@ fun SettingsScreen(
                 category = "Lyrics & Content",
                 icon = Icons.Rounded.LocalOffer,
                 onClick = onLyricsSources,
+            ),
+            SearchableSettingItem(
+                title = "PaxSenix API key",
+                subtitle = if (paxSenixApiKey.isNotBlank()) "Configured" else "Optional key for Spotify & PaxSenix lyrics",
+                category = "Lyrics & Content",
+                icon = Icons.Rounded.Key,
+                onClick = {
+                    currentSubScreen = SettingsSubScreen.LYRICS_CONTENT
+                    showPaxSenixKeyDialog = true
+                },
+            ),
+            SearchableSettingItem(
+                title = "Musixmatch user token",
+                subtitle = if (musixmatchUserToken.isNotBlank()) "Configured" else "Optional user token from Musixmatch desktop/web or Spicetify",
+                category = "Lyrics & Content",
+                icon = Icons.Rounded.Key,
+                onClick = {
+                    currentSubScreen = SettingsSubScreen.LYRICS_CONTENT
+                    showMusixmatchTokenDialog = true
+                },
             ),
             SearchableSettingItem(
                 title = "Translation language",
@@ -1360,6 +1385,22 @@ fun SettingsScreen(
                             },
                             trailing = { Chevron() },
                             onClick = onTranslationLanguage,
+                        )
+                        RowDivider()
+                        SettingsRow(
+                            icon = Icons.Rounded.Key,
+                            title = stringResource(R.string.paxsenix_api_key),
+                            subtitle = if (paxSenixApiKey.isNotBlank()) stringResource(R.string.paxsenix_api_key_configured) else "Optional key for Spotify and PaxSenix lyrics",
+                            trailing = { Chevron() },
+                            onClick = { showPaxSenixKeyDialog = true },
+                        )
+                        RowDivider()
+                        SettingsRow(
+                            icon = Icons.Rounded.Key,
+                            title = stringResource(R.string.musixmatch_user_token),
+                            subtitle = if (musixmatchUserToken.isNotBlank()) "Token configured" else stringResource(R.string.musixmatch_user_token_subtitle),
+                            trailing = { Chevron() },
+                            onClick = { showMusixmatchTokenDialog = true },
                         )
                     }
 
@@ -2755,6 +2796,78 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { tempSpacing = 1.2f }) {
                     Text(stringResource(R.string.reset))
+                }
+            },
+        )
+    }
+
+    if (showPaxSenixKeyDialog) {
+        var input by remember(paxSenixApiKey) { mutableStateOf(paxSenixApiKey) }
+        AlertDialog(
+            onDismissRequest = { showPaxSenixKeyDialog = false },
+            title = { Text(stringResource(R.string.paxsenix_api_key)) },
+            text = {
+                Column {
+                    Text(
+                        text = "Optional API key for PaxSenix Apple Music, Spotify, and Musixmatch endpoints.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = { input = it },
+                        singleLine = true,
+                        placeholder = { Text("Paste PaxSenix API key") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    AppSettings.setPaxSenixApiKey(input)
+                    showPaxSenixKeyDialog = false
+                }) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPaxSenixKeyDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showMusixmatchTokenDialog) {
+        var input by remember(musixmatchUserToken) { mutableStateOf(musixmatchUserToken) }
+        AlertDialog(
+            onDismissRequest = { showMusixmatchTokenDialog = false },
+            title = { Text(stringResource(R.string.musixmatch_user_token)) },
+            text = {
+                Column {
+                    Text(
+                        text = "Musixmatch requires a user token to access synced lyrics. You can retrieve your token from the Musixmatch desktop/web app DevTools (search 'usertoken') or Spicetify.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = { input = it },
+                        singleLine = true,
+                        placeholder = { Text("Paste Musixmatch usertoken") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    AppSettings.setMusixmatchUserToken(input)
+                    showMusixmatchTokenDialog = false
+                }) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMusixmatchTokenDialog = false }) {
+                    Text(stringResource(R.string.cancel))
                 }
             },
         )

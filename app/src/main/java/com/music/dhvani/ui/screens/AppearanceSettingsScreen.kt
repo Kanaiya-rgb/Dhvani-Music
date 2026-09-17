@@ -7,7 +7,6 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
-import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -21,6 +20,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -56,8 +56,18 @@ import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.ViewStream
+import androidx.compose.material.icons.rounded.Style
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import com.music.dhvani.data.settings.UiDesignStyle
+import com.music.dhvani.ui.theme.uiDesignCard
+import com.music.dhvani.ui.haptics.rememberHaptics
+import com.music.dhvani.ui.haptics.Haptic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -79,7 +89,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -113,6 +122,7 @@ fun AppearanceSettingsScreen(
 
     val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
     val dynamicTheme by AppSettings.dynamicTheme.collectAsStateWithLifecycle()
+    val uiDesignStyle by AppSettings.uiDesignStyle.collectAsStateWithLifecycle()
     val enableHighRefreshRate by AppSettings.enableHighRefreshRate.collectAsStateWithLifecycle()
     val densityScale by AppSettings.densityScale.collectAsStateWithLifecycle()
 
@@ -237,6 +247,47 @@ fun AppearanceSettingsScreen(
                 value = DensityScale.fromValue(densityScale).label,
                 onClick = { showDensityDialog = true },
             )
+        }
+
+        // ── 1.5. UI Design & Aesthetic Style ─────────────────────────────
+        val haptics = rememberHaptics()
+        SettingsGroup(header = "UI Design & Aesthetic Style") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+            ) {
+                Text(
+                    text = "Choose your favorite app interface design style. All cards, sheets, and bars will adopt this aesthetic.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = ROW_INSET, vertical = 2.dp),
+                )
+                Spacer(Modifier.height(12.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = ROW_INSET),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(UiDesignStyle.entries, key = { it.id }) { style ->
+                        val selected = style == uiDesignStyle
+                        UiDesignStyleCard(
+                            style = style,
+                            selected = selected,
+                            onClick = {
+                                haptics.play(Haptic.Select)
+                                AppSettings.setUiDesignStyle(style)
+                            },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "${uiDesignStyle.displayName}: ${uiDesignStyle.description}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = ROW_INSET, vertical = 4.dp),
+                )
+            }
         }
 
         // ── 2. Player Controls & Style ──────────────────────────────────
@@ -987,6 +1038,112 @@ fun AppearanceSettingsScreen(
             },
         )
     }
-
-
 }
+
+@Composable
+private fun UiDesignStyleCard(
+    style: UiDesignStyle,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+    val borderWidth = if (selected) 2.dp else 1.dp
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(112.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(96.dp)
+                .uiDesignCard(style = style, shape = RoundedCornerShape(16.dp))
+                .border(borderWidth, borderColor, RoundedCornerShape(16.dp))
+                .padding(10.dp),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.Start,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (selected) primaryColor.copy(alpha = 0.25f)
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Style,
+                        contentDescription = null,
+                        tint = if (selected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                if (selected) primaryColor.copy(alpha = 0.7f)
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+                            )
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(0.6f)
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                if (selected) primaryColor.copy(alpha = 0.4f)
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)
+                            )
+                    )
+                }
+            }
+
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(primaryColor),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Check,
+                        contentDescription = "Selected",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = style.displayName,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+

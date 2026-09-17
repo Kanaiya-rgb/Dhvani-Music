@@ -10,6 +10,8 @@ import com.music.dhvani.data.model.LikeStatus
 import com.music.dhvani.data.model.SearchResult
 import com.music.dhvani.data.model.ShelfItem
 import com.music.dhvani.data.model.Song
+import com.music.dhvani.data.model.MoodGenre
+import com.music.dhvani.data.model.MoodGenreSection
 import com.music.dhvani.data.model.SongMenu
 import com.music.dhvani.data.model.UserPlaylist
 import kotlinx.serialization.json.JsonArray
@@ -140,7 +142,29 @@ object InnertubeParser {
         )
     }
 
-    // ---- Home feed ----------------------------------------------------------
+    // ---- Home feed & Explore ------------------------------------------------
+ 
+    fun parseMoodAndGenres(response: JsonObject): List<MoodGenreSection> {
+        val sections = response.o("contents")
+            .o("singleColumnBrowseResultsRenderer").a("tabs")?.firstOrNull()
+            .o("tabRenderer").o("content").o("sectionListRenderer").a("contents")
+            .orEmpty()
+        return sections.mapNotNull { section ->
+            val grid = section.o("gridRenderer") ?: return@mapNotNull null
+            val title = grid.o("header").o("gridHeaderRenderer").o("title").runs()
+            val items = grid.a("items").orEmpty().mapNotNull { item ->
+                val button = item.o("musicNavigationButtonRenderer") ?: return@mapNotNull null
+                val endpoint = button.o("clickCommand").o("browseEndpoint")
+                    ?: button.o("navigationEndpoint").o("browseEndpoint")
+                    ?: return@mapNotNull null
+                val browseId = endpoint.s("browseId") ?: return@mapNotNull null
+                val label = button.o("buttonText").runs().takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+                MoodGenre(label, browseId, endpoint.s("params"))
+            }
+            if (title.isBlank() || items.isEmpty()) null else MoodGenreSection(title, items)
+        }
+    }
 
     fun parseHome(response: JsonObject): List<HomeShelf> {
         val sections = response.o("contents")

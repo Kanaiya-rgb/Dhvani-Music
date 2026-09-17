@@ -16,7 +16,9 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.dhvani.R
+import com.music.dhvani.data.settings.AppSettings
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stitch "Midnight Raag" Design System — Dhvani Indian Music App
@@ -282,11 +284,16 @@ fun DhvaniTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
-        typography  = DhvaniTypography,
-        content     = content,
-    )
+    val uiStyle = AppSettings.uiDesignStyle.collectAsStateWithLifecycle().value
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalUiDesignStyle provides uiStyle,
+    ) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) DarkColors else LightColors,
+            typography  = DhvaniTypography,
+            content     = content,
+        )
+    }
 }
 
 /**

@@ -189,9 +189,9 @@ import com.music.dhvani.ui.screens.LibraryGridPage
 import com.music.dhvani.ui.screens.AppearanceSettingsScreen
 import com.music.dhvani.ui.screens.LibraryScreen
 import com.music.dhvani.ui.screens.SearchScreen
-import com.music.dhvani.ui.screens.UtsavScreen
 import com.music.dhvani.ui.screens.CategoryScreen
 import com.music.dhvani.ui.screens.ExploreScreen
+import com.music.dhvani.ui.screens.MoodGenrePlaylistsScreen
 import com.music.dhvani.ui.replay.ReplayScreen
 import com.music.dhvani.ui.replay.cards
 import com.music.dhvani.ui.replay.ReplayShareSheet
@@ -491,6 +491,8 @@ private fun DhvaniApp(
     val query by viewModel.query.collectAsStateWithLifecycle()
     val results by viewModel.results.collectAsStateWithLifecycle()
     val exploreState by viewModel.explore.collectAsStateWithLifecycle()
+    val selectedMoodGenre by viewModel.selectedMoodGenre.collectAsStateWithLifecycle()
+    val moodGenreShelves by viewModel.moodGenreShelves.collectAsStateWithLifecycle()
     val libraryState by viewModel.library.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val signedIn by viewModel.signedIn.collectAsStateWithLifecycle()
@@ -596,17 +598,15 @@ private fun DhvaniApp(
     }
 
     val homeListState = rememberLazyListState()
-    val categoryListState = rememberLazyListState()
-    val utsavListState = rememberLazyListState()
     val exploreListState = rememberLazyListState()
+    val moodGenreListState = rememberLazyListState()
     val libraryListState = rememberLazyListState()
     val historyListState = rememberLazyListState()
     val libraryShowAllGridState = rememberLazyGridState()
     val searchListState = rememberLazyListState()
     val currentListState = when (selectedTab) {
         TAB_HOME -> homeListState
-        TAB_CATEGORY -> categoryListState
-        TAB_UTSAV -> utsavListState
+        TAB_EXPLORE -> if (selectedMoodGenre != null) moodGenreListState else exploreListState
         TAB_SEARCH -> searchListState
         TAB_LIBRARY -> libraryListState
         else -> homeListState
@@ -621,6 +621,7 @@ private fun DhvaniApp(
     val currentFeed = when {
         showSettings || showAccountScrobbling || detail != null -> null
         selectedTab == TAB_HOME -> MainViewModel.Feed.HOME
+        selectedTab == TAB_EXPLORE && selectedMoodGenre == null -> MainViewModel.Feed.EXPLORE
         selectedTab == TAB_LIBRARY -> MainViewModel.Feed.LIBRARY
         else -> null
     }
@@ -679,21 +680,20 @@ private fun DhvaniApp(
         null
     } ?: java.util.Locale.getDefault().toLanguageTag()
 
-    val (tabSuno, tabExplore, tabUtsav, tabSearch, tabLibrary) = when {
+    val (tabSuno, tabExplore, tabSearch, tabLibrary) = when {
         currentLocale.startsWith("hi-Latn", ignoreCase = true) || currentLocale.equals("hinglish", ignoreCase = true) ->
-            listOf("Home", "Explore", "Festival", "Search", "Library")
+            listOf("Home", "Explore", "Search", "Library")
         currentLocale.startsWith("hi", ignoreCase = true) ->
-            listOf("होम", "एक्सप्लोर", "उत्सव", "खोज", "संग्रह")
+            listOf("होम", "एक्सप्लोर", "खोज", "संग्रह")
         currentLocale.startsWith("pa", ignoreCase = true) ->
-            listOf("ਹੋਮ", "ਐਕਸਪਲੋਰ", "ਉਤਸਵ", "ਖੋਜ", "ਸੰਗ੍ਰਹਿ")
+            listOf("ਹੋਮ", "ਐਕਸਪਲੋਰ", "ਖੋਜ", "ਸੰਗ੍ਰਹਿ")
         else ->
-            listOf("Home", "Explore", "Festival", "Search", "Library")
+            listOf("Home", "Explore", "Search", "Library")
     }
 
     val tabs = listOf(
         BottomTab(tabSuno, DhvaniIcons.Play),
         BottomTab(tabExplore, DhvaniIcons.Explore),
-        BottomTab(tabUtsav, DhvaniIcons.Utsav),
         BottomTab(tabSearch, DhvaniIcons.Search),
         BottomTab(tabLibrary, DhvaniIcons.Library),
     )
@@ -1469,8 +1469,11 @@ private fun DhvaniApp(
             // rather than throwing both away.
             if (detail == null && !showReplay) selectedTab = TAB_HOME
         }
+        BackHandler(enabled = selectedMoodGenre != null && !showNowPlaying && !showSettings && detail == null) {
+            viewModel.closeMoodGenre()
+        }
         BackHandler(
-            enabled = detail == null && !showSettings && !showAccountScrobbling &&
+            enabled = selectedMoodGenre == null && detail == null && !showSettings && !showAccountScrobbling &&
                 !showSources && !showAppearanceSettings && settingsSubScreenTitle == null && !showReplay && selectedTab != TAB_HOME,
         ) {
             selectedTab = TAB_HOME
@@ -1900,21 +1903,42 @@ private fun DhvaniApp(
                             selectedCategory = selectedCategory,
                             onCategorySelected = viewModel::setHomeCategory,
                         )
-                        TAB_EXPLORE -> ExploreScreen(
-                            listState = categoryListState,
+                        TAB_EXPLORE -> selectedMoodGenre?.let { category ->
+                            MoodGenrePlaylistsScreen(
+                                title = category.title,
+                                state = moodGenreShelves,
+                                listState = moodGenreListState,
+                                onItemClick = { item ->
+                                    when {
+                                        item.videoId != null -> {
+                                            val song = Song(
+                                                videoId = item.videoId,
+                                                title = item.title,
+                                                artist = InnertubeParser.artistFromSubtitle(item.subtitle),
+                                                thumbnailUrl = item.thumbnailUrl,
+                                            )
+                                            playRadio(song)
+                                        }
+                                        item.browseId != null -> viewModel.openDetail(
+                                            browseId = item.browseId,
+                                            title = item.title,
+                                            subtitle = item.subtitle,
+                                            thumbnailUrl = item.thumbnailUrl,
+                                        )
+                                    }
+                                },
+                                onRetry = { viewModel.openMoodGenre(category) },
+                                contentPadding = listPadding,
+                            )
+                        } ?: ExploreScreen(
+                            state = exploreState,
+                            listState = exploreListState,
+                            onCategoryClick = viewModel::openMoodGenre,
+                            onRetry = viewModel::loadExplore,
+                            refreshing = MainViewModel.Feed.EXPLORE in refreshing,
+                            onRefresh = { viewModel.refresh(MainViewModel.Feed.EXPLORE) },
+                            pullState = explorePull,
                             contentPadding = listPadding,
-                            onPlaySongs = play,
-                            onOpenDetail = { id, title, subtitle, thumbnail, type ->
-                                viewModel.openDetail(id, title, subtitle ?: "", thumbnail, type)
-                            },
-                        )
-                        TAB_UTSAV -> UtsavScreen(
-                            listState = utsavListState,
-                            contentPadding = listPadding,
-                            onPlaySongs = play,
-                            onOpenDetail = { id, title, subtitle, thumbnail, type ->
-                                viewModel.openDetail(id, title, subtitle, thumbnail, type)
-                            },
                         )
                         TAB_SEARCH -> SearchScreen(
                             query = query,
@@ -3219,9 +3243,8 @@ private val DETAIL_TITLE_DROP = 320.dp
 private const val TAB_HOME = 0
 private const val TAB_EXPLORE = 1
 private const val TAB_CATEGORY = 1
-private const val TAB_UTSAV = 2
-private const val TAB_SEARCH = 3
-private const val TAB_LIBRARY = 4
+private const val TAB_SEARCH = 2
+private const val TAB_LIBRARY = 3
 
 /**
  * What a tab's key is prefixed with in the content switcher above.

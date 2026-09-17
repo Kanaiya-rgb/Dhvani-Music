@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import com.music.dhvani.ui.theme.uiDesignCard
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.graphics.Brush
@@ -621,23 +622,15 @@ private fun SearchField(
 ) {
     val focusManager = LocalFocusManager.current
     var isFocused by remember { mutableStateOf(false) }
-    // Both ways of saying "search this" do the same two things, so they're
-    // written once here rather than twice.
     val submit = {
         onSubmit()
         focusManager.clearFocus()
     }
-    val animatedBorderColor by animateColorAsState(
-        targetValue = if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)
-        else Color.White.copy(alpha = 0.08f),
-        label = "search_border",
-    )
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-            .border(1.2.dp, animatedBorderColor, CircleShape)
+            .uiDesignCard(shape = CircleShape, backgroundColor = MaterialTheme.colorScheme.surfaceVariant)
             .padding(start = 12.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

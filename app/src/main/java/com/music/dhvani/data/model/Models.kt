@@ -354,3 +354,17 @@ sealed interface UiState<out T> {
     data class Success<T>(val data: T) : UiState<T>
     data class Error(val message: String) : UiState<Nothing>
 }
+
+data class MoodGenreSection(
+    val title: String,
+    val items: List<MoodGenre>,
+)
+
+/** A mood or genre button and the exact browse request that it represents. */
+data class MoodGenre(
+    val title: String,
+    val browseId: String,
+    val params: String?,
+    val thumbnailUrl: String? = null,
+)
+

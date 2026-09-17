@@ -33,6 +33,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -132,6 +134,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.first
@@ -194,6 +197,9 @@ import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
+import com.music.dhvani.data.canvas.CanvasArtwork
+import com.music.dhvani.data.canvas.CanvasRepository
+import com.music.dhvani.data.canvas.CanvasSource
 import com.music.dhvani.data.model.ROW_ART_PX
 import com.music.dhvani.ui.rememberIsForeground
 import com.music.dhvani.ui.components.thumbnailBorder
@@ -247,6 +253,11 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.ColorUtils
+
+enum class NowPlayingViewMode {
+    VIDEO,
+    MUSIC,
+}
 
 /** Collapsed-header geometry, shared by the layout and its animation. */
 /** Comfortably over the sleeve's drawn size on a phone, without wasting bytes. */
@@ -633,6 +644,166 @@ private const val LYRICS_UNAVAILABLE_FADE_MS = 900
  * queue along the bottom.
  */
 @Composable
+private fun CanvasNotificationPill(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = CircleShape,
+        color = Color(0xFF18181E).copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+        shadowElevation = 8.dp,
+        modifier = modifier.padding(horizontal = 20.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = DhvaniIcons.Video,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(12.dp),
+                )
+            }
+            Text(
+                text = message,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.15.sp,
+                color = Color.White.copy(alpha = 0.95f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CanvasTopPillToggle(
+    currentMode: NowPlayingViewMode,
+    onModeSelected: (NowPlayingViewMode) -> Unit,
+    hasVideo: Boolean,
+    isLoading: Boolean,
+    onShowNotice: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = rememberHaptics()
+
+    Surface(
+        shape = CircleShape,
+        color = Color.Black.copy(alpha = 0.45f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+        modifier = modifier
+            .padding(vertical = 4.dp)
+            .height(34.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 3.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            // Video pill button
+            val videoActive = currentMode == NowPlayingViewMode.VIDEO
+            val videoBgColor by animateColorAsState(
+                targetValue = if (videoActive) Color.White.copy(alpha = 0.22f) else Color.Transparent,
+                label = "videoBg",
+            )
+            val videoTint by animateColorAsState(
+                targetValue = if (videoActive) Color.White else Color.White.copy(alpha = 0.65f),
+                label = "videoTint",
+            )
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(videoBgColor)
+                    .clickable {
+                        haptics.play(Haptic.Tap)
+                        if (!videoActive) {
+                            if (hasVideo) {
+                                onModeSelected(NowPlayingViewMode.VIDEO)
+                            } else if (isLoading) {
+                                onModeSelected(NowPlayingViewMode.VIDEO)
+                                onShowNotice("Finding motion video...")
+                            } else {
+                                onShowNotice("No motion canvas video for this track")
+                            }
+                        } else if (!hasVideo && !isLoading) {
+                            onShowNotice("No motion canvas video for this track")
+                        }
+                    }
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Icon(
+                        imageVector = DhvaniIcons.Video,
+                        contentDescription = "Video",
+                        tint = videoTint,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Text(
+                        text = "Video",
+                        fontSize = 12.sp,
+                        fontWeight = if (videoActive) FontWeight.SemiBold else FontWeight.Normal,
+                        color = videoTint,
+                    )
+                }
+            }
+
+            // Cover pill button
+            val coverActive = currentMode == NowPlayingViewMode.MUSIC
+            val coverBgColor by animateColorAsState(
+                targetValue = if (coverActive) Color.White.copy(alpha = 0.22f) else Color.Transparent,
+                label = "coverBg",
+            )
+            val coverTint by animateColorAsState(
+                targetValue = if (coverActive) Color.White else Color.White.copy(alpha = 0.65f),
+                label = "coverTint",
+            )
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(coverBgColor)
+                    .clickable {
+                        haptics.play(Haptic.Tap)
+                        onModeSelected(NowPlayingViewMode.MUSIC)
+                    }
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Icon(
+                        imageVector = DhvaniIcons.Cover,
+                        contentDescription = "Cover",
+                        tint = coverTint,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Text(
+                        text = "Cover",
+                        fontSize = 12.sp,
+                        fontWeight = if (coverActive) FontWeight.SemiBold else FontWeight.Normal,
+                        color = coverTint,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun NowPlayingScreen(
     song: Song,
     isPlaying: Boolean,
@@ -701,12 +872,54 @@ fun NowPlayingScreen(
     val syncedLyricsEnabled by AppSettings.syncedLyrics.collectAsStateWithLifecycle()
     val hideVolumeBar by AppSettings.hideVolumeBar.collectAsStateWithLifecycle()
 
-    // Animated cover art: the looping video some labels publish alongside a
-    // release, laid over the sleeve. A miss is the normal answer — see
+    // Animated motion canvas video artwork
+    var canvasArtwork by remember(song.videoId) {
+        mutableStateOf(CanvasRepository.getCached(song.videoId))
+    }
+    var canvasRendered by remember(song.videoId) { mutableStateOf(false) }
+    var canvasLoading by remember(song.videoId) {
+        mutableStateOf(!CanvasRepository.hasCached(song.videoId))
+    }
+
+    var canvasNoticeMessage by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(canvasNoticeMessage) {
+        if (canvasNoticeMessage != null) {
+            delay(2500)
+            canvasNoticeMessage = null
+        }
+    }
+
+    LaunchedEffect(song.videoId, song.title, song.artist, song.albumName) {
+        canvasRendered = false
+        if (!CanvasRepository.hasCached(song.videoId)) {
+            canvasLoading = true
+        }
+        if (canvasArtwork == null && song.albumName == null) {
+            delay(350)
+        }
+        val result = CanvasRepository.getCanvas(
+            context = context,
+            videoId = song.videoId,
+            title = song.title,
+            artist = song.artist,
+            album = song.albumName,
+        )
+        if (result != null) {
+            canvasArtwork = result
+        }
+        canvasLoading = false
+    }
+
+    var playerViewMode by rememberSaveable {
+        mutableStateOf(NowPlayingViewMode.VIDEO)
+    }
+    val isVideoActive by remember(playerViewMode, canvasArtwork) {
+        derivedStateOf { playerViewMode == NowPlayingViewMode.VIDEO && canvasArtwork != null }
+    }
+
     var lyricsOffsetMs by remember(song.videoId) {
         mutableLongStateOf(AppSettings.getLyricsOffset(song.videoId))
     }
-    val canvasRendered = false
     val canvasFrame: Bitmap? = null
     val meshColors = rememberArtworkColors(song.thumbnailUrl, null)
     val meshRefreshMs: Long? = null
@@ -746,11 +959,17 @@ fun NowPlayingScreen(
     }
     var showingTranslation by remember(song.videoId, targetLang) { mutableStateOf(false) }
     var translationLoading by remember(song.videoId, targetLang) { mutableStateOf(false) }
+    var translationStatus by remember(song.videoId, targetLang) { mutableStateOf<String?>(null) }
     var translatedLyrics by remember(song.videoId, targetLang) { mutableStateOf<List<LyricLine>?>(null) }
     val displayedLyrics = if (showingTranslation && translatedLyrics != null) translatedLyrics!! else lyrics.orEmpty()
     val translationScope = rememberCoroutineScope()
+    val appLoc = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0) ?: java.util.Locale.getDefault()
+    val targetName = remember(targetLang, appLoc) {
+        com.music.dhvani.data.lyrics.translationLanguageName(targetLang, appLoc)
+    }
 
     val toggleTranslation: () -> Unit = {
+        translationStatus = null
         if (showingTranslation) {
             showingTranslation = false
             haptics.play(Haptic.Select)
@@ -762,9 +981,6 @@ fun NowPlayingScreen(
             if (source.isNotEmpty()) {
                 translationLoading = true
                 haptics.play(Haptic.Tap)
-                val appLoc = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0) ?: java.util.Locale.getDefault()
-                val targetName = com.music.dhvani.data.lyrics.translationLanguageName(targetLang, appLoc)
-                Toast.makeText(context, "Translating to $targetName...", Toast.LENGTH_SHORT).show()
                 translationScope.launch {
                     when (val res = com.music.dhvani.data.lyrics.LyricsTranslation.translate(
                         context = context.applicationContext,
@@ -777,15 +993,14 @@ fun NowPlayingScreen(
                             showingTranslation = true
                             translationLoading = false
                             haptics.play(Haptic.ToggleOn)
-                            Toast.makeText(context, "Translated to $targetName", Toast.LENGTH_SHORT).show()
                         }
                         is com.music.dhvani.data.lyrics.LyricsTranslation.Result.SameLanguage -> {
                             translationLoading = false
-                            Toast.makeText(context, "Lyrics already in $targetName", Toast.LENGTH_SHORT).show()
+                            translationStatus = "Lyrics already in $targetName"
                         }
                         com.music.dhvani.data.lyrics.LyricsTranslation.Result.Unavailable -> {
                             translationLoading = false
-                            Toast.makeText(context, "Translation unavailable", Toast.LENGTH_SHORT).show()
+                            translationStatus = "Translation unavailable"
                         }
                     }
                 }
@@ -796,6 +1011,7 @@ fun NowPlayingScreen(
         lyricsOpen = false
         showingTranslation = false
         translatedLyrics = null
+        translationStatus = null
     }
 
     // Back out of the lyrics panel to the player, and only from the player
@@ -1151,7 +1367,8 @@ fun NowPlayingScreen(
         // Full-screen ambient blurred artwork backdrop (Apple Music style depth)
         AsyncImage(
             model = ImageRequest.Builder(context)
-                .data(song.artworkAt(ROW_ART_PX))
+                .data(song.artworkAt(ART_PX))
+                .size(ART_PX)
                 .build(),
             contentDescription = null,
             contentScale = ContentScale.Crop,
@@ -1233,9 +1450,24 @@ fun NowPlayingScreen(
             }
 
             // Motion artwork over it, in the same frame.
-            //
-            // Always composed while there's a clip to play, never gated on
-
+            if (canvasArtwork != null && heroMode && (p < 0.5f || heroVisible > 0.001f)) {
+                CanvasArtworkPlayer(
+                    artwork = canvasArtwork!!,
+                    isPlaying = isPlaying,
+                    isActive = isVideoActive,
+                    applyBottomGradientMask = true,
+                    fadeFraction = HERO_FADE_FRACTION,
+                    onFirstFrameRendered = { canvasRendered = true },
+                    onRenderedChanged = { canvasRendered = it },
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .fillMaxWidth()
+                        .height(heroHeight)
+                        .graphicsLayer {
+                            alpha = heroVisible
+                        },
+                )
+            }
 
             // The clock, the signal bars and the drag handle are all white, and
             // the banner puts whatever the artwork happens to have up there
@@ -1248,10 +1480,13 @@ fun NowPlayingScreen(
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
                         .height(statusBarTop + topStrip)
+                        .graphicsLayer {
+                            alpha = heroVisible
+                        }
                         .background(
                             Brush.verticalGradient(
                                 listOf(
-                                    Color.Black.copy(alpha = 0.38f * heroVisible),
+                                    Color.Black.copy(alpha = 0.38f),
                                     Color.Transparent,
                                 ),
                             ),
@@ -1300,11 +1535,53 @@ fun NowPlayingScreen(
             // a stray downward swipe on the artwork or the controls. Docked
             // there is no sheet to pass anything to, so all that is left of it
             // is the room it kept above the artwork.
-            Spacer(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(topStrip),
-            )
+                contentAlignment = Alignment.Center,
+            ) {
+                if (p > 0.3f || lyricsOpen || queueOpen) {
+                    Box(
+                        modifier = Modifier
+                            .width(36.dp)
+                            .height(4.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.28f)),
+                    )
+                } else {
+                    CanvasTopPillToggle(
+                        currentMode = playerViewMode,
+                        onModeSelected = { mode ->
+                            playerViewMode = mode
+                        },
+                        hasVideo = canvasArtwork != null,
+                        isLoading = canvasLoading,
+                        onShowNotice = { msg ->
+                            canvasNoticeMessage = msg
+                        },
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = canvasNoticeMessage != null,
+                enter = fadeIn(animationSpec = tween(220)) + slideInVertically(
+                    animationSpec = tween(220),
+                    initialOffsetY = { -it / 2 },
+                ),
+                exit = fadeOut(animationSpec = tween(180)) + slideOutVertically(
+                    animationSpec = tween(180),
+                    targetOffsetY = { -it / 2 },
+                ),
+            ) {
+                canvasNoticeMessage?.let { msg ->
+                    CanvasNotificationPill(
+                        message = msg,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 4.dp),
+                    )
+                }
+            }
 
             Column(
                 modifier = Modifier
@@ -1652,8 +1929,18 @@ fun NowPlayingScreen(
                         )
 
                         // Where the clip plays when it can't have the banner:
-                        // inside the same clip as the still art, taking the
-
+                        // inside the same clip as the still art
+                        if (!heroMode && canvasArtwork != null) {
+                            CanvasArtworkPlayer(
+                                artwork = canvasArtwork!!,
+                                isPlaying = isPlaying,
+                                isActive = isVideoActive,
+                                applyBottomGradientMask = false,
+                                onFirstFrameRendered = { canvasRendered = true },
+                                onRenderedChanged = { canvasRendered = it },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
 
                     // Measured stats, pinned to the sleeve's own bottom-centre
@@ -1891,18 +2178,21 @@ fun NowPlayingScreen(
                         val isPlainLyrics = remember(lyrics) { lyrics.orEmpty().any { it.isEstimatedTiming } }
                         Text(
                             text = when {
+                                showingTranslation && translatedLyrics != null -> "Translated to $targetName"
+                                translationLoading -> "Translating to $targetName..."
+                                translationStatus != null -> translationStatus!!
                                 isPlainLyrics -> "Plain lyrics • ${lyricsSource?.label ?: "Online"}"
                                 lyricsSource != null -> "Lyrics by ${lyricsSource.label}"
                                 lyrics.isNullOrEmpty() -> "No lyrics found"
                                 else -> "Lyrics saved with this download"
                             },
                             style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp,
+                                fontWeight = if (showingTranslation) FontWeight.SemiBold else FontWeight.Medium,
                             ),
-                            color = Color.White.copy(alpha = 0.65f),
+                            color = Color.White.copy(alpha = if (showingTranslation) 0.85f else 0.65f),
                             modifier = Modifier.clickable(
-                                enabled = onReloadLyrics != null,
+                                enabled = onReloadLyrics != null && !showingTranslation,
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                             ) {

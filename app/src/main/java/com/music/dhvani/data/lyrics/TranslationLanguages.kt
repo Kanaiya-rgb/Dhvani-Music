@@ -172,18 +172,28 @@ private val byCode = TRANSLATION_LANGUAGES.associateBy { it.code.lowercase(Local
  * is wrong but legible; an empty label in a picker is neither.
  */
 fun translationLanguageName(code: String, inLocale: Locale): String {
-    val entry = byCode[code.lowercase(Locale.ROOT)]
-    // A subtag is the whole point of the codes that carry one, and the platform
-    // renders it as territory: zh-CN comes back "Chinese (China)", which names
-    // the country rather than the script and leaves zh-TW looking like the same
-    // language somewhere else. For those the curated name is the accurate one.
-    val platform = if ('-' in code) {
+    val cleanCode = code.trim()
+    val entry = byCode[cleanCode.lowercase(Locale.ROOT)]
+        ?: byCode[cleanCode.substringBefore('-').lowercase(Locale.ROOT)]
+
+    // Special curated exceptions where the subtag identifies the script rather than regional dialect
+    val curatedSubtags = setOf("zh-cn", "zh-tw", "mni-mtei")
+    val isCurated = cleanCode.lowercase(Locale.ROOT) in curatedSubtags
+
+    val platform = if (isCurated) {
         ""
     } else {
-        Locale.forLanguageTag(code).getDisplayName(inLocale)
+        val loc = Locale.forLanguageTag(cleanCode)
+        // Prefer the clean language name (e.g. "English") rather than raw regional tag ("en-GB")
+        val langName = loc.getDisplayLanguage(inLocale)
+        if (langName.isNotBlank() && !langName.equals(cleanCode, ignoreCase = true)) {
+            langName
+        } else {
+            loc.getDisplayName(inLocale)
+        }
     }
-    // getDisplayName echoes the tag back when it knows nothing about it.
-    val known = platform.isNotBlank() && !platform.equals(code, ignoreCase = true)
-    val name = if (known) platform else entry?.fallbackName ?: code
+
+    val known = platform.isNotBlank() && !platform.equals(cleanCode, ignoreCase = true)
+    val name = if (known) platform else entry?.fallbackName ?: cleanCode
     return name.replaceFirstChar { if (it.isLowerCase()) it.titlecase(inLocale) else it.toString() }
 }

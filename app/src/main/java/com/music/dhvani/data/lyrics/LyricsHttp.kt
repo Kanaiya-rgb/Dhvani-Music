@@ -40,6 +40,15 @@ internal fun lyricsGet(url: String): String? = runCatching {
     }
 }.getOrNull()
 
+/** Body of a GET with custom headers (e.g. for Musixmatch browser/client emulation). */
+internal fun lyricsGetWithHeaders(url: String, headers: Map<String, String>): String? = runCatching {
+    val requestBuilder = Request.Builder().url(url)
+    headers.forEach { (k, v) -> requestBuilder.header(k, v) }
+    client.newCall(requestBuilder.build()).execute().use { response ->
+        if (response.isSuccessful) response.body?.string() else null
+    }
+}.getOrNull()
+
 private val authenticatedClient by lazy {
     client.newBuilder()
         .callTimeout(15, TimeUnit.SECONDS)

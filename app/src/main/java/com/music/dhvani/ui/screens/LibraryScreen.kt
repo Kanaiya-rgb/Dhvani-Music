@@ -63,6 +63,7 @@ import com.music.dhvani.ui.components.SHELF_CARD_WIDTH
 import com.music.dhvani.ui.components.libraryGrid
 import com.music.dhvani.ui.components.librarySkeleton
 import com.music.dhvani.ui.player.MeshGradientBackground
+import com.music.dhvani.ui.theme.uiDesignCard
 import com.music.dhvani.ui.player.rememberArtworkColors
 import com.music.dhvani.ui.replay.ReplayHeroCard
 import java.util.Locale
@@ -240,8 +241,7 @@ fun LibraryScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = PAGE_GUTTER, vertical = 20.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                            .uiDesignCard(shape = RoundedCornerShape(16.dp), backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
                             .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -355,8 +355,7 @@ private fun ReplayBanner(card: ReplayHeroCard?, onClick: () -> Unit) {
         Modifier
             .padding(horizontal = PAGE_GUTTER, vertical = 6.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick),
+            .uiDesignCard(shape = RoundedCornerShape(18.dp), onClick = onClick),
     ) {
         // Behind the row and sized to it rather than given a height of its own,
         // so the strip is as tall as its two lines of type and no taller.

@@ -1,7 +1,7 @@
 {
-  "version": "2.1.2",
-  "versionCode": 30,
-  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.1.2",
-  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.1.2/DhvaniMusic-v2.1.2.apk",
-  "notes": "v2.1.2: Super-smooth Home page scrolling (eliminated subcompositions & jank), separate Settings scroll states with auto-top reset for About screen, Meet the Developer & Creator card, and live GitHub releases changelog."
+  "version": "2.2.0",
+  "versionCode": 31,
+  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.2.0",
+  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.2.0/DhvaniMusic-v2.2.0.apk",
+  "notes": "v2.2.0: Apple Music & Tidal Motion Canvas video artwork with seamless Video/Cover toggle, BitChord locked 60FPS performance engine, modernized Musixmatch lyrics with custom user token support, and dedicated PaxSenix API key settings."
 }

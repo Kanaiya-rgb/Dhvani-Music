@@ -46,3 +46,4 @@ app/google-services.json
 *.idsig
 apk/
 screen_*.png
+*_PROMPT.md

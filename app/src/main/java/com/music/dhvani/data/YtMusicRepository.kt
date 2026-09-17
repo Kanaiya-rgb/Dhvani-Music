@@ -29,6 +29,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
+import com.music.dhvani.data.model.MoodGenreSection
+import java.util.concurrent.ConcurrentHashMap
 import java.util.Locale
 
 /** Suspend API over Innertube. Every call returns a Result so the UI can show a real error. */
@@ -674,6 +676,38 @@ object YtMusicRepository {
 
     private suspend fun shelvesOf(browseId: String): List<HomeShelf> =
         InnertubeParser.parseHome(Innertube.browse(browseId))
+
+    private val moodGenreShelfCache = ConcurrentHashMap<String, List<HomeShelf>>()
+
+    /** The server-defined mood and genre categories used by Explore. */
+    suspend fun moodAndGenres(): Result<List<MoodGenreSection>> = call("moods-and-genres") {
+        InnertubeParser.parseMoodAndGenres(Innertube.browse("FEmusic_moods_and_genres"))
+    }
+
+    /**
+     * The playlist shelves behind one mood/genre category. Cached to avoid redundant network hits.
+     */
+    suspend fun moodGenreShelves(browseId: String, params: String?): Result<List<HomeShelf>> {
+        val key = "$browseId:${params.orEmpty()}"
+        moodGenreShelfCache[key]?.let { return Result.success(it) }
+        return call("mood-genre:$browseId") {
+            InnertubeParser.parseHome(Innertube.browse(browseId, params))
+        }.also { result -> result.getOrNull()?.let { moodGenreShelfCache.putIfAbsent(key, it) } }
+    }
+
+    private val moodArtworkCache = ConcurrentHashMap<String, String>()
+
+    /** A category card borrows the first real cover from the playlists it opens, cached in memory. */
+    suspend fun moodGenreArtwork(browseId: String, params: String?): String? {
+        val key = "$browseId:${params.orEmpty()}"
+        moodArtworkCache[key]?.let { return it }
+        val artwork = moodGenreShelves(browseId, params).getOrNull()
+            ?.asSequence()?.flatMap { it.items.asSequence() }
+            ?.mapNotNull(ShelfItem::thumbnailUrl)
+            ?.firstOrNull() ?: return null
+        moodArtworkCache[key] = artwork
+        return artwork
+    }
 
     /**
      * Explore: moods & genres from FEmusic_explore, plus the Daily/Weekly/

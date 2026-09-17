@@ -696,4 +696,67 @@ object DhvaniIcons {
             }
         }.build()
     }
+
+    /** Smooth, rounded video camera icon with lens */
+    val Video: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_video",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                // Rounded camera body
+                moveTo(5f, 6.5f)
+                lineTo(13f, 6.5f)
+                arcToRelative(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, 2.5f, 2.5f)
+                lineTo(15.5f, 15f)
+                arcToRelative(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, -2.5f, 2.5f)
+                lineTo(5f, 17.5f)
+                arcToRelative(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, -2.5f, -2.5f)
+                lineTo(2.5f, 9f)
+                arcToRelative(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, 2.5f, -2.5f)
+                close()
+                // Lens funnel
+                moveTo(15.5f, 10f)
+                lineTo(20f, 7.5f)
+                arcToRelative(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, 1.5f, 0.9f)
+                lineTo(21.5f, 15.6f)
+                arcToRelative(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, -1.5f, 0.9f)
+                lineTo(15.5f, 14f)
+            }
+        }.build()
+    }
+
+    /** Vinyl record / album cover icon representing static artwork */
+    val Cover: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_cover",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                // Outer vinyl disc edge
+                moveTo(3f, 12f)
+                arcToRelative(9f, 9f, 0f, isMoreThanHalf = true, isPositiveArc = true, 18f, 0f)
+                arcToRelative(9f, 9f, 0f, isMoreThanHalf = true, isPositiveArc = true, -18f, 0f)
+                // Inner center label circle
+                moveTo(9f, 12f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = true, 6f, 0f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = true, -6f, 0f)
+                // Center spindle hole dot
+                moveTo(12f, 11.5f)
+                lineTo(12f, 12.5f)
+            }
+        }.build()
+    }
 }

@@ -18,26 +18,35 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.math.abs
 
 /**
- * Line-synced lyrics from Musixmatch's own web client API.
+ * Line-synced lyrics from Musixmatch.
  *
- * There is no public key for this: the web player signs every request with an
- * HMAC over the URL and the day's date, using a secret that has been baked
- * into that same web player's JavaScript — and, by extension, into every
- * independent Musixmatch client that has reimplemented the scheme from
- * reading it, which is where this one comes from too. A session token from
- * `token.get` rides alongside it and is cached until the service itself
- * rejects it.
+ * Supports:
+ * 1. User token (e.g. from Musixmatch desktop/web or Spicetify) configured in AppSettings.
+ * 2. Session token negotiation with mobile / desktop endpoints and browser headers.
+ * 3. Fallback to PaxSenix Musixmatch proxy when configured or direct tokens are unavailable.
+ * 4. Automatic filtering of Musixmatch honeypot decoy responses (Tatar gibberish / fake tracks).
  */
 object Musixmatch {
 
-    private const val BASE = "https://apic.musixmatch.com/ws/1.1"
+    private const val BASE_DESKTOP = "https://apic-desktop.musixmatch.com/ws/1.1"
+    private const val BASE_APIC = "https://apic.musixmatch.com/ws/1.1"
 
-    // The signing secret Musixmatch's web client bakes into its own bundle —
-    // see the file note above for where this comes from.
     private const val SIGNING_SECRET = "RJDefUswhwjkZDeM"
 
+    private val HEADERS = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "x-mxm-token-guid" to "",
+        "Connection" to "keep-alive",
+        "Accept" to "application/json",
+    )
+
     private val tokenMutex = Mutex()
+    private val configuredToken = AtomicReference<String>("")
     private val cachedToken = AtomicReference<String?>(null)
+
+    fun setUserToken(token: String) {
+        configuredToken.set(token.trim())
+    }
 
     suspend fun lyrics(
         title: String,
@@ -47,14 +56,75 @@ object Musixmatch {
         val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
         val cleanArtist = LyricsCleaner.cleanArtist(artist)
         val seconds = (durationMs / 1000).toInt()
-        val track = bestTrack(cleanTitle, cleanArtist, seconds) ?: return@withContext null
-        val subtitle = if (track.hasSubtitles == 1) fetchSubtitle(track.trackId) else null
-        val lrc = subtitle?.let(::subtitleToLrc)?.takeIf { it.isNotBlank() } ?: return@withContext null
-        LrcLib.parseLrc(lrc).takeIf { it.isNotEmpty() }
+
+        // 1. Try direct Musixmatch API
+        val directLyrics = tryDirectLyrics(cleanTitle, cleanArtist, seconds)
+        if (!directLyrics.isNullOrEmpty()) return@withContext directLyrics
+
+        // 2. Fallback to PaxSenix Musixmatch endpoint if available
+        val paxMusix = PaxSenix.musixmatchLyrics(cleanTitle, cleanArtist, durationMs)
+        if (!paxMusix.isNullOrEmpty()) return@withContext paxMusix
+
+        null
     }
 
-    private suspend fun bestTrack(title: String, artist: String, seconds: Int): Track? {
-        val tracks = searchTrack(title, artist) ?: return null
+    private suspend fun tryDirectLyrics(title: String, artist: String, seconds: Int): List<LyricLine>? {
+        val token = getToken()
+
+        // Attempt via macro.subtitles.get (fast bundled call)
+        if (!token.isNullOrBlank()) {
+            val macroLyrics = fetchMacroLyrics(title, artist, seconds, token)
+            if (!macroLyrics.isNullOrEmpty()) return macroLyrics
+        }
+
+        // Standard search + subtitle retrieval flow
+        val track = bestTrack(title, artist, seconds, token) ?: return null
+        val subtitle = if (track.hasSubtitles == 1) fetchSubtitle(track.trackId, token) else null
+        val lrc = subtitle?.let(::subtitleToLrc)?.takeIf { it.isNotBlank() } ?: return null
+
+        if (isDecoyHoneypot(track.trackName, title, lrc)) return null
+
+        return LrcLib.parseLrc(lrc).takeIf { it.isNotEmpty() }
+    }
+
+    private suspend fun fetchMacroLyrics(
+        title: String,
+        artist: String,
+        seconds: Int,
+        token: String,
+    ): List<LyricLine>? {
+        val url = "$BASE_DESKTOP/macro.subtitles.get".toHttpUrl().newBuilder()
+            .addQueryParameter("app_id", "web-desktop-app-v1.0")
+            .addQueryParameter("q_track", title)
+            .addQueryParameter("q_artist", artist)
+            .addQueryParameter("q_duration", seconds.toString())
+            .addQueryParameter("f_subtitle_length", seconds.toString())
+            .addQueryParameter("namespace", "lyrics_richsynched")
+            .addQueryParameter("subtitle_format", "mxm")
+            .addQueryParameter("usertoken", token)
+            .build()
+
+        val response = lyricsGetWithHeaders(sign(url.toString()), HEADERS) ?: return null
+        if (looksUnauthorized(response)) return null
+
+        val root = runCatching {
+            lyricsJson.decodeFromString<Envelope<MacroCallsBody>>(response)
+        }.getOrNull() ?: return null
+
+        val macro = root.message.body?.macroCalls ?: return null
+        val track = macro.matcherTrack?.message?.body?.track
+        val subtitleBody = macro.trackSubtitles?.message?.body?.subtitleList?.firstOrNull()?.subtitle?.subtitleBody
+            ?: macro.trackSubtitle?.message?.body?.subtitle?.subtitleBody
+            ?: return null
+
+        if (track != null && isDecoyHoneypot(track.trackName, title, subtitleBody)) return null
+
+        val lrc = subtitleToLrc(subtitleBody).takeIf { it.isNotBlank() } ?: return null
+        return LrcLib.parseLrc(lrc).takeIf { it.isNotEmpty() }
+    }
+
+    private suspend fun bestTrack(title: String, artist: String, seconds: Int, token: String?): Track? {
+        val tracks = searchTrack(title, artist, token) ?: return null
         val best = tracks.maxByOrNull { score(it, title, artist, seconds) } ?: return null
         return best.takeIf { score(it, title, artist, seconds) >= 50.0 }
     }
@@ -83,9 +153,9 @@ object Musixmatch {
         return score
     }
 
-    private suspend fun searchTrack(title: String, artist: String): List<Track>? {
-        val response = signedGet { token ->
-            "$BASE/track.search".toHttpUrl().newBuilder()
+    private suspend fun searchTrack(title: String, artist: String, token: String?): List<Track>? {
+        val search = { currentToken: String? ->
+            val urlBuilder = "$BASE_DESKTOP/track.search".toHttpUrl().newBuilder()
                 .addQueryParameter("app_id", "web-desktop-app-v1.0")
                 .addQueryParameter("q_track", title)
                 .addQueryParameter("q_artist", artist)
@@ -94,31 +164,66 @@ object Musixmatch {
                 .addQueryParameter("quorum_factor", "1")
                 .addQueryParameter("page_size", "10")
                 .addQueryParameter("page", "1")
-                .addQueryParameter("usertoken", token)
-                .build()
-        } ?: return null
+
+            if (!currentToken.isNullOrBlank()) {
+                urlBuilder.addQueryParameter("usertoken", currentToken)
+            }
+
+            lyricsGetWithHeaders(sign(urlBuilder.build().toString()), HEADERS)
+        }
+
+        var response = search(token)
+        if (response != null && looksUnauthorized(response)) {
+            cachedToken.set(null)
+            val freshToken = getToken()
+            response = search(freshToken)
+        }
+
         val body = runCatching {
-            lyricsJson.decodeFromString<Envelope<TrackSearchBody>>(response)
+            lyricsJson.decodeFromString<Envelope<TrackSearchBody>>(response ?: return null)
         }.getOrNull() ?: return null
+
         return body.message.body?.trackList?.map { it.track }
     }
 
-    private suspend fun fetchSubtitle(trackId: Long): String? {
-        val response = signedGet { token ->
-            "$BASE/track.subtitle.get".toHttpUrl().newBuilder()
+    private suspend fun fetchSubtitle(trackId: Long, token: String?): String? {
+        val fetch = { currentToken: String? ->
+            val urlBuilder = "$BASE_DESKTOP/track.subtitle.get".toHttpUrl().newBuilder()
                 .addQueryParameter("app_id", "web-desktop-app-v1.0")
                 .addQueryParameter("track_id", trackId.toString())
                 .addQueryParameter("subtitle_format", "mxm")
-                .addQueryParameter("usertoken", token)
-                .build()
-        } ?: return null
+
+            if (!currentToken.isNullOrBlank()) {
+                urlBuilder.addQueryParameter("usertoken", currentToken)
+            }
+
+            lyricsGetWithHeaders(sign(urlBuilder.build().toString()), HEADERS)
+        }
+
+        var response = fetch(token)
+        if (response != null && looksUnauthorized(response)) {
+            cachedToken.set(null)
+            val freshToken = getToken()
+            response = fetch(freshToken)
+        }
+
         return runCatching {
-            lyricsJson.decodeFromString<Envelope<SubtitleBody>>(response)
+            lyricsJson.decodeFromString<Envelope<SubtitleBody>>(response ?: return null)
         }.getOrNull()?.message?.body?.subtitle?.subtitleBody
+    }
+
+    private fun isDecoyHoneypot(trackName: String, queryTitle: String, text: String): Boolean {
+        if (text.contains("Wob gopini den", ignoreCase = true)) return true
+        if (text.contains("Tefe woxica fero", ignoreCase = true)) return true
+        if (trackName.equals("NOKIA", ignoreCase = true) && !queryTitle.contains("NOKIA", ignoreCase = true)) return true
+        return false
     }
 
     /** Musixmatch's `mxm` subtitle JSON — a list of `{text, time:{total}}` — turned into LRC. */
     private fun subtitleToLrc(subtitleBody: String): String {
+        // If it's already an LRC string format
+        if (subtitleBody.trim().startsWith("[")) return subtitleBody.trim()
+
         val lines = runCatching { lyricsJson.decodeFromString<List<SubtitleLine>>(subtitleBody) }
             .getOrNull() ?: return ""
         return buildString {
@@ -135,42 +240,47 @@ object Musixmatch {
         }.trim()
     }
 
-    /** Signs and issues [buildUrl]; on an auth failure, drops the token and retries once. */
-    private suspend fun signedGet(buildUrl: (token: String) -> okhttp3.HttpUrl): String? {
-        val token = getToken() ?: return null
-        val first = lyricsGet(sign(buildUrl(token).toString()))
-        if (first != null && !looksUnauthorized(first)) return first
-
-        cachedToken.set(null)
-        val fresh = getToken() ?: return null
-        return lyricsGet(sign(buildUrl(fresh).toString()))
-    }
-
-    /** Musixmatch answers an expired token with HTTP 200 and a header status code, not a 401. */
     private fun looksUnauthorized(body: String): Boolean =
         runCatching { lyricsJson.decodeFromString<Envelope<kotlinx.serialization.json.JsonElement>>(body) }
             .getOrNull()?.message?.header?.statusCode?.let { it == 401 || it == 402 } ?: false
 
-    /**
-     * A short critical section around one network call — cheap insurance
-     * against every source in the race minting its own token the first time
-     * this object is touched.
-     */
-    private suspend fun getToken(): String? = cachedToken.get() ?: tokenMutex.withLock {
-        cachedToken.get() ?: fetchToken()?.also { cachedToken.set(it) }
+    private suspend fun getToken(): String? {
+        val userToken = configuredToken.get().ifBlank { null }
+        if (userToken != null) return userToken
+
+        return cachedToken.get() ?: tokenMutex.withLock {
+            cachedToken.get() ?: fetchToken()?.also { cachedToken.set(it) }
+        }
     }
 
     private fun fetchToken(): String? {
-        val url = "$BASE/token.get".toHttpUrl().newBuilder()
+        // 1. Try desktop token endpoint
+        val desktopUrl = "$BASE_DESKTOP/token.get".toHttpUrl().newBuilder()
             .addQueryParameter("app_id", "web-desktop-app-v1.0")
             .build()
-        val body = lyricsGet(sign(url.toString())) ?: return null
-        return runCatching {
-            lyricsJson.decodeFromString<Envelope<TokenBody>>(body)
-        }.getOrNull()?.message?.body?.userToken
+        val desktopBody = lyricsGetWithHeaders(sign(desktopUrl.toString()), HEADERS)
+        val desktopToken = desktopBody?.let {
+            runCatching { lyricsJson.decodeFromString<Envelope<TokenBody>>(it) }.getOrNull()?.message?.body?.userToken
+        }
+        if (!desktopToken.isNullOrBlank() && !desktopToken.all { it == '0' }) {
+            return desktopToken
+        }
+
+        // 2. Try mobile token endpoint
+        val mobileUrl = "$BASE_APIC/token.get".toHttpUrl().newBuilder()
+            .addQueryParameter("app_id", "mac-ios-v2.0")
+            .build()
+        val mobileBody = lyricsGetWithHeaders(mobileUrl.toString(), HEADERS)
+        val mobileToken = mobileBody?.let {
+            runCatching { lyricsJson.decodeFromString<Envelope<TokenBody>>(it) }.getOrNull()?.message?.body?.userToken
+        }
+        if (!mobileToken.isNullOrBlank() && !mobileToken.all { it == '0' }) {
+            return mobileToken
+        }
+
+        return null
     }
 
-    /** Musixmatch's web client signs `<url><UTC yyyyMMdd>` with HMAC-SHA256, base64-encoded. */
     private fun sign(url: String): String {
         val date = SimpleDateFormat("yyyyMMdd", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
@@ -220,4 +330,33 @@ object Musixmatch {
 
     @Serializable
     private data class SubtitleTime(val total: Double)
+
+    @Serializable
+    private data class MacroCallsBody(
+        @SerialName("macro_calls") val macroCalls: MacroCalls? = null,
+    )
+
+    @Serializable
+    private data class MacroCalls(
+        @SerialName("matcher.track.get") val matcherTrack: MatcherTrackWrapper? = null,
+        @SerialName("track.subtitles.get") val trackSubtitles: TrackSubtitlesWrapper? = null,
+        @SerialName("track.subtitle.get") val trackSubtitle: TrackSubtitleWrapper? = null,
+    )
+
+    @Serializable
+    private data class MatcherTrackWrapper(val message: Message<TrackWrapper>)
+
+    @Serializable
+    private data class TrackSubtitlesWrapper(val message: Message<SubtitleListBody>)
+
+    @Serializable
+    private data class TrackSubtitleWrapper(val message: Message<SubtitleBody>)
+
+    @Serializable
+    private data class SubtitleListBody(
+        @SerialName("subtitle_list") val subtitleList: List<SubtitleWrapper> = emptyList(),
+    )
+
+    @Serializable
+    private data class SubtitleWrapper(val subtitle: Subtitle)
 }

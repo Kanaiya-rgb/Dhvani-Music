@@ -28,6 +28,8 @@ import com.music.dhvani.data.model.SearchFilter
 import com.music.dhvani.data.model.SearchResult
 import com.music.dhvani.data.model.ShelfItem
 import com.music.dhvani.data.model.Song
+import com.music.dhvani.data.model.MoodGenre
+import com.music.dhvani.data.model.MoodGenreSection
 import com.music.dhvani.data.model.SongMenu
 import com.music.dhvani.data.model.UiState
 import com.music.dhvani.data.model.UserPlaylist
@@ -92,8 +94,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _homeLoadingMore = MutableStateFlow(false)
     val homeLoadingMore: StateFlow<Boolean> = _homeLoadingMore.asStateFlow()
 
-    private val _explore = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
-    val explore: StateFlow<UiState<List<HomeShelf>>> = _explore.asStateFlow()
+    private val _explore = MutableStateFlow<UiState<List<MoodGenreSection>>>(UiState.Loading)
+    val explore: StateFlow<UiState<List<MoodGenreSection>>> = _explore.asStateFlow()
+
+    private val _selectedMoodGenre = MutableStateFlow<MoodGenre?>(null)
+    val selectedMoodGenre: StateFlow<MoodGenre?> = _selectedMoodGenre.asStateFlow()
+
+    private val _moodGenreShelves = MutableStateFlow<UiState<List<HomeShelf>>>(UiState.Loading)
+    val moodGenreShelves: StateFlow<UiState<List<HomeShelf>>> = _moodGenreShelves.asStateFlow()
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
@@ -1169,16 +1177,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun openMoodGenre(item: MoodGenre) {
+        _selectedMoodGenre.value = item
+        _moodGenreShelves.value = UiState.Loading
+        viewModelScope.launch {
+            _moodGenreShelves.value = YtMusicRepository.moodGenreShelves(item.browseId, item.params).fold(
+                onSuccess = { shelves ->
+                    if (shelves.isEmpty()) UiState.Error("Nothing to explore right now")
+                    else UiState.Success(shelves)
+                },
+                onFailure = { UiState.Error(it.friendly()) },
+            )
+        }
+    }
+
+    fun closeMoodGenre(): Boolean {
+        if (_selectedMoodGenre.value == null) return false
+        _selectedMoodGenre.value = null
+        return true
+    }
+
     fun loadExplore() {
         _explore.value = UiState.Loading
         viewModelScope.launch { fetchExplore() }
     }
 
     private suspend fun fetchExplore() {
-        _explore.value = YtMusicRepository.explore().fold(
-            onSuccess = { shelves ->
-                if (shelves.isEmpty()) UiState.Error("Nothing to explore right now")
-                else UiState.Success(shelves)
+        _explore.value = YtMusicRepository.moodAndGenres().fold(
+            onSuccess = { sections ->
+                if (sections.isEmpty()) UiState.Error("Nothing to explore right now")
+                else UiState.Success(sections)
             },
             onFailure = { UiState.Error(it.friendly()) },
         )

@@ -91,7 +91,7 @@ object LyricsRepository {
     ): LyricsRepository.Result? = coroutineScope {
         if (videoId.isNotBlank()) {
             lyricsCache[videoId]?.let { cached ->
-                return@coroutineScope cached
+                return@coroutineScope cached.result
             }
         }
 
@@ -132,20 +132,22 @@ object LyricsRepository {
 
                 val lines = runCatching { job.await() }.getOrNull() ?: continue
                 if (lines.any { it.isWordSynced }) {
-                    return@coroutineScope result(source, lines).also {
-                        if (videoId.isNotBlank()) lyricsCache[videoId] = it
-                    }
+                    val res = result(source, lines)
+                    if (videoId.isNotBlank()) lyricsCache[videoId] = CacheEntry(res)
+                    return@coroutineScope res
                 }
                 if (!prioritizeSyllableSync && lines.any { it.timeMs > 0 }) {
-                    return@coroutineScope result(source, lines).also {
-                        if (videoId.isNotBlank()) lyricsCache[videoId] = it
-                    }
+                    val res = result(source, lines)
+                    if (videoId.isNotBlank()) lyricsCache[videoId] = CacheEntry(res)
+                    return@coroutineScope res
                 }
                 if (lineSynced == null) lineSynced = result(source, lines)
             }
-            lineSynced?.also {
-                if (videoId.isNotBlank()) lyricsCache[videoId] = it
+            if (videoId.isNotBlank()) {
+                // Aggressive negative caching: store CacheEntry(null) if missing
+                lyricsCache[videoId] = CacheEntry(lineSynced)
             }
+            lineSynced
         } finally {
             // Whoever lost the race is no longer worth waiting on, and
             // coroutineScope will not return while they are still running.
@@ -256,17 +258,19 @@ object LyricsRepository {
         isrcs.put(videoId, isrc)
     }
 
+    private data class CacheEntry(val result: LyricsRepository.Result?)
+
     /**
-     * In-memory LRU cache of resolved lyrics by videoId.
+     * In-memory LRU cache of resolved lyrics by videoId with negative caching.
      * Guarantees instant retrieval on song transition and eliminates duplicate network hits.
      */
-    private val lyricsCache: MutableMap<String, LyricsRepository.Result> = Collections.synchronizedMap(
-        object : LinkedHashMap<String, LyricsRepository.Result>(REMEMBERED, 0.75f, true) {
-            override fun removeEldestEntry(eldest: Map.Entry<String, LyricsRepository.Result>) = size > REMEMBERED
+    private val lyricsCache: MutableMap<String, CacheEntry> = Collections.synchronizedMap(
+        object : LinkedHashMap<String, CacheEntry>(REMEMBERED, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, CacheEntry>) = size > REMEMBERED
         },
     )
 
     fun hasCached(videoId: String): Boolean = videoId.isNotBlank() && lyricsCache.containsKey(videoId)
 
-    fun getCached(videoId: String): LyricsRepository.Result? = if (videoId.isBlank()) null else lyricsCache[videoId]
+    fun getCached(videoId: String): LyricsRepository.Result? = if (videoId.isBlank()) null else lyricsCache[videoId]?.result
 }
