@@ -27,7 +27,7 @@
 
 ## 📖 What is Dhvani Music?
 
-**Dhvani Music** is an elegant, open-source Android music client that fuses YouTube Music's colossal audio catalogue with **pristine Hi-Res lossless audio**, deep **Indian musical heritage (Utsav Mode & Raags)**, and an expressive **Material 3 / Liquid Frosted-Glass aesthetic**.
+**Dhvani Music** is an elegant, open-source Android music client that fuses YouTube Music's colossal audio catalogue with **pristine Hi-Res lossless audio**, deep **multilingual localization**, and an expressive **Material 3 / Liquid Frosted-Glass aesthetic**.
 
 Built entirely in modern Kotlin with Jetpack Compose, Dhvani provides an ad-free, clutter-free listening experience that honors your battery, your privacy, and your ears.
 
@@ -92,8 +92,7 @@ Dedicated **Explore** tab in the floating bottom navigation bar featuring 4 main
 
 ---
 
-### 🇮🇳 Indian Cultural Heritage & Utsav Mode
-* **Utsav Mode** — Dedicated seasonal festival celebrations celebrating Diwali, Holi, Navratri, Eid, Christmas, Shivratri, and seasonal Ritus.
+### 🌍 Multilingual Localization & Accessibility
 * **Native Multi-Language Support** — Full localization across English, Hindi (हिन्दी), Hinglish, Punjabi (ਪੰਜਾਬੀ), Tamil, Telugu, Spanish, French, German, Japanese, and Russian.
 * **Smart Voice Search** — Mic input with instant voice search recognition and recent search history management.
 
