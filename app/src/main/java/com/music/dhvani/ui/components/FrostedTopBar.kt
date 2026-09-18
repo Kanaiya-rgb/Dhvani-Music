@@ -273,21 +273,11 @@ fun TopBarAccountButton(
                     .thumbnailBorder(CircleShape),
             )
         } else {
-            Box(
-                modifier = Modifier
-                    .size(AVATAR_SIZE)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .thumbnailBorder(CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Rounded.Person,
-                    contentDescription = stringResource(R.string.settings),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
+            UserAvatar(
+                size = AVATAR_SIZE,
+                borderWidth = 1.dp,
+                borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+            )
         }
     }
 }

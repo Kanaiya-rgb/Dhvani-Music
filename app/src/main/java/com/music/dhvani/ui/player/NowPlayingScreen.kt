@@ -105,11 +105,15 @@ import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.SurroundSound
+import androidx.compose.foundation.combinedClickable
+import com.music.dhvani.ui.components.CanvasSourceSheet
 import com.music.dhvani.ui.components.AudioPipelineDialog
 import com.music.dhvani.data.settings.AudioListeningMode
+import com.music.dhvani.data.settings.CanvasStyle
 import com.music.dhvani.playback.DolbyUtils
+import androidx.compose.runtime.key
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -685,11 +689,15 @@ private fun CanvasNotificationPill(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun CanvasTopPillToggle(
     currentMode: NowPlayingViewMode,
     onModeSelected: (NowPlayingViewMode) -> Unit,
     hasVideo: Boolean,
+    currentSource: CanvasSource? = null,
+    availableSourcesCount: Int = 0,
+    onOpenSourcePicker: () -> Unit = {},
     isLoading: Boolean,
     onShowNotice: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -719,31 +727,38 @@ private fun CanvasTopPillToggle(
                 targetValue = if (videoActive) Color.White else Color.White.copy(alpha = 0.65f),
                 label = "videoTint",
             )
+            val videoLabel = if (videoActive && currentSource != null) currentSource.displayName else "Video"
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(videoBgColor)
-                    .clickable {
-                        haptics.play(Haptic.Tap)
-                        if (!videoActive) {
-                            if (hasVideo) {
-                                onModeSelected(NowPlayingViewMode.VIDEO)
-                            } else if (isLoading) {
-                                onModeSelected(NowPlayingViewMode.VIDEO)
-                                onShowNotice("Finding motion video...")
+                    .combinedClickable(
+                        onClick = {
+                            haptics.play(Haptic.Tap)
+                            if (!videoActive) {
+                                if (hasVideo) {
+                                    onModeSelected(NowPlayingViewMode.VIDEO)
+                                } else if (isLoading) {
+                                    onModeSelected(NowPlayingViewMode.VIDEO)
+                                    onShowNotice("Finding motion video...")
+                                } else {
+                                    onShowNotice("No motion canvas video for this track")
+                                }
                             } else {
-                                onShowNotice("No motion canvas video for this track")
+                                onOpenSourcePicker()
                             }
-                        } else if (!hasVideo && !isLoading) {
-                            onShowNotice("No motion canvas video for this track")
-                        }
-                    }
+                        },
+                        onLongClick = {
+                            haptics.play(Haptic.Select)
+                            onOpenSourcePicker()
+                        },
+                    )
                     .padding(horizontal = 10.dp, vertical = 3.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Icon(
                         imageVector = DhvaniIcons.Video,
@@ -752,11 +767,19 @@ private fun CanvasTopPillToggle(
                         modifier = Modifier.size(15.dp),
                     )
                     Text(
-                        text = "Video",
+                        text = videoLabel,
                         fontSize = 12.sp,
                         fontWeight = if (videoActive) FontWeight.SemiBold else FontWeight.Normal,
                         color = videoTint,
                     )
+                    if (videoActive || hasVideo || availableSourcesCount > 0) {
+                        Icon(
+                            imageVector = Icons.Rounded.ArrowDropDown,
+                            contentDescription = "Change Source",
+                            tint = videoTint.copy(alpha = 0.85f),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
                 }
             }
 
@@ -818,7 +841,7 @@ fun NowPlayingScreen(
     shuffleEnabled: Boolean,
     autoplayEnabled: Boolean,
     signedIn: Boolean,
-    likeStatus: LikeStatus,
+    likeStatus: LikeStatus? = LikeStatus.INDIFFERENT,
     onToggleLike: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -872,7 +895,10 @@ fun NowPlayingScreen(
     val syncedLyricsEnabled by AppSettings.syncedLyrics.collectAsStateWithLifecycle()
     val hideVolumeBar by AppSettings.hideVolumeBar.collectAsStateWithLifecycle()
 
-    // Animated motion canvas video artwork
+    // Animated motion canvas video artwork & multi-source support
+    var availableCanvases by remember(song.videoId) {
+        mutableStateOf(CanvasRepository.getCachedMap(song.videoId))
+    }
     var canvasArtwork by remember(song.videoId) {
         mutableStateOf(CanvasRepository.getCached(song.videoId))
     }
@@ -880,6 +906,7 @@ fun NowPlayingScreen(
     var canvasLoading by remember(song.videoId) {
         mutableStateOf(!CanvasRepository.hasCached(song.videoId))
     }
+    var showCanvasSourceSheet by remember { mutableStateOf(false) }
 
     var canvasNoticeMessage by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(canvasNoticeMessage) {
@@ -889,25 +916,59 @@ fun NowPlayingScreen(
         }
     }
 
-    LaunchedEffect(song.videoId, song.title, song.artist, song.albumName) {
-        canvasRendered = false
-        if (!CanvasRepository.hasCached(song.videoId)) {
+    LaunchedEffect(song.videoId) {
+        val cached = CanvasRepository.getCached(song.videoId)
+        val cachedMap = CanvasRepository.getCachedMap(song.videoId)
+        availableCanvases = cachedMap
+        if (cached != null) {
+            canvasArtwork = cached
+            canvasLoading = false
+        } else {
+            canvasRendered = false
+            canvasArtwork = null
             canvasLoading = true
         }
-        if (canvasArtwork == null && song.albumName == null) {
-            delay(350)
-        }
-        val result = CanvasRepository.getCanvas(
+        val sourcesMap = CanvasRepository.getAvailableCanvases(
             context = context,
             videoId = song.videoId,
             title = song.title,
             artist = song.artist,
             album = song.albumName,
         )
-        if (result != null) {
-            canvasArtwork = result
+        availableCanvases = sourcesMap
+        if (sourcesMap.isNotEmpty()) {
+            val currentSource = canvasArtwork?.source ?: CanvasRepository.getSelectedSource(song.videoId)
+            val preferred = (currentSource?.let { sourcesMap[it] })
+                ?: sourcesMap[CanvasSource.SPOTIFY]
+                ?: sourcesMap[CanvasSource.APPLE_MUSIC]
+                ?: sourcesMap[CanvasSource.TIDAL]
+                ?: sourcesMap[CanvasSource.COMMUNITY]
+            canvasArtwork = preferred
         }
         canvasLoading = false
+    }
+
+    LaunchedEffect(song.videoId, song.albumName) {
+        if (song.albumName.isNullOrBlank() || song.videoId.isBlank()) return@LaunchedEffect
+        if (availableCanvases.containsKey(CanvasSource.APPLE_MUSIC)) return@LaunchedEffect
+        val extraMap = CanvasRepository.getAvailableCanvases(
+            context = context,
+            videoId = song.videoId,
+            title = song.title,
+            artist = song.artist,
+            album = song.albumName,
+        )
+        if (extraMap.isNotEmpty()) {
+            availableCanvases = availableCanvases + extraMap
+            if (canvasArtwork == null) {
+                val currentSource = CanvasRepository.getSelectedSource(song.videoId)
+                canvasArtwork = (currentSource?.let { extraMap[it] })
+                    ?: extraMap[CanvasSource.SPOTIFY]
+                    ?: extraMap[CanvasSource.APPLE_MUSIC]
+                    ?: extraMap[CanvasSource.TIDAL]
+                    ?: extraMap[CanvasSource.COMMUNITY]
+            }
+        }
     }
 
     var playerViewMode by rememberSaveable {
@@ -1226,6 +1287,10 @@ fun NowPlayingScreen(
         label = "sleeveCollapse",
     )
     val fullBleedArt by AppSettings.fullBleedArtwork.collectAsStateWithLifecycle()
+    val spotifyCanvasStyle by AppSettings.spotifyCanvasStyle.collectAsStateWithLifecycle()
+    val appleMusicCanvasStyle by AppSettings.appleMusicCanvasStyle.collectAsStateWithLifecycle()
+    val tidalCanvasStyle by AppSettings.tidalCanvasStyle.collectAsStateWithLifecycle()
+    val communityCanvasStyle by AppSettings.communityCanvasStyle.collectAsStateWithLifecycle()
     // Full-bleed is a phone idiom, and a docked pane is a phone's width — so it
     // is asked of the player's own width rather than of the window's. Asking the
     // window is what left the pane with a square sleeve floating in a field of
@@ -1364,75 +1429,94 @@ fun NowPlayingScreen(
         // why the palette is passed as one immutable value.
         MeshGradientBackground(palette = meshColors, trackKey = song.videoId)
 
-        // Full-screen ambient blurred artwork backdrop (Apple Music style depth)
-        AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(song.artworkAt(ART_PX))
-                .size(ART_PX)
-                .build(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(50.dp)
-                .graphicsLayer {
-                    alpha = 0.55f
-                },
+        val activeCanvasStyle = when (canvasArtwork?.source) {
+            CanvasSource.SPOTIFY -> spotifyCanvasStyle
+            CanvasSource.APPLE_MUSIC -> appleMusicCanvasStyle
+            CanvasSource.TIDAL -> tidalCanvasStyle
+            CanvasSource.COMMUNITY -> communityCanvasStyle
+            null -> CanvasStyle.FULL_SCREEN
+        }
+
+        val isFullScreenCanvas = (docked || playerFillsWindow(windowWidth)) && canvasArtwork != null && activeCanvasStyle == CanvasStyle.FULL_SCREEN
+        val isBannerCanvas = heroMode && canvasArtwork != null && activeCanvasStyle == CanvasStyle.HALF_SCREEN
+        val isCardCanvas = canvasArtwork != null && (activeCanvasStyle == CanvasStyle.SQUARE_CARD || !heroMode)
+
+        val showCanvasVideo = isVideoActive && canvasArtwork != null
+        val ambientPosterAlpha by animateFloatAsState(
+            targetValue = if (showCanvasVideo && canvasRendered && isFullScreenCanvas) 0f else 0.55f,
+            animationSpec = tween(durationMillis = 400),
+            label = "ambientPosterAlpha",
         )
+        val ambientScrimAlpha by animateFloatAsState(
+            targetValue = if (showCanvasVideo && canvasRendered && isFullScreenCanvas) 0f else 0.32f,
+            animationSpec = tween(durationMillis = 400),
+            label = "ambientScrimAlpha",
+        )
+
+        // Full-screen ambient blurred artwork backdrop (Apple Music style depth)
+        // Hidden when Spotify Canvas video is actively playing so the poster doesn't bleed through
+        if (ambientPosterAlpha > 0.001f) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(song.artworkAt(ART_PX))
+                    .size(ART_PX)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(50.dp)
+                    .graphicsLayer {
+                        alpha = ambientPosterAlpha
+                    },
+            )
+        }
 
         // Frosted dark overlay scrim to keep all lyrics, seekers and controls crystal clear
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.32f)),
-        )
+        if (ambientScrimAlpha > 0.001f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = ambientScrimAlpha)),
+            )
+        }
 
-        // The artwork, edge to edge and running up behind the status bar,
-        // dissolving into the backdrop where the sleeve's bottom edge would
-        // have been. It lives out here rather than in the sleeve because that
-        // is the only way to escape the player's side gutter and its status-bar
-        // inset — a banner that stops short of either reads as a misplaced card
-        // rather than as the artwork the screen is made of.
-        if (heroHeight > 0.dp) {
-            // The still sleeve first, so a clip fading in on top of it never
-            // shows the backdrop through the gap between them — and only until
-            // that fade has run. Both layers carry the same bottom gradient, so
-            // a still frame left lit under a settled clip is not hidden by it:
-            // down in the fade the clip is only part-opaque, and what shows
-            // through it there is the cover art rather than the backdrop. That
-            // is the artwork and the clip on screen at once.
-            //
-            // So it is dropped outright once the clip is opaque, rather than
-            // held at alpha 0: nothing under a full-bleed clip is ever visible,
-            // and a full-screen AsyncImage kept mounted for no one is a bitmap
-            // and a layer the compositor still has to carry.
-            //
-            // Kept mounted through the handover in either direction rather than
-            // dropped the moment [p] crosses the collapse threshold: the sleeve
-            // behind it is still transparent at that point, so pulling the
-            // banner straight out leaves a frame or two with no artwork anywhere
-            // on screen before the card catches up.
-            if (heroMode && (p < 0.5f || heroVisible > 0.001f)) {
-                AsyncImage(
-                    // Decoded at the same size the sleeve asks for, so the two
-                    // share one entry in Coil's cache and one bitmap: the pair
-                    // cross-fade into each other, and asking twice at two sizes
-                    // would decode the same art twice and let the banner fade in
-                    // before its own copy had arrived.
-                    model = ImageRequest.Builder(context)
-                        .data(song.artworkAt(ART_PX))
-                        .size(ART_PX)
-                        .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
+        // Full-screen edge-to-edge video artwork (Spotify, or any source configured to Full Screen)
+        if (isFullScreenCanvas && (p < 0.5f || heroVisible > 0.001f)) {
+            key(canvasArtwork?.url) {
+                CanvasArtworkPlayer(
+                    artwork = canvasArtwork!!,
+                    isPlaying = isPlaying,
+                    isActive = isVideoActive,
+                    applyBottomGradientMask = false,
+                    onFirstFrameRendered = { canvasRendered = true },
+                    onRenderedChanged = { canvasRendered = it },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = if (isVideoActive) heroVisible else 0f
+                        },
+                )
+            }
+        }
+
+        // Full-bleed banner video (matches Cover mode)
+        if (isBannerCanvas && heroHeight > 0.dp && (p < 0.5f || heroVisible > 0.001f)) {
+            key(canvasArtwork?.url) {
+                CanvasArtworkPlayer(
+                    artwork = canvasArtwork!!,
+                    isPlaying = isPlaying,
+                    isActive = isVideoActive,
+                    applyBottomGradientMask = false,
+                    fadeFraction = HERO_FADE_FRACTION,
+                    onFirstFrameRendered = { canvasRendered = true },
+                    onRenderedChanged = { canvasRendered = it },
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
                         .height(heroHeight)
                         .graphicsLayer {
-                            alpha = heroVisible
-                            // The mask below erases part of what this layer
-                            // drew, which it can only do in a buffer of its own.
+                            alpha = if (isVideoActive) heroVisible else 0f
                             compositingStrategy = CompositingStrategy.Offscreen
                         }
                         .drawWithContent {
@@ -1448,49 +1532,87 @@ fun NowPlayingScreen(
                         },
                 )
             }
+        }
 
-            // Motion artwork over it, in the same frame.
-            if (canvasArtwork != null && heroMode && (p < 0.5f || heroVisible > 0.001f)) {
-                CanvasArtworkPlayer(
-                    artwork = canvasArtwork!!,
-                    isPlaying = isPlaying,
-                    isActive = isVideoActive,
-                    applyBottomGradientMask = true,
-                    fadeFraction = HERO_FADE_FRACTION,
-                    onFirstFrameRendered = { canvasRendered = true },
-                    onRenderedChanged = { canvasRendered = it },
+        // Cinematic gradient overlays for pristine UI contrast over full-screen video
+        val canvasControlsScrimAlpha by animateFloatAsState(
+            targetValue = if (showCanvasVideo && canvasRendered && isFullScreenCanvas) heroVisible else 0f,
+            animationSpec = tween(durationMillis = 350),
+            label = "canvasControlsScrimAlpha",
+        )
+        if (canvasControlsScrimAlpha > 0.001f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.65f)
+                    .graphicsLayer {
+                        alpha = canvasControlsScrimAlpha
+                    }
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.35f),
+                                Color.Black.copy(alpha = 0.72f),
+                                Color.Black.copy(alpha = 0.90f),
+                            ),
+                        ),
+                    ),
+            )
+        }
+
+        // Top status bar scrim for clock, network icons, and top pill toggles
+        val topScrimAlpha = if (showCanvasVideo && canvasRendered) 1f else heroVisible
+        if (topScrimAlpha > 0.01f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .height(statusBarTop + topStrip + 42.dp)
+                    .graphicsLayer {
+                        alpha = topScrimAlpha
+                    }
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Black.copy(alpha = 0.55f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
+        }
+
+        // The still artwork banner when in Cover mode
+        if (heroHeight > 0.dp && (!showCanvasVideo || !canvasRendered)) {
+            if (heroMode && (p < 0.5f || heroVisible > 0.001f)) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(song.artworkAt(ART_PX))
+                        .size(ART_PX)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
                         .height(heroHeight)
                         .graphicsLayer {
                             alpha = heroVisible
-                        },
-                )
-            }
-
-            // The clock, the signal bars and the drag handle are all white, and
-            // the banner puts whatever the artwork happens to have up there
-            // directly behind them — a bright frame or a pale sleeve leaves the
-            // top of the screen unreadable. Faded in with the banner and gone
-            // with it.
-            if (heroVisible > 0.01f) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .fillMaxWidth()
-                        .height(statusBarTop + topStrip)
-                        .graphicsLayer {
-                            alpha = heroVisible
+                            compositingStrategy = CompositingStrategy.Offscreen
                         }
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    Color.Black.copy(alpha = 0.38f),
-                                    Color.Transparent,
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(Color.Black, Color.Transparent),
+                                    startY = size.height * (1f - HERO_FADE_FRACTION),
+                                    endY = size.height,
                                 ),
-                            ),
-                        ),
+                                blendMode = BlendMode.DstIn,
+                            )
+                        },
                 )
             }
         }
@@ -1556,6 +1678,15 @@ fun NowPlayingScreen(
                             playerViewMode = mode
                         },
                         hasVideo = canvasArtwork != null,
+                        currentSource = canvasArtwork?.source,
+                        availableSourcesCount = availableCanvases.size,
+                        onOpenSourcePicker = {
+                            if (availableCanvases.isNotEmpty()) {
+                                showCanvasSourceSheet = true
+                            } else {
+                                canvasNoticeMessage = "Searching for video sources..."
+                            }
+                        },
                         isLoading = canvasLoading,
                         onShowNotice = { msg ->
                             canvasNoticeMessage = msg
@@ -1879,7 +2010,17 @@ fun NowPlayingScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .graphicsLayer { alpha = if (artLoaded) 1f - heroVisible else 1f }
+                            .graphicsLayer {
+                                alpha = if (isVideoActive && canvasRendered && !isCardCanvas) {
+                                    0f
+                                } else if (isVideoActive && isCardCanvas) {
+                                    1f
+                                } else if (artLoaded) {
+                                    1f - heroVisible
+                                } else {
+                                    1f
+                                }
+                            }
                             // A drop shadow grounds a photo; on the flat
                             // placeholder tile it has nothing to sit behind, so
                             // it just reads as a second, darker square ringing
@@ -1930,16 +2071,18 @@ fun NowPlayingScreen(
 
                         // Where the clip plays when it can't have the banner:
                         // inside the same clip as the still art
-                        if (!heroMode && canvasArtwork != null) {
-                            CanvasArtworkPlayer(
-                                artwork = canvasArtwork!!,
-                                isPlaying = isPlaying,
-                                isActive = isVideoActive,
-                                applyBottomGradientMask = false,
-                                onFirstFrameRendered = { canvasRendered = true },
-                                onRenderedChanged = { canvasRendered = it },
-                                modifier = Modifier.fillMaxSize(),
-                            )
+                        if (isCardCanvas && canvasArtwork != null) {
+                            key(canvasArtwork?.url) {
+                                CanvasArtworkPlayer(
+                                    artwork = canvasArtwork!!,
+                                    isPlaying = isPlaying,
+                                    isActive = isVideoActive,
+                                    applyBottomGradientMask = false,
+                                    onFirstFrameRendered = { canvasRendered = true },
+                                    onRenderedChanged = { canvasRendered = it },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
                         }
                     }
 
@@ -3100,6 +3243,21 @@ fun NowPlayingScreen(
         AudioPipelineDialog(
             onDismiss = { showAudioPipeline = false },
             themeColors = meshColors.colors,
+        )
+    }
+
+    if (showCanvasSourceSheet) {
+        CanvasSourceSheet(
+            availableSources = availableCanvases,
+            currentSource = canvasArtwork?.source,
+            onSelectSource = { selectedArtwork ->
+                CanvasRepository.setSelectedSource(song.videoId, selectedArtwork.source)
+                canvasArtwork = selectedArtwork
+                canvasRendered = false
+                playerViewMode = NowPlayingViewMode.VIDEO
+                showCanvasSourceSheet = false
+            },
+            onDismiss = { showCanvasSourceSheet = false },
         )
     }
 }

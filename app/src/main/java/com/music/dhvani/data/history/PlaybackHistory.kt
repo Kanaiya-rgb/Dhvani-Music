@@ -106,6 +106,9 @@ object PlaybackHistory {
             _recent.value = next
             saveToDisk(next)
             TrackLog.d(TAG, "Recorded to local history: '${song.title}' by '${song.artist}' (plays: $playCount)")
+            runCatching {
+                com.music.dhvani.data.telemetry.TelemetryManager.logSongPlay(song)
+            }
         }
     }
 

@@ -5,12 +5,14 @@ import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.Environment
 import com.music.dhvani.BuildConfig
 import com.music.dhvani.auth.AuthStore
 import com.music.dhvani.data.lyrics.LyricsSource
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.playback.DolbyUtils
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.io.File
 
 /**
  * Stream bitrate ceiling. HIGH means "whatever the best available format is".
@@ -60,6 +62,15 @@ enum class AudioListeningMode(
             else -> STANDARD
         }
     }
+}
+
+/**
+ * Display style presentation for motion canvas video artwork.
+ */
+enum class CanvasStyle(val label: String, val description: String) {
+    HALF_SCREEN("Full-Bleed Banner", "Top banner with smooth bottom fade into background (like cover)"),
+    SQUARE_CARD("1:1 Square Card", "Centered album sleeve card with rounded corners"),
+    FULL_SCREEN("Full Screen", "Edge-to-edge cinematic video loop behind player"),
 }
 
 /**
@@ -473,6 +484,10 @@ object AppSettings {
      * [NowPlayingScreen][com.music.dhvani.ui.player.NowPlayingScreen].
      */
     val fullBleedArtwork = MutableStateFlow(true)
+    val spotifyCanvasStyle = MutableStateFlow(CanvasStyle.FULL_SCREEN)
+    val appleMusicCanvasStyle = MutableStateFlow(CanvasStyle.HALF_SCREEN)
+    val tidalCanvasStyle = MutableStateFlow(CanvasStyle.HALF_SCREEN)
+    val communityCanvasStyle = MutableStateFlow(CanvasStyle.HALF_SCREEN)
 
     /** Whether to show the Dhvani app icon in the top status bar during playback. */
     val showStatusBarIcon = MutableStateFlow(true)
@@ -551,6 +566,18 @@ object AppSettings {
     val localCustomPlaylists = MutableStateFlow<List<CustomLocalPlaylist>>(emptyList())
     private const val KEY_LOCAL_CUSTOM_PLAYLISTS = "local_custom_playlists_json"
 
+    // ── Telemetry & User Profile ─────────────────────────────────────────
+    val userName = MutableStateFlow("")
+    val hasPromptedUserName = MutableStateFlow(false)
+    val userAvatarType = MutableStateFlow("PRESET") // "PRESET", "CUSTOM"
+    val userPresetAvatarId = MutableStateFlow(1) // 1..8
+    val userCustomAvatarPath = MutableStateFlow("")
+    private const val KEY_USER_NAME = "telemetry_user_name"
+    private const val KEY_HAS_PROMPTED_USER_NAME = "telemetry_has_prompted_user_name"
+    private const val KEY_USER_AVATAR_TYPE = "user_avatar_type"
+    private const val KEY_USER_PRESET_AVATAR_ID = "user_preset_avatar_id"
+    private const val KEY_USER_CUSTOM_AVATAR_PATH = "user_custom_avatar_path"
+
     // ── Scrobbling ──────────────────────────────────────────────────────
 
     /** One release gate shared by the settings UI and the playback service. */
@@ -569,7 +596,8 @@ object AppSettings {
     val scrobbleDelaySeconds = MutableStateFlow(180)
     val listenBrainzEnabled = MutableStateFlow(false)
     val listenBrainzToken = MutableStateFlow("")
-    val spotifySpdcToken = MutableStateFlow("")
+    val spotifySpdcToken = MutableStateFlow(BuildConfig.DEFAULT_SPOTIFY_SPDC_TOKEN)
+    val isCustomSpotifyToken = MutableStateFlow(false)
     val appleMusicUserToken = MutableStateFlow(DEFAULT_APPLE_MUSIC_USER_TOKEN)
     val appleMusicDevToken = MutableStateFlow(DEFAULT_APPLE_MUSIC_DEV_TOKEN)
 
@@ -820,6 +848,18 @@ object AppSettings {
         animatedCanvas.value = prefs.getBoolean(KEY_ANIMATED_CANVAS, true)
         canvasOverCellular.value = prefs.getBoolean(KEY_CANVAS_OVER_CELLULAR, true)
         fullBleedArtwork.value = prefs.getBoolean(KEY_FULL_BLEED_ARTWORK, true)
+        spotifyCanvasStyle.value = prefs.getString(KEY_SPOTIFY_CANVAS_STYLE, null)?.let {
+            runCatching { CanvasStyle.valueOf(it) }.getOrNull()
+        } ?: CanvasStyle.FULL_SCREEN
+        appleMusicCanvasStyle.value = prefs.getString(KEY_APPLE_MUSIC_CANVAS_STYLE, null)?.let {
+            runCatching { CanvasStyle.valueOf(it) }.getOrNull()
+        } ?: CanvasStyle.HALF_SCREEN
+        tidalCanvasStyle.value = prefs.getString(KEY_TIDAL_CANVAS_STYLE, null)?.let {
+            runCatching { CanvasStyle.valueOf(it) }.getOrNull()
+        } ?: CanvasStyle.HALF_SCREEN
+        communityCanvasStyle.value = prefs.getString(KEY_COMMUNITY_CANVAS_STYLE, null)?.let {
+            runCatching { CanvasStyle.valueOf(it) }.getOrNull()
+        } ?: CanvasStyle.HALF_SCREEN
         showStatusBarIcon.value = prefs.getBoolean(KEY_SHOW_STATUS_BAR_ICON, true)
         syncedLyrics.value = prefs.getBoolean(KEY_SYNCED_LYRICS, true)
         lyricsSources.value = readLyricsSources()
@@ -845,7 +885,9 @@ object AppSettings {
         scrobbleDelaySeconds.value = prefs.getInt(KEY_SCROBBLE_DELAY_SECONDS, 180)
         listenBrainzEnabled.value = prefs.getBoolean(KEY_LISTENBRAINZ_ENABLED, false)
         listenBrainzToken.value = prefs.getString(KEY_LISTENBRAINZ_TOKEN, "").orEmpty()
-        spotifySpdcToken.value = prefs.getString(KEY_SPOTIFY_SPDC_TOKEN, "").orEmpty()
+        val savedSpotifyToken = prefs.getString(KEY_SPOTIFY_SPDC_TOKEN, null)
+        isCustomSpotifyToken.value = !savedSpotifyToken.isNullOrBlank()
+        spotifySpdcToken.value = if (!savedSpotifyToken.isNullOrBlank()) savedSpotifyToken else DEFAULT_SPOTIFY_SPDC_TOKEN
         appleMusicUserToken.value = prefs.getString(KEY_APPLE_MUSIC_USER_TOKEN, DEFAULT_APPLE_MUSIC_USER_TOKEN).orEmpty()
         appleMusicDevToken.value = prefs.getString(KEY_APPLE_MUSIC_DEV_TOKEN, DEFAULT_APPLE_MUSIC_DEV_TOKEN).orEmpty()
         replayGenres.value = prefs.getBoolean(KEY_REPLAY_GENRES, true)
@@ -877,7 +919,13 @@ object AppSettings {
         listenTogetherSessionTimestamp.value = prefs.getLong(KEY_LISTEN_TOGETHER_SESSION_TIMESTAMP, 0L)
         animatedCanvas.value = prefs.getBoolean(KEY_ANIMATED_CANVAS, true)
         canvasOverCellular.value = prefs.getBoolean(KEY_CANVAS_OVER_CELLULAR, true)
+        userName.value = prefs.getString(KEY_USER_NAME, "") ?: ""
+        hasPromptedUserName.value = prefs.getBoolean(KEY_HAS_PROMPTED_USER_NAME, false)
+        userAvatarType.value = prefs.getString(KEY_USER_AVATAR_TYPE, "PRESET") ?: "PRESET"
+        userPresetAvatarId.value = prefs.getInt(KEY_USER_PRESET_AVATAR_ID, 1)
+        userCustomAvatarPath.value = prefs.getString(KEY_USER_CUSTOM_AVATAR_PATH, "") ?: ""
         localCustomPlaylists.value = readLocalCustomPlaylists()
+        restoreUserDataIfNeeded()
     }
 
     /**
@@ -1353,8 +1401,53 @@ object AppSettings {
         return localCustomPlaylists.value.firstOrNull { it.id == id }
     }
 
-    private fun readLocalCustomPlaylists(): List<CustomLocalPlaylist> {
-        val raw = prefs.getString(KEY_LOCAL_CUSTOM_PLAYLISTS, null) ?: return emptyList()
+    fun setUserName(name: String) {
+        val trimmed = name.trim()
+        userName.value = trimmed
+        hasPromptedUserName.value = true
+        prefs.edit()
+            .putString(KEY_USER_NAME, trimmed)
+            .putBoolean(KEY_HAS_PROMPTED_USER_NAME, true)
+            .apply()
+        runCatching {
+            com.music.dhvani.data.telemetry.TelemetryManager.updateUserName(trimmed)
+        }
+        backupUserData()
+    }
+
+    fun setUserAvatarPreset(presetId: Int) {
+        userAvatarType.value = "PRESET"
+        userPresetAvatarId.value = presetId
+        prefs.edit()
+            .putString(KEY_USER_AVATAR_TYPE, "PRESET")
+            .putInt(KEY_USER_PRESET_AVATAR_ID, presetId)
+            .apply()
+        backupUserData()
+    }
+
+    fun setUserCustomAvatar(filePath: String) {
+        userAvatarType.value = "CUSTOM"
+        userCustomAvatarPath.value = filePath
+        prefs.edit()
+            .putString(KEY_USER_AVATAR_TYPE, "CUSTOM")
+            .putString(KEY_USER_CUSTOM_AVATAR_PATH, filePath)
+            .apply()
+        backupUserData()
+    }
+
+    fun clearUserAvatar() {
+        userAvatarType.value = "PRESET"
+        userCustomAvatarPath.value = ""
+        userPresetAvatarId.value = 1
+        prefs.edit()
+            .putString(KEY_USER_AVATAR_TYPE, "PRESET")
+            .putInt(KEY_USER_PRESET_AVATAR_ID, 1)
+            .putString(KEY_USER_CUSTOM_AVATAR_PATH, "")
+            .apply()
+        backupUserData()
+    }
+
+    private fun parseCustomPlaylistsJson(raw: String): List<CustomLocalPlaylist> {
         return runCatching {
             val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
             val array = json.parseToJsonElement(raw) as? kotlinx.serialization.json.JsonArray ?: return emptyList()
@@ -1370,11 +1463,32 @@ object AppSettings {
                     val artist = (sObj["artist"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
                     val thumb = (sObj["thumbnailUrl"] as? kotlinx.serialization.json.JsonPrimitive)?.content
                     val dur = (sObj["durationText"] as? kotlinx.serialization.json.JsonPrimitive)?.content
-                    Song(videoId = videoId, title = sTitle, artist = artist, thumbnailUrl = thumb, durationText = dur)
+                    val artistId = (sObj["artistId"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                    val albumId = (sObj["albumId"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                    val albumName = (sObj["albumName"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                    Song(
+                        videoId = videoId,
+                        title = sTitle,
+                        artist = artist,
+                        thumbnailUrl = thumb,
+                        durationText = dur,
+                        artistId = artistId,
+                        albumId = albumId,
+                        albumName = albumName,
+                    )
                 }
                 CustomLocalPlaylist(id = id, title = title, songs = songs)
             }
         }.getOrDefault(emptyList())
+    }
+
+    private fun readLocalCustomPlaylists(): List<CustomLocalPlaylist> {
+        val raw = prefs.getString(KEY_LOCAL_CUSTOM_PLAYLISTS, null)
+        if (!raw.isNullOrBlank()) {
+            val parsed = parseCustomPlaylistsJson(raw)
+            if (parsed.isNotEmpty()) return parsed
+        }
+        return emptyList()
     }
 
     private fun persistLocalCustomPlaylists(list: List<CustomLocalPlaylist>) {
@@ -1395,6 +1509,9 @@ object AppSettings {
                                             put("artist", kotlinx.serialization.json.JsonPrimitive(s.artist))
                                             s.thumbnailUrl?.let { put("thumbnailUrl", kotlinx.serialization.json.JsonPrimitive(it)) }
                                             s.durationText?.let { put("durationText", kotlinx.serialization.json.JsonPrimitive(it)) }
+                                            s.artistId?.let { put("artistId", kotlinx.serialization.json.JsonPrimitive(it)) }
+                                            s.albumId?.let { put("albumId", kotlinx.serialization.json.JsonPrimitive(it)) }
+                                            s.albumName?.let { put("albumName", kotlinx.serialization.json.JsonPrimitive(it)) }
                                         },
                                     )
                                 }
@@ -1405,6 +1522,100 @@ object AppSettings {
             }
         }.toString()
         prefs.edit().putString(KEY_LOCAL_CUSTOM_PLAYLISTS, json).apply()
+        backupUserData(json)
+    }
+
+    /**
+     * Permanent user data backup to prevent data loss even if the user clears app cache or storage.
+     * Backs up to both app internal filesDir and the public Music/DhvaniMusic directory.
+     */
+    fun backupUserData(playlistsJson: String? = null) {
+        runCatching {
+            val jsonToSave = playlistsJson ?: prefs.getString(KEY_LOCAL_CUSTOM_PLAYLISTS, "[]") ?: "[]"
+            val uName = userName.value
+            val avType = userAvatarType.value
+            val pId = userPresetAvatarId.value
+            val cPath = userCustomAvatarPath.value
+            val backupContent = kotlinx.serialization.json.buildJsonObject {
+                put("userName", kotlinx.serialization.json.JsonPrimitive(uName))
+                put("userAvatarType", kotlinx.serialization.json.JsonPrimitive(avType))
+                put("userPresetAvatarId", kotlinx.serialization.json.JsonPrimitive(pId))
+                put("userCustomAvatarPath", kotlinx.serialization.json.JsonPrimitive(cPath))
+                put("playlistsRaw", kotlinx.serialization.json.JsonPrimitive(jsonToSave))
+                put("timestamp", kotlinx.serialization.json.JsonPrimitive(System.currentTimeMillis()))
+            }.toString()
+
+            // 1. App internal filesDir (survives Android Settings -> Clear Cache)
+            appContext?.let { ctx ->
+                File(ctx.filesDir, "dhvani_backup.json").writeText(backupContent, Charsets.UTF_8)
+            }
+
+            // 2. Public Music/DhvaniMusic directory (survives Clear Storage / Data & App Reinstalls)
+            val musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+            val dhvaniDir = File(musicDir, "DhvaniMusic").apply { mkdirs() }
+            File(dhvaniDir, "dhvani_backup.json").writeText(backupContent, Charsets.UTF_8)
+        }
+    }
+
+    /**
+     * Automatically restores playlists & user info if cleared by cache or app reset.
+     */
+    fun restoreUserDataIfNeeded() {
+        runCatching {
+            val hasPrefsPlaylists = !prefs.getString(KEY_LOCAL_CUSTOM_PLAYLISTS, null).isNullOrBlank()
+            val hasPrefsName = !prefs.getString(KEY_USER_NAME, null).isNullOrBlank()
+            if (hasPrefsPlaylists && hasPrefsName && localCustomPlaylists.value.isNotEmpty()) return
+
+            var backupContent: String? = null
+            // Try internal storage first
+            appContext?.let { ctx ->
+                val internal = File(ctx.filesDir, "dhvani_backup.json")
+                if (internal.exists() && internal.length() > 0) {
+                    backupContent = internal.readText(Charsets.UTF_8)
+                }
+            }
+            // Fallback to public Music/DhvaniMusic directory
+            if (backupContent.isNullOrBlank()) {
+                val musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+                val external = File(musicDir, "DhvaniMusic/dhvani_backup.json")
+                if (external.exists() && external.length() > 0) {
+                    backupContent = external.readText(Charsets.UTF_8)
+                }
+            }
+
+            if (!backupContent.isNullOrBlank()) {
+                val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                val root = json.parseToJsonElement(backupContent) as? kotlinx.serialization.json.JsonObject ?: return
+                val uName = (root["userName"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                val plRaw = (root["playlistsRaw"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                val bAvType = (root["userAvatarType"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                val bPId = (root["userPresetAvatarId"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 1
+                val bCPath = (root["userCustomAvatarPath"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+
+                val editor = prefs.edit()
+                if (userName.value.isBlank() && uName.isNotBlank()) {
+                    userName.value = uName
+                    hasPromptedUserName.value = true
+                    editor.putString(KEY_USER_NAME, uName)
+                    editor.putBoolean(KEY_HAS_PROMPTED_USER_NAME, true)
+                }
+                if (bAvType.isNotBlank()) {
+                    userAvatarType.value = bAvType
+                    editor.putString(KEY_USER_AVATAR_TYPE, bAvType)
+                }
+                userPresetAvatarId.value = bPId
+                editor.putInt(KEY_USER_PRESET_AVATAR_ID, bPId)
+                if (bCPath.isNotBlank()) {
+                    userCustomAvatarPath.value = bCPath
+                    editor.putString(KEY_USER_CUSTOM_AVATAR_PATH, bCPath)
+                }
+                if (localCustomPlaylists.value.isEmpty() && plRaw.isNotBlank() && plRaw != "[]") {
+                    editor.putString(KEY_LOCAL_CUSTOM_PLAYLISTS, plRaw)
+                    localCustomPlaylists.value = parseCustomPlaylistsJson(plRaw)
+                }
+                editor.apply()
+            }
+        }
     }
 
     fun setLyricsAutoScroll(value: Boolean) {
@@ -1535,6 +1746,26 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_FULL_BLEED_ARTWORK, value).apply()
     }
 
+    fun setSpotifyCanvasStyle(style: CanvasStyle) {
+        spotifyCanvasStyle.value = style
+        prefs.edit().putString(KEY_SPOTIFY_CANVAS_STYLE, style.name).apply()
+    }
+
+    fun setAppleMusicCanvasStyle(style: CanvasStyle) {
+        appleMusicCanvasStyle.value = style
+        prefs.edit().putString(KEY_APPLE_MUSIC_CANVAS_STYLE, style.name).apply()
+    }
+
+    fun setTidalCanvasStyle(style: CanvasStyle) {
+        tidalCanvasStyle.value = style
+        prefs.edit().putString(KEY_TIDAL_CANVAS_STYLE, style.name).apply()
+    }
+
+    fun setCommunityCanvasStyle(style: CanvasStyle) {
+        communityCanvasStyle.value = style
+        prefs.edit().putString(KEY_COMMUNITY_CANVAS_STYLE, style.name).apply()
+    }
+
     fun setShowStatusBarIcon(value: Boolean) {
         showStatusBarIcon.value = value
         prefs.edit().putBoolean(KEY_SHOW_STATUS_BAR_ICON, value).apply()
@@ -1578,8 +1809,20 @@ object AppSettings {
     }
 
     fun setSpotifySpdcToken(value: String) {
-        spotifySpdcToken.value = value
-        prefs.edit().putString(KEY_SPOTIFY_SPDC_TOKEN, value).apply()
+        val trimmed = value.trim()
+        if (trimmed.isBlank()) {
+            resetSpotifySpdcToken()
+        } else {
+            spotifySpdcToken.value = trimmed
+            isCustomSpotifyToken.value = true
+            prefs.edit().putString(KEY_SPOTIFY_SPDC_TOKEN, trimmed).apply()
+        }
+    }
+
+    fun resetSpotifySpdcToken() {
+        spotifySpdcToken.value = DEFAULT_SPOTIFY_SPDC_TOKEN
+        isCustomSpotifyToken.value = false
+        prefs.edit().remove(KEY_SPOTIFY_SPDC_TOKEN).apply()
     }
 
     fun setAppleMusicUserToken(value: String) {
@@ -1904,6 +2147,10 @@ object AppSettings {
     private const val KEY_VIDEO_BACKDROP_LOOP_MODE = "video_backdrop_loop_mode"
     private const val KEY_DEFAULT_PLAYER_MODE = "default_player_mode"
     private const val KEY_FULL_BLEED_ARTWORK = "full_bleed_artwork"
+    private const val KEY_SPOTIFY_CANVAS_STYLE = "spotify_canvas_style"
+    private const val KEY_APPLE_MUSIC_CANVAS_STYLE = "apple_music_canvas_style"
+    private const val KEY_TIDAL_CANVAS_STYLE = "tidal_canvas_style"
+    private const val KEY_COMMUNITY_CANVAS_STYLE = "community_canvas_style"
     private const val KEY_SHOW_STATUS_BAR_ICON = "show_status_bar_icon"
     private const val KEY_SYNCED_LYRICS = "synced_lyrics"
     private const val KEY_LYRICS_SOURCES = "lyrics_sources"
@@ -1961,6 +2208,7 @@ object AppSettings {
     private const val KEY_SCROBBLE_DELAY_SECONDS = "scrobble_delay_seconds"
     private const val KEY_LISTENBRAINZ_ENABLED = "listenbrainz_enabled"
     private const val KEY_LISTENBRAINZ_TOKEN = "listenbrainz_token"
+    val DEFAULT_SPOTIFY_SPDC_TOKEN: String = BuildConfig.DEFAULT_SPOTIFY_SPDC_TOKEN
     private const val KEY_SPOTIFY_SPDC_TOKEN = "spotify_spdc_token"
     const val DEFAULT_APPLE_MUSIC_USER_TOKEN = "0.AtD3rSsiNHsC6xGrKVuH9D8Q3wLfagnppQVNecUb8c4urIsjzfQjX6NRY4hl04yQ/KfFYuTiiX09EGrnFGsjaK1EUQNWEU6l5smve9Md4kVQ9oz5VUN4uVPHYzwAcbEs6hp17uRNAG1TzE2tSeEKm/P/4BqhRNHsH3nxFdPYyN8n2pjGUx6xMwGOku3qNcMVWxIf4Hw3glOhfWAFbA0Eit3x03Z89D24dUn0MBJ/bRIwO0I7dg="
     const val DEFAULT_APPLE_MUSIC_DEV_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzg2NjMyOTI0LCJleHAiOjE3OTI2ODA5MjQsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.hBgj61sZf-y7bmuvT-joXAUAcf7TVJ51732xnH5vFkLHOmsQHxVqGMYUuI4h8c0-RX3fRY3moylhLW8fewFJyw"

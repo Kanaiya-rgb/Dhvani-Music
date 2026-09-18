@@ -42,8 +42,16 @@ app/google-services.json
 .debug/
 .ref_meld/
 .agents/
+AGENTS.md
 *.apk
 *.idsig
 apk/
 screen_*.png
 *_PROMPT.md
+
+# Firebase Hosting & Web Dashboard (Private admin files)
+.firebase/
+.firebaserc
+firebase.json
+dashboard/
+app/src/main/java/com/music/dhvani/data/telemetry/

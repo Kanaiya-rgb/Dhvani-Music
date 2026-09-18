@@ -543,6 +543,9 @@ object Downloads {
                 it + mapOf(asked.videoId to metaAsked, fetched.videoId to metaFetched)
             },
         )
+        runCatching {
+            com.music.dhvani.data.telemetry.TelemetryManager.logSongDownload(fetched)
+        }
     }
 
     /**

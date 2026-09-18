@@ -4,10 +4,11 @@ import com.music.dhvani.data.lyrics.LyricsCleaner
 import java.text.Normalizer
 import java.util.Locale
 
-enum class CanvasSource {
-    APPLE_MUSIC,
-    TIDAL,
-    COMMUNITY,
+enum class CanvasSource(val displayName: String) {
+    SPOTIFY("Spotify"),
+    APPLE_MUSIC("Apple Music"),
+    TIDAL("Tidal"),
+    COMMUNITY("Community"),
 }
 
 /**

@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Fullscreen
@@ -239,6 +240,8 @@ fun SettingsScreen(
     val respectAgentPositioning by AppSettings.respectAgentPositioning.collectAsStateWithLifecycle()
     val paxSenixApiKey by AppSettings.paxSenixApiKey.collectAsStateWithLifecycle()
     val musixmatchUserToken by AppSettings.musixmatchUserToken.collectAsStateWithLifecycle()
+    val spotifySpdcToken by AppSettings.spotifySpdcToken.collectAsStateWithLifecycle()
+    val isCustomSpotifyToken by AppSettings.isCustomSpotifyToken.collectAsStateWithLifecycle()
 
     var showLyricsPositionDialog by remember { mutableStateOf(false) }
     var showLyricsAnimDialog by remember { mutableStateOf(false) }
@@ -246,6 +249,10 @@ fun SettingsScreen(
     var showLyricsLineSpacingDialog by remember { mutableStateOf(false) }
     var showPaxSenixKeyDialog by remember { mutableStateOf(false) }
     var showMusixmatchTokenDialog by remember { mutableStateOf(false) }
+    var showSpotifyTokenDialog by remember { mutableStateOf(false) }
+    val listenerName by AppSettings.userName.collectAsStateWithLifecycle()
+    var showEditUserNameDialog by remember { mutableStateOf(false) }
+    var showProfileCustomizationDialog by remember { mutableStateOf(false) }
 
     val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
     val sessionId by AppSettings.audioSessionId.collectAsStateWithLifecycle()
@@ -586,6 +593,16 @@ fun SettingsScreen(
                 onClick = {
                     currentSubScreen = SettingsSubScreen.LYRICS_CONTENT
                     showMusixmatchTokenDialog = true
+                },
+            ),
+            SearchableSettingItem(
+                title = "Spotify Canvas / SP_DC token",
+                subtitle = if (spotifySpdcToken.isNotBlank()) "Active" else "Optional sp_dc cookie or Bearer token for Spotify Canvas videos",
+                category = "Lyrics & Content",
+                icon = Icons.Rounded.Key,
+                onClick = {
+                    currentSubScreen = SettingsSubScreen.LYRICS_CONTENT
+                    showSpotifyTokenDialog = true
                 },
             ),
             SearchableSettingItem(
@@ -1402,6 +1419,14 @@ fun SettingsScreen(
                             trailing = { Chevron() },
                             onClick = { showMusixmatchTokenDialog = true },
                         )
+                        RowDivider()
+                        SettingsRow(
+                            icon = Icons.Rounded.Key,
+                            title = "Spotify Canvas Token",
+                            subtitle = if (spotifySpdcToken.isNotBlank()) "Active (Looping Canvas Ready)" else "sp_dc cookie or Bearer token for Spotify Canvas",
+                            trailing = { Chevron() },
+                            onClick = { showSpotifyTokenDialog = true },
+                        )
                     }
 
                     if (syncedLyrics) {
@@ -1634,6 +1659,46 @@ fun SettingsScreen(
                     if (signedIn) {
                         SettingsGroup {
                             DestructiveRow(label = "Sign out", onClick = onSignOut)
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    SettingsGroup(header = "Listener Profile & Identity") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showProfileCustomizationDialog = true }
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            com.music.dhvani.ui.components.UserAvatar(
+                                size = 52.dp,
+                                borderWidth = 2.dp,
+                                borderColor = MaterialTheme.colorScheme.primary,
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = listenerName.ifBlank { "Dhvani Listener" },
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = "Personalized profile & avatar • Tap to customize",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(onClick = { showProfileCustomizationDialog = true }) {
+                                Icon(
+                                    Icons.Rounded.Edit,
+                                    contentDescription = "Edit Profile",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
                         }
                     }
 
@@ -2505,6 +2570,222 @@ fun SettingsScreen(
         )
     }
 
+    if (showProfileCustomizationDialog || showEditUserNameDialog) {
+        var nameInput by remember { mutableStateOf(listenerName) }
+        val avatarType by AppSettings.userAvatarType.collectAsStateWithLifecycle()
+        val presetId by AppSettings.userPresetAvatarId.collectAsStateWithLifecycle()
+
+        val photoPickerLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.PickVisualMedia(),
+        ) { uri ->
+            if (uri != null) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        val avatarFile = java.io.File(context.filesDir, "dhvani_user_avatar.jpg")
+                        avatarFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                        AppSettings.setUserCustomAvatar(avatarFile.absolutePath)
+                        Toast.makeText(context, "Profile photo updated!", Toast.LENGTH_SHORT).show()
+                    }
+                }.onFailure {
+                    Toast.makeText(context, "Failed to load photo: ${it.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = {
+                showProfileCustomizationDialog = false
+                showEditUserNameDialog = false
+            },
+            title = {
+                Text(
+                    "Customize Profile",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    // Central Avatar Preview with Edit Overlay
+                    Box(
+                        contentAlignment = Alignment.BottomEnd,
+                        modifier = Modifier.padding(top = 8.dp),
+                    ) {
+                        com.music.dhvani.ui.components.UserAvatar(
+                            size = 80.dp,
+                            borderWidth = 2.5.dp,
+                            borderColor = MaterialTheme.colorScheme.primary,
+                            onClick = {
+                                photoPickerLauncher.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            },
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                                .clickable {
+                                    photoPickerLauncher.launch(
+                                        androidx.activity.result.PickVisualMediaRequest(
+                                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                                        )
+                                    )
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Edit,
+                                contentDescription = "Change Photo",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+
+                    // Gallery upload / reset button
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.FilledTonalButton(
+                            onClick = {
+                                photoPickerLauncher.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            },
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        ) {
+                            Icon(Icons.Rounded.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Upload from Gallery", style = MaterialTheme.typography.labelMedium)
+                        }
+
+                        if (avatarType == "CUSTOM") {
+                            TextButton(
+                                onClick = {
+                                    AppSettings.clearUserAvatar()
+                                    Toast.makeText(context, "Switched to preset avatar", Toast.LENGTH_SHORT).show()
+                                },
+                            ) {
+                                Text("Reset", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+
+                    // Curated Music Avatars Section
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.Start,
+                    ) {
+                        Text(
+                            text = "Or Choose a Music Avatar",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                        )
+
+                        val presets = com.music.dhvani.ui.components.PRESET_AVATARS
+                        presets.chunked(4).forEach { rowPresets ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceAround,
+                            ) {
+                                rowPresets.forEach { preset ->
+                                    val isSelected = avatarType == "PRESET" && presetId == preset.id
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .size(50.dp)
+                                            .clip(CircleShape)
+                                            .border(
+                                                width = if (isSelected) 3.dp else 1.dp,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                                shape = CircleShape,
+                                            )
+                                            .padding(3.dp)
+                                            .clip(CircleShape)
+                                            .background(androidx.compose.ui.graphics.Brush.linearGradient(preset.colors))
+                                            .clickable {
+                                                AppSettings.setUserAvatarPreset(preset.id)
+                                            },
+                                    ) {
+                                        Icon(
+                                            imageVector = preset.icon,
+                                            contentDescription = preset.name,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                        if (isSelected) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(Color.Black.copy(alpha = 0.35f)),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.Check,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Name Input
+                    OutlinedTextField(
+                        value = nameInput,
+                        onValueChange = { nameInput = it },
+                        label = { Text("Your Name or Nickname") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    onClick = {
+                        val trimmed = nameInput.trim().ifBlank { "Dhvani Listener" }
+                        AppSettings.setUserName(trimmed)
+                        showProfileCustomizationDialog = false
+                        showEditUserNameDialog = false
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text("Save Profile")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showProfileCustomizationDialog = false
+                    showEditUserNameDialog = false
+                }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
     if (showListenBrainzTokenDialog) {
         var tokenInput by remember { mutableStateOf(listenBrainzToken) }
         AlertDialog(
@@ -2867,6 +3148,67 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showMusixmatchTokenDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showSpotifyTokenDialog) {
+        val isDefaultToken = !isCustomSpotifyToken && spotifySpdcToken == AppSettings.DEFAULT_SPOTIFY_SPDC_TOKEN && spotifySpdcToken.isNotBlank()
+        var input by remember(spotifySpdcToken, isCustomSpotifyToken) {
+            mutableStateOf(if (isDefaultToken) "" else spotifySpdcToken)
+        }
+        AlertDialog(
+            onDismissRequest = { showSpotifyTokenDialog = false },
+            title = { Text("Spotify Canvas / SP_DC Token") },
+            text = {
+                Column {
+                    Text(
+                        text = if (isDefaultToken) {
+                            "Spotify Canvas is currently active using the built-in system key. Enter a custom sp_dc cookie or Bearer token below only if you want to override it."
+                        } else {
+                            "Custom token is currently active. You can enter a new token or tap 'Restore Built-in' to revert back to the default working key."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = { input = it },
+                        singleLine = true,
+                        placeholder = {
+                            Text(if (isDefaultToken) "•••••••••••••••••••••••• (Built-in active)" else "Paste sp_dc cookie or Bearer token")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (isCustomSpotifyToken) {
+                        TextButton(onClick = {
+                            AppSettings.resetSpotifySpdcToken()
+                            input = ""
+                            showSpotifyTokenDialog = false
+                        }) {
+                            Text("Restore Built-in")
+                        }
+                    }
+                    TextButton(onClick = {
+                        AppSettings.setSpotifySpdcToken(input.trim())
+                        showSpotifyTokenDialog = false
+                    }) {
+                        Text(stringResource(R.string.save))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSpotifyTokenDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             },

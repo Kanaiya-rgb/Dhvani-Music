@@ -6,6 +6,8 @@ import android.net.NetworkCapabilities
 import com.music.dhvani.data.lyrics.LyricsCleaner
 import com.music.dhvani.data.settings.AppSettings
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -13,17 +15,21 @@ import java.util.Collections
 
 /**
  * Repository orchestrating motion canvas video artwork lookups across:
- * 1. Apple Music
- * 2. Tidal
- * 3. Community index
+ * 1. Spotify
+ * 2. Apple Music
+ * 3. Tidal
+ * 4. Community index
  *
- * Employs mutex-serialized lookups and aggressive in-memory negative LRU caching
- * to eliminate duplicate and redundant network queries.
+ * Employs concurrent queries, mutex-serialized lookups, and aggressive in-memory
+ * LRU caching to eliminate duplicate and redundant network queries.
  */
 object CanvasRepository {
     private const val CACHE_LIMIT = 150
 
-    private data class CacheEntry(val artwork: CanvasArtwork?)
+    private data class CacheEntry(
+        val artworks: Map<CanvasSource, CanvasArtwork>,
+        var selectedSource: CanvasSource? = null,
+    )
 
     private val cache: MutableMap<String, CacheEntry> = Collections.synchronizedMap(
         object : LinkedHashMap<String, CacheEntry>(CACHE_LIMIT, 0.75f, true) {
@@ -33,14 +39,103 @@ object CanvasRepository {
     )
 
     private val mutex = Mutex()
+    private var lastUserSelectedSource: CanvasSource? = null
+
+    fun getSelectedSource(videoId: String): CanvasSource? {
+        if (videoId.isBlank()) return lastUserSelectedSource
+        return cache[videoId]?.selectedSource ?: lastUserSelectedSource
+    }
+
+    fun setSelectedSource(videoId: String, source: CanvasSource) {
+        lastUserSelectedSource = source
+        if (videoId.isNotBlank()) {
+            cache[videoId]?.selectedSource = source
+        }
+    }
 
     fun getCached(videoId: String): CanvasArtwork? {
         if (videoId.isBlank()) return null
-        return cache[videoId]?.artwork
+        val entry = cache[videoId] ?: return null
+        val map = entry.artworks
+        val chosen = entry.selectedSource ?: lastUserSelectedSource
+        return (chosen?.let { map[it] })
+            ?: map[CanvasSource.SPOTIFY]
+            ?: map[CanvasSource.APPLE_MUSIC]
+            ?: map[CanvasSource.TIDAL]
+            ?: map[CanvasSource.COMMUNITY]
+    }
+
+    fun getCachedMap(videoId: String): Map<CanvasSource, CanvasArtwork> {
+        if (videoId.isBlank()) return emptyMap()
+        return cache[videoId]?.artworks ?: emptyMap()
     }
 
     fun hasCached(videoId: String): Boolean =
         videoId.isNotBlank() && cache.containsKey(videoId)
+
+    suspend fun getAvailableCanvases(
+        context: Context,
+        videoId: String,
+        title: String,
+        artist: String,
+        album: String? = null,
+    ): Map<CanvasSource, CanvasArtwork> = withContext(Dispatchers.IO) {
+        if (!AppSettings.animatedCanvas.value) return@withContext emptyMap()
+        if (videoId.isBlank() && title.isBlank()) return@withContext emptyMap()
+
+        val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
+        val cleanArtist = LyricsCleaner.cleanArtist(artist)
+
+        val cacheKey = if (videoId.isNotBlank()) videoId else "${cleanTitle.trim()}|${cleanArtist.trim()}"
+
+        // Instant retrieval from bounded LRU cache
+        cache[cacheKey]?.let { entry ->
+            return@withContext entry.artworks
+        }
+
+        // Cellular data restriction guard
+        if (!AppSettings.canvasOverCellular.value && isCellular(context)) {
+            return@withContext emptyMap()
+        }
+
+        mutex.withLock {
+            // Re-check cache after acquiring lock
+            cache[cacheKey]?.let { entry ->
+                return@withContext entry.artworks
+            }
+
+            // Query all 4 sources concurrently in parallel
+            val resultMap = mutableMapOf<CanvasSource, CanvasArtwork>()
+            coroutineScope {
+                val spotifyDeferred = async {
+                    SpotifyCanvas.fetch(cleanTitle, cleanArtist, album)
+                        ?: if (cleanTitle != title || cleanArtist != artist) SpotifyCanvas.fetch(title, artist, album) else null
+                }
+                val appleDeferred = async {
+                    AppleMusicCanvas.fetch(cleanTitle, cleanArtist, album)
+                        ?: if (cleanTitle != title || cleanArtist != artist) AppleMusicCanvas.fetch(title, artist, album) else null
+                }
+                val tidalDeferred = async {
+                    TidalCanvas.fetch(cleanTitle, cleanArtist, album)
+                        ?: if (cleanTitle != title || cleanArtist != artist) TidalCanvas.fetch(title, artist, album) else null
+                }
+                val communityDeferred = async {
+                    CommunityCanvas.fetch(cleanTitle, cleanArtist, album)
+                        ?: if (cleanTitle != title || cleanArtist != artist) CommunityCanvas.fetch(title, artist, album) else null
+                }
+
+                spotifyDeferred.await()?.let { resultMap[CanvasSource.SPOTIFY] = it }
+                appleDeferred.await()?.let { resultMap[CanvasSource.APPLE_MUSIC] = it }
+                tidalDeferred.await()?.let { resultMap[CanvasSource.TIDAL] = it }
+                communityDeferred.await()?.let { resultMap[CanvasSource.COMMUNITY] = it }
+            }
+
+            // Store result
+            val existingSelected = cache[cacheKey]?.selectedSource ?: lastUserSelectedSource
+            cache[cacheKey] = CacheEntry(resultMap, existingSelected)
+            resultMap
+        }
+    }
 
     suspend fun getCanvas(
         context: Context,
@@ -48,47 +143,14 @@ object CanvasRepository {
         title: String,
         artist: String,
         album: String? = null,
-    ): CanvasArtwork? = withContext(Dispatchers.IO) {
-        if (!AppSettings.animatedCanvas.value) return@withContext null
-        if (videoId.isBlank() && title.isBlank()) return@withContext null
-
-        val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
-        val cleanArtist = LyricsCleaner.cleanArtist(artist)
-
-        val cacheKey = if (videoId.isNotBlank()) videoId else "${cleanTitle.trim()}|${cleanArtist.trim()}"
-
-        // Instant retrieval from bounded LRU cache (including negative hits)
-        cache[cacheKey]?.let { entry ->
-            return@withContext entry.artwork
-        }
-
-        // Cellular data restriction guard
-        if (!AppSettings.canvasOverCellular.value && isCellular(context)) {
-            return@withContext null
-        }
-
-        mutex.withLock {
-            // Re-check cache after acquiring lock
-            cache[cacheKey]?.let { entry ->
-                return@withContext entry.artwork
-            }
-
-            // Lookup chain with cleaned metadata first: Apple Music -> Tidal -> Community
-            var result = AppleMusicCanvas.fetch(cleanTitle, cleanArtist, album)
-                ?: TidalCanvas.fetch(cleanTitle, cleanArtist, album)
-                ?: CommunityCanvas.fetch(cleanTitle, cleanArtist, album)
-
-            // If clean didn't match and raw differs, fallback to raw query
-            if (result == null && (cleanTitle != title || cleanArtist != artist)) {
-                result = AppleMusicCanvas.fetch(title, artist, album)
-                    ?: TidalCanvas.fetch(title, artist, album)
-                    ?: CommunityCanvas.fetch(title, artist, album)
-            }
-
-            // Store result (or null for negative caching)
-            cache[cacheKey] = CacheEntry(result)
-            result
-        }
+    ): CanvasArtwork? {
+        val map = getAvailableCanvases(context, videoId, title, artist, album)
+        val chosen = getSelectedSource(videoId)
+        return (chosen?.let { map[it] })
+            ?: map[CanvasSource.SPOTIFY]
+            ?: map[CanvasSource.APPLE_MUSIC]
+            ?: map[CanvasSource.TIDAL]
+            ?: map[CanvasSource.COMMUNITY]
     }
 
     private fun isCellular(context: Context): Boolean {

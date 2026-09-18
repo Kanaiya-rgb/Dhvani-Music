@@ -62,6 +62,7 @@ fun ImportPlaylistSheet(
     onImportSuccess: (String, List<Song>) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    onPlayNow: ((Song) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -78,7 +79,25 @@ fun ImportPlaylistSheet(
         val trimmed = text.trim()
         errorMessage = null
         val plId = PlaylistManager.extractPlaylistId(trimmed)
-        if (plId != null) {
+        val spotifyPlId = PlaylistManager.extractSpotifyPlaylistId(trimmed)
+        val videoId = PlaylistManager.extractVideoId(trimmed)
+        if (spotifyPlId != null) {
+            scope.launch {
+                isResolving = true
+                progressText = "Loading Spotify playlist..."
+                val result = PlaylistManager.fetchSpotifyPlaylist(spotifyPlId)
+                isResolving = false
+                if (result != null && result.second.isNotEmpty()) {
+                    playlistTitle = result.first
+                    parsedTracks = result.second
+                    directSongs = null
+                    Toast.makeText(context, "Loaded \"${result.first}\" (${result.second.size} Spotify tracks)", Toast.LENGTH_SHORT).show()
+                } else {
+                    errorMessage = "Could not load Spotify playlist. Please ensure it is a public playlist."
+                    Toast.makeText(context, "Could not load Spotify playlist", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else if (plId != null) {
             scope.launch {
                 isResolving = true
                 progressText = "Loading YouTube playlist..."
@@ -94,6 +113,21 @@ fun ImportPlaylistSheet(
                     Toast.makeText(context, "Could not load playlist from link", Toast.LENGTH_SHORT).show()
                 }
             }
+        } else if (videoId != null) {
+            scope.launch {
+                isResolving = true
+                progressText = "Loading YouTube song..."
+                val song = PlaylistManager.fetchYoutubeSingleVideo(videoId)
+                isResolving = false
+                if (song != null) {
+                    playlistTitle = song.title.ifBlank { "Imported Track" }
+                    directSongs = listOf(song)
+                    parsedTracks = emptyList()
+                    Toast.makeText(context, "Found song: \"${song.title}\"", Toast.LENGTH_SHORT).show()
+                } else {
+                    errorMessage = "Could not load song details from link."
+                }
+            }
         } else if (trimmed.contains("#EXTINF") || trimmed.contains("{")) {
             val parsed = PlaylistManager.parseText(trimmed, "Imported Playlist")
             if (parsed.tracks.isNotEmpty()) {
@@ -105,7 +139,7 @@ fun ImportPlaylistSheet(
                 errorMessage = "No valid tracks found in pasted text."
             }
         } else if (trimmed.isNotBlank()) {
-            errorMessage = "Invalid playlist link. Please paste a valid YouTube playlist URL."
+            errorMessage = "Invalid link. Please paste a valid YouTube song, playlist, or Spotify URL."
         }
     }
 
@@ -155,7 +189,7 @@ fun ImportPlaylistSheet(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "Import from M3U / JSON files, or YouTube links",
+                    text = "Import from M3U / JSON files, YouTube, or Spotify links",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -214,11 +248,11 @@ fun ImportPlaylistSheet(
                 inputText = input
                 errorMessage = null
                 // Auto-resolve if pasted a full link or batch text
-                if (input.length - prev.length > 8 || input.startsWith("http") && input.contains("list=")) {
+                if (input.length - prev.length > 8 || (input.startsWith("http") && (input.contains("list=") || input.contains("spotify.com")))) {
                     resolveInput(input)
                 }
             },
-            placeholder = { Text("Paste YouTube playlist link or M3U text") },
+            placeholder = { Text("Paste YouTube / Spotify playlist link or M3U text") },
             trailingIcon = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (inputText.isNotBlank()) {
@@ -308,35 +342,66 @@ fun ImportPlaylistSheet(
                 )
             }
         } else {
-            Button(
-                onClick = {
-                    val finalTitle = playlistTitle.trim().ifBlank { "Imported Playlist" }
-                    if (directSongs != null) {
-                        onImportSuccess(finalTitle, directSongs!!)
-                        onDismiss()
-                    } else if (parsedTracks.isNotEmpty()) {
-                        scope.launch {
-                            isResolving = true
-                            progressText = "Resolving tracks (0/${parsedTracks.size})..."
-                            val songs = PlaylistManager.resolveTracksToSongs(parsedTracks) { current, total ->
-                                progressText = "Resolving tracks ($current/$total)..."
-                            }
-                            isResolving = false
-                            onImportSuccess(finalTitle, songs)
+            val isSingleSong = totalTracks == 1 && directSongs?.isNotEmpty() == true
+            if (isSingleSong && onPlayNow != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            val song = directSongs!!.first()
+                            onPlayNow(song)
                             onDismiss()
-                        }
-                    } else {
-                        Toast.makeText(context, "Please pick a file or paste a playlist link first", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text(text = "Play Now", fontWeight = FontWeight.SemiBold)
                     }
-                },
-                enabled = totalTracks > 0,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Text(
-                    text = if (totalTracks > 0) "Import $totalTracks Songs" else "Import Playlist",
-                    fontWeight = FontWeight.SemiBold,
-                )
+                    Button(
+                        onClick = {
+                            val finalTitle = playlistTitle.trim().ifBlank { "Imported Track" }
+                            onImportSuccess(finalTitle, directSongs!!)
+                            onDismiss()
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text(text = "Save as Playlist", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            } else {
+                Button(
+                    onClick = {
+                        val finalTitle = playlistTitle.trim().ifBlank { "Imported Playlist" }
+                        if (directSongs != null) {
+                            onImportSuccess(finalTitle, directSongs!!)
+                            onDismiss()
+                        } else if (parsedTracks.isNotEmpty()) {
+                            scope.launch {
+                                isResolving = true
+                                progressText = "Resolving tracks (0/${parsedTracks.size})..."
+                                val songs = PlaylistManager.resolveTracksToSongs(parsedTracks) { current, total ->
+                                    progressText = "Resolving tracks ($current/$total)..."
+                                }
+                                isResolving = false
+                                onImportSuccess(finalTitle, songs)
+                                onDismiss()
+                            }
+                        } else {
+                            Toast.makeText(context, "Please pick a file or paste a playlist link first", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    enabled = totalTracks > 0,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text(
+                        text = if (totalTracks > 0) "Import $totalTracks Songs" else "Import Playlist",
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
         }
 

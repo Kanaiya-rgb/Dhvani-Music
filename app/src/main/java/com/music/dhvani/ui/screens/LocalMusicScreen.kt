@@ -429,6 +429,7 @@ private fun ArtistsTab(
         items(artists) { (artist, artistSongs) ->
             ArtistRow(
                 name = artist,
+                artistSongs = artistSongs,
                 songCount = artistSongs.size,
                 onClick = { onArtistClick(artist, artistSongs) },
                 onLongPress = onArtistLongPress?.let { { it(artist, artistSongs) } },
@@ -446,6 +447,7 @@ private fun ArtistsTab(
 @Composable
 private fun ArtistRow(
     name: String,
+    artistSongs: List<Song>,
     songCount: Int,
     onClick: () -> Unit,
     onLongPress: (() -> Unit)? = null,
@@ -458,6 +460,7 @@ private fun ArtistRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Avatar circle
+        val avatarUrl = artistSongs.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl
         Box(
             modifier = Modifier
                 .size(48.dp)
@@ -465,12 +468,21 @@ private fun ArtistRow(
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = Icons.Rounded.Person,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(26.dp),
-            )
+            if (!avatarUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize().clip(CircleShape),
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {

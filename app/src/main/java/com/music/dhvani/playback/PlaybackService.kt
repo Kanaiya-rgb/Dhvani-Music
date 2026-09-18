@@ -684,15 +684,25 @@ class PlaybackService : MediaSessionService() {
 
         scope.launch {
             AppSettings.showStatusBarIcon.collectLatest { showIcon ->
-                val iconRes = if (showIcon) R.drawable.ic_notification_logo else R.drawable.ic_notification_empty
-                setMediaNotificationProvider(
-                    DefaultMediaNotificationProvider.Builder(this@PlaybackService)
-                        .setChannelId(CHANNEL_ID)
-                        .setChannelName(R.string.playback_channel_name)
-                        .build()
-                        .apply { setSmallIcon(iconRes) },
-                )
-                updateStatusBarNotification()
+                try {
+                    val iconRes = if (showIcon) R.drawable.ic_notification_logo else R.drawable.ic_notification_empty
+                    setMediaNotificationProvider(
+                        DefaultMediaNotificationProvider.Builder(this@PlaybackService)
+                            .setChannelId(CHANNEL_ID)
+                            .setChannelName(R.string.playback_channel_name)
+                            .build()
+                            .apply { setSmallIcon(iconRes) },
+                    )
+                    updateStatusBarNotification()
+                } catch (e: Throwable) {
+                    setMediaNotificationProvider(
+                        DefaultMediaNotificationProvider.Builder(this@PlaybackService)
+                            .setChannelId(CHANNEL_ID)
+                            .setChannelName(R.string.playback_channel_name)
+                            .build()
+                            .apply { setSmallIcon(R.drawable.ic_notification_logo) },
+                    )
+                }
             }
         }
 

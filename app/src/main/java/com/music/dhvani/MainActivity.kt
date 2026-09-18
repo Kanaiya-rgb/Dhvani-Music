@@ -315,6 +315,13 @@ private fun DhvaniApp(
         onResult = { /* handled */ }
     )
     var showFloatingIslandPermissionDialog by rememberSaveable { mutableStateOf(false) }
+    val hasPromptedUserName by AppSettings.hasPromptedUserName.collectAsStateWithLifecycle()
+
+    if (!hasPromptedUserName) {
+        com.music.dhvani.ui.components.WelcomeNameDialog(
+            onDismissOrCompleted = { /* Saved to AppSettings & Telemetry */ }
+        )
+    }
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -2723,6 +2730,9 @@ private fun DhvaniApp(
                                 Toast.makeText(context, "Failed to import playlist: $err", Toast.LENGTH_LONG).show()
                             },
                         )
+                    },
+                    onPlayNow = { song ->
+                        play(listOf(song), 0)
                     },
                 )
             }

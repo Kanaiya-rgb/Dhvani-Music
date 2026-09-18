@@ -286,8 +286,8 @@ object AppleMusicCanvas {
         val square = link("motionDetailSquare") ?: link("motionSquareVideo1x1")
         val raw = link("motionDetailRaw")
         val tall = link("motionDetailTall") ?: link("motionTallVideo3x4")
-        val primary = square ?: raw ?: tall ?: return null
-        val alternate = listOfNotNull(square, raw, tall).firstOrNull { it != primary }
+        val primary = square ?: tall ?: raw ?: return null
+        val alternate = listOfNotNull(square, tall, raw).firstOrNull { it != primary }
         return primary to alternate
     }
 

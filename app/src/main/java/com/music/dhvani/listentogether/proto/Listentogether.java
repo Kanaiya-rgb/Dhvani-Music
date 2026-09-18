@@ -5,7 +5,6 @@
 
 package com.music.dhvani.listentogether.proto;
 
-@com.google.protobuf.Generated
 public final class Listentogether {
   private Listentogether() {}
   public static void registerAllExtensions(

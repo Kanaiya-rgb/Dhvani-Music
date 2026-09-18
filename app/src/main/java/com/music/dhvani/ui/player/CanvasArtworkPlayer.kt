@@ -1,6 +1,7 @@
 package com.music.dhvani.ui.player
 
 import android.content.Context
+import android.util.Log
 import android.graphics.Bitmap
 import android.graphics.BlendMode
 import android.graphics.Canvas
@@ -95,7 +96,7 @@ fun CanvasArtworkPlayer(
     var frameTick by remember(artwork.url) { mutableIntStateOf(0) }
     var surfaceGeneration by remember(artwork.url) { mutableIntStateOf(0) }
 
-    val player = remember(context) {
+    val player = remember(context, artwork.url) {
         val upstreamFactory = OkHttpDataSource.Factory(Http.client)
         val dataSourceFactory = CanvasCache.getCacheDataSourceFactory(context)
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
@@ -137,19 +138,41 @@ fun CanvasArtworkPlayer(
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() {
+                Log.d("CanvasArtworkPlayer", "onRenderedFirstFrame for $url")
                 rendered = true
                 frameTick++
                 onFirstFrameRendered()
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                Log.d("CanvasArtworkPlayer", "onPlaybackStateChanged: $playbackState (ready=${Player.STATE_READY}) for $url")
+                if (playbackState == Player.STATE_READY) {
+                    rendered = true
+                    frameTick++
+                    onFirstFrameRendered()
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlayingNow: Boolean) {
+                if (isPlayingNow) {
+                    rendered = true
+                    frameTick++
+                    onFirstFrameRendered()
+                }
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 val width = videoSize.width * videoSize.pixelWidthHeightRatio
                 if (width > 0f && videoSize.height > 0) {
                     clipAspect = width / videoSize.height
+                    rendered = true
+                    frameTick++
+                    onFirstFrameRendered()
                 }
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                Log.w("CanvasArtworkPlayer", "onPlayerError for $url: ${error.message}", error)
                 val alternate = artwork.fallbackUrl
                 if (alternate != null && alternate != url) {
                     url = alternate
@@ -172,6 +195,9 @@ fun CanvasArtworkPlayer(
         mimeTypeOf(url)?.let { item.setMimeType(it) }
         player.setMediaItem(item.build())
         player.prepare()
+        if (isPlaying && isActive) {
+            player.play()
+        }
     }
 
     val foreground = rememberIsForeground()
@@ -264,12 +290,12 @@ fun CanvasArtworkPlayer(
         },
         update = { frame ->
             val view = frame.getChildAt(0) as TextureView
+            player.setVideoTextureView(view)
             view.alpha = alpha
             view.centerCrop(bounds, clipAspect)
+            frame.fadeFraction = bottomFade
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 view.setBottomFade(bottomFade, bounds)
-            } else {
-                frame.fadeFraction = bottomFade
             }
         },
         modifier = modifier.onSizeChanged { bounds = it },

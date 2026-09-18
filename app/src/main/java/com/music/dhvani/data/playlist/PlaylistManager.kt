@@ -21,6 +21,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 
 object PlaylistManager {
 
@@ -264,6 +266,23 @@ object PlaylistManager {
         return null
     }
 
+    fun extractSpotifyPlaylistId(input: String): String? {
+        val trimmed = input.trim()
+        if (trimmed.isBlank()) return null
+        val urlMatch = Regex("""open\.spotify\.com/(?:intl-[a-zA-Z]{2}/)?playlist/([a-zA-Z0-9]+)""").find(trimmed)
+        if (urlMatch != null) {
+            return urlMatch.groupValues[1]
+        }
+        val uriMatch = Regex("""spotify:playlist:([a-zA-Z0-9]+)""").find(trimmed)
+        if (uriMatch != null) {
+            return uriMatch.groupValues[1]
+        }
+        if (trimmed.matches(Regex("""^[a-zA-Z0-9]{22}$"""))) {
+            return trimmed
+        }
+        return null
+    }
+
     fun extractVideoId(input: String): String? {
         val trimmed = input.trim()
         if (trimmed.length == 11 && trimmed.matches(Regex("""[a-zA-Z0-9_-]{11}"""))) {
@@ -347,6 +366,132 @@ object PlaylistManager {
         if (songs.isEmpty()) return@withContext null
         val title = songPage?.header?.title?.ifBlank { "YouTube Playlist" } ?: "YouTube Playlist"
         title to songs
+    }
+
+    suspend fun fetchYoutubeSingleVideo(
+        videoId: String,
+    ): Song? = withContext(Dispatchers.IO) {
+        val hit = runCatching {
+            YtMusicRepository.trackLinks(videoId).getOrNull()
+        }.getOrNull()
+        if (hit != null && hit.title.isNotBlank()) {
+            return@withContext hit.copy(
+                thumbnailUrl = hit.thumbnailUrl ?: "https://i.ytimg.com/vi/$videoId/hqdefault.jpg",
+            )
+        }
+        // Fallback: search by videoId
+        val searchHit = runCatching {
+            YtMusicRepository.search(videoId, SearchFilter.SONGS).getOrNull()
+        }.getOrNull()?.filterIsInstance<SearchResult.Track>()?.firstOrNull()?.song
+        if (searchHit != null) {
+            return@withContext searchHit
+        }
+        // Final fallback with videoId
+        Song(
+            videoId = videoId,
+            title = "YouTube Video",
+            artist = "YouTube",
+            thumbnailUrl = "https://i.ytimg.com/vi/$videoId/hqdefault.jpg",
+        )
+    }
+
+    suspend fun fetchSpotifyPlaylist(
+        playlistId: String,
+    ): Pair<String, List<ImportedTrack>>? = withContext(Dispatchers.IO) {
+        val cleanId = playlistId.trim().removePrefix("spotify:playlist:")
+        val url = "https://open.spotify.com/embed/playlist/$cleanId"
+        try {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.instanceFollowRedirects = true
+            connection.connectTimeout = 12_000
+            connection.readTimeout = 12_000
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            connection.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+
+            val html = connection.inputStream.bufferedReader().use { it.readText() }
+            val nextDataIdx = html.indexOf("__NEXT_DATA__")
+            if (nextDataIdx == -1) return@withContext null
+            val start = html.indexOf('>', nextDataIdx) + 1
+            val end = html.indexOf("</script>", start)
+            if (start <= 0 || end <= start) return@withContext null
+
+            val jsonRaw = html.substring(start, end)
+            val root = json.parseToJsonElement(jsonRaw).jsonObject
+            val props = root["props"]?.jsonObject ?: return@withContext null
+            val pageProps = props["pageProps"]?.jsonObject ?: return@withContext null
+            val state = pageProps["state"]?.jsonObject ?: return@withContext null
+            val data = state["data"]?.jsonObject ?: return@withContext null
+            val entity = data["entity"]?.jsonObject ?: return@withContext null
+
+            val title = entity["title"]?.jsonPrimitive?.content
+                ?: entity["name"]?.jsonPrimitive?.content
+                ?: "Spotify Playlist"
+
+            val trackList = entity["trackList"]?.jsonArray.orEmpty()
+            val tracks = trackList.mapNotNull { item ->
+                val trackObj = item.jsonObject
+                val trackTitle = trackObj["title"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                val artist = trackObj["subtitle"]?.jsonPrimitive?.content.orEmpty()
+                val durationMs = trackObj["duration"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
+                ImportedTrack(
+                    videoId = null,
+                    title = trackTitle,
+                    artist = artist,
+                    durationSeconds = durationMs / 1000,
+                )
+            }
+
+            if (tracks.isEmpty()) null else title to tracks
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun buildSpotifyExportText(title: String, songs: List<Song>): String {
+        val sb = StringBuilder()
+        sb.appendLine("# Playlist: $title")
+        sb.appendLine("# Total Tracks: ${songs.size}")
+        sb.appendLine("# Format: Title - Artist")
+        sb.appendLine()
+        songs.forEachIndexed { i, s ->
+            sb.appendLine("${i + 1}. ${s.title} - ${s.artist}")
+        }
+        return sb.toString()
+    }
+
+    fun exportAndShareSpotifyText(context: Context, title: String, songs: List<Song>) {
+        if (songs.isEmpty()) {
+            Toast.makeText(context, "Playlist is empty", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val safeName = sanitizeFileName(title.ifBlank { "Playlist" })
+        try {
+            val content = buildSpotifyExportText(title, songs)
+            val sharedDir = File(context.cacheDir, "shared").apply { mkdirs() }
+            val file = File(sharedDir, "${safeName}_spotify_export.txt")
+            file.writeText(content, Charsets.UTF_8)
+
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file,
+            )
+
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "$title - Spotify Tracklist")
+                putExtra(Intent.EXTRA_TEXT, "Tracklist for Spotify: $title (${songs.size} tracks)\n\n$content")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = Intent.createChooser(intent, "Export tracklist for Spotify")
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(chooser)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun sanitizeFileName(name: String): String {

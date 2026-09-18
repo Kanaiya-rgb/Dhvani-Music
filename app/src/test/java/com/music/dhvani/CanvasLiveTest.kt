@@ -37,11 +37,11 @@ class CanvasLiveTest {
         println("=== Testing Musixmatch ===")
         val tokenUrl = "https://apic.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0"
         println("Testing token.get...")
-        val req = okhttp3.Request.Builder().url(tokenUrl).build()
-        val res = com.music.dhvani.data.Http.client.newCall(req).execute()
-        println("token.get code: ${res.code}, body: ${res.body?.string()}")
-
         val mxm = com.music.dhvani.data.lyrics.Musixmatch.lyrics("Flowers", "Miley Cyrus", 200000L)
         println("Musixmatch Flowers: ${mxm?.size} lines")
+
+        println("=== Testing Spotify Canvas ===")
+        val spResult = com.music.dhvani.data.canvas.SpotifyCanvas.fetch("Espresso", "Sabrina Carpenter")
+        println("Spotify Espresso Canvas: $spResult")
     }
 }

@@ -56,6 +56,7 @@ import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.ViewStream
+import androidx.compose.material.icons.rounded.SlowMotionVideo
 import androidx.compose.material.icons.rounded.Style
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -94,6 +95,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.dhvani.R
 import com.music.dhvani.data.settings.AppSettings
+import com.music.dhvani.data.settings.CanvasStyle
 import com.music.dhvani.data.settings.DensityScale
 import com.music.dhvani.data.settings.GridItemSize
 import com.music.dhvani.data.settings.MiniPlayerBackgroundStyle
@@ -135,6 +137,10 @@ fun AppearanceSettingsScreen(
     val cropAlbumArt by AppSettings.cropAlbumArt.collectAsStateWithLifecycle()
     val hideStatusBarOnFullscreen by AppSettings.hideStatusBarOnFullscreen.collectAsStateWithLifecycle()
     val fullBleedArtwork by AppSettings.fullBleedArtwork.collectAsStateWithLifecycle()
+    val spotifyCanvasStyle by AppSettings.spotifyCanvasStyle.collectAsStateWithLifecycle()
+    val appleMusicCanvasStyle by AppSettings.appleMusicCanvasStyle.collectAsStateWithLifecycle()
+    val tidalCanvasStyle by AppSettings.tidalCanvasStyle.collectAsStateWithLifecycle()
+    val communityCanvasStyle by AppSettings.communityCanvasStyle.collectAsStateWithLifecycle()
     val showStatusBarIcon by AppSettings.showStatusBarIcon.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
@@ -166,6 +172,11 @@ fun AppearanceSettingsScreen(
     var showSensitivityDialog by remember { mutableStateOf(false) }
     var showDefaultTabDialog by remember { mutableStateOf(false) }
     var showGridSizeDialog by remember { mutableStateOf(false) }
+    var showCoverStyleDialog by remember { mutableStateOf(false) }
+    var showSpotifyCanvasStyleDialog by remember { mutableStateOf(false) }
+    var showAppleCanvasStyleDialog by remember { mutableStateOf(false) }
+    var showTidalCanvasStyleDialog by remember { mutableStateOf(false) }
+    var showCommunityCanvasStyleDialog by remember { mutableStateOf(false) }
 
     val handleSystemDynamicIslandToggle: (Boolean) -> Unit = { enable ->
         if (enable) {
@@ -413,21 +424,44 @@ fun AppearanceSettingsScreen(
                 RowDivider()
                 SettingsRow(
                     icon = Icons.Rounded.Fullscreen,
-                    title = stringResource(R.string.full_screen_cover_art),
-                    subtitle = stringResource(R.string.full_screen_cover_art_subtitle),
-                    trailing = {
-                        Switch(
-                            checked = fullBleedArtwork,
-                            onCheckedChange = AppSettings::setFullBleedArtwork,
-                            colors = SwitchDefaults.colors(
-                                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                checkedBorderColor = MaterialTheme.colorScheme.primary,
-                            ),
-                        )
-                    },
-                    onClick = { AppSettings.setFullBleedArtwork(!fullBleedArtwork) },
+                    title = "Album cover display style",
+                    subtitle = "Choose layout for static album artwork in player",
+                    value = if (fullBleedArtwork) "Full-Bleed Banner" else "1:1 Square Card",
+                    onClick = { showCoverStyleDialog = true },
                 )
             }
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.SlowMotionVideo,
+                title = "Spotify canvas style",
+                subtitle = "Choose layout for Spotify video canvas loops",
+                value = spotifyCanvasStyle.label,
+                onClick = { showSpotifyCanvasStyleDialog = true },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.SlowMotionVideo,
+                title = "Apple Music canvas style",
+                subtitle = "Choose layout for Apple Music animated loops",
+                value = appleMusicCanvasStyle.label,
+                onClick = { showAppleCanvasStyleDialog = true },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.SlowMotionVideo,
+                title = "Tidal canvas style",
+                subtitle = "Choose layout for Tidal motion video loops",
+                value = tidalCanvasStyle.label,
+                onClick = { showTidalCanvasStyleDialog = true },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.SlowMotionVideo,
+                title = "Community canvas style",
+                subtitle = "Choose layout for Community video canvas clips",
+                value = communityCanvasStyle.label,
+                onClick = { showCommunityCanvasStyleDialog = true },
+            )
             RowDivider()
             SettingsRow(
                 icon = Icons.Rounded.Notifications,
@@ -1038,6 +1072,163 @@ fun AppearanceSettingsScreen(
             },
         )
     }
+
+    if (showCoverStyleDialog) {
+        CoverStyleDialog(
+            isFullBleed = fullBleedArtwork,
+            onSelect = { AppSettings.setFullBleedArtwork(it) },
+            onDismiss = { showCoverStyleDialog = false },
+        )
+    }
+
+    if (showSpotifyCanvasStyleDialog) {
+        CanvasStyleDialog(
+            title = "Spotify Canvas Style",
+            currentStyle = spotifyCanvasStyle,
+            onSelect = { AppSettings.setSpotifyCanvasStyle(it) },
+            onDismiss = { showSpotifyCanvasStyleDialog = false },
+        )
+    }
+
+    if (showAppleCanvasStyleDialog) {
+        CanvasStyleDialog(
+            title = "Apple Music Canvas Style",
+            currentStyle = appleMusicCanvasStyle,
+            onSelect = { AppSettings.setAppleMusicCanvasStyle(it) },
+            onDismiss = { showAppleCanvasStyleDialog = false },
+        )
+    }
+
+    if (showTidalCanvasStyleDialog) {
+        CanvasStyleDialog(
+            title = "Tidal Canvas Style",
+            currentStyle = tidalCanvasStyle,
+            onSelect = { AppSettings.setTidalCanvasStyle(it) },
+            onDismiss = { showTidalCanvasStyleDialog = false },
+        )
+    }
+
+    if (showCommunityCanvasStyleDialog) {
+        CanvasStyleDialog(
+            title = "Community Canvas Style",
+            currentStyle = communityCanvasStyle,
+            onSelect = { AppSettings.setCommunityCanvasStyle(it) },
+            onDismiss = { showCommunityCanvasStyleDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun CanvasStyleDialog(
+    title: String,
+    currentStyle: CanvasStyle,
+    onSelect: (CanvasStyle) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                CanvasStyle.entries.forEach { style ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onSelect(style)
+                                onDismiss()
+                            }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = style.label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (currentStyle == style) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = style.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            )
+                        }
+                        if (currentStyle == style) {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun CoverStyleDialog(
+    isFullBleed: Boolean,
+    onSelect: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val options = listOf(
+        true to ("Full-Bleed Banner" to "Top half banner with smooth bottom fade into background"),
+        false to ("1:1 Square Card" to "Centered album sleeve card with rounded corners"),
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Album Cover Style") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                options.forEach { (fullBleed, info) ->
+                    val (label, desc) = info
+                    val isSelected = isFullBleed == fullBleed
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onSelect(fullBleed)
+                                onDismiss()
+                            }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = desc,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            )
+                        }
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
 }
 
 @Composable

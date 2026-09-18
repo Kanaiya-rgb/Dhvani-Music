@@ -170,6 +170,41 @@ fun ExportPlaylistSheet(
             }
         }
 
+        Spacer(Modifier.height(14.dp))
+
+        // Option 3: Spotify Tracklist Export
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                .padding(14.dp),
+        ) {
+            Text(
+                text = "Spotify Tracklist (.txt)",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Tracklist format (Title - Artist) for importing to Spotify or Playlist converters",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = {
+                    PlaylistManager.exportAndShareSpotifyText(context, title, songs)
+                    onDismiss()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.size(6.dp))
+                Text("Share Spotify Tracklist", fontSize = 13.sp)
+            }
+        }
+
         Spacer(Modifier.height(20.dp))
     }
 }

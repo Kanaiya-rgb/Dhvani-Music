@@ -189,6 +189,16 @@ private fun DhvaniHomeHeader() {
         java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
     }
 
+    val listenerName by com.music.dhvani.data.settings.AppSettings.userName.collectAsStateWithLifecycle()
+    val displayName = listenerName.trim().ifBlank { if (isHindi) "संगीत प्रेमी" else "Music Lover" }
+
+    val timeEmoji = when (currentHour) {
+        in 5..11  -> "☀️"
+        in 12..16 -> "🌤️"
+        in 17..21 -> "✨"
+        else      -> "🌙"
+    }
+
     val timeLabel = remember(currentHour, isHindi) {
         if (isHindi) {
             when (currentHour) {
@@ -207,17 +217,17 @@ private fun DhvaniHomeHeader() {
         }
     }
 
-    val timeSubtitle = remember(currentHour, isHindi) {
+    val timeSubtitle = remember(currentHour, isHindi, listenerName) {
         if (isHindi) {
             when (currentHour) {
-                in 5..11  -> "आज क्या सुनेंगे? सुबह के राग या शांत लो-फ़ाई धुनें?"
+                in 5..11  -> if (listenerName.isNotBlank()) "दिन की शुरुआत कीजिए मधुर और ताज़ा धुनों के साथ" else "आज क्या सुनेंगे? सुबह के राग या शांत लो-फ़ाई धुनें?"
                 in 12..16 -> "दोपहर की ताज़गी — बॉलीवुड और इंडी संगीत"
                 in 17..20 -> "शाम का सुकून — ग़ज़ल, सूफ़ी या मधुर धुनें"
                 else      -> "रात की शांति — एकांत संगीत और सुकून"
             }
         } else {
             when (currentHour) {
-                in 5..11  -> "Start your day with morning acoustic and calming tunes"
+                in 5..11  -> if (listenerName.isNotBlank()) "Start your morning with fresh acoustic rhythms" else "Start your day with morning acoustic and calming tunes"
                 in 12..16 -> "Energize your afternoon with fresh popular hits"
                 in 17..20 -> "Unwind with cozy evening melodies and warmth"
                 else      -> "Relax into the night with soothing lo-fi and ambient sounds"
@@ -243,15 +253,13 @@ private fun DhvaniHomeHeader() {
         }
     }
 
-    val listenerLabel = if (isHindi) "संगीत प्रेमी" else "Music Lover"
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = PAGE_GUTTER)
             .padding(top = 10.dp, bottom = 8.dp),
     ) {
-        // Top Pill Badge: e.g. MORNING VIBES / सुबह की धुनें
+        // Top Pill Badge
         Row(
             modifier = Modifier
                 .clip(CircleShape)
@@ -279,9 +287,9 @@ private fun DhvaniHomeHeader() {
 
         Spacer(Modifier.height(14.dp))
 
-        // Greeting headline: Good Evening, Music Lover / शुभ संध्या, संगीत प्रेमी
+        // Personalized greeting headline: Good Morning, Rahul ☀️ / शुभ प्रभात, Rahul ☀️
         Text(
-            text = "$greetingTitle, $listenerLabel",
+            text = "$greetingTitle, $displayName $timeEmoji",
             style = MaterialTheme.typography.displayLarge.copy(
                 fontWeight = FontWeight.Bold,
                 fontSize = 28.sp,

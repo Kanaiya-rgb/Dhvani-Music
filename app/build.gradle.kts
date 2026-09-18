@@ -40,6 +40,11 @@ val lastfmSecret: String = (
         ?: System.getenv("LASTFM_SECRET")
         ?: ""
     ).trim()
+val spotifySpdcToken: String = (
+    localProps.getProperty("SPOTIFY_SPDC_TOKEN")
+        ?: System.getenv("SPOTIFY_SPDC_TOKEN")
+        ?: ""
+    ).trim()
 
 android {
     namespace = "com.music.dhvani"
@@ -52,8 +57,8 @@ android {
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
         targetSdk = 36
-        versionCode = 31
-        versionName = "2.2.0"
+        versionCode = 32
+        versionName = "2.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -63,6 +68,9 @@ android {
         // Last.fm credentials are supplied locally and never committed.
         buildConfigField("String", "LASTFM_API_KEY", "\"${lastfmApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         buildConfigField("String", "LASTFM_SECRET", "\"${lastfmSecret.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+
+        // Spotify SP_DC token supplied locally and never committed to version control
+        buildConfigField("String", "DEFAULT_SPOTIFY_SPDC_TOKEN", "\"${spotifySpdcToken.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
 
         // Support all architectures: 64-bit (arm64-v8a), 32-bit (armeabi-v7a for Android Go devices like itel), and emulators (x86, x86_64)
         ndk {
@@ -266,7 +274,7 @@ dependencies {
     implementation("com.github.TeamNewPipe:nanojson:e9d656ddb49a412a5a0a5d5ef20ca7ef09549996")
     implementation("org.jsoup:jsoup:1.22.2")
     implementation("com.google.code.findbugs:jsr305:3.0.2")
-    implementation("com.google.protobuf:protobuf-javalite:4.35.0")
+    implementation("com.google.protobuf:protobuf-javalite:3.25.5")
     implementation("org.mozilla:rhino:1.8.1")
     implementation("org.mozilla:rhino-engine:1.8.1")
 
@@ -276,9 +284,10 @@ dependencies {
     // ---- JS module execution: QuickJS VM for style source plugins ----
     implementation("io.github.dokar3:quickjs-kt-android:1.0.5")
 
-    // ---- Firebase Analytics ----
+    // ---- Firebase Analytics & Firestore ----
     implementation(platform("com.google.firebase:firebase-bom:33.9.0"))
     implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-firestore")
 
     // ---- Background Update Worker ----
     implementation("androidx.work:work-runtime-ktx:2.9.1")
