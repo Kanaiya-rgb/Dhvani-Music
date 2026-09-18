@@ -48,8 +48,10 @@ Built entirely in modern Kotlin with Jetpack Compose, Dhvani provides an ad-free
 ---
 
 ### 🎨 Visuals & Liquid Aesthetics
+* **Spotify & Apple Music Canvas Video Loops *(New in v2.3.0)*** — Enjoy hypnotic, vertical video loops on the Now Playing player screen. Seamlessly switches between Spotify Canvas and Apple Music video loops with instant source & resolution control (720p/480p).
+* **Personalized Profiles & Avatar Studio *(New in v2.3.0)*** — Dynamic smart greeting on Home ("Good morning, Rahul ☀️") with a customizable profile header. Pick from 5 handcrafted glowing gradient avatar presets or upload your own custom profile picture from your gallery.
 * **Pure Material 3 (Material You)** — Built strictly on Android's latest design guidelines with soft curves, tonal elevation, and pill-shaped navigation.
-* **12+ Kinetic Text-Effects Lyrics Engine *(New in v2.0.5)*** — Complete overhaul inspired by [text-effects.colorion.co](https://text-effects.colorion.co/) featuring custom shaders, physics models, and persistent styling for every line:
+* **12+ Kinetic Text-Effects Lyrics Engine** — Complete overhaul inspired by [text-effects.colorion.co](https://text-effects.colorion.co/) featuring custom shaders, physics models, and persistent styling for every line:
   - ⚡ **Neon Electric (`fx-neon`)** — High-voltage cyan/magenta gas discharge tube bloom with electrical flicker.
   - 👾 **Digital Glitch (`fx-glitch`)** — Split-slice horizontal displacement with cyan/magenta chromatic channel shifts.
   - 🌊 **Ocean Liquid Wave (`fx-liquid`)** — Hollow typography filled with an undulating sinusoidal fluid wave meniscus.
