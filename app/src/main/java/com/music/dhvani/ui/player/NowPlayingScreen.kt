@@ -112,6 +112,7 @@ import com.music.dhvani.ui.components.CanvasSourceSheet
 import com.music.dhvani.ui.components.AudioPipelineDialog
 import com.music.dhvani.data.settings.AudioListeningMode
 import com.music.dhvani.data.settings.CanvasStyle
+import com.music.dhvani.data.settings.NowPlayingDefaultMode
 import com.music.dhvani.playback.DolbyUtils
 import androidx.compose.runtime.key
 import androidx.compose.ui.platform.LocalContext
@@ -972,7 +973,14 @@ fun NowPlayingScreen(
     }
 
     var playerViewMode by rememberSaveable {
-        mutableStateOf(NowPlayingViewMode.VIDEO)
+        // Initialise from the user preference so the player always opens to the
+        // view the user last configured in Settings → Appearance, rather than
+        // hardcoding VIDEO every time the composable is first composed.
+        val pref = AppSettings.playerDefaultViewMode.value
+        mutableStateOf(
+            if (pref == NowPlayingDefaultMode.MUSIC) NowPlayingViewMode.MUSIC
+            else NowPlayingViewMode.VIDEO,
+        )
     }
     val isVideoActive by remember(playerViewMode, canvasArtwork) {
         derivedStateOf { playerViewMode == NowPlayingViewMode.VIDEO && canvasArtwork != null }
@@ -2011,7 +2019,13 @@ fun NowPlayingScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                alpha = if (isVideoActive && canvasRendered && !isCardCanvas) {
+                                alpha = if (isVideoActive && canvasRendered && !isCardCanvas && p < 0.01f) {
+                                    // Canvas is playing full-screen: hide the static art so the
+                                    // video behind it shows through — but only when the sleeve is
+                                    // fully expanded (p ≈ 0). Once it starts collapsing into the
+                                    // header thumbnail (p > 0) the canvas stays full-screen while
+                                    // the sleeve slot shrinks, so we must reveal the still art to
+                                    // fill the collapsed thumbnail next to the song title.
                                     0f
                                 } else if (isVideoActive && isCardCanvas) {
                                     1f

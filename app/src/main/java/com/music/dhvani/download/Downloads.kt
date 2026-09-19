@@ -17,6 +17,7 @@ import com.music.dhvani.data.sources.SourceResolver
 import com.music.dhvani.data.sources.SourceStream
 import com.music.dhvani.data.sources.TrackMatcher
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.MapSerializer
@@ -73,6 +75,7 @@ object Downloads {
     private const val KEY_SAVED_METADATA = "downloaded_tracks_metadata"
     private const val KEY_SAVED_COLLECTIONS = "downloaded_collections"
 
+    private lateinit var appContext: Context
     private lateinit var prefs: SharedPreferences
     private val json = Json { ignoreUnknownKeys = true }
     private val serializer = MapSerializer(String.serializer(), String.serializer())
@@ -144,6 +147,7 @@ object Downloads {
     private val running = LinkedHashMap<String, Job?>()
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         prefs = context.getSharedPreferences("flux_settings", Context.MODE_PRIVATE)
         _saved.value = runCatching {
             json.decodeFromString(serializer, prefs.getString(KEY_SAVED, null) ?: "{}")
@@ -154,6 +158,11 @@ object Downloads {
         _collections.value = runCatching {
             json.decodeFromString(collectionSerializer, prefs.getString(KEY_SAVED_COLLECTIONS, null) ?: "{}")
         }.getOrDefault(emptyMap())
+
+        // Asynchronously sync with disk on startup to purge any files deleted while the app was closed
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching { syncWithDisk(appContext) }
+        }
     }
 
     // ---- Asking -------------------------------------------------------------
@@ -292,7 +301,15 @@ object Downloads {
      */
     fun verifiedSavedUri(videoId: String): String? {
         val recorded = _saved.value[videoId] ?: return null
-        if (!isMissingLocalFile(recorded)) return recorded
+        val uri = recorded.toUri()
+        val isMissing = if (recorded.startsWith("file://")) {
+            isMissingLocalFile(recorded)
+        } else if (::appContext.isInitialized) {
+            !DownloadStore.exists(appContext, uri)
+        } else {
+            false
+        }
+        if (!isMissing) return recorded
         Log.d(TAG, "$videoId was downloaded but the file is gone; forgetting it")
         forget(videoId)
         return null
@@ -311,7 +328,16 @@ object Downloads {
     }
 
     private fun forget(videoId: String) {
-        record(saved = { it - videoId }, meta = { it - videoId })
+        val targetUri = _saved.value[videoId]
+        val idsToForget = if (targetUri != null) {
+            _saved.value.filterValues { it == targetUri }.keys + videoId
+        } else {
+            setOf(videoId)
+        }
+        record(
+            saved = { it - idsToForget },
+            meta = { it - idsToForget },
+        )
     }
 
     /**
@@ -575,13 +601,52 @@ object Downloads {
 
     private val recordLock = Any()
 
+    /**
+     * Reconciles recorded downloads against device storage, purging any
+     * tracks whose files were deleted from outside the app (e.g. via a file manager or cleaner).
+     */
+    suspend fun syncWithDisk(context: Context = appContext): Set<String> = withContext(Dispatchers.IO) {
+        val currentSaved = _saved.value
+        if (currentSaved.isEmpty()) return@withContext emptySet()
+
+        val missingIds = mutableSetOf<String>()
+        val uriExistsCache = mutableMapOf<String, Boolean>()
+
+        for ((videoId, uriStr) in currentSaved) {
+            val exists = uriExistsCache.getOrPut(uriStr) {
+                DownloadStore.exists(context, uriStr.toUri())
+            }
+            if (!exists) {
+                missingIds.add(videoId)
+            }
+        }
+
+        if (missingIds.isNotEmpty()) {
+            Log.d(TAG, "Pruning ${missingIds.size} missing downloads from record: $missingIds")
+            record(
+                saved = { it - missingIds },
+                meta = { it - missingIds },
+            )
+            val survivingSaved = _saved.value
+            val currentCollections = _collections.value
+            val emptyCollections = currentCollections.filterValues { coll ->
+                coll.videoIds.none { it in survivingSaved }
+            }.keys
+            if (emptyCollections.isNotEmpty()) {
+                recordCollections(currentCollections - emptyCollections)
+            }
+        }
+        missingIds
+    }
+
     /** Returns all downloaded songs whose files still exist on disk. */
     suspend fun getDownloadedSongs(context: Context): List<Song> = withContext(Dispatchers.IO) {
+        syncWithDisk(context)
         val metaMap = _savedMetadata.value
         val result = mutableListOf<Song>()
         val seenUris = mutableSetOf<String>()
 
-        for ((videoId, meta) in metaMap) {
+        for ((_, meta) in metaMap) {
             val uri = meta.uri.toUri()
             if (DownloadStore.exists(context, uri)) {
                 if (seenUris.add(meta.uri)) {
@@ -597,8 +662,6 @@ object Downloads {
                         )
                     )
                 }
-            } else {
-                forget(videoId)
             }
         }
         result

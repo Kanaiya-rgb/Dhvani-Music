@@ -74,6 +74,18 @@ enum class CanvasStyle(val label: String, val description: String) {
 }
 
 /**
+ * Which view the now-playing screen opens to when the user returns
+ * after minimising the player.
+ */
+enum class NowPlayingDefaultMode(val label: String) {
+    /** Always open on the canvas / motion-video tab (if available). */
+    VIDEO("Video"),
+    /** Always open on the album-cover / static-art tab. */
+    MUSIC("Cover"),
+}
+
+
+/**
  * What to keep when a track is saved to the device.
  *
  * Deliberately not [AudioQuality]. That enum budgets a *stream*, and is priced
@@ -89,6 +101,7 @@ enum class CanvasStyle(val label: String, val description: String) {
  * [LOSSLESS] has no streaming counterpart at all: it is the only rung that lets
  * a configured source's bit-exact file end up as a file on disk.
  */
+
 enum class DownloadQuality(
     /** Ceiling for the AAC ladder. [Int.MAX_VALUE] means "whichever rung is best". */
     val maxKbps: Int,
@@ -445,6 +458,19 @@ object AppSettings {
     val animatedCanvas = MutableStateFlow(true)
     val canvasOverCellular = MutableStateFlow(true)
 
+    /**
+     * When true the canvas video pauses whenever the audio is paused.
+     * When false (default) the canvas keeps looping regardless of playback state.
+     */
+    val canvasPauseWithAudio = MutableStateFlow(false)
+
+    /**
+     * Controls which view the player opens in after the user minimises and
+     * reopens it. VIDEO = always jump to the canvas/video tab; MUSIC = stay on
+     * the album-cover tab. Stored as the enum name string.
+     */
+    val playerDefaultViewMode = MutableStateFlow(NowPlayingDefaultMode.VIDEO)
+
     /** Stop playback when the app is swiped away from the recent apps screen. */
     val stopOnTaskRemoved = MutableStateFlow(false)
 
@@ -561,6 +587,7 @@ object AppSettings {
         val id: String,
         val title: String,
         val songs: List<Song>,
+        val source: String = "YOUTUBE",
     )
 
     val localCustomPlaylists = MutableStateFlow<List<CustomLocalPlaylist>>(emptyList())
@@ -570,7 +597,7 @@ object AppSettings {
     val userName = MutableStateFlow("")
     val hasPromptedUserName = MutableStateFlow(false)
     val userAvatarType = MutableStateFlow("PRESET") // "PRESET", "CUSTOM"
-    val userPresetAvatarId = MutableStateFlow(1) // 1..8
+    val userPresetAvatarId = MutableStateFlow(101) // 1..8 (neon) or 101..114 (3D illustrated)
     val userCustomAvatarPath = MutableStateFlow("")
     private const val KEY_USER_NAME = "telemetry_user_name"
     private const val KEY_HAS_PROMPTED_USER_NAME = "telemetry_has_prompted_user_name"
@@ -847,6 +874,10 @@ object AppSettings {
         showUploadedPlaylist.value = prefs.getBoolean(KEY_SHOW_UPLOADED_PLAYLIST, true)
         animatedCanvas.value = prefs.getBoolean(KEY_ANIMATED_CANVAS, true)
         canvasOverCellular.value = prefs.getBoolean(KEY_CANVAS_OVER_CELLULAR, true)
+        canvasPauseWithAudio.value = prefs.getBoolean(KEY_CANVAS_PAUSE_WITH_AUDIO, false)
+        playerDefaultViewMode.value = prefs.getString(KEY_PLAYER_DEFAULT_VIEW_MODE, null)?.let {
+            runCatching { NowPlayingDefaultMode.valueOf(it) }.getOrNull()
+        } ?: NowPlayingDefaultMode.VIDEO
         fullBleedArtwork.value = prefs.getBoolean(KEY_FULL_BLEED_ARTWORK, true)
         spotifyCanvasStyle.value = prefs.getString(KEY_SPOTIFY_CANVAS_STYLE, null)?.let {
             runCatching { CanvasStyle.valueOf(it) }.getOrNull()
@@ -1291,6 +1322,16 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_CANVAS_OVER_CELLULAR, value).apply()
     }
 
+    fun setCanvasPauseWithAudio(value: Boolean) {
+        canvasPauseWithAudio.value = value
+        prefs.edit().putBoolean(KEY_CANVAS_PAUSE_WITH_AUDIO, value).apply()
+    }
+
+    fun setPlayerDefaultViewMode(mode: NowPlayingDefaultMode) {
+        playerDefaultViewMode.value = mode
+        prefs.edit().putString(KEY_PLAYER_DEFAULT_VIEW_MODE, mode.name).apply()
+    }
+
     private const val KEY_FLOATING_ISLAND_PROMPTED_VERSION = "floating_island_prompted_version"
 
     fun shouldPromptFloatingIslandPermission(currentVersionCode: Int): Boolean {
@@ -1381,9 +1422,9 @@ object AppSettings {
         com.music.dhvani.data.lyrics.Musixmatch.setUserToken(trimmed)
     }
 
-    fun saveLocalPlaylist(title: String, songs: List<Song>): String {
+    fun saveLocalPlaylist(title: String, songs: List<Song>, source: String = "YOUTUBE"): String {
         val id = "local_pl_" + System.currentTimeMillis()
-        val playlist = CustomLocalPlaylist(id, title, songs)
+        val playlist = CustomLocalPlaylist(id, title, songs, source)
         val list = localCustomPlaylists.value.toMutableList()
         list.add(0, playlist)
         localCustomPlaylists.value = list
@@ -1477,7 +1518,8 @@ object AppSettings {
                         albumName = albumName,
                     )
                 }
-                CustomLocalPlaylist(id = id, title = title, songs = songs)
+                val source = (obj["source"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "YOUTUBE"
+                CustomLocalPlaylist(id = id, title = title, songs = songs, source = source)
             }
         }.getOrDefault(emptyList())
     }
@@ -1498,6 +1540,7 @@ object AppSettings {
                     kotlinx.serialization.json.buildJsonObject {
                         put("id", kotlinx.serialization.json.JsonPrimitive(pl.id))
                         put("title", kotlinx.serialization.json.JsonPrimitive(pl.title))
+                        put("source", kotlinx.serialization.json.JsonPrimitive(pl.source))
                         put(
                             "songs",
                             kotlinx.serialization.json.buildJsonArray {
@@ -2241,6 +2284,8 @@ object AppSettings {
     private const val KEY_LISTEN_TOGETHER_SESSION_TIMESTAMP = "listen_together_session_timestamp"
     private const val KEY_ANIMATED_CANVAS = "animated_canvas"
     private const val KEY_CANVAS_OVER_CELLULAR = "canvas_over_cellular"
+    private const val KEY_CANVAS_PAUSE_WITH_AUDIO = "canvas_pause_with_audio"
+    private const val KEY_PLAYER_DEFAULT_VIEW_MODE = "player_default_view_mode"
     private const val KEY_DYNAMIC_ISLAND_ENABLED = "dynamic_island_enabled"
     private const val KEY_SYSTEM_DYNAMIC_ISLAND_ENABLED = "system_dynamic_island_enabled"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"

@@ -78,6 +78,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -96,6 +97,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.dhvani.R
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.settings.CanvasStyle
+import com.music.dhvani.data.settings.NowPlayingDefaultMode
 import com.music.dhvani.data.settings.DensityScale
 import com.music.dhvani.data.settings.GridItemSize
 import com.music.dhvani.data.settings.MiniPlayerBackgroundStyle
@@ -141,6 +143,8 @@ fun AppearanceSettingsScreen(
     val appleMusicCanvasStyle by AppSettings.appleMusicCanvasStyle.collectAsStateWithLifecycle()
     val tidalCanvasStyle by AppSettings.tidalCanvasStyle.collectAsStateWithLifecycle()
     val communityCanvasStyle by AppSettings.communityCanvasStyle.collectAsStateWithLifecycle()
+    val canvasPauseWithAudio by AppSettings.canvasPauseWithAudio.collectAsStateWithLifecycle()
+    val playerDefaultViewMode by AppSettings.playerDefaultViewMode.collectAsStateWithLifecycle()
     val showStatusBarIcon by AppSettings.showStatusBarIcon.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
@@ -177,6 +181,7 @@ fun AppearanceSettingsScreen(
     var showAppleCanvasStyleDialog by remember { mutableStateOf(false) }
     var showTidalCanvasStyleDialog by remember { mutableStateOf(false) }
     var showCommunityCanvasStyleDialog by remember { mutableStateOf(false) }
+    var showPlayerDefaultModeDialog by remember { mutableStateOf(false) }
 
     val handleSystemDynamicIslandToggle: (Boolean) -> Unit = { enable ->
         if (enable) {
@@ -461,6 +466,31 @@ fun AppearanceSettingsScreen(
                 subtitle = "Choose layout for Community video canvas clips",
                 value = communityCanvasStyle.label,
                 onClick = { showCommunityCanvasStyleDialog = true },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.SlowMotionVideo,
+                title = "Player open mode",
+                subtitle = "Which view to show when reopening player after minimising",
+                value = playerDefaultViewMode.label,
+                onClick = { showPlayerDefaultModeDialog = true },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.SlowMotionVideo,
+                title = "Canvas plays while paused",
+                subtitle = "Keep the video looping even when audio is paused",
+                trailing = {
+                    Switch(
+                        checked = !canvasPauseWithAudio,
+                        onCheckedChange = { AppSettings.setCanvasPauseWithAudio(!it) },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = { AppSettings.setCanvasPauseWithAudio(!canvasPauseWithAudio) },
             )
             RowDivider()
             SettingsRow(
@@ -1116,7 +1146,60 @@ fun AppearanceSettingsScreen(
             onDismiss = { showCommunityCanvasStyleDialog = false },
         )
     }
+
+    if (showPlayerDefaultModeDialog) {
+        AlertDialog(
+            onDismissRequest = { showPlayerDefaultModeDialog = false },
+            title = { Text("Player open mode") },
+            text = {
+                Column {
+                    NowPlayingDefaultMode.entries.forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    AppSettings.setPlayerDefaultViewMode(mode)
+                                    showPlayerDefaultModeDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = playerDefaultViewMode == mode,
+                                onClick = {
+                                    AppSettings.setPlayerDefaultViewMode(mode)
+                                    showPlayerDefaultModeDialog = false
+                                },
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = mode.label,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Text(
+                                    text = when (mode) {
+                                        NowPlayingDefaultMode.VIDEO -> "Always open on the canvas / video tab"
+                                        NowPlayingDefaultMode.MUSIC -> "Always open on the album cover tab"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPlayerDefaultModeDialog = false }) {
+                    Text("Close")
+                }
+            },
+        )
+    }
 }
+
 
 @Composable
 private fun CanvasStyleDialog(

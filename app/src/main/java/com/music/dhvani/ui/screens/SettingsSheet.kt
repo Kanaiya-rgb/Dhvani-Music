@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Arrangement
@@ -1650,20 +1651,6 @@ fun SettingsScreen(
                 }
 
                 SettingsSubScreen.ACCOUNTS_INTEGRATIONS -> {
-                    AccountCard(
-                        signedIn = signedIn,
-                        account = account,
-                        onSignIn = onSignIn,
-                    )
-
-                    if (signedIn) {
-                        SettingsGroup {
-                            DestructiveRow(label = "Sign out", onClick = onSignOut)
-                        }
-                    }
-
-                    Spacer(Modifier.height(14.dp))
-
                     SettingsGroup(header = "Listener Profile & Identity") {
                         Row(
                             modifier = Modifier
@@ -2686,19 +2673,56 @@ fun SettingsScreen(
                     }
 
                     // Curated Music Avatars Section
+                    var selectedCategory by remember { mutableStateOf("All") }
+                    val categories = listOf("All", "3D Characters", "Music & Vibes", "Fun & Playful", "Neon Glyphs")
+                    val filteredPresets = remember(selectedCategory) {
+                        if (selectedCategory == "All") {
+                            com.music.dhvani.ui.components.PRESET_AVATARS
+                        } else {
+                            com.music.dhvani.ui.components.PRESET_AVATARS.filter { it.category == selectedCategory }
+                        }
+                    }
+
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.Start,
                     ) {
-                        Text(
-                            text = "Or Choose a Music Avatar",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 8.dp),
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Or Choose an Avatar",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = "${filteredPresets.size} styles",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            )
+                        }
 
-                        val presets = com.music.dhvani.ui.components.PRESET_AVATARS
-                        presets.chunked(4).forEach { rowPresets ->
+                        // Category Filter Chips
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(bottom = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            categories.forEach { cat ->
+                                val isCatSelected = selectedCategory == cat
+                                androidx.compose.material3.FilterChip(
+                                    selected = isCatSelected,
+                                    onClick = { selectedCategory = cat },
+                                    label = { Text(cat, style = MaterialTheme.typography.labelSmall) },
+                                )
+                            }
+                        }
+
+                        filteredPresets.chunked(4).forEach { rowPresets ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -2724,12 +2748,24 @@ fun SettingsScreen(
                                                 AppSettings.setUserAvatarPreset(preset.id)
                                             },
                                     ) {
-                                        Icon(
-                                            imageVector = preset.icon,
-                                            contentDescription = preset.name,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(22.dp),
-                                        )
+                                        if (preset.drawableRes != null) {
+                                            Image(
+                                                painter = painterResource(preset.drawableRes),
+                                                contentDescription = preset.name,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .clip(CircleShape),
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = preset.icon,
+                                                contentDescription = preset.name,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(22.dp),
+                                            )
+                                        }
+
                                         if (isSelected) {
                                             Box(
                                                 modifier = Modifier

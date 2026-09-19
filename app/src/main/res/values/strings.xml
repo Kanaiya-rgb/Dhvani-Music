@@ -11,11 +11,11 @@
     <string name="close">Close</string>
     <string name="back">Back</string>
     <string name="settings">Settings</string>
-    <string name="search">Sangrah</string>
+    <string name="search">Search</string>
     <string name="clear_search">Clear search</string>
-    <string name="library">Ragas</string>
-    <string name="play">Suno</string>
-    <string name="explore">Khoj</string>
+    <string name="library">Library</string>
+    <string name="play">Play</string>
+    <string name="explore">Explore</string>
     <string name="listen_now">Listen Now</string>
     <string name="downloads">Downloads</string>
     <string name="downloaded_songs">Downloaded songs</string>

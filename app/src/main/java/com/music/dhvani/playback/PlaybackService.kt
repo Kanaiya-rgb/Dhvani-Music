@@ -335,7 +335,11 @@ class PlaybackService : MediaSessionService() {
                     trackSelectedAt = null
                 }
             }
-            if (isPlaying) registerCurrentPlay()
+            if (isPlaying) {
+                registerCurrentPlay()
+            } else {
+                com.music.dhvani.data.telemetry.TelemetryManager.reportBackgroundHeartbeat(null, isPlaying = false)
+            }
             // Nothing to read ahead for while paused, and a pause is often
             // the last thing that happens before the process goes idle.
             if (isPlaying) prefetchAround(exoPlayer) else AudioCache.cancel()
@@ -1285,7 +1289,12 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun registerCurrentPlay() {
+        val currentSong = player?.currentMediaItem?.toSong()
         player?.currentMediaItem?.mediaId?.let(PlaybackTracker::onPlaying)
+        if (currentSong != null) {
+            com.music.dhvani.data.history.PlaybackHistory.record(currentSong)
+            com.music.dhvani.data.telemetry.TelemetryManager.reportBackgroundHeartbeat(currentSong, isPlaying = true)
+        }
     }
 
     /**
@@ -2853,6 +2862,7 @@ class PlaybackService : MediaSessionService() {
      */
     private fun reportProgress() {
         scope.launch {
+            var lastHeartbeatTime = 0L
             while (isActive) {
                 // Re-read every tick rather than captured once: the session
                 // moves between two players, and a sampler pinned to the one
@@ -2869,7 +2879,8 @@ class PlaybackService : MediaSessionService() {
                     // reading the position. This loop is the only place in the app
                     // that ticks exactly while audio is coming out, which is what
                     // makes it the right place to count from.
-                    player.currentMediaItem?.toSong()?.let {
+                    val song = player.currentMediaItem?.toSong()
+                    song?.let {
                         ListeningRecorder.onSample(it, player.duration)
                     }
                     // Same cadence for the resume point: the process can be
@@ -2886,6 +2897,15 @@ class PlaybackService : MediaSessionService() {
                     // repeat: it returns immediately unless the track is
                     // pending and nothing is already looking.
                     lookForBetterCopy(player)
+
+                    // Continuous background telemetry heartbeat every 30 seconds
+                    // Keeps active status online and current playing track up to date
+                    // even if the user cleared the app from recent apps.
+                    val now = SystemClock.elapsedRealtime()
+                    if (now - lastHeartbeatTime >= 30_000L) {
+                        lastHeartbeatTime = now
+                        com.music.dhvani.data.telemetry.TelemetryManager.reportBackgroundHeartbeat(song, isPlaying = true)
+                    }
                 }
                 delay(PROGRESS_SAMPLE_MS)
             }
@@ -3438,6 +3458,7 @@ class PlaybackService : MediaSessionService() {
         // is not a reason to leave either behind.
         spare?.release()
         spare = null
+        com.music.dhvani.data.telemetry.TelemetryManager.setOffline()
         super.onDestroy()
     }
 

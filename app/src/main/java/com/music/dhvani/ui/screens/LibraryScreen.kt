@@ -92,7 +92,7 @@ fun LibraryScreen(
     onShelfItemClick: (ShelfItem) -> Unit,
     onShelfItemLongPress: (ShelfItem) -> Unit,
     onNewPlaylist: () -> Unit,
-    onImportPlaylist: () -> Unit = {},
+    onImportPlaylist: (String?) -> Unit = {},
     onExportPlaylist: () -> Unit = {},
     /**
      * A shelf's "Show all" — every shelf's row here stops at five cards (see
@@ -138,8 +138,25 @@ fun LibraryScreen(
 ) {
     val pinnedPlaylists by AppSettings.pinnedPlaylists.collectAsStateWithLifecycle()
     val localCustomPlaylists by AppSettings.localCustomPlaylists.collectAsStateWithLifecycle()
-    val customShelfItems = remember(localCustomPlaylists) {
-        localCustomPlaylists.map { pl ->
+    val ytCustomPlaylists = remember(localCustomPlaylists) {
+        localCustomPlaylists.filter { it.source != "SPOTIFY" }
+    }
+    val spotifyCustomPlaylists = remember(localCustomPlaylists) {
+        localCustomPlaylists.filter { it.source == "SPOTIFY" }
+    }
+    val ytShelfItems = remember(ytCustomPlaylists) {
+        ytCustomPlaylists.map { pl ->
+            ShelfItem(
+                title = pl.title,
+                subtitle = "${pl.songs.size} songs",
+                thumbnailUrl = pl.songs.firstOrNull()?.thumbnailUrl,
+                videoId = null,
+                browseId = "local:custom:${pl.id}",
+            )
+        }
+    }
+    val spotifyShelfItems = remember(spotifyCustomPlaylists) {
+        spotifyCustomPlaylists.map { pl ->
             ShelfItem(
                 title = pl.title,
                 subtitle = "${pl.songs.size} songs",
@@ -225,50 +242,54 @@ fun LibraryScreen(
             }
             if (!signedIn) {
                 item(key = "shelf:$PLAYLISTS") {
-                    val guestPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem) + customShelfItems)
+                    val guestPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem))
                     PlaylistShelf(
                         shelf = guestPlaylists,
                         onItemClick = onShelfItemClick,
                         onItemLongPress = onShelfItemLongPress,
                         onNewPlaylist = onNewPlaylist,
-                        onImportPlaylist = onImportPlaylist,
+                        onImportPlaylist = { onImportPlaylist(null) },
                         onExportPlaylist = onExportPlaylist,
                         onShowAll = { onShowAll(guestPlaylists) },
                     )
                 }
-                item(key = "guest_connect_account") {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = PAGE_GUTTER, vertical = 20.dp)
-                            .uiDesignCard(shape = RoundedCornerShape(16.dp), backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = "Sync with YouTube Music",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "Optionally connect your Google account to sync your YouTube playlists and liked songs.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        androidx.compose.material3.Button(
-                            onClick = onSignIn,
-                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                        ) {
-                            Text("Connect Account")
-                        }
-                    }
+                item(key = "shelf:$YOUTUBE_PLAYLISTS") {
+                    val ytShelf = HomeShelf(YOUTUBE_PLAYLISTS, ytShelfItems)
+                    LibraryGridShelf(
+                        shelf = ytShelf,
+                        onItemClick = onShelfItemClick,
+                        onItemLongPress = onShelfItemLongPress,
+                        onShowAll = { onShowAll(ytShelf) },
+                        pinnedPlaylists = pinnedPlaylists,
+                        sectionIcon = DhvaniIcons.YouTube,
+                        leadingCard = {
+                            NewShelfCard(
+                                icon = Icons.Rounded.FileDownload,
+                                label = "Import YouTube",
+                                subtitle = "From YouTube link",
+                                onClick = { onImportPlaylist("YOUTUBE") },
+                            )
+                        },
+                    )
+                }
+                item(key = "shelf:$SPOTIFY_PLAYLISTS") {
+                    val spotifyShelf = HomeShelf(SPOTIFY_PLAYLISTS, spotifyShelfItems)
+                    LibraryGridShelf(
+                        shelf = spotifyShelf,
+                        onItemClick = onShelfItemClick,
+                        onItemLongPress = onShelfItemLongPress,
+                        onShowAll = { onShowAll(spotifyShelf) },
+                        pinnedPlaylists = pinnedPlaylists,
+                        sectionIcon = DhvaniIcons.Spotify,
+                        leadingCard = {
+                            NewShelfCard(
+                                icon = Icons.Rounded.FileDownload,
+                                label = "Import Spotify",
+                                subtitle = "From Spotify link",
+                                onClick = { onImportPlaylist("SPOTIFY") },
+                            )
+                        },
+                    )
                 }
             } else when (state) {
                 is UiState.Loading -> librarySkeleton()
@@ -279,15 +300,53 @@ fun LibraryScreen(
                     val shelves = state.data.shelves
                     if (shelves.none { it.title == PLAYLISTS }) {
                         item(key = "shelf:$PLAYLISTS") {
-                            val defaultPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem) + customShelfItems)
+                            val defaultPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem))
                             PlaylistShelf(
                                 shelf = defaultPlaylists,
                                 onItemClick = onShelfItemClick,
                                 onItemLongPress = onShelfItemLongPress,
                                 onNewPlaylist = onNewPlaylist,
-                                onImportPlaylist = onImportPlaylist,
+                                onImportPlaylist = { onImportPlaylist(null) },
                                 onExportPlaylist = onExportPlaylist,
                                 onShowAll = { onShowAll(defaultPlaylists) },
+                            )
+                        }
+                        item(key = "shelf:$YOUTUBE_PLAYLISTS") {
+                            val ytShelf = HomeShelf(YOUTUBE_PLAYLISTS, ytShelfItems)
+                            LibraryGridShelf(
+                                shelf = ytShelf,
+                                onItemClick = onShelfItemClick,
+                                onItemLongPress = onShelfItemLongPress,
+                                onShowAll = { onShowAll(ytShelf) },
+                                pinnedPlaylists = pinnedPlaylists,
+                                sectionIcon = DhvaniIcons.YouTube,
+                                leadingCard = {
+                                    NewShelfCard(
+                                        icon = Icons.Rounded.FileDownload,
+                                        label = "Import YouTube",
+                                        subtitle = "From YouTube link",
+                                        onClick = { onImportPlaylist("YOUTUBE") },
+                                    )
+                                },
+                            )
+                        }
+                        item(key = "shelf:$SPOTIFY_PLAYLISTS") {
+                            val spotifyShelf = HomeShelf(SPOTIFY_PLAYLISTS, spotifyShelfItems)
+                            LibraryGridShelf(
+                                shelf = spotifyShelf,
+                                onItemClick = onShelfItemClick,
+                                onItemLongPress = onShelfItemLongPress,
+                                onShowAll = { onShowAll(spotifyShelf) },
+                                pinnedPlaylists = pinnedPlaylists,
+                                sectionIcon = DhvaniIcons.Spotify,
+                                leadingCard = {
+                                    NewShelfCard(
+                                        icon = Icons.Rounded.FileDownload,
+                                        label = "Import Spotify",
+                                        subtitle = "From Spotify link",
+                                        onClick = { onImportPlaylist("SPOTIFY") },
+                                    )
+                                },
                             )
                         }
                     }
@@ -297,14 +356,14 @@ fun LibraryScreen(
                                 val otherItems = shelf.items.filterNot {
                                     it.browseId == YtMusicRepository.LIKED_MUSIC || it.browseId == "local:liked"
                                 }
-                                val withLiked = shelf.copy(items = listOf(likedShelfItem) + customShelfItems + otherItems)
+                                val withLiked = shelf.copy(items = listOf(likedShelfItem) + otherItems)
                                 val pinnedFirst = withLiked.pinnedFirst(pinnedPlaylists)
                                 PlaylistShelf(
                                     shelf = pinnedFirst,
                                     onItemClick = onShelfItemClick,
                                     onItemLongPress = onShelfItemLongPress,
                                     onNewPlaylist = onNewPlaylist,
-                                    onImportPlaylist = onImportPlaylist,
+                                    onImportPlaylist = { onImportPlaylist(null) },
                                     onExportPlaylist = onExportPlaylist,
                                     onShowAll = { onShowAll(pinnedFirst) },
                                     pinnedPlaylists = pinnedPlaylists,
@@ -315,6 +374,46 @@ fun LibraryScreen(
                                     onItemClick = onShelfItemClick,
                                     onItemLongPress = onShelfItemLongPress,
                                     onShowAll = { onShowAll(shelf) },
+                                )
+                            }
+                        }
+                        if (shelf.title == PLAYLISTS) {
+                            item(key = "shelf:$YOUTUBE_PLAYLISTS") {
+                                val ytShelf = HomeShelf(YOUTUBE_PLAYLISTS, ytShelfItems)
+                                LibraryGridShelf(
+                                    shelf = ytShelf,
+                                    onItemClick = onShelfItemClick,
+                                    onItemLongPress = onShelfItemLongPress,
+                                    onShowAll = { onShowAll(ytShelf) },
+                                    pinnedPlaylists = pinnedPlaylists,
+                                    sectionIcon = DhvaniIcons.YouTube,
+                                    leadingCard = {
+                                        NewShelfCard(
+                                            icon = Icons.Rounded.FileDownload,
+                                            label = "Import YouTube",
+                                            subtitle = "From YouTube link",
+                                            onClick = { onImportPlaylist("YOUTUBE") },
+                                        )
+                                    },
+                                )
+                            }
+                            item(key = "shelf:$SPOTIFY_PLAYLISTS") {
+                                val spotifyShelf = HomeShelf(SPOTIFY_PLAYLISTS, spotifyShelfItems)
+                                LibraryGridShelf(
+                                    shelf = spotifyShelf,
+                                    onItemClick = onShelfItemClick,
+                                    onItemLongPress = onShelfItemLongPress,
+                                    onShowAll = { onShowAll(spotifyShelf) },
+                                    pinnedPlaylists = pinnedPlaylists,
+                                    sectionIcon = DhvaniIcons.Spotify,
+                                    leadingCard = {
+                                        NewShelfCard(
+                                            icon = Icons.Rounded.FileDownload,
+                                            label = "Import Spotify",
+                                            subtitle = "From Spotify link",
+                                            onClick = { onImportPlaylist("SPOTIFY") },
+                                        )
+                                    },
                                 )
                             }
                         }
@@ -494,6 +593,7 @@ internal fun LibraryGridShelf(
     leadingCardSecond: (@Composable () -> Unit)? = null,
     leadingCardThird: (@Composable () -> Unit)? = null,
     pinnedPlaylists: List<String> = emptyList(),
+    sectionIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
     val leadingCount = (if (leadingCard != null) 1 else 0) +
         (if (leadingCardSecond != null) 1 else 0) +
@@ -504,6 +604,7 @@ internal fun LibraryGridShelf(
             title = shelf.title,
             subtitle = shelf.subtitle,
             onShowAll = onShowAll.takeIf { shelf.items.size + leadingCount > LIBRARY_ROW_MAX_ITEMS },
+            leadingIcon = sectionIcon,
         )
         LazyRow(
             contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
@@ -622,3 +723,5 @@ private fun HomeShelf.pinnedFirst(pinned: List<String>): HomeShelf {
 /** The library feed whose cards are the account's own — see [PlaylistShelf]. */
 private const val PLAYLISTS = YtMusicRepository.PLAYLISTS_SHELF
 private const val ON_DEVICE = "On Device"
+const val YOUTUBE_PLAYLISTS = "YouTube Playlists"
+const val SPOTIFY_PLAYLISTS = "Spotify Playlists"

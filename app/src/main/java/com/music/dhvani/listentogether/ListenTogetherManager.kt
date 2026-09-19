@@ -8,6 +8,7 @@ import androidx.media3.session.MediaController
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.durationMillis
 import com.music.dhvani.data.settings.AppSettings
+import com.music.dhvani.data.telemetry.TelemetryManager
 import com.music.dhvani.playback.playSongs
 import com.music.dhvani.playback.toMediaItem
 import kotlinx.coroutines.CoroutineScope
@@ -160,6 +161,12 @@ class ListenTogetherManager private constructor(
         when (event) {
             is ListenTogetherEvent.RoomCreated -> {
                 Log.i(TAG, "Room created: ${event.roomCode}")
+                TelemetryManager.updateListenTogetherState(
+                    isInRoom = true,
+                    roomCode = event.roomCode,
+                    isHost = true,
+                    participantCount = 1
+                )
                 onRoomJoined()
             }
             is ListenTogetherEvent.PlaybackSync -> {
@@ -173,6 +180,12 @@ class ListenTogetherManager private constructor(
                 }
             }
             is ListenTogetherEvent.JoinApproved -> {
+                TelemetryManager.updateListenTogetherState(
+                    isInRoom = true,
+                    roomCode = event.roomCode,
+                    isHost = false,
+                    participantCount = event.state.users.size
+                )
                 onRoomJoined()
                 if (!isHost) {
                     applyGuestRoomState(event.state)
@@ -180,7 +193,14 @@ class ListenTogetherManager private constructor(
             }
             is ListenTogetherEvent.UserJoined -> {
                 Log.i(TAG, "User joined: ${event.username}")
-                if (isHost) {
+                val currentRoom = roomState.value
+                if (isHost && currentRoom != null) {
+                    TelemetryManager.updateListenTogetherState(
+                        isInRoom = true,
+                        roomCode = currentRoom.roomCode,
+                        isHost = true,
+                        participantCount = currentRoom.users.size
+                    )
                     syncHostStateToRoom()
                 }
             }
@@ -205,6 +225,15 @@ class ListenTogetherManager private constructor(
             }
             is ListenTogetherEvent.UserLeft -> {
                 Log.i(TAG, "User left: ${event.username}")
+                val currentRoom = roomState.value
+                if (isHost && currentRoom != null) {
+                    TelemetryManager.updateListenTogetherState(
+                        isInRoom = true,
+                        roomCode = currentRoom.roomCode,
+                        isHost = true,
+                        participantCount = currentRoom.users.size
+                    )
+                }
             }
             else -> Unit
         }
@@ -250,6 +279,19 @@ class ListenTogetherManager private constructor(
 
         lastSyncedTrackId = item.mediaId
         lastSyncedIsPlaying = isPlaying
+
+        val currentRoom = roomState.value
+        if (currentRoom != null) {
+            TelemetryManager.updateListenTogetherState(
+                isInRoom = true,
+                roomCode = currentRoom.roomCode,
+                isHost = true,
+                participantCount = currentRoom.users.size,
+                songTitle = trackInfo.title,
+                songArtist = trackInfo.artist,
+                songThumb = trackInfo.thumbnail
+            )
+        }
 
         Log.d(TAG, "Host broadcasting track: ${trackInfo.title} (${item.mediaId}) at $position, isPlaying=$isPlaying")
         client.sendPlaybackAction(
@@ -472,6 +514,14 @@ class ListenTogetherManager private constructor(
     }
 
     fun leaveRoom() {
+        val currentRoom = roomState.value
+        if (currentRoom != null) {
+            TelemetryManager.updateListenTogetherState(
+                isInRoom = false,
+                roomCode = currentRoom.roomCode,
+                isHost = isHost
+            )
+        }
         controller?.removeListener(playerListener)
         client.leaveRoom()
     }

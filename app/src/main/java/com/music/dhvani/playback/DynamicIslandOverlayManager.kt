@@ -560,8 +560,6 @@ private fun SystemDynamicIslandRoot(
                             artworkModel = artworkModel,
                             palette = palette,
                             isPlaying = isPlaying,
-                            onPlayPause = onPlayPause,
-                            onNext = onNext,
                             onExpand = {
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 onExpandedChanged(true)
@@ -581,8 +579,6 @@ private fun CompactOverlayPill(
     artworkModel: Any?,
     palette: ArtworkPalette,
     isPlaying: Boolean,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
     onExpand: () -> Unit,
 ) {
     val transition = rememberInfiniteTransition(label = "overlayArtSpin")
@@ -650,44 +646,11 @@ private fun CompactOverlayPill(
         OverlayEqualizer(
             isPlaying = isPlaying,
             barColor = palette.accent,
-            modifier = Modifier.padding(horizontal = 2.dp),
+            modifier = Modifier.padding(horizontal = 4.dp),
         )
-
-        // Mini Play / Pause button
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF252830))
-                .clickable(onClick = onPlayPause),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                contentDescription = if (isPlaying) "Pause" else "Play",
-                tint = Color.White,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-
-        // Mini Next button
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF252830))
-                .clickable(onClick = onNext),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.SkipNext,
-                contentDescription = "Next",
-                tint = Color.White,
-                modifier = Modifier.size(16.dp),
-            )
-        }
     }
 }
+
 
 @Composable
 private fun ExpandedOverlayCard(

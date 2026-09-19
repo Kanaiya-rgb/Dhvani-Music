@@ -13,8 +13,9 @@ local.properties
 # Kotlin
 .kotlin/
 
-# Android Studio / IntelliJ
+# Android Studio / IntelliJ / VS Code
 .idea/
+.vscode/
 *.iml
 *.ipr
 *.iws

@@ -72,14 +72,6 @@ fun AccountAndScrobblingScreen(
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
         )
 
-        AccountCard(signedIn = signedIn, account = account, onSignIn = onSignIn)
-
-        if (signedIn) {
-            SettingsGroup {
-                DestructiveRow(label = "Sign out", onClick = onSignOut)
-            }
-        }
-
         SettingsGroup(
             header = "Listen Together",
             footer = "Synchronize music playback in real-time with other listeners across devices.",

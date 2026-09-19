@@ -87,6 +87,9 @@ object PlaybackHistory {
         }.getOrDefault(emptyList())
     }
 
+    private var lastRecordedVideoId: String? = null
+    private var lastRecordedTimestamp: Long = 0L
+
     /**
      * Records a track playback. Moves it to the top with current timestamp
      * and increments its local playCount.
@@ -95,6 +98,12 @@ object PlaybackHistory {
         if (song.videoId.isBlank() || song.title.isBlank()) return
         scope.launch {
             val now = System.currentTimeMillis()
+            if (lastRecordedVideoId == song.videoId && (now - lastRecordedTimestamp) < 15_000L) {
+                return@launch
+            }
+            lastRecordedVideoId = song.videoId
+            lastRecordedTimestamp = now
+
             val current = _recent.value
             val existing = current.firstOrNull { it.videoId == song.videoId }
             val playCount = (existing?.playCount ?: 0) + 1

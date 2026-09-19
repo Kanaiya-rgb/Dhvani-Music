@@ -97,7 +97,9 @@ object LocalMediaRepository {
                         )
                         scanned[contentUri] = tags
                         if (contentUri !in knownUris && isAudioFileName(name)) {
-                            extraSongs.add(buildSongFromUri(context, contentUri, name, tags))
+                            if (DownloadStore.exists(context, Uri.parse(contentUri))) {
+                                extraSongs.add(buildSongFromUri(context, contentUri, name, tags))
+                            }
                         }
                     }
                 }
@@ -110,7 +112,7 @@ object LocalMediaRepository {
                 )
                 if (folder.exists() && folder.isDirectory) {
                     folder.listFiles()?.forEach { file ->
-                        if (file.isFile && isAudioFileName(file.name)) {
+                        if (file.isFile && isAudioFileName(file.name) && file.exists()) {
                             val uriStr = Uri.fromFile(file).toString()
                             if (uriStr !in knownUris) {
                                 extraSongs.add(buildSongFromUri(context, uriStr, file.name))

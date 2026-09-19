@@ -759,4 +759,85 @@ object DhvaniIcons {
             }
         }.build()
     }
+
+    /** YouTube play button icon with authentic red badge and white play triangle */
+    val YouTube: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_youtube",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                fill = SolidColor(Color(0xFFFF0000)),
+            ) {
+                moveTo(21.58f, 7.19f)
+                arcToRelative(2.8f, 2.8f, 0f, isMoreThanHalf = false, isPositiveArc = false, -1.97f, -1.98f)
+                curveTo(17.87f, 4.75f, 12f, 4.75f, 12f, 4.75f)
+                curveTo(12f, 4.75f, 6.13f, 4.75f, 4.39f, 5.21f)
+                arcToRelative(2.8f, 2.8f, 0f, isMoreThanHalf = false, isPositiveArc = false, -1.97f, 1.98f)
+                curveTo(2f, 8.93f, 2f, 12f, 2f, 12f)
+                curveTo(2f, 12f, 2f, 15.07f, 2.42f, 16.81f)
+                arcToRelative(2.8f, 2.8f, 0f, isMoreThanHalf = false, isPositiveArc = false, 1.97f, 1.98f)
+                curveTo(6.13f, 19.25f, 12f, 19.25f, 12f, 19.25f)
+                curveTo(12f, 19.25f, 17.87f, 19.25f, 19.61f, 18.79f)
+                arcToRelative(2.8f, 2.8f, 0f, isMoreThanHalf = false, isPositiveArc = false, 1.97f, -1.98f)
+                curveTo(22f, 15.07f, 22f, 12f, 22f, 12f)
+                curveTo(22f, 12f, 22f, 8.93f, 21.58f, 7.19f)
+                close()
+            }
+            path(
+                fill = SolidColor(Color.White),
+            ) {
+                moveTo(10f, 15.5f)
+                lineTo(15.5f, 12f)
+                lineTo(10f, 8.5f)
+                close()
+            }
+        }.build()
+    }
+
+    /** Spotify icon with authentic green circle and sound waves */
+    val Spotify: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_spotify",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                fill = SolidColor(Color(0xFF1DB954)),
+            ) {
+                moveTo(2f, 12f)
+                arcToRelative(10f, 10f, 0f, isMoreThanHalf = true, isPositiveArc = true, 20f, 0f)
+                arcToRelative(10f, 10f, 0f, isMoreThanHalf = true, isPositiveArc = true, -20f, 0f)
+                close()
+            }
+            // Top wave
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 1.9f,
+                strokeLineCap = StrokeCap.Round,
+            ) {
+                moveTo(6.8f, 9.6f)
+                curveTo(10.2f, 8.3f, 14.2f, 8.5f, 17.2f, 10.3f)
+            }
+            // Middle wave
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 1.7f,
+                strokeLineCap = StrokeCap.Round,
+            ) {
+                moveTo(7.4f, 12.6f)
+                curveTo(10.2f, 11.6f, 13.8f, 11.8f, 16.5f, 13.3f)
+            }
+            // Bottom wave
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 1.5f,
+                strokeLineCap = StrokeCap.Round,
+            ) {
+                moveTo(8.0f, 15.6f)
+                curveTo(10.4f, 14.8f, 13.4f, 15f, 15.7f, 16.2f)
+            }
+        }.build()
+    }
 }

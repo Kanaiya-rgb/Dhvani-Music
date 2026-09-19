@@ -304,6 +304,15 @@ object ListeningStats {
         }
     }
 
+    /**
+     * Exact total listening milliseconds and total plays across all time,
+     * as calculated by the "Your Replay" engine.
+     */
+    suspend fun getReplayAllTimeStats(): Pair<Long, Int> = withContext(Dispatchers.IO) {
+        val s = summary(ReplayPeriod.ALL_TIME)
+        s.totalMs to s.totalPlays
+    }
+
     /** Every month with a file, oldest first. */
     fun months(): List<YearMonth> {
         if (!ready) return emptyList()

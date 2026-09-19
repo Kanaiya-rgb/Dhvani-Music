@@ -789,6 +789,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         title: String,
         privacy: PlaylistPrivacy = PlaylistPrivacy.PRIVATE,
         songs: List<Song>,
+        source: String = "YOUTUBE",
         onSuccess: ((String) -> Unit)? = null,
         onFailure: ((String) -> Unit)? = null,
     ) {
@@ -796,7 +797,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val videoIds = songs.mapNotNull { it.videoId.takeIf { id -> id.isNotBlank() } }
 
         viewModelScope.launch {
-            if (_signedIn.value) {
+            if (_signedIn.value && source != "SPOTIFY") {
                 YtMusicRepository.createPlaylist(
                     title = name,
                     privacy = privacy,
@@ -830,18 +831,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 ),
                             ) + items.filterNot { it.browseId == created.browseId }
                         }
+                        AppSettings.saveLocalPlaylist(name, songs, source)
                         onSuccess?.invoke(name)
                     },
                     onFailure = {
                         // If YouTube sync fails, save to local device library
-                        AppSettings.saveLocalPlaylist(name, songs)
+                        AppSettings.saveLocalPlaylist(name, songs, source)
                         libraryStale = true
                         loadLibrary()
                         onSuccess?.invoke(name)
                     },
                 )
             } else {
-                AppSettings.saveLocalPlaylist(name, songs)
+                AppSettings.saveLocalPlaylist(name, songs, source)
                 libraryStale = true
                 loadLibrary()
                 onSuccess?.invoke(name)

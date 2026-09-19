@@ -59,8 +59,9 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun ImportPlaylistSheet(
-    onImportSuccess: (String, List<Song>) -> Unit,
+    onImportSuccess: (String, List<Song>, String) -> Unit,
     onDismiss: () -> Unit,
+    initialSource: String? = null,
     modifier: Modifier = Modifier,
     onPlayNow: ((Song) -> Unit)? = null,
 ) {
@@ -74,6 +75,7 @@ fun ImportPlaylistSheet(
     var isResolving by remember { mutableStateOf(false) }
     var progressText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var selectedSource by remember(initialSource) { mutableStateOf(initialSource ?: "YOUTUBE") }
 
     val resolveInput: (String) -> Unit = { text ->
         val trimmed = text.trim()
@@ -82,6 +84,7 @@ fun ImportPlaylistSheet(
         val spotifyPlId = PlaylistManager.extractSpotifyPlaylistId(trimmed)
         val videoId = PlaylistManager.extractVideoId(trimmed)
         if (spotifyPlId != null) {
+            selectedSource = "SPOTIFY"
             scope.launch {
                 isResolving = true
                 progressText = "Loading Spotify playlist..."
@@ -98,6 +101,7 @@ fun ImportPlaylistSheet(
                 }
             }
         } else if (plId != null) {
+            selectedSource = "YOUTUBE"
             scope.launch {
                 isResolving = true
                 progressText = "Loading YouTube playlist..."
@@ -114,6 +118,7 @@ fun ImportPlaylistSheet(
                 }
             }
         } else if (videoId != null) {
+            selectedSource = "YOUTUBE"
             scope.launch {
                 isResolving = true
                 progressText = "Loading YouTube song..."
@@ -197,6 +202,41 @@ fun ImportPlaylistSheet(
         }
 
         HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(12.dp))
+
+        // Source selector pills
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            listOf(
+                "YOUTUBE" to "YouTube Playlist",
+                "SPOTIFY" to "Spotify Playlist",
+            ).forEach { (src, label) ->
+                val isSelected = selectedSource == src
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        )
+                        .clickable { selectedSource = src }
+                        .padding(vertical = 10.dp, horizontal = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        ),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
         Spacer(Modifier.height(14.dp))
 
         // File picker row
@@ -362,7 +402,7 @@ fun ImportPlaylistSheet(
                     Button(
                         onClick = {
                             val finalTitle = playlistTitle.trim().ifBlank { "Imported Track" }
-                            onImportSuccess(finalTitle, directSongs!!)
+                            onImportSuccess(finalTitle, directSongs!!, selectedSource)
                             onDismiss()
                         },
                         modifier = Modifier.weight(1f),
@@ -376,7 +416,7 @@ fun ImportPlaylistSheet(
                     onClick = {
                         val finalTitle = playlistTitle.trim().ifBlank { "Imported Playlist" }
                         if (directSongs != null) {
-                            onImportSuccess(finalTitle, directSongs!!)
+                            onImportSuccess(finalTitle, directSongs!!, selectedSource)
                             onDismiss()
                         } else if (parsedTracks.isNotEmpty()) {
                             scope.launch {
@@ -386,7 +426,7 @@ fun ImportPlaylistSheet(
                                     progressText = "Resolving tracks ($current/$total)..."
                                 }
                                 isResolving = false
-                                onImportSuccess(finalTitle, songs)
+                                onImportSuccess(finalTitle, songs, selectedSource)
                                 onDismiss()
                             }
                         } else {

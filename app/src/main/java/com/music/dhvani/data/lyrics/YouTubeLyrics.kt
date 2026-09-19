@@ -36,13 +36,23 @@ object YouTubeMusicLyrics {
 
 /** Timed YouTube transcript/captions for the exact playing video. */
 object YouTubeTranscriptLyrics {
+    /**
+     * YT caption timestamps reflect network delivery time, not when the word
+     * is actually sung. On average they run ~500 ms ahead of the audio. Pull
+     * every line back by this amount so the highlight lands on the correct beat.
+     * The per-track lyrics-offset slider in the player covers finer tuning.
+     */
+    private const val YT_TRANSCRIPT_OFFSET_MS = 500L
+
     suspend fun lyrics(videoId: String): List<LyricLine>? = withContext(Dispatchers.IO) {
         if (!YOUTUBE_ID.matches(videoId)) return@withContext null
         val response = runCatching { Innertube.transcript(videoId) }.getOrNull()
             ?: return@withContext null
         response.objectsNamed("transcriptCueRenderer").mapNotNull { cue ->
-            val start = (cue["startOffsetMs"] as? JsonPrimitive)?.longOrNull
+            val rawStart = (cue["startOffsetMs"] as? JsonPrimitive)?.longOrNull
                 ?: return@mapNotNull null
+            // Apply correction: shift timestamps back to match audio playback.
+            val start = (rawStart - YT_TRANSCRIPT_OFFSET_MS).coerceAtLeast(0L)
             val text = cue["cue"]?.youtubeStrings()?.joinToString("").orEmpty()
                 .trim(' ', '\n', '♪')
             text.takeIf { it.isNotEmpty() }?.let { LyricLine(start, it) }

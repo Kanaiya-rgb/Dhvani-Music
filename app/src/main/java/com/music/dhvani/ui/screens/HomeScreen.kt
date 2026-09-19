@@ -571,7 +571,12 @@ private fun QuickPickSongRow(
  * rather than running the shelf's whole length — see [LibraryGridShelf].
  */
 @Composable
-internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() -> Unit)? = null) {
+internal fun SectionHeader(
+    title: String,
+    subtitle: String = "",
+    onShowAll: (() -> Unit)? = null,
+    leadingIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+) {
     val isHindi = remember {
         try {
             androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)?.language?.startsWith("hi") == true
@@ -591,6 +596,14 @@ internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() 
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (leadingIcon != null) {
+                    Icon(
+                        imageVector = leadingIcon,
+                        contentDescription = null,
+                        tint = androidx.compose.ui.graphics.Color.Unspecified,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
                 Text(
                     text = title,
                     // Dhvani: headline-sm (17sp / 600 weight) for shelf categorizations

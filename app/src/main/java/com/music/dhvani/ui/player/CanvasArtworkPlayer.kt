@@ -34,6 +34,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameMillis
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -58,6 +59,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.music.dhvani.data.Http
 import com.music.dhvani.data.canvas.CanvasArtwork
 import com.music.dhvani.data.canvas.CanvasCache
+import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.ui.rememberIsForeground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -201,8 +203,15 @@ fun CanvasArtworkPlayer(
     }
 
     val foreground = rememberIsForeground()
-    LaunchedEffect(isPlaying, foreground, isActive) {
-        player.playWhenReady = isPlaying && foreground && isActive
+    // Read the user setting: if enabled, canvas pauses with audio; otherwise it loops freely.
+    val canvasPauseWithAudio by AppSettings.canvasPauseWithAudio.collectAsStateWithLifecycle()
+    LaunchedEffect(isPlaying, foreground, isActive, canvasPauseWithAudio) {
+        // When canvasPauseWithAudio is OFF (default): video keeps playing as long
+        // as the canvas is active and the app is in the foreground — audio pause
+        // doesn't affect it.  When the setting is ON the old behaviour is restored
+        // and the video pauses/resumes alongside the audio.
+        val shouldPlay = if (canvasPauseWithAudio) isPlaying else true
+        player.playWhenReady = shouldPlay && foreground && isActive
     }
 
     LaunchedEffect(surfaceGeneration) {

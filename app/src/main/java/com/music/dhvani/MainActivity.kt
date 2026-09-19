@@ -100,7 +100,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.music.dhvani.auth.DiscordLoginScreen
-import com.music.dhvani.auth.YtMusicLoginScreen
 import com.music.dhvani.data.AppUpdateChecker
 import com.music.dhvani.data.LocalMediaRepository
 import com.music.dhvani.data.NerdStats
@@ -203,6 +202,8 @@ import com.music.dhvani.ui.theme.rememberArtworkPalette
 import com.music.dhvani.ui.theme.SystemBarIcons
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -286,6 +287,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         DynamicIslandOverlayManager.setAppForeground(true)
+        lifecycleScope.launch(Dispatchers.IO) {
+            Downloads.syncWithDisk(this@MainActivity)
+        }
     }
 
     override fun onPause() {
@@ -364,7 +368,6 @@ private fun DhvaniApp(
             PlayerDeepLink.handled()
         }
     }
-    var showLogin by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     // Replay: the page, the stories over it, and the share sheet over those.
     // Three states rather than one enum because they stack — the stories are
@@ -443,6 +446,7 @@ private fun DhvaniApp(
     // creating the playlist is the whole errand.
     var creatingPlaylist by remember { mutableStateOf(false) }
     var showImportPlaylist by remember { mutableStateOf(false) }
+    var importPlaylistSource by remember { mutableStateOf<String?>(null) }
     var showExportLibraryPlaylist by remember { mutableStateOf(false) }
     var exportPlaylistTarget by remember { mutableStateOf<Pair<BrowseTarget, List<Song>>?>(null) }
     // Which album or playlist the collection menu is open on, or null when it
@@ -1603,8 +1607,15 @@ private fun DhvaniApp(
                                 } else {
                                     null
                                 },
-                                onImportPlaylist = if (shelf.title == YtMusicRepository.PLAYLISTS_SHELF) {
-                                    { showImportPlaylist = true }
+                                onImportPlaylist = if (shelf.title == YtMusicRepository.PLAYLISTS_SHELF || shelf.title == com.music.dhvani.ui.screens.YOUTUBE_PLAYLISTS || shelf.title == com.music.dhvani.ui.screens.SPOTIFY_PLAYLISTS) {
+                                    {
+                                        importPlaylistSource = when (shelf.title) {
+                                            com.music.dhvani.ui.screens.SPOTIFY_PLAYLISTS -> "SPOTIFY"
+                                            com.music.dhvani.ui.screens.YOUTUBE_PLAYLISTS -> "YOUTUBE"
+                                            else -> null
+                                        }
+                                        showImportPlaylist = true
+                                    }
                                 } else {
                                     null
                                 },
@@ -1650,11 +1661,7 @@ private fun DhvaniApp(
                         AccountAndScrobblingScreen(
                             signedIn = signedIn,
                             account = account,
-                            onSignIn = {
-                                showAccountScrobbling = false
-                                showSettings = false
-                                showLogin = true
-                            },
+                            onSignIn = {},
                             onSignOut = { viewModel.signOut() },
                             onOpenListenBrainzLogin = { showListenBrainzLogin = true },
                             onOpenLastfmLogin = { showLastfmLogin = true },
@@ -1685,10 +1692,7 @@ private fun DhvaniApp(
                             windowWidth = windowWidth,
                             signedIn = signedIn,
                             account = account,
-                            onSignIn = {
-                                showSettings = false
-                                showLogin = true
-                            },
+                            onSignIn = {},
                             onSignOut = { viewModel.signOut() },
                             onAccountScrobbling = { showAccountScrobbling = true },
                             onOpenReplay = {
@@ -1875,7 +1879,7 @@ private fun DhvaniApp(
                             state = homeState,
                             listState = homeListState,
                             signedIn = signedIn,
-                            onSignIn = { showLogin = true },
+                            onSignIn = {},
                             onItemClick = { item ->
                                 when {
                                     item.videoId != null -> playRadio(
@@ -2014,12 +2018,15 @@ private fun DhvaniApp(
                             // does nothing; see [onBrowseLongPress].
                             onShelfItemLongPress = onBrowseLongPress,
                             onNewPlaylist = { creatingPlaylist = true },
-                            onImportPlaylist = { showImportPlaylist = true },
+                            onImportPlaylist = { source ->
+                                importPlaylistSource = source
+                                showImportPlaylist = true
+                            },
                             onExportPlaylist = { showExportLibraryPlaylist = true },
                             onShowAll = { shelf -> libraryShowAll = shelf },
                             replayCard = replayCards.firstOrNull(),
                             onOpenReplay = { showReplay = true },
-                            onSignIn = { showLogin = true },
+                            onSignIn = {},
                             onRetry = viewModel::loadLibrary,
                             refreshing = MainViewModel.Feed.LIBRARY in refreshing,
                             onRefresh = { viewModel.refresh(MainViewModel.Feed.LIBRARY) },
@@ -2713,16 +2720,24 @@ private fun DhvaniApp(
         // ---- Import playlist ----
         if (showImportPlaylist) {
             ModalBottomSheet(
-                onDismissRequest = { showImportPlaylist = false },
+                onDismissRequest = {
+                    showImportPlaylist = false
+                    importPlaylistSource = null
+                },
                 containerColor = MaterialTheme.colorScheme.background,
             ) {
                 ImportPlaylistSheet(
-                    onDismiss = { showImportPlaylist = false },
-                    onImportSuccess = { title: String, songs: List<Song> ->
+                    initialSource = importPlaylistSource,
+                    onDismiss = {
+                        showImportPlaylist = false
+                        importPlaylistSource = null
+                    },
+                    onImportSuccess = { title: String, songs: List<Song>, source: String ->
                         viewModel.createPlaylistWithSongs(
                             title = title,
                             privacy = PlaylistPrivacy.PRIVATE,
                             songs = songs,
+                            source = source,
                             onSuccess = {
                                 Toast.makeText(context, "Imported \"$title\" (${songs.size} songs)", Toast.LENGTH_SHORT).show()
                             },
@@ -2835,41 +2850,6 @@ private fun DhvaniApp(
             }
         }
 
-        // ---- Google sign-in (full screen WebView) ----
-        if (showLogin) {
-            BackHandler { showLogin = false }
-            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                Column(Modifier.fillMaxSize()) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IconButton(onClick = { showLogin = false }) {
-                            Icon(
-                                Icons.Rounded.Close,
-                                contentDescription = "Close",
-                                tint = MaterialTheme.colorScheme.onBackground,
-                            )
-                        }
-                        Text(
-                            "Sign in to YouTube Music",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground,
-                        )
-                    }
-                    YtMusicLoginScreen(
-                        onCookiesCaptured = { cookie ->
-                            viewModel.onSignedIn(cookie)
-                            showLogin = false
-                            selectedTab = 2
-                        },
-                    )
-                }
-            }
-        }
 
         // ---- Update available (once per launch) ----
         if (showUpdateDialog) {

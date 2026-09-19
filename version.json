@@ -1,7 +1,7 @@
 {
-  "version": "2.3.0",
-  "versionCode": 32,
-  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.3.0",
-  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.3.0/DhvaniMusic-v2.3.0.apk",
-  "notes": "v2.3.0: Spotify & Apple Music Canvas video loops with custom resolution selector, personalized profiles & gradient avatars studio, dynamic time-based home greeting, and fluid player optimizations."
+  "version": "2.3.1",
+  "versionCode": 33,
+  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.3.1",
+  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.3.1/DhvaniMusic-v2.3.1.apk",
+  "notes": "v2.3.1: Automatic storage sync & disk prune for deleted downloads, YouTube lyrics caption sync offset, streamlined Dynamic Island mini pill, responsive 2-step avatar onboarding flow, and Spotify playlist import."
 }
