@@ -261,6 +261,9 @@ fun SettingsScreen(
     val downloadNetwork by AppSettings.downloadNetwork.collectAsStateWithLifecycle()
     val wifiOnlyDownloads by AppSettings.wifiOnlyDownloads.collectAsStateWithLifecycle()
     val alwaysAskDownloadOptions by AppSettings.alwaysAskDownloadOptions.collectAsStateWithLifecycle()
+    val autoDownloadOnPlay by AppSettings.autoDownloadOnPlay.collectAsStateWithLifecycle()
+    val autoDownloadLiked by AppSettings.autoDownloadLiked.collectAsStateWithLifecycle()
+    val autoplay by AppSettings.autoplay.collectAsStateWithLifecycle()
     val cacheLimitBytes by AppSettings.audioCacheLimitBytes.collectAsStateWithLifecycle()
     val sourceConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
@@ -423,6 +426,8 @@ fun SettingsScreen(
         signedIn,
         account,
         version,
+        autoDownloadLiked,
+        autoDownloadOnPlay,
     ) {
         listOf(
             // Appearance & Theming
@@ -554,11 +559,11 @@ fun SettingsScreen(
                 onClick = { currentSubScreen = SettingsSubScreen.PLAYBACK_AUDIO },
             ),
 
-            // Lyrics & Content
+            // Language & General
             SearchableSettingItem(
                 title = "App language",
                 subtitle = "Select user interface language",
-                category = "Lyrics & Content",
+                category = "General",
                 icon = Icons.Rounded.Language,
                 onClick = onAppLanguage,
             ),
@@ -677,12 +682,26 @@ fun SettingsScreen(
             SearchableSettingItem(
                 title = "Convert video to audio",
                 subtitle = "Force audio-only playback for uploaded music videos",
-                category = "Lyrics & Content",
+                category = "Playback & Audio",
                 icon = Icons.Rounded.FileDownload,
-                onClick = { currentSubScreen = SettingsSubScreen.LYRICS_CONTENT },
+                onClick = { currentSubScreen = SettingsSubScreen.PLAYBACK_AUDIO },
             ),
 
             // Downloads & Storage
+            SearchableSettingItem(
+                title = "Auto-download played songs",
+                subtitle = if (autoDownloadOnPlay) "Enabled • Automatically saves tracks you stream" else "Disabled • Tap to enable auto-downloading",
+                category = "Downloads & Storage",
+                icon = Icons.Rounded.CloudDownload,
+                onClick = { currentSubScreen = SettingsSubScreen.DOWNLOADS_STORAGE },
+            ),
+            SearchableSettingItem(
+                title = "Auto-download liked songs",
+                subtitle = if (autoDownloadLiked) "Enabled • Automatically saves tracks added to Favorites" else "Disabled • Tap to enable auto-downloading",
+                category = "Downloads & Storage",
+                icon = Icons.Rounded.AutoAwesome,
+                onClick = { currentSubScreen = SettingsSubScreen.DOWNLOADS_STORAGE },
+            ),
             SearchableSettingItem(
                 title = "Download audio quality",
                 subtitle = "Format & bitrate for saved offline songs",
@@ -994,14 +1013,14 @@ fun SettingsScreen(
 
                 Spacer(Modifier.height(12.dp))
 
-                // 3. Lyrics & Content
+                // 3. Lyrics & Subtitles
                 MeldSettingsGroup(
-                    title = "Lyrics & Content",
+                    title = "Lyrics & Subtitles",
                     items = listOf(
                         MeldSettingsItemData(
                             icon = Icons.AutoMirrored.Rounded.Notes,
-                            title = "Lyrics and content",
-                            subtitle = "App language, synced lyrics, sources, video-to-audio",
+                            title = "Lyrics and subtitles",
+                            subtitle = "Synced lyrics, kinetic text animations, providers, translation",
                             onClick = { currentSubScreen = SettingsSubScreen.LYRICS_CONTENT },
                         ),
                     ),
@@ -1016,7 +1035,7 @@ fun SettingsScreen(
                         MeldSettingsItemData(
                             icon = Icons.Rounded.Download,
                             title = "Downloads and storage",
-                            subtitle = "Download quality, network policy, cache size & cleanup",
+                            subtitle = "Auto-download played/liked tracks, quality, storage & cache",
                             onClick = { currentSubScreen = SettingsSubScreen.DOWNLOADS_STORAGE },
                         ),
                     ),
@@ -1031,7 +1050,7 @@ fun SettingsScreen(
                         MeldSettingsItemData(
                             icon = Icons.Rounded.Person,
                             title = "Accounts and integrations",
-                            subtitle = if (signedIn) "Signed in • Scrobbling & Listen Together" else "Sign in • Last.fm, ListenBrainz, Discord",
+                            subtitle = if (signedIn) "YouTube Music (${account?.name ?: "Connected"}) • Scrobbling & Discord" else "Sign in to YouTube Music • Scrobbling & Discord",
                             onClick = { currentSubScreen = SettingsSubScreen.ACCOUNTS_INTEGRATIONS },
                         ),
                     ),
@@ -1054,7 +1073,22 @@ fun SettingsScreen(
 
                 Spacer(Modifier.height(12.dp))
 
-                // 7. Backup & Restore
+                // 7. App Language
+                MeldSettingsGroup(
+                    title = "Language",
+                    items = listOf(
+                        MeldSettingsItemData(
+                            icon = Icons.Rounded.Language,
+                            title = stringResource(R.string.app_language),
+                            subtitle = stringResource(languageDisplayNameRes(selectedLanguage)),
+                            onClick = onAppLanguage,
+                        ),
+                    ),
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                // 8. Backup & Data
                 MeldSettingsGroup(
                     title = "Backup & Data",
                     items = listOf(
@@ -1302,6 +1336,40 @@ fun SettingsScreen(
 
                     SettingsGroup(header = "Playback behavior") {
                         SettingsRow(
+                            icon = Icons.Rounded.Repeat,
+                            title = "Autoplay next tracks",
+                            subtitle = "Keep playing similar recommended songs once your queue finishes",
+                            trailing = {
+                                Switch(
+                                    checked = autoplay,
+                                    onCheckedChange = AppSettings::setAutoplay,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setAutoplay(!autoplay) },
+                        )
+                        RowDivider()
+                        SettingsRow(
+                            icon = Icons.Rounded.FileDownload,
+                            title = "Convert video to audio",
+                            subtitle = "Extract and prioritize audio-only streams when playing YouTube music videos",
+                            trailing = {
+                                Switch(
+                                    checked = convertVideoToAudio,
+                                    onCheckedChange = AppSettings::setConvertVideoToAudio,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setConvertVideoToAudio(!convertVideoToAudio) },
+                        )
+                        RowDivider()
+                        SettingsRow(
                             icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
                             title = stringResource(R.string.play_next_on_swipe),
                             subtitle = if (swipeToPlayNext) "Swiping a song plays it next" else "Swiping a song adds it to the end of the queue when disabled",
@@ -1355,15 +1423,6 @@ fun SettingsScreen(
                 }
 
                 SettingsSubScreen.LYRICS_CONTENT -> {
-                    SettingsGroup(header = stringResource(R.string.language)) {
-                        SettingsRow(
-                            icon = Icons.Rounded.Language,
-                            title = stringResource(R.string.app_language),
-                            subtitle = stringResource(languageDisplayNameRes(selectedLanguage)),
-                            onClick = onAppLanguage,
-                        )
-                    }
-
                     SettingsGroup(header = stringResource(R.string.lyrics_sources)) {
                         SettingsRow(
                             icon = Icons.AutoMirrored.Rounded.Notes,
@@ -1556,28 +1615,48 @@ fun SettingsScreen(
                             )
                         }
                     }
+                }
 
-                    SettingsGroup(header = "Audio conversion") {
+                SettingsSubScreen.DOWNLOADS_STORAGE -> {
+                    SettingsGroup(
+                        header = "Automatic downloads",
+                        footer = "Automatically download songs for offline listening without manual intervention",
+                    ) {
                         SettingsRow(
-                            icon = Icons.Rounded.FileDownload,
-                            title = "Convert video to audio",
-                            subtitle = "Extract and prioritize audio-only streams when playing YouTube videos",
+                            icon = Icons.Rounded.AutoAwesome,
+                            title = "Auto-download liked songs",
+                            subtitle = "Automatically download songs to your offline library when you like or favorite them",
                             trailing = {
                                 Switch(
-                                    checked = convertVideoToAudio,
-                                    onCheckedChange = AppSettings::setConvertVideoToAudio,
+                                    checked = autoDownloadLiked,
+                                    onCheckedChange = AppSettings::setAutoDownloadLiked,
                                     colors = SwitchDefaults.colors(
                                         checkedTrackColor = MaterialTheme.colorScheme.primary,
                                         checkedBorderColor = MaterialTheme.colorScheme.primary,
                                     ),
                                 )
                             },
-                            onClick = { AppSettings.setConvertVideoToAudio(!convertVideoToAudio) },
+                            onClick = { AppSettings.setAutoDownloadLiked(!autoDownloadLiked) },
+                        )
+                        RowDivider()
+                        SettingsRow(
+                            icon = Icons.Rounded.CloudDownload,
+                            title = "Auto-download played songs",
+                            subtitle = "Download currently playing tracks automatically in the background",
+                            trailing = {
+                                Switch(
+                                    checked = autoDownloadOnPlay,
+                                    onCheckedChange = AppSettings::setAutoDownloadOnPlay,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setAutoDownloadOnPlay(!autoDownloadOnPlay) },
                         )
                     }
-                }
 
-                SettingsSubScreen.DOWNLOADS_STORAGE -> {
                     SettingsGroup(header = "Download preferences") {
                         SettingsRow(
                             icon = Icons.Rounded.Download,
@@ -1824,23 +1903,6 @@ fun SettingsScreen(
                                     Toast.makeText(context, "Android Auto app not installed or settings unavailable", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                        )
-                        RowDivider()
-                        SettingsRow(
-                            icon = Icons.Rounded.DeleteSweep,
-                            title = "Stop playback on disconnect",
-                            subtitle = "Pause playback when vehicle disconnects",
-                            trailing = {
-                                Switch(
-                                    checked = stopOnTaskRemoved,
-                                    onCheckedChange = AppSettings::setStopOnTaskRemoved,
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                    ),
-                                )
-                            },
-                            onClick = { AppSettings.setStopOnTaskRemoved(!stopOnTaskRemoved) },
                         )
                     }
                 }
@@ -2674,7 +2736,7 @@ fun SettingsScreen(
 
                     // Curated Music Avatars Section
                     var selectedCategory by remember { mutableStateOf("All") }
-                    val categories = listOf("All", "3D Characters", "Music & Vibes", "Fun & Playful", "Neon Glyphs")
+                    val categories = listOf("All", "3D Characters", "Music & Vibes", "Cyber & Space", "Fun & Playful", "Neon Glyphs")
                     val filteredPresets = remember(selectedCategory) {
                         if (selectedCategory == "All") {
                             com.music.dhvani.ui.components.PRESET_AVATARS
@@ -3254,7 +3316,7 @@ fun SettingsScreen(
 
 private enum class SettingsSubScreen(val title: String) {
     PLAYBACK_AUDIO("Playback and audio"),
-    LYRICS_CONTENT("Lyrics and content"),
+    LYRICS_CONTENT("Lyrics and subtitles"),
     DOWNLOADS_STORAGE("Downloads and storage"),
     ACCOUNTS_INTEGRATIONS("Accounts and integrations"),
     CAR_DEVICES("Car and external devices"),

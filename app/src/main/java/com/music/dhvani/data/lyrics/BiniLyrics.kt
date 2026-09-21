@@ -44,7 +44,13 @@ object BiniLyrics {
         val body = lyricsGet(url.toString()) ?: return@withContext null
         val response = runCatching { lyricsJson.decodeFromString<Response>(body) }.getOrNull()
             ?: return@withContext null
-        response.results?.firstOrNull()
+        val results = response.results.orEmpty()
+        if (results.isEmpty()) return@withContext null
+        val seconds = (durationMs / 1000).toInt()
+        if (seconds <= 0) return@withContext results.firstOrNull()
+        results.filter { hit -> hit.duration == null || kotlin.math.abs(hit.duration - seconds) <= 15 }
+            .minByOrNull { hit -> hit.duration?.let { kotlin.math.abs(it - seconds) } ?: 999 }
+            ?: results.firstOrNull()
     }
 
     /** The document a search already found, fetched and parsed. */

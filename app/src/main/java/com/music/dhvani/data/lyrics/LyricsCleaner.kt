@@ -36,6 +36,8 @@ object LyricsCleaner {
     fun cleanTitle(rawTitle: String, rawArtist: String = ""): String {
         if (rawTitle.isBlank()) return rawTitle
         var text = rawTitle.trim()
+            .replace('–', '-')
+            .replace('—', '-')
 
         // 1. YouTube metadata after pipe '|' is promotional credits / channel tags
         if (text.contains("|")) {

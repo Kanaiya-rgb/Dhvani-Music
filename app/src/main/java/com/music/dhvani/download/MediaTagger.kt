@@ -58,6 +58,9 @@ object MediaTagger {
      */
     fun carriesTags(extension: String): Boolean = extension in TAGGABLE
 
+    /** Expose fetching raw cover bytes for downloads and offline caching. */
+    fun fetchCoverBytes(track: Song): ByteArray? = fetchCover(track)?.bytes
+
     /** @param lyrics what [LyricsTag] found, or null when there are none to write. */
     internal fun embed(
         context: Context,
@@ -65,10 +68,14 @@ object MediaTagger {
         track: Song,
         extension: String,
         lyrics: LyricsTag.Embeddable? = null,
+        prefetchedCover: ByteArray? = null,
     ) {
         if (!carriesTags(extension)) return
         val original = readAll(context, uri) ?: return
-        val cover = fetchCover(track)
+        val cover = prefetchedCover?.let { Cover(it, "image/jpeg") } ?: fetchCover(track)
+        cover?.let {
+            DownloadStore.saveCover(context, track.videoId, it.bytes)
+        }
         // The portable field and this app's own. Split here rather than inside
         // each tagger so all three agree on which string goes where.
         val plain = lyrics?.plain
@@ -110,7 +117,7 @@ object MediaTagger {
         }.getOrNull() ?: return
 
         // Every tagger hands back the same array reference when there was
-        // nothing safe to do  cheaper than a byte comparison, and exact
+        // nothing safe to do — cheaper than a byte comparison, and exact
         // where it matters: it means "don't touch the file that just finished
         // downloading" rather than "these bytes happen to be equal".
         if (tagged === original) return

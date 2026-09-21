@@ -125,29 +125,48 @@ object LyricsRepository {
         }
 
         try {
-            var lineSynced: LyricsRepository.Result? = null
+            var lineSyncedResult: LyricsRepository.Result? = null
+            var plainResult: LyricsRepository.Result? = null
+
             for ((source, job) in racing) {
                 // If we already found a line-synced or better result, skip Genius completely
-                if (lineSynced != null && source == LyricsSource.GENIUS) continue
+                if (lineSyncedResult != null && source == LyricsSource.GENIUS) continue
 
                 val lines = runCatching { job.await() }.getOrNull() ?: continue
-                if (lines.any { it.isWordSynced }) {
+                if (lines.isEmpty()) continue
+
+                val hasWordSync = lines.any { it.isWordSynced }
+                val hasLineSync = lines.any { it.timeMs > 0 }
+
+                if (hasWordSync) {
                     val res = result(source, lines)
                     if (videoId.isNotBlank()) lyricsCache[videoId] = CacheEntry(res)
                     return@coroutineScope res
                 }
-                if (!prioritizeSyllableSync && lines.any { it.timeMs > 0 }) {
+
+                if (hasLineSync) {
                     val res = result(source, lines)
-                    if (videoId.isNotBlank()) lyricsCache[videoId] = CacheEntry(res)
-                    return@coroutineScope res
+                    if (!prioritizeSyllableSync) {
+                        if (videoId.isNotBlank()) lyricsCache[videoId] = CacheEntry(res)
+                        return@coroutineScope res
+                    }
+                    if (lineSyncedResult == null) {
+                        lineSyncedResult = res
+                    }
+                } else {
+                    // Plain / unsynced lyrics fallback only
+                    if (plainResult == null) {
+                        plainResult = result(source, lines)
+                    }
                 }
-                if (lineSynced == null) lineSynced = result(source, lines)
             }
+
+            val best = lineSyncedResult ?: plainResult
             if (videoId.isNotBlank()) {
                 // Aggressive negative caching: store CacheEntry(null) if missing
-                lyricsCache[videoId] = CacheEntry(lineSynced)
+                lyricsCache[videoId] = CacheEntry(best)
             }
-            lineSynced
+            best
         } finally {
             // Whoever lost the race is no longer worth waiting on, and
             // coroutineScope will not return while they are still running.

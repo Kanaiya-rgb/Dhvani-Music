@@ -320,10 +320,15 @@ private fun DhvaniApp(
     )
     var showFloatingIslandPermissionDialog by rememberSaveable { mutableStateOf(false) }
     val hasPromptedUserName by AppSettings.hasPromptedUserName.collectAsStateWithLifecycle()
+    val hasPromptedAutoDownloadNotice by AppSettings.hasPromptedAutoDownloadNotice.collectAsStateWithLifecycle()
 
     if (!hasPromptedUserName) {
         com.music.dhvani.ui.components.WelcomeNameDialog(
             onDismissOrCompleted = { /* Saved to AppSettings & Telemetry */ }
+        )
+    } else if (!hasPromptedAutoDownloadNotice) {
+        com.music.dhvani.ui.components.AutoDownloadNoticeDialog(
+            onDismissOrAction = { /* Handled in component */ }
         )
     }
     LaunchedEffect(Unit) {

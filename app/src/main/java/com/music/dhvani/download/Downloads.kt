@@ -323,6 +323,8 @@ object Downloads {
         }
         val deleted = DownloadStore.delete(context, uri)
         DownloadStore.deleteLyrics(context, videoId, track)
+        DownloadStore.deleteCover(context, videoId)
+        DownloadStore.deleteCanvas(context, videoId)
         forget(videoId)
         deleted
     }
@@ -537,7 +539,7 @@ object Downloads {
      * still know it is already on the device. A stale id costs nothing: the
      * verification in [savedUri] prunes whichever one stops resolving.
      */
-    private fun remember(asked: Song, fetched: Song, uri: Uri) {
+    private fun remember(context: Context, asked: Song, fetched: Song, uri: Uri) {
         val ids = setOf(asked.videoId, fetched.videoId)
         // Either row may be the one that knew the release: a music video is
         // swapped for the catalogue track before this, and it is the catalogue
@@ -545,11 +547,14 @@ object Downloads {
         // is both, and an album page's rows are neither.
         val album = fetched.albumName?.takeIf { it.isNotBlank() }
             ?: asked.albumName?.takeIf { it.isNotBlank() }
+        val coverFile = DownloadStore.coverFileIfExists(context, asked.videoId)
+            ?: DownloadStore.coverFileIfExists(context, fetched.videoId)
+        val localThumb = if (coverFile != null && coverFile.exists()) Uri.fromFile(coverFile).toString() else null
         val metaAsked = SavedSongMetadata(
             videoId = asked.videoId,
             title = asked.title,
             artist = asked.artist,
-            thumbnailUrl = asked.thumbnailUrl,
+            thumbnailUrl = localThumb ?: asked.thumbnailUrl,
             durationText = asked.durationText,
             albumName = album,
             uri = uri.toString(),
@@ -558,7 +563,7 @@ object Downloads {
             videoId = fetched.videoId,
             title = fetched.title,
             artist = fetched.artist,
-            thumbnailUrl = fetched.thumbnailUrl,
+            thumbnailUrl = localThumb ?: fetched.thumbnailUrl,
             durationText = fetched.durationText,
             albumName = album,
             uri = uri.toString(),
@@ -650,12 +655,19 @@ object Downloads {
             val uri = meta.uri.toUri()
             if (DownloadStore.exists(context, uri)) {
                 if (seenUris.add(meta.uri)) {
+                    val coverFile = DownloadStore.coverFileIfExists(context, meta.videoId)
+                        ?: DownloadStore.extractAndSaveEmbeddedCover(context, meta.videoId, uri)
+                    val thumbUrl = if (coverFile != null && coverFile.exists()) {
+                        Uri.fromFile(coverFile).toString()
+                    } else {
+                        meta.thumbnailUrl
+                    }
                     result.add(
                         Song(
                             videoId = meta.videoId,
                             title = meta.title,
                             artist = meta.artist,
-                            thumbnailUrl = meta.thumbnailUrl,
+                            thumbnailUrl = thumbUrl,
                             durationText = meta.durationText,
                             albumName = meta.albumName,
                             localUri = meta.uri,
@@ -665,6 +677,13 @@ object Downloads {
             }
         }
         result
+    }
+
+    /** Returns local cover art URI for [videoId] if downloaded offline. */
+    fun localCoverUri(videoId: String): String? {
+        if (!::appContext.isInitialized || videoId.isBlank()) return null
+        val file = DownloadStore.coverFileIfExists(appContext, videoId) ?: return null
+        return Uri.fromFile(file).toString()
     }
 
     private fun String.toUri(): Uri = Uri.parse(this)
@@ -857,7 +876,7 @@ object Downloads {
         // Already there from a previous run the record lost track of - adopt it
         // rather than writing a second copy beside it.
         plan.alreadyAt?.let { uri ->
-            remember(song, track, uri)
+            remember(context, song, track, uri)
             DownloadSession.done(id)
             clear(id)
             return
@@ -866,6 +885,8 @@ object Downloads {
 
         var pending: DownloadStore.Pending? = null
         var lyrics: Deferred<LyricsTag.Embeddable?>? = null
+        var coverJob: Deferred<ByteArray?>? = null
+        var canvasJob: Deferred<com.music.dhvani.data.canvas.CanvasArtwork?>? = null
         try {
             coroutineScope {
                 // Started before the transfer rather than after it, so four lyric
@@ -876,13 +897,32 @@ object Downloads {
                 // commit, [pending] is null and a cancellation there would abandon a
                 // finished file that nothing has recorded yet. Awaited below while
                 // there is still a pending destination to abort.
-                //
-                // [LyricsTag.forTrack] is contracted not to throw for anything but
-                // cancellation, and that contract is load-bearing here: this is a
-                // plain child of the scope, so a failure inside it would cancel the
-                // download it was only meant to decorate.
                 if (MediaTagger.carriesTags(route.extension)) {
                     lyrics = async { LyricsTag.forTrack(track) }
+                }
+                coverJob = async {
+                    MediaTagger.fetchCoverBytes(track) ?: MediaTagger.fetchCoverBytes(song)
+                }
+                if (AppSettings.animatedCanvas.value) {
+                    canvasJob = async {
+                        runCatching {
+                            com.music.dhvani.data.canvas.CanvasRepository.getCanvas(
+                                context = context,
+                                videoId = track.videoId,
+                                title = track.title,
+                                artist = track.artist,
+                                album = track.albumName,
+                            ) ?: if (track.videoId != song.videoId) {
+                                com.music.dhvani.data.canvas.CanvasRepository.getCanvas(
+                                    context = context,
+                                    videoId = song.videoId,
+                                    title = song.title,
+                                    artist = song.artist,
+                                    album = song.albumName,
+                                )
+                            } else null
+                        }.getOrNull()
+                    }
                 }
 
                 val name = DownloadStore.fileNameFor(track, route.extension)
@@ -890,8 +930,17 @@ object Downloads {
                 if (alreadyThere != null) {
                     Log.d(TAG, "$name is already in Music; adopting it")
                     val words = lyrics?.await()
+                    val coverBytes = coverJob?.await()
+                    val canvas = canvasJob?.await()
+                    if (coverBytes != null) {
+                        DownloadStore.saveCover(context, song.videoId, coverBytes)
+                        DownloadStore.saveCover(context, track.videoId, coverBytes)
+                    }
+                    if (canvas != null) {
+                        DownloadStore.saveCanvasVideo(context, song.videoId, track.videoId, canvas)
+                    }
                     DownloadStore.saveLyrics(context, song.videoId, track, words)
-                    remember(song, track, alreadyThere)
+                    remember(context, song, track, alreadyThere)
                     DownloadSession.done(id)
                     clear(id)
                     return@coroutineScope
@@ -907,13 +956,23 @@ object Downloads {
                     }
                 }
                 val words = lyrics?.await()
+                val coverBytes = coverJob?.await()
+                val canvas = canvasJob?.await()
+
+                if (coverBytes != null) {
+                    DownloadStore.saveCover(context, song.videoId, coverBytes)
+                    DownloadStore.saveCover(context, track.videoId, coverBytes)
+                }
+                if (canvas != null) {
+                    DownloadStore.saveCanvasVideo(context, song.videoId, track.videoId, canvas)
+                }
 
                 // Save companion LRC file & offline cache immediately
                 DownloadStore.saveLyrics(context, song.videoId, track, words)
 
                 // Embed tags before commit while file is still pending in MediaStore (full write access)
                 runCatching {
-                    MediaTagger.embed(context, destination.targetUri, track, route.extension, words)
+                    MediaTagger.embed(context, destination.targetUri, track, route.extension, words, coverBytes)
                 }.onFailure { Log.w(TAG, "pre-commit tagging failed for $id: ${it.message}") }
 
                 val savedUri = destination.commit()
@@ -921,10 +980,10 @@ object Downloads {
 
                 // Also attempt post-commit tagging if needed
                 runCatching {
-                    MediaTagger.embed(context, savedUri, track, route.extension, words)
+                    MediaTagger.embed(context, savedUri, track, route.extension, words, coverBytes)
                 }
 
-                remember(song, track, savedUri)
+                remember(context, song, track, savedUri)
                 DownloadSession.done(id)
                 clear(id)
                 Log.d(TAG, "saved $name")
@@ -933,12 +992,9 @@ object Downloads {
             pending?.abort()
             throw e
         } finally {
-            // Every exit needs this, not just the failing ones: the adopt-it
-            // path above returns with the lookup still in flight, and
-            // [coroutineScope] does not return while a child of it is running -
-            // so an unwaited job would hold the whole queue up for the length of
-            // a lyrics search per already-downloaded track.
             lyrics?.cancel()
+            coverJob?.cancel()
+            canvasJob?.cancel()
         }
     }
 

@@ -71,6 +71,7 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
         // PlaybackService shares this one — so it's opened here, not there.
         AudioCache.init(this)
         com.music.dhvani.data.canvas.CanvasCache.init(this)
+        com.music.dhvani.data.canvas.CanvasRepository.init(this)
         com.music.dhvani.listentogether.ListenTogetherManager.init(this)
         // A sideloaded update is just a new APK over the old one, so app data —
         // including whatever the old build left in these caches — survives it

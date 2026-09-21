@@ -44,7 +44,8 @@ object CanvasCache {
 
     fun getCacheDataSourceFactory(context: Context): DataSource.Factory {
         val cache = getCache(context)
-        val upstreamFactory = OkHttpDataSource.Factory(Http.client)
+        val httpFactory = OkHttpDataSource.Factory(Http.client)
+        val upstreamFactory = androidx.media3.datasource.DefaultDataSource.Factory(context.applicationContext, httpFactory)
         return CacheDataSource.Factory()
             .setCache(cache)
             .setUpstreamDataSourceFactory(upstreamFactory)

@@ -107,6 +107,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.SurroundSound
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.foundation.combinedClickable
 import com.music.dhvani.ui.components.CanvasSourceSheet
 import com.music.dhvani.ui.components.AudioPipelineDialog
@@ -989,6 +990,7 @@ fun NowPlayingScreen(
     var lyricsOffsetMs by remember(song.videoId) {
         mutableLongStateOf(AppSettings.getLyricsOffset(song.videoId))
     }
+    var showSyncAdjuster by remember(song.videoId) { mutableStateOf(false) }
     val canvasFrame: Bitmap? = null
     val meshColors = rememberArtworkColors(song.thumbnailUrl, null)
     val meshRefreshMs: Long? = null
@@ -1003,7 +1005,7 @@ fun NowPlayingScreen(
 
     LaunchedEffect(lyricsOpen, lyricsFullScreen, lastLyricsInteractionMs, isPlaying) {
         if (lyricsOpen && !lyricsFullScreen && isPlaying) {
-            delay(3000)
+            delay(5000)
             lyricsFullScreen = true
         }
     }
@@ -2325,68 +2327,429 @@ fun NowPlayingScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                 if (lyricsOpen) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 4.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        val isPlainLyrics = remember(lyrics) { lyrics.orEmpty().any { it.isEstimatedTiming } }
-                        Text(
-                            text = when {
-                                showingTranslation && translatedLyrics != null -> "Translated to $targetName"
-                                translationLoading -> "Translating to $targetName..."
-                                translationStatus != null -> translationStatus!!
-                                isPlainLyrics -> "Plain lyrics • ${lyricsSource?.label ?: "Online"}"
-                                lyricsSource != null -> "Lyrics by ${lyricsSource.label}"
-                                lyrics.isNullOrEmpty() -> "No lyrics found"
-                                else -> "Lyrics saved with this download"
-                            },
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 13.sp,
-                                fontWeight = if (showingTranslation) FontWeight.SemiBold else FontWeight.Medium,
-                            ),
-                            color = Color.White.copy(alpha = if (showingTranslation) 0.85f else 0.65f),
-                            modifier = Modifier.clickable(
-                                enabled = onReloadLyrics != null && !showingTranslation,
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                haptics.play(Haptic.Tap)
-                                onReloadLyrics?.invoke()
-                            },
-                        )
-
-                        // Right: Translator [ 文A ] button
-                        Box(
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = if (showingTranslation) 0.28f else 0.12f))
-                                .clickable(
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            val isPlainLyrics = remember(lyrics) { lyrics.orEmpty().any { it.isEstimatedTiming } }
+                            Text(
+                                text = when {
+                                    showingTranslation && translatedLyrics != null -> "Translated to $targetName"
+                                    translationLoading -> "Translating to $targetName..."
+                                    translationStatus != null -> translationStatus!!
+                                    isPlainLyrics -> "Plain lyrics • ${lyricsSource?.label ?: "Online"}"
+                                    lyricsSource != null -> "Lyrics by ${lyricsSource.label}"
+                                    lyrics.isNullOrEmpty() -> "No lyrics found"
+                                    else -> "Lyrics saved with this download"
+                                },
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = if (showingTranslation) FontWeight.SemiBold else FontWeight.Medium,
+                                ),
+                                color = Color.White.copy(alpha = if (showingTranslation) 0.85f else 0.65f),
+                                modifier = Modifier.clickable(
+                                    enabled = onReloadLyrics != null && !showingTranslation,
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
                                 ) {
                                     haptics.play(Haptic.Tap)
-                                    toggleTranslation()
-                                    onLyricsInteraction()
+                                    onReloadLyrics?.invoke()
                                 },
-                            contentAlignment = Alignment.Center,
+                            )
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                // Sync Offset Adjuster Button
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = if (showSyncAdjuster || lyricsOffsetMs != 0L) 0.28f else 0.12f))
+                                        .clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                        ) {
+                                            haptics.play(Haptic.Tap)
+                                            showSyncAdjuster = !showSyncAdjuster
+                                            onLyricsInteraction()
+                                        },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Tune,
+                                        contentDescription = "Adjust lyrics sync offset",
+                                        tint = if (showSyncAdjuster || lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+
+                                // Right: Translator [ 文A ] button
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = if (showingTranslation) 0.28f else 0.12f))
+                                        .clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                        ) {
+                                            haptics.play(Haptic.Tap)
+                                            toggleTranslation()
+                                            onLyricsInteraction()
+                                        },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (translationLoading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = Color.White,
+                                            strokeWidth = 2.dp,
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Translate,
+                                            contentDescription = if (showingTranslation) "Show original lyrics" else "Translate lyrics",
+                                            tint = if (showingTranslation) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Floating sync adjustment panel
+                        AnimatedVisibility(
+                            visible = showSyncAdjuster,
+                            enter = fadeIn() + expandVertically(),
+                            exit = fadeOut() + shrinkVertically(),
                         ) {
-                            if (translationLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp,
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Rounded.Translate,
-                                    contentDescription = if (showingTranslation) "Show original lyrics" else "Translate lyrics",
-                                    tint = if (showingTranslation) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(18.dp),
-                                )
+                            Surface(
+                                shape = RoundedCornerShape(24.dp),
+                                color = Color(0xFF16161D).copy(alpha = 0.98f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+                                shadowElevation = 16.dp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                                ) {
+                                    // Header: Title + Close Button
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clip(CircleShape)
+                                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Rounded.Tune,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
+                                            Column {
+                                                Text(
+                                                    text = "Lyrics Sync Calibration",
+                                                    style = MaterialTheme.typography.titleMedium.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 15.sp,
+                                                    ),
+                                                    color = Color.White,
+                                                )
+                                                Text(
+                                                    text = "Fine-tune timing if lyrics lead or lag behind",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                                    color = Color.White.copy(alpha = 0.55f),
+                                                )
+                                            }
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .size(30.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.White.copy(alpha = 0.12f))
+                                                .clickable {
+                                                    showSyncAdjuster = false
+                                                    onLyricsInteraction()
+                                                },
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Close,
+                                                contentDescription = "Close calibration",
+                                                tint = Color.White.copy(alpha = 0.85f),
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        }
+                                    }
+
+                                    // Hero Offset Dashboard Card
+                                    val offsetSec = lyricsOffsetMs / 1000f
+                                    Surface(
+                                        shape = RoundedCornerShape(18.dp),
+                                        color = Color.White.copy(alpha = 0.07f),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.1f),
+                                        ),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                        ) {
+                                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                ) {
+                                                    Text(
+                                                        text = when {
+                                                            lyricsOffsetMs > 0 -> "+${String.format(java.util.Locale.ROOT, "%.2f", offsetSec)}s"
+                                                            lyricsOffsetMs < 0 -> "${String.format(java.util.Locale.ROOT, "%.2f", offsetSec)}s"
+                                                            else -> "0.00s"
+                                                        },
+                                                        style = MaterialTheme.typography.headlineSmall.copy(
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            fontSize = 24.sp,
+                                                        ),
+                                                        color = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color(0xFF4ADE80),
+                                                    )
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = (if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color(0xFF4ADE80)).copy(alpha = 0.18f),
+                                                    ) {
+                                                        Text(
+                                                            text = when {
+                                                                lyricsOffsetMs > 0 -> "Ahead"
+                                                                lyricsOffsetMs < 0 -> "Delayed"
+                                                                else -> "In Sync"
+                                                            },
+                                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 10.sp,
+                                                            ),
+                                                            color = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color(0xFF4ADE80),
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        )
+                                                    }
+                                                }
+                                                Text(
+                                                    text = when {
+                                                        lyricsOffsetMs > 0 -> "Showing earlier than audio stream"
+                                                        lyricsOffsetMs < 0 -> "Showing later than audio stream"
+                                                        else -> "Aligned with original lyrics source"
+                                                    },
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                                    color = Color.White.copy(alpha = 0.55f),
+                                                )
+                                            }
+
+                                            // Dedicated Always-Visible Reset Pill
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f),
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.12f),
+                                                ),
+                                                modifier = Modifier.clickable(enabled = lyricsOffsetMs != 0L) {
+                                                    lyricsOffsetMs = 0L
+                                                    AppSettings.setLyricsOffset(song.videoId, 0L)
+                                                    haptics.play(Haptic.Tap)
+                                                    onLyricsInteraction()
+                                                },
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.Refresh,
+                                                        contentDescription = "Reset offset",
+                                                        tint = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.35f),
+                                                        modifier = Modifier.size(15.dp),
+                                                    )
+                                                    Text(
+                                                        text = "Reset",
+                                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                        color = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.35f),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Continuous Real-Time Scrubbing Slider (-5.0s to +5.0s)
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    ) {
+                                        val sliderPos = (lyricsOffsetMs / 1000f).coerceIn(-5f, 5f)
+                                        Slider(
+                                            value = sliderPos,
+                                            onValueChange = { newVal ->
+                                                val roundedMs = Math.round(newVal * 20) * 50L
+                                                lyricsOffsetMs = roundedMs
+                                                AppSettings.setLyricsOffset(song.videoId, roundedMs)
+                                                onLyricsInteraction()
+                                            },
+                                            valueRange = -5f..5f,
+                                            colors = SliderDefaults.colors(
+                                                thumbColor = MaterialTheme.colorScheme.primary,
+                                                activeTrackColor = MaterialTheme.colorScheme.primary,
+                                                inactiveTrackColor = Color.White.copy(alpha = 0.2f),
+                                            ),
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                        ) {
+                                            Text(
+                                                text = "-5.0s (Later)",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                color = Color.White.copy(alpha = 0.45f),
+                                            )
+                                            Text(
+                                                text = "0.0s",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                ),
+                                                color = Color.White.copy(alpha = 0.6f),
+                                            )
+                                            Text(
+                                                text = "+5.0s (Earlier)",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                color = Color.White.copy(alpha = 0.45f),
+                                            )
+                                        }
+                                    }
+
+                                    // Stepper Controls & Quick Preset Chips
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        // Micro-decrement (-0.1s)
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color.White.copy(alpha = 0.12f),
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                                            modifier = Modifier
+                                                .weight(1.2f)
+                                                .clickable {
+                                                    val next = lyricsOffsetMs - 100L
+                                                    lyricsOffsetMs = next
+                                                    AppSettings.setLyricsOffset(song.videoId, next)
+                                                    haptics.play(Haptic.Tap)
+                                                    onLyricsInteraction()
+                                                },
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.padding(vertical = 10.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Text(
+                                                    text = "−0.1s",
+                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                                    color = Color.White,
+                                                )
+                                            }
+                                        }
+
+                                        // Presets
+                                        listOf(
+                                            -500L to "-0.5s",
+                                            500L to "+0.5s",
+                                            1000L to "+1.0s",
+                                        ).forEach { (delta, label) ->
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = Color.White.copy(alpha = 0.08f),
+                                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clickable {
+                                                        val next = lyricsOffsetMs + delta
+                                                        lyricsOffsetMs = next
+                                                        AppSettings.setLyricsOffset(song.videoId, next)
+                                                        haptics.play(Haptic.Tap)
+                                                        onLyricsInteraction()
+                                                    },
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier.padding(vertical = 10.dp),
+                                                    contentAlignment = Alignment.Center,
+                                                ) {
+                                                    Text(
+                                                        text = label,
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                        color = Color.White.copy(alpha = 0.9f),
+                                                        fontSize = 11.5.sp,
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Micro-increment (+0.1s)
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color.White.copy(alpha = 0.12f),
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                                            modifier = Modifier
+                                                .weight(1.2f)
+                                                .clickable {
+                                                    val next = lyricsOffsetMs + 100L
+                                                    lyricsOffsetMs = next
+                                                    AppSettings.setLyricsOffset(song.videoId, next)
+                                                    haptics.play(Haptic.Tap)
+                                                    onLyricsInteraction()
+                                                },
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.padding(vertical = 10.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Text(
+                                                    text = "+0.1s",
+                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                                    color = Color.White,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -3362,14 +3725,28 @@ private suspend fun AwaitPointerEventScope.dragQueueIn(
 private fun rememberLyricClock(positionMs: Long, isPlaying: Boolean, offsetMs: Long = 0L): MutableLongState {
     val clock = remember { mutableLongStateOf(positionMs + offsetMs) }
     val foreground = rememberIsForeground()
-    LaunchedEffect(positionMs, isPlaying, foreground, offsetMs) {
-        clock.longValue = positionMs + offsetMs
+
+    val targetPosition = positionMs + offsetMs
+    LaunchedEffect(targetPosition, isPlaying) {
+        val current = clock.longValue
+        val diff = kotlin.math.abs(current - targetPosition)
+        if (diff > 350L || !isPlaying) {
+            clock.longValue = targetPosition
+        } else if (diff > 40L) {
+            clock.longValue = (current * 0.65f + targetPosition * 0.35f).toLong()
+        }
+    }
+
+    LaunchedEffect(isPlaying, foreground) {
         if (!isPlaying || !foreground) return@LaunchedEffect
         var previousFrame = withFrameMillis { it }
         while (true) {
             withFrameMillis { frame ->
-                clock.longValue += frame - previousFrame
+                val delta = frame - previousFrame
                 previousFrame = frame
+                if (delta in 1L..100L) {
+                    clock.longValue += delta
+                }
             }
         }
     }

@@ -357,27 +357,28 @@ fun Song.toMediaItem(): MediaItem {
         // reach.
         else -> "flux://watch?v=$videoId${matchQuery()}"
     }
+    val finalArtworkUri = Downloads.localCoverUri(videoId) ?: artworkAt(NOTIFICATION_ART_PX)
     return MediaItem.Builder()
         .setMediaId(videoId)
         .setUri(resolvePlaybackUri(uriString, localPath))
-    .setMediaMetadata(
-        MediaMetadata.Builder()
-            .setTitle(title)
-            .setArtist(artist)
-            // The release this track came off, when whoever queued it knew.
-            //
-            // A native field rather than an extra because Media3 bundles this
-            // one across the session on its own, and because the lock screen and
-            // Android Auto both draw it — a track queued from an album page had
-            // the name in hand all along and was arriving at those surfaces
-            // without it. It is also what the Replay's album chart is counted
-            // on: read back off the player, a track with no album here is a
-            // track that cannot be filed under one.
-            .setAlbumTitle(albumName)
-            // Sized here rather than left as stored: this is what the lock
-            // screen, the notification and Android Auto draw, all of them
-            // large, and none of them go back for a better copy later.
-            .setArtworkUri(artworkAt(NOTIFICATION_ART_PX)?.toUri())
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setArtist(artist)
+                // The release this track came off, when whoever queued it knew.
+                //
+                // A native field rather than an extra because Media3 bundles this
+                // one across the session on its own, and because the lock screen and
+                // Android Auto both draw it — a track queued from an album page had
+                // the name in hand all along and was arriving at those surfaces
+                // without it. It is also what the Replay's album chart is counted
+                // on: read back off the player, a track with no album here is a
+                // track that cannot be filed under one.
+                .setAlbumTitle(albumName)
+                // Sized here rather than left as stored: this is what the lock
+                // screen, the notification and Android Auto draw, all of them
+                // large, and none of them go back for a better copy later.
+                .setArtworkUri(finalArtworkUri?.toUri())
             // System media surfaces (One UI's Now Bar, Android Auto, Assistant)
             // classify a session by its media type; untyped sessions get treated
             // as generic audio and lose the music-specific card.

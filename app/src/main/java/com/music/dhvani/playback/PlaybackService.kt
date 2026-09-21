@@ -71,6 +71,7 @@ import com.music.dhvani.data.scrobbling.LastFM
 import com.music.dhvani.data.scrobbling.ListenBrainzManager
 import com.music.dhvani.data.scrobbling.ScrobbleManager
 import com.music.dhvani.data.settings.AppSettings
+import com.music.dhvani.data.settings.AudioListeningMode
 import com.music.dhvani.data.sources.SourceResolver
 import com.music.dhvani.data.sources.SourceStream
 import com.music.dhvani.data.sources.StreamFormat
@@ -364,6 +365,7 @@ class PlaybackService : MediaSessionService() {
             // transition — a track started from idle or resumed from pause
             // otherwise stays silent on the site.
             if (isPlaying && song != null) {
+                triggerAutoDownloadIfEnabled(song)
                 if (listenBrainzSong?.videoId != song.videoId || listenBrainzStartMs == 0L) {
                     listenBrainzSong = song
                     listenBrainzStartMs = System.currentTimeMillis()
@@ -1163,7 +1165,12 @@ class PlaybackService : MediaSessionService() {
 
         // Match the player UI: update both surfaces immediately, then reconcile
         // the optimistic state with YouTube in the background.
-        LikeState.set(videoId, target)
+        val cur = player?.currentMediaItem?.toSong()
+        if (target == LikeStatus.LIKE && cur != null && cur.videoId == videoId) {
+            LikeState.addLiked(cur)
+        } else {
+            LikeState.set(videoId, target)
+        }
         mediaSession?.setCustomLayout(notificationButtons())
         favoriteActionJob = scope.launch {
             YtMusicRepository.rate(videoId, target)
@@ -1421,6 +1428,7 @@ class PlaybackService : MediaSessionService() {
             registerCurrentPlay()
             newSong?.let { song ->
                 com.music.dhvani.data.analytics.AppAnalytics.logSongPlayed(song.title, song.artist)
+                triggerAutoDownloadIfEnabled(song)
             }
         }
         prefetchAround(exoPlayer)
@@ -1450,6 +1458,24 @@ class PlaybackService : MediaSessionService() {
         // has actually settled on this track, so the same-format case
         // the old call was here to cover is still covered.
         NerdStats.current.value = null
+    }
+
+    /**
+     * Automatically downloads the given track in the background when auto-download is enabled.
+     */
+    private fun triggerAutoDownloadIfEnabled(song: Song?) {
+        if (song == null) return
+        if (!AppSettings.autoDownloadOnPlay.value) return
+        val id = song.videoId
+        if (id.isBlank() || id.startsWith("local:") || song.localUri != null || song.localPath != null) return
+        if (id in Downloads.saved.value || id in Downloads.active.value) return
+        if (!AppSettings.downloadsAllowedNow) return
+
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                Downloads.enqueue(applicationContext, song)
+            }
+        }
     }
 
     /**
@@ -1872,6 +1898,9 @@ class PlaybackService : MediaSessionService() {
         val uri = item.localConfiguration?.uri
         val alreadyPending = QualityUpgrade.isPending(mediaId)
         val shelved = QualityUpgrade.shelvedFor(mediaId)
+        val wantsLossless = AppSettings.audioListeningMode.value == AudioListeningMode.LOSSLESS ||
+            AppSettings.audioListeningMode.value == AudioListeningMode.BOTH
+        if (!wantsLossless && !alreadyPending && shelved == null) return
         if (shelved == null && !alreadyPending && !QualityUpgrade.couldStillUpgrade(mediaId, uri)) return
         if (upgradeJob?.isActive == true) {
             // Already hunting for this track. One left over from a track the
@@ -2551,6 +2580,7 @@ class PlaybackService : MediaSessionService() {
                     "buffered=${player.bufferedPosition}ms)",
             )
             QualityUpgrade.forget(mediaId)
+            QualityUpgrade.refuseUpgrades(mediaId)
             // The FLAC/whatever claim recorded when the swap went out is no
             // longer what's playing — restore what was declared before it
             // (or clear it, if nothing was), so "stats for nerds" doesn't

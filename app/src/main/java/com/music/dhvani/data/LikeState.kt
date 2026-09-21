@@ -66,6 +66,7 @@ object LikeState {
     private const val KEY_LIKES = "likes_map"
     private const val KEY_LIKED_SONGS = "liked_songs_list"
     private lateinit var prefs: SharedPreferences
+    private var appContext: Context? = null
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val serializer = MapSerializer(String.serializer(), String.serializer())
     private val songsSerializer = ListSerializer(LikedSongItem.serializer())
@@ -77,6 +78,7 @@ object LikeState {
     val likedSongs: StateFlow<List<Song>> = _likedSongs.asStateFlow()
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val rawLikes = prefs.getString(KEY_LIKES, null)
         if (rawLikes != null) {
@@ -116,6 +118,16 @@ object LikeState {
         val next = listOf(song) + current
         _likedSongs.value = next
         persistSongs(next)
+        if (com.music.dhvani.data.settings.AppSettings.autoDownloadLiked.value &&
+            !song.videoId.startsWith("local:") &&
+            song.localUri == null &&
+            song.localPath == null &&
+            song.videoId !in com.music.dhvani.download.Downloads.saved.value &&
+            song.videoId !in com.music.dhvani.download.Downloads.active.value &&
+            com.music.dhvani.data.settings.AppSettings.downloadsAllowedNow
+        ) {
+            appContext?.let { com.music.dhvani.download.Downloads.enqueue(it, song) }
+        }
     }
 
     fun removeLiked(videoId: String) {

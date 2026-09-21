@@ -55,7 +55,11 @@ data class PresetAvatar(
 )
 
 val PRESET_AVATARS = listOf(
-    // ── 3D Illustrated Avatars (Claymorphism Google-style) ──
+    // ── 3D Premium Illustrated Avatars ──
+    PresetAvatar(115, "Neon Panda", listOf(Color(0xFF06B6D4), Color(0xFFD946EF)), Icons.Rounded.Headphones, R.drawable.avatar_neon_panda, "Music & Vibes"),
+    PresetAvatar(116, "Cyber Girl", listOf(Color(0xFF8B5CF6), Color(0xFF06B6D4)), Icons.Rounded.Headphones, R.drawable.avatar_cyber_girl, "3D Characters"),
+    PresetAvatar(117, "Astro Beats", listOf(Color(0xFF38BDF8), Color(0xFF818CF8)), Icons.Rounded.AutoAwesome, R.drawable.avatar_astro_beats, "Cyber & Space"),
+    PresetAvatar(118, "Shiba DJ", listOf(Color(0xFFF97316), Color(0xFFFBBF24)), Icons.Rounded.Headphones, R.drawable.avatar_shiba_dj, "Music & Vibes"),
     PresetAvatar(101, "Flower Girl", listOf(Color(0xFFEC4899), Color(0xFFF43F5E)), Icons.Rounded.Person, R.drawable.avatar_flower_girl, "3D Characters"),
     PresetAvatar(102, "Burger Buddy", listOf(Color(0xFFF59E0B), Color(0xFFEF4444)), Icons.Rounded.AutoAwesome, R.drawable.avatar_burger_buddy, "3D Characters"),
     PresetAvatar(103, "Purple Bass", listOf(Color(0xFF8B5CF6), Color(0xFF6366F1)), Icons.Rounded.MusicNote, R.drawable.avatar_purple_guitar, "Music & Vibes"),
@@ -63,7 +67,7 @@ val PRESET_AVATARS = listOf(
     PresetAvatar(105, "Mixtape Stereo", listOf(Color(0xFF14B8A6), Color(0xFF06B6D4)), Icons.Rounded.Radio, R.drawable.avatar_boombox, "Music & Vibes"),
     PresetAvatar(106, "Hipster Lion", listOf(Color(0xFF10B981), Color(0xFF059669)), Icons.Rounded.Person, R.drawable.avatar_hipster_lion, "3D Characters"),
     PresetAvatar(107, "Rosy Boy", listOf(Color(0xFF6366F1), Color(0xFF8B5CF6)), Icons.Rounded.Person, R.drawable.avatar_rosy_boy, "3D Characters"),
-    PresetAvatar(108, "Cosmic Saturn", listOf(Color(0xFFA855F7), Color(0xFF7C3AED)), Icons.Rounded.AutoAwesome, R.drawable.avatar_cosmic_planet, "Fun & Playful"),
+    PresetAvatar(108, "Cosmic Saturn", listOf(Color(0xFFA855F7), Color(0xFF7C3AED)), Icons.Rounded.AutoAwesome, R.drawable.avatar_cosmic_planet, "Cyber & Space"),
     PresetAvatar(109, "Retro Polaroid", listOf(Color(0xFFFACC15), Color(0xFFF59E0B)), Icons.Rounded.AutoAwesome, R.drawable.avatar_retro_camera, "Fun & Playful"),
     PresetAvatar(110, "Woody Bot", listOf(Color(0xFF38BDF8), Color(0xFF0284C7)), Icons.Rounded.AutoAwesome, R.drawable.avatar_woody_bot, "3D Characters"),
     PresetAvatar(111, "Cyber Sneaker", listOf(Color(0xFFF97316), Color(0xFFEC4899)), Icons.Rounded.AutoAwesome, R.drawable.avatar_cyber_sneaker, "Fun & Playful"),

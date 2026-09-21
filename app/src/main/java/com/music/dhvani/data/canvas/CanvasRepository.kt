@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.music.dhvani.data.lyrics.LyricsCleaner
 import com.music.dhvani.data.settings.AppSettings
+import com.music.dhvani.download.DownloadStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -40,6 +41,11 @@ object CanvasRepository {
 
     private val mutex = Mutex()
     private var lastUserSelectedSource: CanvasSource? = null
+    private var appContext: Context? = null
+
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
 
     fun getSelectedSource(videoId: String): CanvasSource? {
         if (videoId.isBlank()) return lastUserSelectedSource
@@ -55,6 +61,9 @@ object CanvasRepository {
 
     fun getCached(videoId: String): CanvasArtwork? {
         if (videoId.isBlank()) return null
+        appContext?.let { ctx ->
+            DownloadStore.getOfflineCanvas(ctx, videoId)?.let { return it }
+        }
         val entry = cache[videoId] ?: return null
         val map = entry.artworks
         val chosen = entry.selectedSource ?: lastUserSelectedSource
@@ -67,11 +76,19 @@ object CanvasRepository {
 
     fun getCachedMap(videoId: String): Map<CanvasSource, CanvasArtwork> {
         if (videoId.isBlank()) return emptyMap()
+        appContext?.let { ctx ->
+            DownloadStore.getOfflineCanvas(ctx, videoId)?.let {
+                return mapOf(it.source to it)
+            }
+        }
         return cache[videoId]?.artworks ?: emptyMap()
     }
 
-    fun hasCached(videoId: String): Boolean =
-        videoId.isNotBlank() && cache.containsKey(videoId)
+    fun hasCached(videoId: String): Boolean {
+        if (videoId.isBlank()) return false
+        if (cache.containsKey(videoId)) return true
+        return appContext?.let { DownloadStore.hasOfflineCanvas(it, videoId) } ?: false
+    }
 
     suspend fun getAvailableCanvases(
         context: Context,
@@ -87,6 +104,14 @@ object CanvasRepository {
         val cleanArtist = LyricsCleaner.cleanArtist(artist)
 
         val cacheKey = if (videoId.isNotBlank()) videoId else "${cleanTitle.trim()}|${cleanArtist.trim()}"
+
+        // Instant offline canvas file retrieval
+        val offline = DownloadStore.getOfflineCanvas(context, videoId)
+        if (offline != null) {
+            val offlineMap = mapOf(offline.source to offline)
+            cache[cacheKey] = CacheEntry(offlineMap, offline.source)
+            return@withContext offlineMap
+        }
 
         // Instant retrieval from bounded LRU cache
         cache[cacheKey]?.let { entry ->

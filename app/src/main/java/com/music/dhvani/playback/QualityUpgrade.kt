@@ -253,9 +253,12 @@ object QualityUpgrade {
         // Already upgraded: this *is* the better copy.
         if (uri.getQueryParameter(MARKER) != null) return false
         if (mediaId in asked || mediaId in refused || pending.containsKey(mediaId)) return false
-        // Same widening as [settledForLess]: a track playing off the cache is
-        // worth a second look whenever anything outranks YouTube, not only
-        // when lossless was asked for.
+        // Only look for a mid-track upgrade if lossless listening mode is requested
+        val wantsLossless = com.music.dhvani.data.settings.AppSettings.audioListeningMode.value ==
+            com.music.dhvani.data.settings.AudioListeningMode.LOSSLESS ||
+            com.music.dhvani.data.settings.AppSettings.audioListeningMode.value ==
+            com.music.dhvani.data.settings.AudioListeningMode.BOTH
+        if (!wantsLossless) return false
         return SourceResolver.canSubstituteForYouTube()
     }
 

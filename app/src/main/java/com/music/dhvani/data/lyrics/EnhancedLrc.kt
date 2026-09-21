@@ -13,16 +13,18 @@ package com.music.dhvani.data.lyrics
  */
 object EnhancedLrc {
 
-    private val LINE = Regex("""^\[(\d{1,3}):(\d{2})[.:](\d{2,3})](.*)$""")
-    private val WORD = Regex("""<(\d{1,3}):(\d{2})[.:](\d{2,3})>([^<]*)""")
+    private val OFFSET_REGEX = Regex("""\[offset:\s*([+-]?\d+)\s*]""", RegexOption.IGNORE_CASE)
+    private val LINE = Regex("""^\[(\d{1,3}):(\d{2})[.:](\d{1,3})](.*)$""")
+    private val WORD = Regex("""<(\d{1,3}):(\d{2})[.:](\d{1,3})>([^<]*)""")
 
-    /** Empty when [lrc] carries no word stamps  the caller can then fall back. */
+    /** Empty when [lrc] carries no word stamps — the caller can then fall back. */
     fun parse(lrc: String): List<LyricLine> {
+        val lrcOffset = OFFSET_REGEX.find(lrc)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
         val rows = lrc.lineSequence()
             .mapNotNull { line -> LINE.matchEntire(line.trim()) }
             .map { match ->
                 Row(
-                    timeMs = stamp(match.groupValues[1], match.groupValues[2], match.groupValues[3]),
+                    timeMs = (stamp(match.groupValues[1], match.groupValues[2], match.groupValues[3]) + lrcOffset).coerceAtLeast(0L),
                     words = WORD.findAll(match.groupValues[4]).toList(),
                     plain = match.groupValues[4].trim(),
                 )
@@ -39,16 +41,16 @@ object EnhancedLrc {
                 return@mapIndexedNotNull if (text.isEmpty()) null else LyricLine(row.timeMs, text)
             }
             // A word runs until the next one starts; the last runs until the
-            // next line does. Without a next line  the closing word of the
-            // song  give it a beat rather than zero, or its sweep never runs.
+            // next line does. Without a next line — the closing word of the
+            // song — give it a beat rather than zero, or its sweep never runs.
             val lineEnd = rows.getOrNull(index + 1)?.timeMs
-                ?: (stamp(row.words.last()) + TAIL_MS)
+                ?: ((stamp(row.words.last()) + lrcOffset).coerceAtLeast(0L) + TAIL_MS)
 
             val words = row.words.mapIndexedNotNull { i, match ->
                 val text = decodeEntities(match.groupValues[4]).trim()
                 if (text.isEmpty()) return@mapIndexedNotNull null
-                val wordStart = stamp(match)
-                val wordEnd = row.words.getOrNull(i + 1)?.let { stamp(it) } ?: lineEnd
+                val wordStart = (stamp(match) + lrcOffset).coerceAtLeast(0L)
+                val wordEnd = row.words.getOrNull(i + 1)?.let { (stamp(it) + lrcOffset).coerceAtLeast(0L) } ?: lineEnd
                 LyricWord(wordStart, wordEnd.coerceAtLeast(wordStart), text)
             }
             if (words.isEmpty()) return@mapIndexedNotNull null
@@ -66,8 +68,12 @@ object EnhancedLrc {
         stamp(match.groupValues[1], match.groupValues[2], match.groupValues[3])
 
     private fun stamp(minutes: String, seconds: String, fraction: String): Long {
-        // Two digits mean centiseconds, three mean milliseconds.
-        val fractionMs = if (fraction.length == 3) fraction.toLong() else fraction.toLong() * 10
+        val fractionMs = when {
+            fraction.length == 1 -> fraction.toLong() * 100
+            fraction.length == 2 -> fraction.toLong() * 10
+            fraction.length >= 3 -> fraction.take(3).toLong()
+            else -> 0L
+        }
         return minutes.toLong() * 60_000 + seconds.toLong() * 1_000 + fractionMs
     }
 

@@ -2,6 +2,7 @@ package com.music.dhvani.download
 
 import android.content.ContentValues
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
@@ -9,7 +10,12 @@ import android.os.Environment
 import android.provider.MediaStore
 import com.music.dhvani.data.DebugLog as Log
 import androidx.annotation.RequiresApi
+import com.music.dhvani.data.Http
+import com.music.dhvani.data.canvas.CanvasArtwork
+import com.music.dhvani.data.canvas.CanvasSource
 import com.music.dhvani.data.model.Song
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.OutputStream
 import java.util.Locale
@@ -369,5 +375,148 @@ object DownloadStore {
             }
         }
         return null
+    }
+
+    // ---- Covers -------------------------------------------------------------
+
+    /** Returns the internal private file where cover art for [videoId] is cached offline. */
+    fun coverFile(context: Context, videoId: String): File {
+        val dir = File(context.filesDir, "covers").apply { if (!exists()) mkdirs() }
+        return File(dir, "$videoId.jpg")
+    }
+
+    /** Returns the cover file if it exists and has content, otherwise null. */
+    fun coverFileIfExists(context: Context, videoId: String): File? {
+        if (videoId.isBlank()) return null
+        val file = coverFile(context, videoId)
+        return if (file.exists() && file.length() > 0) file else null
+    }
+
+    /** Saves raw JPEG cover bytes into the app's persistent offline cover cache. */
+    fun saveCover(context: Context, videoId: String, bytes: ByteArray) {
+        if (videoId.isBlank() || bytes.isEmpty()) return
+        runCatching {
+            val file = coverFile(context, videoId)
+            file.writeBytes(bytes)
+            Log.d(TAG, "saved offline cover for $videoId (${bytes.size}B)")
+        }.onFailure { Log.w(TAG, "failed to save cover for $videoId: ${it.message}") }
+    }
+
+    /** Deletes offline cover file for [videoId]. */
+    fun deleteCover(context: Context, videoId: String) {
+        runCatching {
+            val file = coverFile(context, videoId)
+            if (file.exists()) file.delete()
+        }
+    }
+
+    /** Extracts embedded cover from an audio file and caches it to the offline cover store. */
+    fun extractAndSaveEmbeddedCover(context: Context, videoId: String, audioUri: Uri): File? {
+        if (videoId.isBlank()) return null
+        val existing = coverFileIfExists(context, videoId)
+        if (existing != null) return existing
+        return runCatching {
+            val retriever = MediaMetadataRetriever()
+            if (audioUri.scheme == "file") {
+                val path = audioUri.path ?: return@runCatching null
+                retriever.setDataSource(path)
+            } else {
+                retriever.setDataSource(context, audioUri)
+            }
+            val picture = retriever.embeddedPicture
+            retriever.release()
+            if (picture != null && picture.isNotEmpty()) {
+                val file = coverFile(context, videoId)
+                file.writeBytes(picture)
+                Log.d(TAG, "extracted and saved embedded cover for $videoId (${picture.size}B)")
+                file
+            } else null
+        }.onFailure { Log.d(TAG, "no embedded picture found for $videoId: ${it.message}") }.getOrNull()
+    }
+
+    // ---- Canvas Videos ------------------------------------------------------
+
+    /** Returns the internal private file where motion canvas video for [videoId] is stored offline. */
+    fun canvasFile(context: Context, videoId: String): File {
+        val dir = File(context.filesDir, "canvas").apply { if (!exists()) mkdirs() }
+        return File(dir, "$videoId.mp4")
+    }
+
+    fun canvasMetaFile(context: Context, videoId: String): File {
+        val dir = File(context.filesDir, "canvas").apply { if (!exists()) mkdirs() }
+        return File(dir, "$videoId.meta")
+    }
+
+    fun hasOfflineCanvas(context: Context, videoId: String): Boolean {
+        if (videoId.isBlank()) return false
+        val file = canvasFile(context, videoId)
+        return file.exists() && file.length() > 0
+    }
+
+    fun getOfflineCanvas(context: Context, videoId: String): CanvasArtwork? {
+        if (!hasOfflineCanvas(context, videoId)) return null
+        val file = canvasFile(context, videoId)
+        val meta = canvasMetaFile(context, videoId)
+        var source = CanvasSource.SPOTIFY
+        var title: String? = null
+        var artist: String? = null
+        if (meta.exists()) {
+            val parts = meta.readText().split("|")
+            if (parts.isNotEmpty()) {
+                source = runCatching { CanvasSource.valueOf(parts[0]) }.getOrDefault(CanvasSource.SPOTIFY)
+            }
+            if (parts.size > 1) title = parts[1].takeIf { it.isNotBlank() }
+            if (parts.size > 2) artist = parts[2].takeIf { it.isNotBlank() }
+        }
+        return CanvasArtwork(
+            url = Uri.fromFile(file).toString(),
+            source = source,
+            title = title,
+            artist = artist,
+        )
+    }
+
+    suspend fun saveCanvasVideo(
+        context: Context,
+        videoId: String,
+        altVideoId: String?,
+        artwork: CanvasArtwork,
+    ) = withContext(Dispatchers.IO) {
+        if (artwork.url.isBlank() || artwork.url.startsWith("file://")) return@withContext
+        runCatching {
+            val target = canvasFile(context, videoId)
+            if (!target.exists() || target.length() == 0L) {
+                val req = okhttp3.Request.Builder().url(artwork.url).build()
+                Http.client.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val body = resp.body ?: return@use
+                        val tmp = File(target.parentFile, "$videoId.tmp")
+                        tmp.outputStream().use { out -> body.byteStream().copyTo(out) }
+                        tmp.renameTo(target)
+                    }
+                }
+            }
+            if (target.exists() && target.length() > 0) {
+                val metaContent = "${artwork.source.name}|${artwork.title.orEmpty()}|${artwork.artist.orEmpty()}"
+                canvasMetaFile(context, videoId).writeText(metaContent)
+                if (!altVideoId.isNullOrBlank() && altVideoId != videoId) {
+                    val altTarget = canvasFile(context, altVideoId)
+                    if (!altTarget.exists()) {
+                        runCatching { target.copyTo(altTarget, overwrite = true) }
+                    }
+                    canvasMetaFile(context, altVideoId).writeText(metaContent)
+                }
+                Log.d(TAG, "saved offline canvas video for $videoId (${target.length()}B)")
+            }
+        }.onFailure { Log.w(TAG, "failed saving canvas video for $videoId: ${it.message}") }
+    }
+
+    fun deleteCanvas(context: Context, videoId: String) {
+        runCatching {
+            val file = canvasFile(context, videoId)
+            if (file.exists()) file.delete()
+            val meta = canvasMetaFile(context, videoId)
+            if (meta.exists()) meta.delete()
+        }
     }
 }

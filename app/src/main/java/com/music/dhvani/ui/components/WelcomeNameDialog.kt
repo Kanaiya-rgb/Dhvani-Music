@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -56,6 +57,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -91,6 +94,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -98,9 +102,13 @@ import androidx.compose.ui.window.DialogProperties
 import com.music.dhvani.data.settings.AppSettings
 
 /**
- * Premium, responsive first-launch onboarding dialog.
- * Features a 2-step flow with a pinned bottom action bar so buttons are NEVER cut off,
- * a scrollable/paged avatar grid, pulsing hero glow, and animated shimmer accents.
+ * Ultra-premium, responsive first-launch onboarding dialog for Dhvani Music.
+ * Features:
+ * - Dynamic ambient aura backlight matching the active avatar's palette
+ * - 2-step setup: Avatar Selection & VIP Profile Persona
+ * - Real-time Live VIP Profile Preview Card with animated equalizer waves
+ * - Quick suggestion tags for effortless name selection
+ * - Pinned bottom navigation ensuring action buttons are NEVER cut off
  */
 @Composable
 fun WelcomeNameDialog(
@@ -112,13 +120,13 @@ fun WelcomeNameDialog(
 
     val defaultName = remember { getSuggestedListenerName(context) }
     var inputName by rememberSaveable { mutableStateOf(defaultName) }
-    var selectedAvatarId by rememberSaveable { 
-        mutableIntStateOf(AppSettings.userPresetAvatarId.value) 
+    var selectedAvatarId by rememberSaveable {
+        mutableIntStateOf(AppSettings.userPresetAvatarId.value)
     }
     var currentStep by rememberSaveable { mutableIntStateOf(1) }
     var selectedCategory by rememberSaveable { mutableStateOf("All") }
 
-    val categories = listOf("All", "3D Characters", "Music & Vibes", "Fun & Playful", "Neon Glyphs")
+    val categories = listOf("All", "3D Characters", "Music & Vibes", "Cyber & Space", "Fun & Playful", "Neon Glyphs")
     val filteredPresets = remember(selectedCategory) {
         if (selectedCategory == "All") PRESET_AVATARS else PRESET_AVATARS.filter { it.category == selectedCategory }
     }
@@ -142,61 +150,70 @@ fun WelcomeNameDialog(
         }
     }
 
-    // Intercept back presses in Step 2 to return to Step 1
+    // Step back interceptor
     BackHandler(enabled = currentStep > 1) {
         currentStep = 1
     }
 
-    // Continuous animations
+    // Dynamic animations
     val infiniteTransition = rememberInfiniteTransition(label = "welcomeAnimations")
     val shimmerOffset by infiniteTransition.animateFloat(
-        initialValue = -250f,
-        targetValue = 950f,
+        initialValue = -200f,
+        targetValue = 1000f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2800, easing = LinearEasing),
+            animation = tween(durationMillis = 3000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "headerShimmer",
     )
 
     val pulseGlowScale by infiniteTransition.animateFloat(
-        initialValue = 0.95f,
-        targetValue = 1.13f,
+        initialValue = 0.94f,
+        targetValue = 1.15f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1700, easing = FastOutSlowInEasing),
+            animation = tween(1800, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "pulseGlowScale",
     )
     val pulseGlowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.72f,
+        initialValue = 0.30f,
+        targetValue = 0.70f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1700, easing = FastOutSlowInEasing),
+            animation = tween(1800, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "pulseGlowAlpha",
     )
 
-    // Mini music note wave heights
-    val wave1 by infiniteTransition.animateFloat(
+    // Mini animated equalizer waves
+    val eq1 by infiniteTransition.animateFloat(
         initialValue = 4f,
-        targetValue = 13f,
-        animationSpec = infiniteRepeatable(tween(650, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "w1",
+        targetValue = 14f,
+        animationSpec = infiniteRepeatable(tween(600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "eq1",
     )
-    val wave2 by infiniteTransition.animateFloat(
-        initialValue = 13f,
+    val eq2 by infiniteTransition.animateFloat(
+        initialValue = 14f,
         targetValue = 5f,
-        animationSpec = infiniteRepeatable(tween(550, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "w2",
+        animationSpec = infiniteRepeatable(tween(500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "eq2",
     )
-    val wave3 by infiniteTransition.animateFloat(
+    val eq3 by infiniteTransition.animateFloat(
         initialValue = 6f,
-        targetValue = 15f,
-        animationSpec = infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "w3",
+        targetValue = 16f,
+        animationSpec = infiniteRepeatable(tween(750, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "eq3",
     )
+    val eq4 by infiniteTransition.animateFloat(
+        initialValue = 12f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(tween(650, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "eq4",
+    )
+
+    val primaryAccent = selectedPreset.colors.first()
+    val secondaryAccent = selectedPreset.colors.last()
 
     Dialog(
         onDismissRequest = {
@@ -214,181 +231,182 @@ fun WelcomeNameDialog(
     ) {
         Surface(
             modifier = Modifier
+                .widthIn(max = 440.dp)
                 .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.88f)
-                .clip(RoundedCornerShape(28.dp))
+                .fillMaxHeight(0.89f)
+                .clip(RoundedCornerShape(32.dp))
                 .border(
-                    width = 1.dp,
+                    width = 1.2.dp,
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.28f),
-                            Color.White.copy(alpha = 0.06f),
+                            primaryAccent.copy(alpha = 0.60f),
+                            secondaryAccent.copy(alpha = 0.25f),
+                            Color.White.copy(alpha = 0.08f),
                         )
                     ),
-                    shape = RoundedCornerShape(28.dp),
+                    shape = RoundedCornerShape(32.dp),
                 ),
-            color = Color(0xFF13111A).copy(alpha = 0.98f),
-            shadowElevation = 32.dp,
+            color = Color(0xFF0F0E17),
+            shadowElevation = 36.dp,
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // ── Top Shimmer Gradient Header Strip ─────────────────────────────
+                // ── Top Shimmer Animated Accent Line ─────────────────────────────
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(24.dp)
+                        .height(3.5.dp)
                         .background(
-                            Brush.verticalGradient(
+                            Brush.horizontalGradient(
                                 colors = listOf(
-                                    selectedPreset.colors.first().copy(alpha = 0.16f),
-                                    Color.Transparent,
-                                )
+                                    primaryAccent,
+                                    secondaryAccent,
+                                    Color(0xFF06B6D4),
+                                    Color(0xFFD946EF),
+                                    primaryAccent,
+                                ),
+                                startX = shimmerOffset,
+                                endX = shimmerOffset + 600f,
+                                tileMode = TileMode.Repeated,
                             )
-                        ),
-                    contentAlignment = Alignment.TopCenter,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(3.5.dp)
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color(0xFF7C3AED),
-                                        Color(0xFFD946EF),
-                                        Color(0xFF06B6D4),
-                                        Color(0xFF8B5CF6),
-                                        Color(0xFF7C3AED),
-                                    ),
-                                    startX = shimmerOffset,
-                                    endX = shimmerOffset + 600f,
-                                    tileMode = TileMode.Repeated,
-                                )
-                            )
-                    )
+                        )
+                )
 
-                    Row(
-                        modifier = Modifier.padding(top = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        listOf(wave1, wave2, wave3, wave2, wave1).forEachIndexed { idx, heightVal ->
-                            val barColor = if (idx % 2 == 0) selectedPreset.colors.first() else selectedPreset.colors.last()
-                            Box(
-                                modifier = Modifier
-                                    .width(2.5.dp)
-                                    .height(heightVal.dp)
-                                    .clip(CircleShape)
-                                    .background(barColor.copy(alpha = 0.85f))
-                            )
-                        }
-                    }
-                }
+                Spacer(Modifier.height(14.dp))
 
-                // ── Top Header Section: Step Pill + Hero Avatar + Vibe Chip ───────
+                // ── Top Header Section: Segmented Step Tracker + Hero Avatar ───────
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = 18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // Step Counter Pill
-                    Box(
+                    // Segmented Step Indicator Pill
+                    Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color.White.copy(alpha = 0.08f))
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
                             .border(
                                 width = 1.dp,
                                 brush = Brush.horizontalGradient(
                                     listOf(
-                                        selectedPreset.colors.first().copy(alpha = 0.65f),
-                                        selectedPreset.colors.last().copy(alpha = 0.35f),
+                                        primaryAccent.copy(alpha = 0.5f),
+                                        secondaryAccent.copy(alpha = 0.25f),
                                     )
                                 ),
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(24.dp),
                             )
-                            .padding(horizontal = 12.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center,
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        // Step 1 Pill
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(
+                                    if (currentStep == 1) {
+                                        Brush.horizontalGradient(listOf(primaryAccent, secondaryAccent))
+                                    } else {
+                                        Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                                    }
+                                )
+                                .clickable { currentStep = 1 }
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(selectedPreset.colors.first())
-                            )
                             Text(
-                                text = if (currentStep == 1) "1 of 2 • Choose your vibe" else "2 of 2 • Your name",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = 0.95f),
-                                letterSpacing = 0.3.sp,
+                                text = "1. Choose Avatar",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (currentStep == 1) FontWeight.Bold else FontWeight.Medium,
+                                color = if (currentStep == 1) Color.White else Color.White.copy(alpha = 0.6f),
+                            )
+                        }
+
+                        // Step 2 Pill
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(
+                                    if (currentStep == 2) {
+                                        Brush.horizontalGradient(listOf(primaryAccent, secondaryAccent))
+                                    } else {
+                                        Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                                    }
+                                )
+                                .clickable { currentStep = 2 }
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "2. Profile Name",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (currentStep == 2) FontWeight.Bold else FontWeight.Medium,
+                                color = if (currentStep == 2) Color.White else Color.White.copy(alpha = 0.6f),
                             )
                         }
                     }
 
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
 
-                    // Hero Avatar Preview (76dp + Pulsing Glow)
+                    // Hero Avatar Preview with Ambient Glow
                     Box(
-                        modifier = Modifier.size(86.dp),
+                        modifier = Modifier.size(88.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         // Ambient radial glow
                         Box(
                             modifier = Modifier
-                                .size(84.dp)
+                                .size(88.dp)
                                 .scale(pulseGlowScale)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.radialGradient(
                                         colors = listOf(
-                                            selectedPreset.colors.first().copy(alpha = pulseGlowAlpha * 0.45f),
-                                            selectedPreset.colors.last().copy(alpha = pulseGlowAlpha * 0.12f),
+                                            primaryAccent.copy(alpha = pulseGlowAlpha * 0.55f),
+                                            secondaryAccent.copy(alpha = pulseGlowAlpha * 0.20f),
                                             Color.Transparent,
                                         )
                                     )
                                 )
                         )
 
-                        // Pulsing sweep glow ring
+                        // Pulsing sweep glow halo ring
                         Box(
                             modifier = Modifier
-                                .size(80.dp)
+                                .size(82.dp)
                                 .scale(pulseGlowScale)
                                 .border(
                                     width = 1.5.dp,
                                     brush = Brush.sweepGradient(
                                         listOf(
-                                            selectedPreset.colors.first().copy(alpha = pulseGlowAlpha),
-                                            selectedPreset.colors.last().copy(alpha = pulseGlowAlpha * 0.4f),
-                                            selectedPreset.colors.first().copy(alpha = pulseGlowAlpha),
+                                            primaryAccent.copy(alpha = pulseGlowAlpha),
+                                            secondaryAccent.copy(alpha = pulseGlowAlpha * 0.5f),
+                                            primaryAccent.copy(alpha = pulseGlowAlpha),
                                         )
                                     ),
                                     shape = CircleShape,
                                 )
                         )
 
-                        // Main 72dp Avatar Circle
+                        // Main Avatar Circle
                         Crossfade(
                             targetState = selectedPreset,
                             label = "AvatarCrossfade",
                         ) { preset ->
                             Box(
                                 modifier = Modifier
-                                    .size(72.dp)
+                                    .size(74.dp)
                                     .clip(CircleShape)
                                     .border(
                                         width = 2.dp,
                                         brush = Brush.linearGradient(
                                             colors = listOf(
-                                                Color.White.copy(alpha = 0.85f),
-                                                Color.White.copy(alpha = 0.25f),
+                                                Color.White.copy(alpha = 0.90f),
+                                                primaryAccent.copy(alpha = 0.60f),
+                                                Color.White.copy(alpha = 0.30f),
                                             )
                                         ),
                                         shape = CircleShape,
@@ -410,45 +428,47 @@ fun WelcomeNameDialog(
                                         imageVector = preset.icon,
                                         contentDescription = preset.name,
                                         tint = Color.White,
-                                        modifier = Modifier.size(36.dp),
+                                        modifier = Modifier.size(38.dp),
                                     )
                                 }
                             }
                         }
                     }
 
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(6.dp))
 
                     // Avatar Vibe Chip
-                    Box(
+                    Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
                             .background(Color.White.copy(alpha = 0.08f))
                             .border(
                                 width = 0.8.dp,
-                                color = Color.White.copy(alpha = 0.15f),
+                                brush = Brush.horizontalGradient(listOf(primaryAccent.copy(0.6f), secondaryAccent.copy(0.4f))),
                                 shape = RoundedCornerShape(20.dp),
                             )
-                            .padding(horizontal = 10.dp, vertical = 3.5.dp),
-                        contentAlignment = Alignment.Center,
+                            .padding(horizontal = 12.dp, vertical = 3.5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.AutoAwesome,
-                                contentDescription = null,
-                                tint = selectedPreset.colors.first(),
-                                modifier = Modifier.size(11.dp),
-                            )
-                            Text(
-                                text = selectedPreset.name,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White.copy(alpha = 0.95f),
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Rounded.AutoAwesome,
+                            contentDescription = null,
+                            tint = primaryAccent,
+                            modifier = Modifier.size(12.dp),
+                        )
+                        Text(
+                            text = selectedPreset.name,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
+                        Text(
+                            text = "• ${selectedPreset.category}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color.White.copy(alpha = 0.65f),
+                        )
                     }
                 }
 
@@ -500,13 +520,13 @@ fun WelcomeNameDialog(
                                 Spacer(Modifier.height(2.dp))
 
                                 Text(
-                                    text = "Choose your music vibe & style",
+                                    text = "Choose your persona for your music journey",
                                     fontSize = 12.sp,
                                     color = Color.White.copy(alpha = 0.65f),
                                     textAlign = TextAlign.Center,
                                 )
 
-                                Spacer(Modifier.height(8.dp))
+                                Spacer(Modifier.height(10.dp))
 
                                 // Category Filter Chips
                                 Row(
@@ -521,19 +541,25 @@ fun WelcomeNameDialog(
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(14.dp))
-                                                .background(if (isCatSelected) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f))
+                                                .background(
+                                                    if (isCatSelected) {
+                                                        Brush.horizontalGradient(listOf(primaryAccent.copy(alpha = 0.35f), secondaryAccent.copy(alpha = 0.25f)))
+                                                    } else {
+                                                        Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.06f)))
+                                                    }
+                                                )
                                                 .border(
-                                                    width = 0.8.dp,
-                                                    color = if (isCatSelected) Color.White.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.1f),
+                                                    width = 1.dp,
+                                                    color = if (isCatSelected) primaryAccent.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.12f),
                                                     shape = RoundedCornerShape(14.dp),
                                                 )
                                                 .clickable { selectedCategory = cat }
-                                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                                                .padding(horizontal = 11.dp, vertical = 5.dp),
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             Text(
                                                 text = cat,
-                                                fontSize = 11.sp,
+                                                fontSize = 11.5.sp,
                                                 fontWeight = if (isCatSelected) FontWeight.Bold else FontWeight.Medium,
                                                 color = if (isCatSelected) Color.White else Color.White.copy(alpha = 0.7f),
                                             )
@@ -541,7 +567,7 @@ fun WelcomeNameDialog(
                                     }
                                 }
 
-                                // 4-Column Responsive Grid (Takes remaining height, scrolls smoothly)
+                                // 4-Column Responsive Grid
                                 LazyVerticalGrid(
                                     columns = GridCells.Fixed(4),
                                     modifier = Modifier
@@ -567,7 +593,11 @@ fun WelcomeNameDialog(
                                                 .clip(CircleShape)
                                                 .border(
                                                     width = if (isSelected) 2.5.dp else 1.dp,
-                                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.15f),
+                                                    brush = if (isSelected) {
+                                                        Brush.linearGradient(listOf(primaryAccent, secondaryAccent))
+                                                    } else {
+                                                        Brush.linearGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.08f)))
+                                                    },
                                                     shape = CircleShape,
                                                 )
                                                 .padding(2.5.dp)
@@ -599,7 +629,7 @@ fun WelcomeNameDialog(
                                                 Box(
                                                     modifier = Modifier
                                                         .fillMaxSize()
-                                                    .background(Color.Black.copy(alpha = 0.32f)),
+                                                        .background(Color.Black.copy(alpha = 0.35f)),
                                                     contentAlignment = Alignment.Center,
                                                 ) {
                                                     Icon(
@@ -616,51 +646,178 @@ fun WelcomeNameDialog(
                             }
                         } else {
                             // ═════════════════════════════════════════════════════
-                            // STEP 2: NAME ENTRY & CONFIRMATION
+                            // STEP 2: NAME ENTRY & LIVE PROFILE CARD PREVIEW
                             // ═════════════════════════════════════════════════════
+                            val suggestedNames = remember {
+                                val list = mutableListOf<String>()
+                                if (defaultName.isNotBlank() && defaultName != "Music Lover") {
+                                    list.add(defaultName)
+                                }
+                                list.addAll(listOf("Music Lover", "Sound Traveler", "Vibe Master", "Night Owl", "Beat Drop"))
+                                list.distinct()
+                            }
+
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .verticalScroll(rememberScrollState())
-                                    .padding(vertical = 12.dp),
+                                    .padding(vertical = 4.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
                             ) {
                                 Text(
-                                    text = "What should we call you?",
+                                    text = "Name Your Profile",
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
                                     textAlign = TextAlign.Center,
                                 )
 
-                                Spacer(Modifier.height(6.dp))
+                                Spacer(Modifier.height(4.dp))
 
                                 Text(
-                                    text = "Dhvani personalizes your playback profile, listening recaps, and greetings with this name.",
-                                    fontSize = 12.5.sp,
-                                    lineHeight = 17.sp,
+                                    text = "This name appears across your recaps, playlists, and greetings",
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp,
                                     color = Color.White.copy(alpha = 0.65f),
                                     textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 12.dp),
                                 )
 
-                                Spacer(Modifier.height(26.dp))
+                                Spacer(Modifier.height(16.dp))
 
+                                // ── Live VIP Profile Card Preview ────────────────
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(
+                                            Brush.linearGradient(
+                                                colors = listOf(
+                                                    primaryAccent.copy(alpha = 0.18f),
+                                                    secondaryAccent.copy(alpha = 0.08f),
+                                                    Color.White.copy(alpha = 0.04f),
+                                                )
+                                            )
+                                        )
+                                        .border(
+                                            width = 1.dp,
+                                            brush = Brush.horizontalGradient(
+                                                listOf(
+                                                    primaryAccent.copy(alpha = 0.5f),
+                                                    secondaryAccent.copy(alpha = 0.25f),
+                                                )
+                                            ),
+                                            shape = RoundedCornerShape(20.dp),
+                                        )
+                                        .padding(14.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    ) {
+                                        // Mini Avatar Preview
+                                        Box(
+                                            modifier = Modifier
+                                                .size(52.dp)
+                                                .clip(CircleShape)
+                                                .border(1.5.dp, primaryAccent, CircleShape)
+                                                .background(Brush.linearGradient(selectedPreset.colors)),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            if (selectedPreset.drawableRes != null) {
+                                                Image(
+                                                    painter = painterResource(selectedPreset.drawableRes),
+                                                    contentDescription = selectedPreset.name,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = selectedPreset.icon,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(26.dp),
+                                                )
+                                            }
+                                        }
+
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                                        ) {
+                                            Text(
+                                                text = inputName.trim().ifBlank { "Music Lover" },
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            ) {
+                                                Text(
+                                                    text = "Dhvani Listener",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = primaryAccent,
+                                                )
+                                                // Live mini Equalizer Animation
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                                    verticalAlignment = Alignment.Bottom,
+                                                    modifier = Modifier.height(14.dp),
+                                                ) {
+                                                    listOf(eq1, eq2, eq3, eq4).forEach { heightVal ->
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .width(2.dp)
+                                                                .height(heightVal.dp)
+                                                                .clip(CircleShape)
+                                                                .background(primaryAccent.copy(alpha = 0.9f))
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Preview Tag Pill
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color.White.copy(alpha = 0.08f))
+                                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                                        ) {
+                                            Text(
+                                                text = "PREVIEW",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 0.5.sp,
+                                                color = Color.White.copy(alpha = 0.7f),
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(Modifier.height(18.dp))
+
+                                // Name Input Field
                                 OutlinedTextField(
                                     value = inputName,
                                     onValueChange = { inputName = it },
-                                    label = { 
+                                    label = {
                                         Text(
-                                            text = "Your Name or Nickname", 
+                                            text = "Your Name or Nickname",
                                             color = Color.White.copy(alpha = 0.6f),
                                             fontSize = 13.sp,
-                                        ) 
+                                        )
                                     },
                                     placeholder = {
                                         Text(
-                                            text = "Enter your name...",
-                                            color = Color.White.copy(alpha = 0.4f),
+                                            text = "e.g. DJ Kanaiya, Alex...",
+                                            color = Color.White.copy(alpha = 0.35f),
                                             fontSize = 13.sp,
                                         )
                                     },
@@ -668,7 +825,7 @@ fun WelcomeNameDialog(
                                         Icon(
                                             imageVector = Icons.Rounded.Person,
                                             contentDescription = null,
-                                            tint = selectedPreset.colors.first(),
+                                            tint = primaryAccent,
                                             modifier = Modifier.size(20.dp),
                                         )
                                     },
@@ -676,7 +833,7 @@ fun WelcomeNameDialog(
                                         if (inputName.isNotBlank()) {
                                             IconButton(
                                                 onClick = { inputName = "" },
-                                                modifier = Modifier.size(24.dp),
+                                                modifier = Modifier.size(28.dp),
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Rounded.Close,
@@ -698,10 +855,10 @@ fun WelcomeNameDialog(
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedTextColor = Color.White,
                                         unfocusedTextColor = Color.White,
-                                        focusedBorderColor = selectedPreset.colors.first(),
+                                        focusedBorderColor = primaryAccent,
                                         unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                                        cursorColor = selectedPreset.colors.first(),
-                                        focusedContainerColor = Color.White.copy(alpha = 0.03f),
+                                        cursorColor = primaryAccent,
+                                        focusedContainerColor = Color.White.copy(alpha = 0.04f),
                                         unfocusedContainerColor = Color.White.copy(alpha = 0.02f),
                                     ),
                                     shape = RoundedCornerShape(18.dp),
@@ -709,16 +866,65 @@ fun WelcomeNameDialog(
                                         .fillMaxWidth()
                                         .focusRequester(focusRequester),
                                 )
+
+                                Spacer(Modifier.height(14.dp))
+
+                                // Quick Name Suggestions
+                                Text(
+                                    text = "Quick suggestions:",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White.copy(alpha = 0.5f),
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                )
+
+                                Spacer(Modifier.height(6.dp))
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    suggestedNames.forEach { suggestion ->
+                                        val isCurrent = inputName.trim() == suggestion
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(
+                                                    if (isCurrent) primaryAccent.copy(alpha = 0.3f)
+                                                    else Color.White.copy(alpha = 0.06f)
+                                                )
+                                                .border(
+                                                    width = 0.8.dp,
+                                                    color = if (isCurrent) primaryAccent else Color.White.copy(alpha = 0.12f),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                )
+                                                .clickable { inputName = suggestion }
+                                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                text = suggestion,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isCurrent) Color.White else Color.White.copy(alpha = 0.75f),
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(Modifier.height(10.dp))
                             }
                         }
                     }
                 }
 
-                // ── Pinned Bottom Action Bar (GUARANTEED NEVER CUT OFF!) ──────────
+                // ── Pinned Bottom Action Bar (NEVER CUT OFF) ──────────────────────
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFF13111A))
+                        .background(Color(0xFF0F0E17))
                         .padding(horizontal = 18.dp, vertical = 14.dp),
                 ) {
                     if (currentStep == 1) {
@@ -726,7 +932,7 @@ fun WelcomeNameDialog(
                             onClick = { currentStep = 2 },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(50.dp),
+                                .height(52.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.Transparent,
@@ -738,10 +944,7 @@ fun WelcomeNameDialog(
                                     .fillMaxSize()
                                     .background(
                                         Brush.horizontalGradient(
-                                            colors = listOf(
-                                                Color(0xFF7C3AED),
-                                                Color(0xFFD946EF),
-                                            )
+                                            colors = listOf(primaryAccent, secondaryAccent)
                                         ),
                                         shape = RoundedCornerShape(16.dp),
                                     ),
@@ -752,7 +955,7 @@ fun WelcomeNameDialog(
                                     horizontalArrangement = Arrangement.Center,
                                 ) {
                                     Text(
-                                        text = "Continue",
+                                        text = "Next: Set Profile Name",
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White,
@@ -775,7 +978,7 @@ fun WelcomeNameDialog(
                         ) {
                             OutlinedButton(
                                 onClick = { currentStep = 1 },
-                                modifier = Modifier.height(50.dp),
+                                modifier = Modifier.height(52.dp),
                                 shape = RoundedCornerShape(16.dp),
                                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
                                 colors = ButtonDefaults.outlinedButtonColors(
@@ -803,7 +1006,7 @@ fun WelcomeNameDialog(
                                 onClick = { completeSetup() },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(50.dp),
+                                    .height(52.dp),
                                 shape = RoundedCornerShape(16.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color.Transparent,
@@ -815,10 +1018,7 @@ fun WelcomeNameDialog(
                                         .fillMaxSize()
                                         .background(
                                             Brush.horizontalGradient(
-                                                colors = listOf(
-                                                    Color(0xFF7C3AED),
-                                                    Color(0xFFD946EF),
-                                                )
+                                                colors = listOf(primaryAccent, secondaryAccent)
                                             ),
                                             shape = RoundedCornerShape(16.dp),
                                         ),
@@ -862,8 +1062,8 @@ private fun getSuggestedListenerName(context: Context): String {
         } else {
             null
         }
-        if (!sysDeviceName.isNullOrBlank() && 
-            !sysDeviceName.contains("Redmi", ignoreCase = true) && 
+        if (!sysDeviceName.isNullOrBlank() &&
+            !sysDeviceName.contains("Redmi", ignoreCase = true) &&
             !sysDeviceName.contains(Build.MODEL, ignoreCase = true)
         ) {
             return@runCatching sysDeviceName

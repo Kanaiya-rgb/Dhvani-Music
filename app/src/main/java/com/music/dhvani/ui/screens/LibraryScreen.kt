@@ -206,13 +206,19 @@ fun LibraryScreen(
             // to discover it is to have already used it.
             item(key = "replay") { ReplayBanner(replayCard, onOpenReplay) }
             item(key = "shelf:$ON_DEVICE") {
+                val savedDownloads by Downloads.saved.collectAsStateWithLifecycle()
+                val downloadsCover = remember(savedDownloads) {
+                    savedDownloads.keys.firstNotNullOfOrNull { id ->
+                        Downloads.localCoverUri(id)
+                    }
+                }
                 val onDeviceShelf = HomeShelf(
                     title = ON_DEVICE,
                     items = listOf(
                         ShelfItem(
                             title = stringResource(R.string.downloads),
                             subtitle = stringResource(R.string.downloaded_songs),
-                            thumbnailUrl = null,
+                            thumbnailUrl = downloadsCover,
                             videoId = null,
                             browseId = "local:downloads",
                         ),

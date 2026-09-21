@@ -184,31 +184,57 @@ object LrcLib {
      * with nothing after it closes the final line, so it always survives.
      */
     internal fun parseLrc(lrc: String): List<LyricLine> {
-        val all = lrc.lineSequence().mapNotNull { line ->
-            val match = STAMP.find(line) ?: return@mapNotNull null
-            val (minutes, seconds, fraction) = match.destructured
-            // Two digits mean centiseconds, three mean milliseconds.
-            val fractionMs = when (fraction.length) {
-                2 -> fraction.toLong() * 10
-                3 -> fraction.toLong()
-                else -> 0L
-            }
-            val body = line.substring(match.range.last + 1)
-            LyricLine(
-                timeMs = minutes.toLong() * 60_000 + seconds.toLong() * 1_000 + fractionMs,
-                // Stripped rather than rebuilt from the runs below: the spacing
-                // and punctuation between two words belong to the line, and
-                // re-joining the words with single spaces would quietly rewrite
-                // a line that never had them.
-                text = body.replace(WORD_STAMP, "").trim(),
-                words = parseWordRuns(body),
-            )
-        }.sortedBy { it.timeMs }.toList()
+        val lrcOffset = OFFSET_REGEX.find(lrc)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+        val all = mutableListOf<LyricLine>()
 
-        val kept = all.filterIndexed { index, line ->
+        lrc.lineSequence().forEach { rawLine ->
+            val trimmed = rawLine.trim()
+            val matches = STAMP.findAll(trimmed).toList()
+            if (matches.isEmpty()) return@forEach
+
+            // Clean line body by removing all leading timestamp stamps
+            val body = trimmed.replace(STAMP, "").trim()
+            val text = body.replace(WORD_STAMP, "").trim()
+            val baseWords = parseWordRuns(body)
+
+            matches.forEach { match ->
+                val (minutes, seconds, fraction) = match.destructured
+                val fractionMs = when {
+                    fraction.length == 1 -> fraction.toLong() * 100
+                    fraction.length == 2 -> fraction.toLong() * 10
+                    fraction.length >= 3 -> fraction.take(3).toLong()
+                    else -> 0L
+                }
+                val rawTime = minutes.toLong() * 60_000 + seconds.toLong() * 1_000 + fractionMs
+                val timeMs = (rawTime + lrcOffset).coerceAtLeast(0L)
+
+                val shiftedWords = if (lrcOffset != 0L) {
+                    baseWords.map {
+                        it.copy(
+                            startMs = (it.startMs + lrcOffset).coerceAtLeast(0L),
+                            endMs = (it.endMs + lrcOffset).coerceAtLeast(0L),
+                        )
+                    }
+                } else {
+                    baseWords
+                }
+
+                all.add(
+                    LyricLine(
+                        timeMs = timeMs,
+                        text = text,
+                        words = shiftedWords,
+                    )
+                )
+            }
+        }
+
+        val sorted = all.sortedBy { it.timeMs }
+
+        val kept = sorted.filterIndexed { index, line ->
             if (!line.isGap) return@filterIndexed true
             // A trailing stamp closes off the last line — that's the outro.
-            val next = all.getOrNull(index + 1) ?: return@filterIndexed true
+            val next = sorted.getOrNull(index + 1) ?: return@filterIndexed true
             next.timeMs - line.timeMs >= MIN_GAP_MS
         }
 
@@ -264,16 +290,18 @@ object LrcLib {
 
     private fun msOf(mark: MatchResult): Long {
         val (minutes, seconds, fraction) = mark.destructured
-        val fractionMs = when (fraction.length) {
-            2 -> fraction.toLong() * 10
-            3 -> fraction.toLong()
+        val fractionMs = when {
+            fraction.length == 1 -> fraction.toLong() * 100
+            fraction.length == 2 -> fraction.toLong() * 10
+            fraction.length >= 3 -> fraction.take(3).toLong()
             else -> 0L
         }
         return minutes.toLong() * 60_000 + seconds.toLong() * 1_000 + fractionMs
     }
 
-    private val STAMP = Regex("""\[(\d{1,2}):(\d{2})[.:](\d{2,3})]""")
-    private val WORD_STAMP = Regex("""<(\d{1,3}):(\d{2})[.:](\d{2,3})>""")
+    private val STAMP = Regex("""\[(\d{1,3}):(\d{2})[.:](\d{1,3})]""")
+    private val WORD_STAMP = Regex("""<(\d{1,3}):(\d{2})[.:](\d{1,3})>""")
+    private val OFFSET_REGEX = Regex("""\[offset:\s*([+-]?\d+)\s*]""", RegexOption.IGNORE_CASE)
     private val NOISE = Regex(
         """\((?:from|feat\.?|official|lyrical|video|audio|remix)[^)]*\)|\[[^]]*]|""" +
             """\b(?:official (?:video|audio|music video)|lyrical|full song|4k video)\b""",

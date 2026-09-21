@@ -112,6 +112,7 @@ fun formatDurationText(durationMs: Long): String {
 /** As [Song.artworkAt], for artwork that isn't a track's. */
 fun String?.artworkAt(px: Int): String? {
     if (this == null || this.isBlank()) return null
+    if (startsWith("file://") || startsWith("content://")) return this
     var url = this
     // 1. Google / YouTube Music CDN (e.g. lh3.googleusercontent.com) -> HD 1200+ px
     if (url.contains("googleusercontent.com") || url.contains("ggpht.com")) {

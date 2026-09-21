@@ -355,6 +355,16 @@ object AppSettings {
     /** Whether to prompt the user to choose quality and network on every song download. */
     val alwaysAskDownloadOptions = MutableStateFlow(false)
 
+    /** Automatically download played/streamed tracks for offline listening. */
+    val autoDownloadOnPlay = MutableStateFlow(false)
+
+    /** Automatically download tracks when marked as favorite/liked. */
+    val autoDownloadLiked = MutableStateFlow(true)
+
+    /** Whether user has been prompted about the Auto-Download feature notice. */
+    val hasPromptedAutoDownloadNotice = MutableStateFlow(false)
+    private const val KEY_HAS_PROMPTED_AUTO_DOWNLOAD_NOTICE = "has_prompted_auto_download_notice_v232"
+
     /** Whether the active network charges for data. `null` while offline. */
     val meteredConnection = MutableStateFlow<Boolean?>(null)
 
@@ -780,6 +790,9 @@ object AppSettings {
         downloadNetwork.value = networkMode
         wifiOnlyDownloads.value = (networkMode == DownloadNetwork.WIFI_ONLY)
         alwaysAskDownloadOptions.value = prefs.getBoolean(KEY_ALWAYS_ASK_DOWNLOAD_OPTIONS, false)
+        autoDownloadOnPlay.value = prefs.getBoolean(KEY_AUTO_DOWNLOAD_ON_PLAY, false)
+        autoDownloadLiked.value = prefs.getBoolean(KEY_AUTO_DOWNLOAD_LIKED, true)
+        hasPromptedAutoDownloadNotice.value = prefs.getBoolean(KEY_HAS_PROMPTED_AUTO_DOWNLOAD_NOTICE, false)
         crossfadeSeconds.value = prefs.getInt(KEY_CROSSFADE, 0)
         smartFadeEnabled.value = prefs.getBoolean(KEY_SMART_FADE, false)
         skipSilence.value = prefs.getBoolean(KEY_SKIP_SILENCE, false)
@@ -1093,6 +1106,32 @@ object AppSettings {
     fun setAlwaysAskDownloadOptions(value: Boolean) {
         alwaysAskDownloadOptions.value = value
         prefs.edit().putBoolean(KEY_ALWAYS_ASK_DOWNLOAD_OPTIONS, value).apply()
+    }
+
+    fun setAutoDownloadOnPlay(value: Boolean) {
+        autoDownloadOnPlay.value = value
+        prefs.edit().putBoolean(KEY_AUTO_DOWNLOAD_ON_PLAY, value).apply()
+    }
+
+    fun setAutoDownloadLiked(value: Boolean) {
+        autoDownloadLiked.value = value
+        prefs.edit().putBoolean(KEY_AUTO_DOWNLOAD_LIKED, value).apply()
+    }
+
+    fun setPromptedAutoDownloadNotice(value: Boolean) {
+        hasPromptedAutoDownloadNotice.value = value
+        prefs.edit().putBoolean(KEY_HAS_PROMPTED_AUTO_DOWNLOAD_NOTICE, value).apply()
+    }
+
+    fun disableAllAutoDownloads() {
+        autoDownloadLiked.value = false
+        autoDownloadOnPlay.value = false
+        hasPromptedAutoDownloadNotice.value = true
+        prefs.edit()
+            .putBoolean(KEY_AUTO_DOWNLOAD_LIKED, false)
+            .putBoolean(KEY_AUTO_DOWNLOAD_ON_PLAY, false)
+            .putBoolean(KEY_HAS_PROMPTED_AUTO_DOWNLOAD_NOTICE, true)
+            .apply()
     }
 
     fun setCrossfadeSeconds(value: Int) {
@@ -2288,6 +2327,8 @@ object AppSettings {
     private const val KEY_PLAYER_DEFAULT_VIEW_MODE = "player_default_view_mode"
     private const val KEY_DYNAMIC_ISLAND_ENABLED = "dynamic_island_enabled"
     private const val KEY_SYSTEM_DYNAMIC_ISLAND_ENABLED = "system_dynamic_island_enabled"
+    private const val KEY_AUTO_DOWNLOAD_ON_PLAY = "auto_download_on_play"
+    private const val KEY_AUTO_DOWNLOAD_LIKED = "auto_download_liked"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"
 }
 

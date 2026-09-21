@@ -124,10 +124,17 @@ object LocalMediaRepository {
         }.onFailure { Log.w(TAG, "Failed scanning Music/DhvaniMusic directory: ${it.message}") }
 
         val filled = appDownloads.map { song ->
-            if (song.albumName != null) return@map song
-            val uri = song.localUri ?: return@map song
-            val album = scanned[uri]?.albumName ?: return@map song
-            song.copy(albumName = album)
+            val uri = song.localUri
+            val album = if (song.albumName != null) song.albumName else (uri?.let { scanned[it]?.albumName })
+            val coverFile = DownloadStore.coverFileIfExists(context, song.videoId)
+                ?: (uri?.let { DownloadStore.coverFileIfExists(context, it) })
+                ?: (uri?.let { DownloadStore.extractAndSaveEmbeddedCover(context, song.videoId, Uri.parse(it)) })
+            val resolvedThumb = if (coverFile != null && coverFile.exists()) {
+                Uri.fromFile(coverFile).toString()
+            } else {
+                song.thumbnailUrl
+            }
+            song.copy(albumName = album, thumbnailUrl = resolvedThumb)
         }
 
         (filled + extraSongs).distinctBy { it.localUri ?: it.videoId }
@@ -268,11 +275,19 @@ object LocalMediaRepository {
             retriever.release()
         }
 
+        val coverFile = DownloadStore.coverFileIfExists(context, uriStr)
+            ?: DownloadStore.extractAndSaveEmbeddedCover(context, uriStr, Uri.parse(uriStr))
+        val resolvedArt = if (coverFile != null && coverFile.exists()) {
+            Uri.fromFile(coverFile).toString()
+        } else {
+            scanned?.artworkUrl
+        }
+
         return Song(
             videoId = uriStr,
             title = title,
             artist = artist,
-            thumbnailUrl = scanned?.artworkUrl,
+            thumbnailUrl = resolvedArt,
             durationText = durationText,
             albumName = albumName ?: scanned?.albumName,
             localUri = uriStr,
