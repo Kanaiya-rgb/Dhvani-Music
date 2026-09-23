@@ -1,7 +1,8 @@
 {
-  "version": "2.3.3",
-  "versionCode": 35,
-  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.3.3",
-  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.3.3/DhvaniMusic-v2.3.3.apk",
-  "notes": "v2.3.3: Updated official app logo & launcher branding, improved sound booster audio headroom, and telemetry & user location improvements."
+  "version": "2.4.0",
+  "versionCode": 36,
+  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.4.0",
+  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.4.0/DhvaniMusic-v2.4.0.apk",
+  "notes": "v2.4.0: Added home screen widgets (Pill 4x1 & Turntable 3x3), 4-cover mosaic collage for imported playlists, faster parallel Spotify playlist import, audio effects, and fix for imported playlist navigation."
 }
+
