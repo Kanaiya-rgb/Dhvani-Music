@@ -64,6 +64,10 @@ Built entirely in modern Kotlin with Jetpack Compose, Dhvani provides an ad-free
   - 📊 **Kinetic Equalizer** — 5-band dynamic audio spectrum frequency bars leaping from active lyric words.
   - 👻 **Ghostwrite** — Ethereal phantom typography with breathing mint-teal ectoplasm glow.
   - ⌨️ **Mechanical Typewriter** — Monospace character-by-character snap with glowing typewriter caret.
+* **Dynamic Home-Screen Widgets *(New in v2.4.0)*** — Sleek Android home-screen media widgets:
+  - 💊 **MediaWidgetPill (4×1)** — Modern pill design with album art, track details, and playback controls.
+  - 💿 **MediaWidgetTurntable (3×3)** — Retro vinyl turntable player with real-time rotating disc aesthetic.
+* **4-Cover Mosaic Grid *(New in v2.4.0)*** — Automatic 2×2 artwork collage generation for imported Spotify and custom playlists.
 * **Dynamic Artwork Palette** — Liquid color theming dynamically extracted from album covers on every track change.
 * **Frosted-Glass UI (Haze)** — Silky, translucent navigation and bottom bars with real-time blurred backdrops.
 * **Next-Gen Interactive Sliders** — Liquid physics seek bars and volume sliders with subtle haptic ticks and expand-on-touch ergonomics.

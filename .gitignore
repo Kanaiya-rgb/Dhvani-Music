@@ -66,3 +66,7 @@ parse_profile.py
 *.pyc
 __pycache__/
 
+# Internal docs / notes (keep only README.md public)
+RELEASE_v2.4.0_CHANGELOG.md
+UPCOMING_FEATURES.md
+
