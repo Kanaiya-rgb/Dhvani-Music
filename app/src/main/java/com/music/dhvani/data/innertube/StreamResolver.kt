@@ -783,8 +783,16 @@ object StreamResolver {
         // that answers the age gate with the same age gate signed in would be
         // asked twice for every walk, and there are seven of them.
         val triedSignedIn = mutableSetOf<PlayerClient>()
+        val allClients = clientOrder()
+        val clients = if (allClients.all { isStoodDown(videoId, it) }) {
+            TrackLog.d(TAG, "All player clients stood down for $videoId; resetting stand-down to retry direct clients")
+            standDownUntil.clear()
+            allClients
+        } else {
+            allClients
+        }
 
-        for (client in clientOrder()) {
+        for (client in clients) {
             if (isStoodDown(videoId, client)) continue
             val clientStart = SystemClock.elapsedRealtime()
             try {
@@ -1387,7 +1395,7 @@ object StreamResolver {
      */
     private val standDownUntil = ConcurrentHashMap<String, Long>()
 
-    private const val STAND_DOWN_MS = 10 * 60 * 1000L
+    private const val STAND_DOWN_MS = 2 * 60 * 1000L
 
     private fun key(videoId: String, client: PlayerClient) =
         "$videoId|${client.clientName}@${client.clientVersion}"

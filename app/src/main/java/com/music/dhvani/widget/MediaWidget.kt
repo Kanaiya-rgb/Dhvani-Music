@@ -80,9 +80,10 @@ abstract class MediaWidget : AppWidgetProvider() {
         val pending = goAsync()
         val app = context.applicationContext
         val fallback = fallbackWidthDp
+        val providerClassName = this::class.java.name
         scope.launch {
             try {
-                withTimeoutOrNull(RENDER_TIMEOUT_MS) { render(app, ids, fallback) }
+                withTimeoutOrNull(RENDER_TIMEOUT_MS) { render(app, ids, fallback, providerClassName) }
             } finally {
                 runCatching { pending.finish() }
             }
@@ -130,37 +131,63 @@ abstract class MediaWidget : AppWidgetProvider() {
                             manager.getAppWidgetIds(ComponentName(app, provider))
                         }.getOrNull()
                         if (ids == null || ids.isEmpty()) continue
-                        render(app, ids, fallbackWidthDp)
+                        render(app, ids, fallbackWidthDp, provider.name)
                     }
                 }
             }
         }
 
-        private suspend fun render(context: Context, ids: IntArray, fallbackWidthDp: Int) {
+        private suspend fun render(
+            context: Context,
+            ids: IntArray,
+            fallbackWidthDp: Int,
+            providerClass: String? = null,
+        ) {
             val manager = runCatching { AppWidgetManager.getInstance(context) }.getOrNull() ?: return
             val snapshot = MediaWidgetSnapshot.load(context)
             // Keyed on the artwork rather than the track: two tracks off one
             // album are one picture, so moving through an album redraws nothing.
             val key = snapshot.artworkUrl ?: KEY_NO_ARTWORK
+            val isPill = providerClass == MediaWidgetPill::class.java.name
+            val isTurntable = providerClass == MediaWidgetTurntable::class.java.name
+
             for (id in ids) {
                 val size = measure(context, manager, id, fallbackWidthDp)
-                val cached = MediaWidgetArt.peek(key, size.widthPx, size.heightPx, size.bandPx)
-                if (cached == null) {
+                val density = context.resources.displayMetrics.density
+                val circleSizePx = if (isPill) (44 * density).roundToInt() else (90 * density).roundToInt()
+
+                val cached = if (isPill || isTurntable) {
+                    null
+                } else {
+                    MediaWidgetArt.peek(key, size.widthPx, size.heightPx, size.bandPx)
+                }
+
+                if (cached == null && !isPill && !isTurntable) {
                     // The picture still has to be drawn, and that can mean a
                     // network fetch. Push the transport now so a tap is answered
                     // in a frame; the artwork catches up below.
-                    manager.push(id, views(context, snapshot, size, art = null))
+                    manager.push(id, views(context, snapshot, size, art = null, providerClass = providerClass))
                 }
-                val art = cached ?: MediaWidgetArt.render(
-                    context = context,
-                    artworkUrl = snapshot.artworkUrl,
-                    widthPx = size.widthPx,
-                    heightPx = size.heightPx,
-                    bandPx = size.bandPx,
-                    key = key,
-                    cornerRadiusPx = size.cornerRadiusPx,
-                )
-                manager.push(id, views(context, snapshot, size, art))
+
+                val art = if (isPill || isTurntable) {
+                    MediaWidgetArt.renderCircle(
+                        context = context,
+                        artworkUrl = snapshot.artworkUrl,
+                        sizePx = circleSizePx,
+                        key = key,
+                    )
+                } else {
+                    cached ?: MediaWidgetArt.render(
+                        context = context,
+                        artworkUrl = snapshot.artworkUrl,
+                        widthPx = size.widthPx,
+                        heightPx = size.heightPx,
+                        bandPx = size.bandPx,
+                        key = key,
+                        cornerRadiusPx = size.cornerRadiusPx,
+                    )
+                }
+                manager.push(id, views(context, snapshot, size, art, providerClass = providerClass))
             }
         }
 
@@ -171,14 +198,17 @@ abstract class MediaWidget : AppWidgetProvider() {
             snapshot: MediaWidgetSnapshot,
             size: WidgetSize,
             art: Bitmap?,
+            providerClass: String? = null,
         ): RemoteViews {
-            val layout =
-                if (size.wide) R.layout.widget_media_wide else R.layout.widget_media_compact
+            val layout = when (providerClass) {
+                MediaWidgetPill::class.java.name -> R.layout.widget_media_pill
+                MediaWidgetTurntable::class.java.name -> R.layout.widget_media_turntable
+                else -> if (size.wide) R.layout.widget_media_wide else R.layout.widget_media_compact
+            }
             val views = RemoteViews(context.packageName, layout)
             art?.let { views.setImageViewBitmap(R.id.widget_art, it) }
 
-            // Both layouts carry the title; only the wide one has room for the
-            // artist beneath it.
+            // Both layouts carry the title; only wide / turntable / pill show artist
             views.setTextViewText(
                 R.id.widget_title,
                 if (snapshot.hasTrack) {
@@ -187,7 +217,8 @@ abstract class MediaWidget : AppWidgetProvider() {
                     context.getString(R.string.widget_nothing_played)
                 },
             )
-            if (size.wide) {
+            val showArtist = size.wide || providerClass == MediaWidgetPill::class.java.name || providerClass == MediaWidgetTurntable::class.java.name
+            if (showArtist) {
                 views.setTextViewText(R.id.widget_artist, snapshot.artist)
                 views.setViewVisibility(
                     R.id.widget_artist,
@@ -362,6 +393,8 @@ abstract class MediaWidget : AppWidgetProvider() {
         private val PROVIDERS = listOf(
             MediaWidgetSquare::class.java to SQUARE_WIDTH_DP,
             MediaWidgetWide::class.java to WIDE_WIDTH_DP,
+            MediaWidgetPill::class.java to PILL_WIDTH_DP,
+            MediaWidgetTurntable::class.java to TURNTABLE_WIDTH_DP,
         )
 
         private val TRANSPORT =
@@ -394,6 +427,10 @@ private const val SQUARE_WIDTH_DP = 110
 
 private const val WIDE_WIDTH_DP = 250
 
+private const val PILL_WIDTH_DP = 250
+
+private const val TURNTABLE_WIDTH_DP = 180
+
 private const val FALLBACK_HEIGHT_DP = 110
 
 /** The 2×2 entry in the picker. See `res/xml/widget_media_square.xml`. */
@@ -405,3 +442,14 @@ class MediaWidgetSquare : MediaWidget() {
 class MediaWidgetWide : MediaWidget() {
     override val fallbackWidthDp = WIDE_WIDTH_DP
 }
+
+/** The 4×1 Pill entry in the picker. See `res/xml/widget_media_pill.xml`. */
+class MediaWidgetPill : MediaWidget() {
+    override val fallbackWidthDp = PILL_WIDTH_DP
+}
+
+/** The 3×3 Turntable entry in the picker. See `res/xml/widget_media_turntable.xml`. */
+class MediaWidgetTurntable : MediaWidget() {
+    override val fallbackWidthDp = TURNTABLE_WIDTH_DP
+}
+

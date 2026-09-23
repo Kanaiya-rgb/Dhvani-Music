@@ -162,6 +162,8 @@ class PlaybackService : MediaSessionService() {
     private val transitionFilterB = TransitionFilterProcessor()
     private val equalizerProcessorA = com.music.dhvani.playback.eq.CustomEqualizerAudioProcessor()
     private val equalizerProcessorB = com.music.dhvani.playback.eq.CustomEqualizerAudioProcessor()
+    private val reverbAudioProcessorA = com.music.dhvani.playback.audio.ReverbAudioProcessor()
+    private val reverbAudioProcessorB = com.music.dhvani.playback.audio.ReverbAudioProcessor()
     private val losslessWatchdogA = LosslessStallWatchdogAudioProcessor {
         TrackLog.w("DhvaniMusic", "Lossless stall detected on player A")
     }.apply { armed = true }
@@ -902,8 +904,8 @@ class PlaybackService : MediaSessionService() {
         mediaSourceFactory = DefaultMediaSourceFactory(AudioCache.playbackFactory(defaultDataSourceFactory))
             .setLoadErrorHandlingPolicy(PermanentAwareLoadErrorPolicy())
 
-        val exoPlayer = buildPlayer(spatialAudioProcessorA, transitionFilterA, equalizerProcessorA, losslessWatchdogA, ownsSession = true)
-        val sparePlayer = buildPlayer(spatialAudioProcessorB, transitionFilterB, equalizerProcessorB, losslessWatchdogB, ownsSession = false)
+        val exoPlayer = buildPlayer(spatialAudioProcessorA, transitionFilterA, equalizerProcessorA, reverbAudioProcessorA, losslessWatchdogA, ownsSession = true)
+        val sparePlayer = buildPlayer(spatialAudioProcessorB, transitionFilterB, equalizerProcessorB, reverbAudioProcessorB, losslessWatchdogB, ownsSession = false)
         player = exoPlayer
         spare = sparePlayer
 
@@ -1194,10 +1196,11 @@ class PlaybackService : MediaSessionService() {
         spatial: SpatialAudioProcessor,
         filter: TransitionFilterProcessor,
         equalizer: com.music.dhvani.playback.eq.CustomEqualizerAudioProcessor,
+        reverb: com.music.dhvani.playback.audio.ReverbAudioProcessor,
         watchdog: LosslessStallWatchdogAudioProcessor,
         ownsSession: Boolean,
     ): ExoPlayer = ExoPlayer.Builder(this)
-        .setRenderersFactory(silenceSkippingRenderers(spatial, filter, equalizer, watchdog))
+        .setRenderersFactory(silenceSkippingRenderers(spatial, filter, equalizer, reverb, watchdog))
         .setMediaSourceFactory(requireNotNull(mediaSourceFactory))
         .setLoadControl(farBufferingLoadControl())
         .setAudioAttributes(AUDIO_ATTRIBUTES, /* handleAudioFocus = */ ownsSession)
@@ -1898,10 +1901,10 @@ class PlaybackService : MediaSessionService() {
         val uri = item.localConfiguration?.uri
         val alreadyPending = QualityUpgrade.isPending(mediaId)
         val shelved = QualityUpgrade.shelvedFor(mediaId)
-        val wantsLossless = AppSettings.audioListeningMode.value == AudioListeningMode.LOSSLESS ||
-            AppSettings.audioListeningMode.value == AudioListeningMode.BOTH
-        if (!wantsLossless && !alreadyPending && shelved == null) return
-        if (shelved == null && !alreadyPending && !QualityUpgrade.couldStillUpgrade(mediaId, uri)) return
+        // Not gated on lossless mode: [QualityUpgrade.couldStillUpgrade] is the
+        // real gate, and it now correctly allows 320kbps upgrades (e.g. JioSaavn)
+        // over YouTube Opus regardless of the listening-mode setting.
+        if (!alreadyPending && shelved == null && !QualityUpgrade.couldStillUpgrade(mediaId, uri)) return
         if (upgradeJob?.isActive == true) {
             // Already hunting for this track. One left over from a track the
             // queue has moved past is a different matter: it can only come
@@ -3028,6 +3031,7 @@ class PlaybackService : MediaSessionService() {
         spatial: SpatialAudioProcessor,
         transition: TransitionFilterProcessor,
         equalizer: com.music.dhvani.playback.eq.CustomEqualizerAudioProcessor,
+        reverb: com.music.dhvani.playback.audio.ReverbAudioProcessor,
         watchdog: LosslessStallWatchdogAudioProcessor,
     ) = object : DefaultRenderersFactory(this) {
         override fun buildAudioSink(
@@ -3039,8 +3043,8 @@ class PlaybackService : MediaSessionService() {
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
             .setAudioProcessorChain(
                 DefaultAudioSink.DefaultAudioProcessorChain(
-                    // Equalizer first so frequency shaping runs before spatial widening and transition filtering
-                    arrayOf(equalizer, spatial, transition, watchdog),
+                    // Equalizer and reverb run before spatial widening and transition filtering
+                    arrayOf(equalizer, spatial, reverb, transition, watchdog),
                     SilenceSkippingAudioProcessor(
                         MIN_SILENCE_US,
                         SilenceSkippingAudioProcessor.DEFAULT_SILENCE_RETENTION_RATIO,
@@ -3061,7 +3065,10 @@ class PlaybackService : MediaSessionService() {
      */
     private fun applySettings(player: ExoPlayer) {
         player.skipSilenceEnabled = AppSettings.skipSilence.value
-        player.setPlaybackSpeed(AppSettings.playbackSpeed.value)
+        player.playbackParameters = androidx.media3.common.PlaybackParameters(
+            AppSettings.playbackSpeed.value,
+            AppSettings.playbackPitch.value
+        )
     }
 
     /** Runs [body] against both players, in whichever roles they currently hold. */
@@ -3075,14 +3082,30 @@ class PlaybackService : MediaSessionService() {
             AppSettings.skipSilence.collect { on -> eachPlayer { it.skipSilenceEnabled = on } }
         }
         scope.launch {
-            // Not applied to a player mid-transition: [CrossfadeController]
-            // stacks a beatmatch stretch on top of this setting, and writing the
-            // raw value over it would drop the incoming track back to its own
-            // tempo halfway through a blend. The controller re-reads the setting
-            // when it restores the rate, so the change still lands.
-            AppSettings.playbackSpeed.collect { speed ->
+            // Observe speed & pitch together and update playback parameters
+            combine(AppSettings.playbackSpeed, AppSettings.playbackPitch) { speed, pitch ->
+                speed to pitch
+            }.collect { (speed, pitch) ->
                 if (crossfade?.isTransitioning() == true) return@collect
-                eachPlayer { it.setPlaybackSpeed(speed) }
+                eachPlayer { it.playbackParameters = androidx.media3.common.PlaybackParameters(speed, pitch) }
+            }
+        }
+        scope.launch {
+            AppSettings.reverbDepth.collect { depth ->
+                val active = depth > 0.001f || AppSettings.lofiWarmth.value > 0.001f
+                reverbAudioProcessorA.wet = depth
+                reverbAudioProcessorA.enabled = active
+                reverbAudioProcessorB.wet = depth
+                reverbAudioProcessorB.enabled = active
+            }
+        }
+        scope.launch {
+            AppSettings.lofiWarmth.collect { warmth ->
+                val active = warmth > 0.001f || AppSettings.reverbDepth.value > 0.001f
+                reverbAudioProcessorA.lofiWarmth = warmth
+                reverbAudioProcessorA.enabled = active
+                reverbAudioProcessorB.lofiWarmth = warmth
+                reverbAudioProcessorB.enabled = active
             }
         }
         scope.launch {

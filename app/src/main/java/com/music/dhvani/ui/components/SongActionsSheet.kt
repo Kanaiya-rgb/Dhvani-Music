@@ -30,7 +30,9 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Tune
 import com.music.dhvani.playback.eq.EqualizerManager
 import androidx.compose.material.icons.rounded.BugReport
@@ -132,6 +134,7 @@ fun SongActionsSheet(
     onRemoveFromPlaylist: (() -> Unit)? = null,
     showSleepTimer: Boolean = false,
     onOpenEqualizer: (() -> Unit)? = null,
+    onOpenAudioEffects: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     /**
      * Copies what the app logged while starting this track. Null everywhere
@@ -249,6 +252,23 @@ fun SongActionsSheet(
                 value = if (equalizerEnabled) equalizerPreset else "Off",
                 accent = palette.accent,
                 onClick = openEq,
+            )
+        }
+        onOpenAudioEffects?.let { openEffects ->
+            val preset by AppSettings.audioPreset.collectAsStateWithLifecycle()
+            val speed by AppSettings.playbackSpeed.collectAsStateWithLifecycle()
+            ActionRow(
+                icon = Icons.Rounded.AutoAwesome,
+                label = "Slowed / Nightcore Mode",
+                value = when (preset) {
+                    com.music.dhvani.data.settings.AudioPreset.NORMAL -> if (speed != 1.0f) "${speed}x" else "Normal"
+                    com.music.dhvani.data.settings.AudioPreset.SLOWED_REVERB -> "Slowed 🌙"
+                    com.music.dhvani.data.settings.AudioPreset.RAINY_LOFI -> "Rainy Lo-Fi 🌧️"
+                    com.music.dhvani.data.settings.AudioPreset.NIGHTCORE -> "Nightcore ⚡"
+                    com.music.dhvani.data.settings.AudioPreset.CUSTOM -> "Custom 🎧"
+                },
+                accent = palette.accent,
+                onClick = openEffects,
             )
         }
         if (!isOffline) {

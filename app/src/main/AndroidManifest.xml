@@ -19,6 +19,9 @@
          this, so granting it doesn't override a user who turned buzzing off. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Audio effects routing and hardware LoudnessEnhancer overdrive -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
     <!--
       In-app updates: handing a downloaded APK to the system installer. The
       per-app "install unknown apps" switch is still the user's to flip; this
@@ -175,6 +178,18 @@
             </intent-filter>
 
             <!--
+              Spotify links (playlist, user profile, track, album)
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="open.spotify.com" />
+            </intent-filter>
+
+            <!--
               Share → Dhvani Music, from YT Music's own share sheet or from
               anywhere a link can be sent. The text is whatever the sending app
               wrote around the URL, so the URL is picked out of it rather than
@@ -237,6 +252,32 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_media_wide" />
+        </receiver>
+
+        <!-- New Custom Widget 1: Minimal Capsule / Pill Player (4x1) -->
+        <receiver
+            android:name=".widget.MediaWidgetPill"
+            android:exported="false"
+            android:label="@string/widget_pill_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_media_pill" />
+        </receiver>
+
+        <!-- New Custom Widget 2: Retro Vinyl Turntable Player (3x3) -->
+        <receiver
+            android:name=".widget.MediaWidgetTurntable"
+            android:exported="false"
+            android:label="@string/widget_turntable_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_media_turntable" />
         </receiver>
 
         <!-- The transport buttons. Reached only by this app's own PendingIntents. -->

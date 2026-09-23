@@ -28,6 +28,9 @@ sealed interface LinkRequest {
 
     /** "Play music", with nothing said about what. */
     data object Resume : LinkRequest
+
+    /** Import playlist or user profile link directly shared from Spotify/YouTube/etc. */
+    data class ImportPlaylist(val url: String, val source: String) : LinkRequest
 }
 
 /**
@@ -111,6 +114,12 @@ object MusicLink {
         if (host == "youtu.be") {
             return segments.firstOrNull()?.let(::track)
         }
+        // Check for Spotify links (playlist, user profile, or track)
+        if (host == "spotify.com" || host.endsWith(".spotify.com")) {
+            val urlString = uri.toString()
+            return LinkRequest.ImportPlaylist(url = urlString, source = "SPOTIFY")
+        }
+
         if (host != "youtube.com" && host != "music.youtube.com" && host != "m.youtube.com") {
             return null
         }

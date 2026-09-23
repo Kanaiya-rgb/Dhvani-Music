@@ -1,7 +1,7 @@
 {
-  "version": "2.3.2",
-  "versionCode": 34,
-  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.3.2",
-  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.3.2/DhvaniMusic-v2.3.2.apk",
-  "notes": "v2.3.2: Real-time lyrics sync adjuster & calibration, 4 new HD avatars with revamped onboarding selector, one-time auto-download transparent onboarding prompt, accurate India location telemetry, and playback stability improvements."
+  "version": "2.3.3",
+  "versionCode": 35,
+  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.3.3",
+  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.3.3/DhvaniMusic-v2.3.3.apk",
+  "notes": "v2.3.3: Updated official app logo & launcher branding, improved sound booster audio headroom, and telemetry & user location improvements."
 }

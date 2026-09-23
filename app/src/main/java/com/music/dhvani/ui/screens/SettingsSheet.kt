@@ -2621,6 +2621,7 @@ fun SettingsScreen(
 
     if (showProfileCustomizationDialog || showEditUserNameDialog) {
         var nameInput by remember { mutableStateOf(listenerName) }
+        var cityInput by remember { mutableStateOf(AppSettings.userCity.value) }
         val avatarType by AppSettings.userAvatarType.collectAsStateWithLifecycle()
         val presetId by AppSettings.userPresetAvatarId.collectAsStateWithLifecycle()
 
@@ -2858,6 +2859,18 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth(),
                     )
+
+                    // City Input (Optional override)
+                    val detectedCity = com.music.dhvani.data.telemetry.TelemetryManager.getDetectedCity()
+                    OutlinedTextField(
+                        value = cityInput,
+                        onValueChange = { cityInput = it },
+                        label = { Text("City (Optional)") },
+                        placeholder = { Text(if (detectedCity.isNotBlank()) "Auto: $detectedCity" else "e.g. Surat, Mumbai, Delhi") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             },
             confirmButton = {
@@ -2865,6 +2878,7 @@ fun SettingsScreen(
                     onClick = {
                         val trimmed = nameInput.trim().ifBlank { "Dhvani Listener" }
                         AppSettings.setUserName(trimmed)
+                        AppSettings.setUserLocation(cityInput.trim())
                         showProfileCustomizationDialog = false
                         showEditUserNameDialog = false
                     },

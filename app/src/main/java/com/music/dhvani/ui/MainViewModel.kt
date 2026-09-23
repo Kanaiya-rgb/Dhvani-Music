@@ -368,6 +368,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         )
                     }
                 }
+
+                // 3. Prefetch Canvas video artwork in background
+                if (song.videoId.isNotBlank() && !com.music.dhvani.data.canvas.CanvasRepository.hasCached(song.videoId)) {
+                    runCatching {
+                        com.music.dhvani.data.canvas.CanvasRepository.getAvailableCanvases(
+                            context = context,
+                            videoId = song.videoId,
+                            title = song.title,
+                            artist = song.artist,
+                            album = song.albumName,
+                        )
+                    }
+                }
+
+                // 4. Warm and pre-resolve audio stream URL in background for zero-latency start
+                if (song.videoId.isNotBlank()) {
+                    runCatching {
+                        com.music.dhvani.data.innertube.StreamResolver.resolve(song.videoId)
+                    }
+                }
             }
         }
     }

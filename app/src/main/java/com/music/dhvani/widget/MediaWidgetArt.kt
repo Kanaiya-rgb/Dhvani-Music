@@ -115,6 +115,41 @@ internal object MediaWidgetArt {
     }
 
     /**
+     * Renders a circular cropped artwork bitmap for Pill and Turntable widgets.
+     */
+    suspend fun renderCircle(
+        context: Context,
+        artworkUrl: String?,
+        sizePx: Int,
+        key: String?,
+    ): Bitmap {
+        val cacheKey = key?.let { "circle|$it|$sizePx" }
+        if (cacheKey != null) {
+            composites[cacheKey]?.takeIf { !it.isRecycled }?.let { return it }
+        }
+
+        val cover = loadArtwork(context, artworkUrl, sizePx)
+        val composed = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(composed)
+        if (cover != null) canvas.fillCentreCropped(cover) else canvas.fillPlaceholder()
+
+        val circular = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val circleCanvas = Canvas(circular)
+        val paint = Paint().apply {
+            isAntiAlias = true
+            shader = BitmapShader(composed, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        }
+        val radius = sizePx / 2f
+        circleCanvas.drawCircle(radius, radius, radius, paint)
+        composed.recycle()
+
+        if (cacheKey != null) {
+            composites.put(cacheKey, circular)
+        }
+        return circular
+    }
+
+    /**
      * The composite for these arguments if it has already been drawn, without
      * drawing it if it hasn't.
      *

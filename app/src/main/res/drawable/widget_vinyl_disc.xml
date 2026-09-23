@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Vinyl Outer Black Rim -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#FF111111" />
+            <stroke
+                android:width="2dp"
+                android:color="#33FFFFFF" />
+        </shape>
+    </item>
+    <!-- Vinyl Groove 1 -->
+    <item
+        android:bottom="8dp"
+        android:left="8dp"
+        android:right="8dp"
+        android:top="8dp">
+        <shape android:shape="oval">
+            <stroke
+                android:width="1dp"
+                android:color="#1AFFFFFF" />
+        </shape>
+    </item>
+    <!-- Vinyl Groove 2 -->
+    <item
+        android:bottom="16dp"
+        android:left="16dp"
+        android:right="16dp"
+        android:top="16dp">
+        <shape android:shape="oval">
+            <stroke
+                android:width="1dp"
+                android:color="#22FFFFFF" />
+        </shape>
+    </item>
+    <!-- Center Label Hole Ring -->
+    <item
+        android:bottom="24dp"
+        android:left="24dp"
+        android:right="24dp"
+        android:top="24dp">
+        <shape android:shape="oval">
+            <solid android:color="#FF242120" />
+            <stroke
+                android:width="2dp"
+                android:color="#4DFFFFFF" />
+        </shape>
+    </item>
+</layer-list>

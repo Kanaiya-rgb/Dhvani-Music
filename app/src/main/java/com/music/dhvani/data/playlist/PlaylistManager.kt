@@ -12,6 +12,10 @@ import com.music.dhvani.data.model.SearchResult
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.durationMillis
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -42,6 +46,17 @@ object PlaylistManager {
     data class ParsedPlaylist(
         val title: String,
         val tracks: List<ImportedTrack>,
+    )
+
+    data class SpotifyProfilePlaylist(
+        val id: String,
+        val title: String,
+        val imageUrl: String? = null,
+    )
+
+    data class SpotifyProfileResult(
+        val username: String,
+        val playlists: List<SpotifyProfilePlaylist>,
     )
 
     @Serializable
@@ -283,6 +298,20 @@ object PlaylistManager {
         return null
     }
 
+    fun extractSpotifyUserId(input: String): String? {
+        val trimmed = input.trim()
+        if (trimmed.isBlank()) return null
+        val urlMatch = Regex("""open\.spotify\.com/(?:intl-[a-zA-Z]{2}/)?user/([a-zA-Z0-9_-]+)""").find(trimmed)
+        if (urlMatch != null) {
+            return urlMatch.groupValues[1]
+        }
+        val uriMatch = Regex("""spotify:user:([a-zA-Z0-9_-]+)""").find(trimmed)
+        if (uriMatch != null) {
+            return uriMatch.groupValues[1]
+        }
+        return null
+    }
+
     fun extractVideoId(input: String): String? {
         val trimmed = input.trim()
         if (trimmed.length == 11 && trimmed.matches(Regex("""[a-zA-Z0-9_-]{11}"""))) {
@@ -296,39 +325,43 @@ object PlaylistManager {
         tracks: List<ImportedTrack>,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
     ): List<Song> = withContext(Dispatchers.IO) {
-        val resolved = mutableListOf<Song>()
-        tracks.forEachIndexed { index, track ->
-            onProgress(index + 1, tracks.size)
-            if (!track.videoId.isNullOrBlank()) {
-                resolved.add(
+        val total = tracks.size
+        if (total == 0) return@withContext emptyList()
+        val completedCount = java.util.concurrent.atomic.AtomicInteger(0)
+        // Concurrency limit of 6 keeps requests ultra-fast while avoiding server rate limits
+        val semaphore = Semaphore(6)
+
+        tracks.map { track ->
+            async {
+                if (!track.videoId.isNullOrBlank()) {
+                    val current = completedCount.incrementAndGet()
+                    onProgress(current, total)
                     Song(
                         videoId = track.videoId,
                         title = track.title,
                         artist = track.artist.ifBlank { "Various Artists" },
                         thumbnailUrl = "https://i.ytimg.com/vi/${track.videoId}/hqdefault.jpg",
-                    ),
-                )
-            } else {
-                val query = listOf(track.title, track.artist).filter { it.isNotBlank() }.joinToString(" ")
-                val searchHit = runCatching {
-                    YtMusicRepository.search(query, SearchFilter.SONGS).getOrNull()
-                }.getOrNull()?.filterIsInstance<SearchResult.Track>()?.firstOrNull()?.song
-
-                if (searchHit != null) {
-                    resolved.add(searchHit)
+                    )
                 } else {
-                    resolved.add(
-                        Song(
+                    semaphore.withPermit {
+                        val query = listOf(track.title, track.artist).filter { it.isNotBlank() }.joinToString(" ")
+                        val searchHit = runCatching {
+                            YtMusicRepository.search(query, SearchFilter.SONGS).getOrNull()
+                        }.getOrNull()?.filterIsInstance<SearchResult.Track>()?.firstOrNull()?.song
+
+                        val current = completedCount.incrementAndGet()
+                        onProgress(current, total)
+
+                        searchHit ?: Song(
                             videoId = "",
                             title = track.title,
                             artist = track.artist,
                             thumbnailUrl = null,
-                        ),
-                    )
+                        )
+                    }
                 }
             }
-        }
-        resolved
+        }.awaitAll()
     }
 
     suspend fun fetchYoutubePlaylist(
@@ -444,6 +477,121 @@ object PlaylistManager {
             }
 
             if (tracks.isEmpty()) null else title to tracks
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun fetchSpotifyUserPlaylists(
+        userId: String,
+    ): SpotifyProfileResult? = withContext(Dispatchers.IO) {
+        val cleanId = userId.trim().removePrefix("spotify:user:")
+
+        // 1. Try high-performance spclient API using anonymous Web Player token (fetches ALL public playlists up to 100)
+        try {
+            val token = com.metrolist.spotify.SpotifyAuth.fetchAnonymousWebToken().getOrNull()
+            if (token != null) {
+                val apiUrl = "https://spclient.wg.spotify.com/user-profile-view/v3/profile/$cleanId?playlist_limit=100"
+                val conn = URL(apiUrl).openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 10_000
+                conn.readTimeout = 10_000
+                conn.setRequestProperty("Authorization", "Bearer $token")
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                conn.setRequestProperty("app-platform", "WebPlayer")
+                conn.setRequestProperty("origin", "https://open.spotify.com")
+
+                if (conn.responseCode in 200..299) {
+                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                    val root = json.parseToJsonElement(body).jsonObject
+                    val username = root["name"]?.jsonPrimitive?.content ?: "Spotify User"
+                    val publicPlaylists = root["public_playlists"]?.jsonArray.orEmpty()
+                    if (publicPlaylists.isNotEmpty()) {
+                        val parsed = publicPlaylists.mapNotNull { item ->
+                            val obj = item.jsonObject
+                            val uri = obj["uri"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                            val plId = uri.substringAfterLast(":")
+                            val title = obj["name"]?.jsonPrimitive?.content ?: "Playlist"
+                            val img = obj["image_url"]?.jsonPrimitive?.content
+                            SpotifyProfilePlaylist(
+                                id = plId,
+                                title = title,
+                                imageUrl = img,
+                            )
+                        }
+                        if (parsed.isNotEmpty()) {
+                            return@withContext SpotifyProfileResult(username, parsed)
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Fallback to HTML scraping below
+        }
+
+        // 2. Fallback to HTML Scraping
+        val url = "https://open.spotify.com/user/$cleanId"
+        try {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.instanceFollowRedirects = true
+            connection.connectTimeout = 12_000
+            connection.readTimeout = 12_000
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            connection.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+
+            val html = connection.inputStream.bufferedReader().use { it.readText() }
+            if (html.isBlank()) return@withContext null
+
+            // Extract Username
+            val userMatch = Regex("""<h1[^>]*>([^<]+)</h1>""").find(html)
+            val username = userMatch?.groupValues?.get(1)?.trim()?.ifBlank { null } ?: "Spotify User"
+
+            // Extract Public Playlists: href="/playlist/{id}" ... <img ... src="{img}" ... <span ...>{title}</span>
+            val pattern = Regex(
+                """href=["']/playlist/([a-zA-Z0-9]{22})["'][^>]*>.*?<img[^>]*src=["']([^"']+)["'][^>]*>.*?<span[^>]*>([^<]+)</span>""",
+                RegexOption.DOT_MATCHES_ALL,
+            )
+
+            val playlists = mutableListOf<SpotifyProfilePlaylist>()
+            val seenIds = mutableSetOf<String>()
+
+            for (match in pattern.findAll(html)) {
+                val plId = match.groupValues[1]
+                val img = match.groupValues[2]
+                val title = match.groupValues[3].trim()
+                if (plId !in seenIds) {
+                    seenIds.add(plId)
+                    playlists.add(
+                        SpotifyProfilePlaylist(
+                            id = plId,
+                            title = title,
+                            imageUrl = img,
+                        ),
+                    )
+                }
+            }
+
+            // Fallback for playlists if card HTML format slightly differs: extract all /playlist/{id}
+            if (playlists.isEmpty()) {
+                val fallbackPattern = Regex("""href=["']/playlist/([a-zA-Z0-9]{22})["']""")
+                for (match in fallbackPattern.findAll(html)) {
+                    val plId = match.groupValues[1]
+                    if (plId !in seenIds) {
+                        seenIds.add(plId)
+                        playlists.add(
+                            SpotifyProfilePlaylist(
+                                id = plId,
+                                title = "Playlist (${plId.take(6)}...)",
+                                imageUrl = null,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            if (playlists.isEmpty()) null else SpotifyProfileResult(username, playlists)
         } catch (e: Exception) {
             null
         }

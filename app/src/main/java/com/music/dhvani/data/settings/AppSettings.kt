@@ -236,6 +236,14 @@ enum class LyricsAnimationStyle(val label: String) {
     }
 }
 
+enum class AudioPreset(val displayName: String) {
+    NORMAL("Normal"),
+    SLOWED_REVERB("Slowed + Reverb 🌙"),
+    RAINY_LOFI("Rainy Lo-Fi 🌧️"),
+    NIGHTCORE("Nightcore ⚡"),
+    CUSTOM("Custom 🎧")
+}
+
 enum class LockscreenStyle(val label: String) {
     CARD("Floating Art Card"),
     FLUID_BLUR("Fluid Ambient Blur"),
@@ -408,6 +416,10 @@ object AppSettings {
      */
     val audioListeningMode = MutableStateFlow(AudioListeningMode.STANDARD)
     val playbackSpeed = MutableStateFlow(1.0f)
+    val playbackPitch = MutableStateFlow(1.0f)
+    val audioPreset = MutableStateFlow(AudioPreset.NORMAL)
+    val reverbDepth = MutableStateFlow(0.0f)
+    val lofiWarmth = MutableStateFlow(0.0f)
     val themeMode = MutableStateFlow(ThemeMode.DARK)
 
     /** Keep playing similar music once the queue runs out. */
@@ -609,11 +621,25 @@ object AppSettings {
     val userAvatarType = MutableStateFlow("PRESET") // "PRESET", "CUSTOM"
     val userPresetAvatarId = MutableStateFlow(101) // 1..8 (neon) or 101..114 (3D illustrated)
     val userCustomAvatarPath = MutableStateFlow("")
+    val userCity = MutableStateFlow("")
+    val userState = MutableStateFlow("")
     private const val KEY_USER_NAME = "telemetry_user_name"
     private const val KEY_HAS_PROMPTED_USER_NAME = "telemetry_has_prompted_user_name"
     private const val KEY_USER_AVATAR_TYPE = "user_avatar_type"
     private const val KEY_USER_PRESET_AVATAR_ID = "user_preset_avatar_id"
     private const val KEY_USER_CUSTOM_AVATAR_PATH = "user_custom_avatar_path"
+    private const val KEY_USER_CITY = "telemetry_user_city"
+    private const val KEY_USER_STATE = "telemetry_user_state"
+
+    fun setUserLocation(city: String, state: String = "") {
+        userCity.value = city.trim()
+        userState.value = state.trim()
+        prefs.edit()
+            .putString(KEY_USER_CITY, userCity.value)
+            .putString(KEY_USER_STATE, userState.value)
+            .apply()
+        com.music.dhvani.data.telemetry.TelemetryManager.registerDeviceHeartbeat()
+    }
 
     // ── Scrobbling ──────────────────────────────────────────────────────
 
@@ -820,6 +846,12 @@ object AppSettings {
             prefs.edit().putString(KEY_AUDIO_LISTENING_MODE, audioListeningMode.value.name).apply()
         }
         playbackSpeed.value = prefs.getFloat(KEY_SPEED, 1.0f)
+        playbackPitch.value = prefs.getFloat(KEY_PITCH, 1.0f)
+        reverbDepth.value = prefs.getFloat(KEY_REVERB_DEPTH, 0.0f)
+        lofiWarmth.value = prefs.getFloat(KEY_LOFI_WARMTH, 0.0f)
+        audioPreset.value = runCatching {
+            AudioPreset.valueOf(prefs.getString(KEY_AUDIO_PRESET, null) ?: "NORMAL")
+        }.getOrDefault(AudioPreset.NORMAL)
         themeMode.value = runCatching {
             ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "DARK")
         }.getOrDefault(ThemeMode.DARK)
@@ -968,6 +1000,8 @@ object AppSettings {
         userAvatarType.value = prefs.getString(KEY_USER_AVATAR_TYPE, "PRESET") ?: "PRESET"
         userPresetAvatarId.value = prefs.getInt(KEY_USER_PRESET_AVATAR_ID, 1)
         userCustomAvatarPath.value = prefs.getString(KEY_USER_CUSTOM_AVATAR_PATH, "") ?: ""
+        userCity.value = prefs.getString(KEY_USER_CITY, "") ?: ""
+        userState.value = prefs.getString(KEY_USER_STATE, "") ?: ""
         localCustomPlaylists.value = readLocalCustomPlaylists()
         restoreUserDataIfNeeded()
     }
@@ -1205,6 +1239,57 @@ object AppSettings {
     fun setPlaybackSpeed(value: Float) {
         playbackSpeed.value = value
         prefs.edit().putFloat(KEY_SPEED, value).apply()
+    }
+
+    fun setPlaybackPitch(value: Float) {
+        playbackPitch.value = value
+        prefs.edit().putFloat(KEY_PITCH, value).apply()
+    }
+
+    fun setReverbDepth(value: Float) {
+        val clamped = value.coerceIn(0.0f, 1.0f)
+        reverbDepth.value = clamped
+        prefs.edit().putFloat(KEY_REVERB_DEPTH, clamped).apply()
+    }
+
+    fun setLofiWarmth(value: Float) {
+        val clamped = value.coerceIn(0.0f, 0.90f)
+        lofiWarmth.value = clamped
+        prefs.edit().putFloat(KEY_LOFI_WARMTH, clamped).apply()
+    }
+
+    fun setAudioPreset(preset: AudioPreset) {
+        audioPreset.value = preset
+        prefs.edit().putString(KEY_AUDIO_PRESET, preset.name).apply()
+        when (preset) {
+            AudioPreset.NORMAL -> {
+                setPlaybackSpeed(1.0f)
+                setPlaybackPitch(1.0f)
+                setReverbDepth(0.0f)
+                setLofiWarmth(0.0f)
+            }
+            AudioPreset.SLOWED_REVERB -> {
+                setPlaybackSpeed(0.85f)
+                setPlaybackPitch(0.85f)
+                setReverbDepth(0.40f)
+                setLofiWarmth(0.0f)
+            }
+            AudioPreset.RAINY_LOFI -> {
+                setPlaybackSpeed(0.80f)
+                setPlaybackPitch(0.80f)
+                setReverbDepth(0.55f)
+                setLofiWarmth(0.60f)
+            }
+            AudioPreset.NIGHTCORE -> {
+                setPlaybackSpeed(1.25f)
+                setPlaybackPitch(1.25f)
+                setReverbDepth(0.0f)
+                setLofiWarmth(0.0f)
+            }
+            AudioPreset.CUSTOM -> {
+                // Keep currently configured custom speed/pitch/reverb/warmth
+            }
+        }
     }
 
     fun setShowNerdStats(value: Boolean) {
@@ -2211,6 +2296,9 @@ object AppSettings {
     private const val KEY_DOLBY_ATMOS_ENABLED = "dolby_atmos_enabled"
     private const val KEY_AUDIO_LISTENING_MODE = "audio_listening_mode"
     private const val KEY_SPEED = "playback_speed"
+    private const val KEY_PITCH = "playback_pitch"
+    private const val KEY_AUDIO_PRESET = "audio_preset"
+    private const val KEY_REVERB_DEPTH = "reverb_depth"
     private const val KEY_THEME = "theme_mode"
     private const val KEY_UI_DESIGN_STYLE = "ui_design_style"
     private const val KEY_AUTOPLAY = "autoplay"
@@ -2269,6 +2357,7 @@ object AppSettings {
     private const val KEY_DEFAULT_OPEN_TAB = "default_open_tab"
     private const val KEY_GRID_ITEM_SIZE = "grid_item_size"
     private const val KEY_SLIM_NAV_BAR = "slim_nav_bar"
+    private const val KEY_LOFI_WARMTH = "lofi_warmth"
     private const val KEY_SHOW_RECOGNIZE_BUTTON = "show_recognize_button"
     private const val KEY_SHOW_PLAY_RANDOM_BUTTON = "show_play_random_button"
     private const val KEY_SHOW_LIKED_PLAYLIST = "show_liked_playlist"

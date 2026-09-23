@@ -192,6 +192,8 @@ data class ShelfItem(
     val thumbnailUrl: String?,
     val videoId: String?,
     val browseId: String?,
+    /** Up to 4 artwork URLs for a mosaic/collage cover. When non-empty, shown as a 2×2 grid. */
+    val mosaicUrls: List<String> = emptyList(),
 )
 
 /** The signed-in Google account, as YouTube Music reports it. */

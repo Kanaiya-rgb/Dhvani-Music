@@ -40,16 +40,18 @@ import androidx.compose.ui.unit.dp
  * thickens under your finger and settles back when you let go. Material's
  * Slider can't be shaped like this  it always draws a thumb and a tall
  * track  so this is drawn directly.
- */
-@Composable
+ */@Composable
 fun ThinSlider(
     value: Float,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     onValueChangeFinished: (() -> Unit)? = null,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    showOverdriveNotch: Boolean = false,
+    overdriveColor: Color = Color(0xFFFF5722),
     /**
      * Sends a sheen travelling along the played portion for as long as it is
-     * true. Reserved for a transition that genuinely mixed  see
+     * true. Reserved for a transition that genuinely mixed — see
      * [com.music.dhvani.data.settings.AppSettings.smartMixInProgress].
      */
     mixing: Boolean = false,
@@ -65,6 +67,9 @@ fun ThinSlider(
     inactiveColor: Color = Color.White.copy(alpha = 0.26f),
     /** Halfway between the two track colours: visible against unplayed, invisible under played. */
     markerColor: Color = Color.White.copy(alpha = 0.5f),
+    /** How far the stream has buffered ahead: drawn as a translucent white bar, YouTube-style. */
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
     var dragging by remember { mutableStateOf(false) }
     val height by animateDpAsState(
@@ -76,19 +81,22 @@ fun ThinSlider(
         label = "sliderHeight",
     )
 
+    val rangeSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            // Generous invisible touch target  the visible bar is only ~7dp.
+            // Generous invisible touch target — the visible bar is only ~7dp.
             .height(activeHeight + 22.dp)
             // One gesture loop for both taps and drags. Two separate detectors
-            //  a drag one plus a tap one  meant taps never landed: the drag
+            // — a drag one plus a tap one — meant taps never landed: the drag
             // detector took the pointer and a tap has no drag to report.
-            .pointerInput(Unit) {
+            .pointerInput(valueRange) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     dragging = true
-                    onValueChange((down.position.x / size.width).coerceIn(0f, 1f))
+                    val fraction = (down.position.x / size.width).coerceIn(0f, 1f)
+                    onValueChange(valueRange.start + fraction * rangeSpan)
 
                     while (true) {
                         val event = awaitPointerEvent()
@@ -98,7 +106,8 @@ fun ThinSlider(
                             break
                         }
                         if (pointer.positionChanged()) {
-                            onValueChange((pointer.position.x / size.width).coerceIn(0f, 1f))
+                            val moveFraction = (pointer.position.x / size.width).coerceIn(0f, 1f)
+                            onValueChange(valueRange.start + moveFraction * rangeSpan)
                             pointer.consume()
                         }
                     }
@@ -116,13 +125,26 @@ fun ThinSlider(
         ) {
             val radius = CornerRadius(size.height / 2f)
             drawRoundRect(color = inactiveColor, cornerRadius = radius)
+
+            // YouTube-style buffered progress: drawn above inactive track, below played progress
+            if (bufferedValue > valueRange.start) {
+                val bufferedFrac = ((bufferedValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+                val bufferedWidth = size.width * bufferedFrac
+                if (bufferedWidth > 0f) {
+                    drawRoundRect(
+                        color = bufferedColor,
+                        size = Size(bufferedWidth.coerceAtLeast(size.height), size.height),
+                        cornerRadius = radius,
+                    )
+                }
+            }
             // Between the two track colours, and drawn *under* the played fill:
             // once the playhead reaches the window the transition is no longer
             // upcoming, and the ordinary progress colour taking it over is what
             // says so.
             transitionWindow?.let { window ->
-                val from = size.width * window.start.coerceIn(0f, 1f)
-                val to = size.width * window.endInclusive.coerceIn(0f, 1f)
+                val from = size.width * ((window.start - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+                val to = size.width * ((window.endInclusive - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
                 if (to > from) {
                     drawRoundRect(
                         color = markerColor,
@@ -132,13 +154,49 @@ fun ThinSlider(
                     )
                 }
             }
-            val filled = size.width * value.coerceIn(0f, 1f)
-            if (filled > 0f && !mixing) {
-                drawRoundRect(
-                    color = activeColor,
-                    size = Size(filled.coerceAtLeast(size.height), size.height),
-                    cornerRadius = radius,
+
+            // If overdrive notch is enabled (e.g. 100% threshold on 150% volume bar)
+            if (showOverdriveNotch && valueRange.endInclusive > 1.0f) {
+                val normalFrac = ((1.0f - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+                val notchX = size.width * normalFrac
+                drawLine(
+                    color = Color.White.copy(alpha = 0.40f),
+                    start = Offset(notchX, 0f),
+                    end = Offset(notchX, size.height),
+                    strokeWidth = 1.5.dp.toPx(),
                 )
+            }
+
+            val progressFrac = ((value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val filled = size.width * progressFrac
+
+            if (filled > 0f && !mixing) {
+                if (showOverdriveNotch && valueRange.endInclusive > 1.0f && value > 1.0f) {
+                    val normalFrac = ((1.0f - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+                    val normalWidth = size.width * normalFrac
+                    // Draw standard 0-100% portion
+                    drawRoundRect(
+                        color = activeColor,
+                        size = Size(normalWidth.coerceAtLeast(size.height), size.height),
+                        cornerRadius = radius,
+                    )
+                    // Draw 100-150% overdrive portion in warning color
+                    val overdriveWidth = (filled - normalWidth).coerceAtLeast(0f)
+                    if (overdriveWidth > 0f) {
+                        drawRoundRect(
+                            color = overdriveColor,
+                            topLeft = Offset(normalWidth, 0f),
+                            size = Size(overdriveWidth, size.height),
+                            cornerRadius = radius,
+                        )
+                    }
+                } else {
+                    drawRoundRect(
+                        color = activeColor,
+                        size = Size(filled.coerceAtLeast(size.height), size.height),
+                        cornerRadius = radius,
+                    )
+                }
             }
         }
         // Composed only while mixing, rather than drawn conditionally inside the

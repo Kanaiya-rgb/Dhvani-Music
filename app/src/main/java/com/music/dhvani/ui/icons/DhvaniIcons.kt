@@ -840,4 +840,97 @@ object DhvaniIcons {
             }
         }.build()
     }
+
+    val Drums: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_drums",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                // Drumsticks crossed above
+                moveTo(5.5f, 4.5f); lineTo(14.5f, 9.5f)
+                moveTo(18.5f, 4.5f); lineTo(9.5f, 9.5f)
+
+                // Snare top head rim (ellipse)
+                moveTo(4.5f, 11f)
+                arcToRelative(7.5f, 2.8f, 0f, isMoreThanHalf = true, isPositiveArc = true, 15f, 0f)
+                arcToRelative(7.5f, 2.8f, 0f, isMoreThanHalf = true, isPositiveArc = true, -15f, 0f)
+
+                // Drum shell sides and bottom rim
+                moveTo(4.5f, 11f); lineTo(4.5f, 17f)
+                arcToRelative(7.5f, 2.8f, 0f, isMoreThanHalf = false, isPositiveArc = false, 15f, 0f)
+                lineTo(19.5f, 11f)
+
+                // Tension lugs / vertical struts
+                moveTo(8.5f, 13.5f); lineTo(8.5f, 19.2f)
+                moveTo(12f, 13.8f); lineTo(12f, 19.8f)
+                moveTo(15.5f, 13.5f); lineTo(15.5f, 19.2f)
+            }
+        }.build()
+    }
+
+    val Guitar: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_guitar",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                // Guitar Pick (Plectrum outline)
+                moveTo(6.5f, 5.5f)
+                curveTo(10f, 4f, 14f, 4f, 17.5f, 5.5f)
+                curveTo(19.5f, 6.5f, 19.5f, 10f, 18f, 13.5f)
+                curveTo(16.5f, 16.5f, 14f, 19.5f, 12f, 21f)
+                curveTo(10f, 19.5f, 7.5f, 16.5f, 6f, 13.5f)
+                curveTo(4.5f, 10f, 4.5f, 6.5f, 6.5f, 5.5f)
+                close()
+
+                // 3 Guitar Strings through pick
+                moveTo(9.5f, 8.5f); lineTo(9.5f, 14.5f)
+                moveTo(12f, 8f); lineTo(12f, 17f)
+                moveTo(14.5f, 8.5f); lineTo(14.5f, 14.5f)
+            }
+        }.build()
+    }
+
+    val Bass: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_bass",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                // Outer Subwoofer Rim
+                moveTo(3f, 12f)
+                arcToRelative(9f, 9f, 0f, isMoreThanHalf = true, isPositiveArc = true, 18f, 0f)
+                arcToRelative(9f, 9f, 0f, isMoreThanHalf = true, isPositiveArc = true, -18f, 0f)
+
+                // Inner Woofer Cone
+                moveTo(6.5f, 12f)
+                arcToRelative(5.5f, 5.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, 11f, 0f)
+                arcToRelative(5.5f, 5.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, -11f, 0f)
+
+                // Center Dust Cap (Bass Dome)
+                moveTo(10f, 12f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, 4f, 0f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, -4f, 0f)
+            }
+        }.build()
+    }
 }

@@ -411,6 +411,7 @@ private fun DhvaniApp(
      */
     var showDownloadManager by remember { mutableStateOf(false) }
     var showEqualizerSheet by remember { mutableStateOf(false) }
+    var showAudioEffectsSheet by remember { mutableStateOf(false) }
     var showSongDetails by remember { mutableStateOf(false) }
     /** The song whose details are currently being shown in [showSongDetails]. */
     var detailsSong by remember { mutableStateOf<Song?>(null) }
@@ -452,6 +453,7 @@ private fun DhvaniApp(
     var creatingPlaylist by remember { mutableStateOf(false) }
     var showImportPlaylist by remember { mutableStateOf(false) }
     var importPlaylistSource by remember { mutableStateOf<String?>(null) }
+    var importPlaylistInitialUrl by remember { mutableStateOf<String?>(null) }
     var showExportLibraryPlaylist by remember { mutableStateOf(false) }
     var exportPlaylistTarget by remember { mutableStateOf<Pair<BrowseTarget, List<Song>>?>(null) }
     // Which album or playlist the collection menu is open on, or null when it
@@ -610,6 +612,17 @@ private fun DhvaniApp(
                 it.albumName,
                 it.localUri,
             )
+        }
+    }
+
+    // Preload next 2 queue tracks in background (Audio stream URL, Cover Art, Video Canvas, Lyrics)
+    // Ensures instant playback with zero wait time when the next song plays
+    LaunchedEffect(player.song?.videoId, player.queueIndex, player.queue) {
+        val nextSongs = if (player.queue.isNotEmpty() && player.queueIndex in player.queue.indices) {
+            player.queue.drop(player.queueIndex + 1).take(2)
+        } else emptyList()
+        if (nextSongs.isNotEmpty()) {
+            viewModel.prefetchNextTracks(nextSongs)
         }
     }
 
@@ -956,6 +969,12 @@ private fun DhvaniApp(
             // nothing to resume and the app has just opened on Home, which is
             // as much as the request can honestly be given.
             LinkRequest.Resume -> if (session.mediaItemCount > 0) session.play()
+            is LinkRequest.ImportPlaylist -> {
+                showNowPlaying = false
+                importPlaylistSource = request.source
+                importPlaylistInitialUrl = request.url
+                showImportPlaylist = true
+            }
         }
         MusicLink.handled()
     }
@@ -1311,6 +1330,7 @@ private fun DhvaniApp(
             isPlaying = player.isPlaying,
             isLoading = player.isLoading,
             positionMs = player.position.positionMs,
+            bufferedPositionMs = player.position.bufferedPositionMs,
             durationMs = player.durationMs,
             onPlayPause = {
                 controller?.let { if (it.isPlaying) it.pause() else it.play() }
@@ -1430,6 +1450,9 @@ private fun DhvaniApp(
             },
             onListenTogether = {
                 showListenTogether = true
+            },
+            onOpenAudioEffects = {
+                showAudioEffectsSheet = true
             },
             docked = docked,
             onClearQueue = {
@@ -1885,6 +1908,8 @@ private fun DhvaniApp(
                             listState = homeListState,
                             signedIn = signedIn,
                             onSignIn = {},
+                            replayCard = replayCards.firstOrNull(),
+                            onOpenReplay = { showReplay = true },
                             onItemClick = { item ->
                                 when {
                                     item.videoId != null -> playRadio(
@@ -2132,7 +2157,7 @@ private fun DhvaniApp(
                                 ) {
                                     Box(contentAlignment = Alignment.TopEnd) {
                                         Icon(
-                                            androidx.compose.material.icons.Icons.Rounded.GraphicEq,
+                                            androidx.compose.material.icons.Icons.Rounded.Person,
                                             contentDescription = "Listen Together",
                                             tint = if (currentRoomState != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                         )
@@ -2451,6 +2476,10 @@ private fun DhvaniApp(
                         songActions = null
                         showEqualizerSheet = true
                     },
+                    onOpenAudioEffects = {
+                        songActions = null
+                        showAudioEffectsSheet = true
+                    },
                     // Hidden outright when there's no real YouTube id behind
                     // this row to build a link from — SongActionsSheet already
                     // drops it for a local file via `isOffline`, this catches
@@ -2510,6 +2539,10 @@ private fun DhvaniApp(
 
         if (showEqualizerSheet) {
             EqualizerSheet(onDismiss = { showEqualizerSheet = false })
+        }
+
+        if (showAudioEffectsSheet) {
+            com.music.dhvani.ui.player.AudioEffectsSheet(onDismiss = { showAudioEffectsSheet = false })
         }
 
         // ---- Song Details sheet ----
@@ -2728,14 +2761,17 @@ private fun DhvaniApp(
                 onDismissRequest = {
                     showImportPlaylist = false
                     importPlaylistSource = null
+                    importPlaylistInitialUrl = null
                 },
                 containerColor = MaterialTheme.colorScheme.background,
             ) {
                 ImportPlaylistSheet(
                     initialSource = importPlaylistSource,
+                    initialUrl = importPlaylistInitialUrl,
                     onDismiss = {
                         showImportPlaylist = false
                         importPlaylistSource = null
+                        importPlaylistInitialUrl = null
                     },
                     onImportSuccess = { title: String, songs: List<Song>, source: String ->
                         viewModel.createPlaylistWithSongs(
@@ -3125,7 +3161,10 @@ private fun tween(durationMillis: Int) =
  * gets. See [Downloads.PLAYLIST_PREFIX] for why they share a namespace at all.
  */
 private fun String?.isDeviceFolder(): Boolean =
-    this != null && startsWith("local:") && !startsWith(Downloads.PLAYLIST_PREFIX)
+    this != null && startsWith("local:") &&
+    !startsWith(Downloads.PLAYLIST_PREFIX) &&
+    !startsWith("local:custom:") &&
+    this != "local:liked"
 
 /** `M:SS`/`H:MM:SS`, the same shape [String?.durationMillis] parses back. */
 private fun formatDurationText(ms: Long): String {

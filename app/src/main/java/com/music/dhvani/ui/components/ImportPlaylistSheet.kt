@@ -9,6 +9,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,13 +26,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -62,6 +73,7 @@ fun ImportPlaylistSheet(
     onImportSuccess: (String, List<Song>, String) -> Unit,
     onDismiss: () -> Unit,
     initialSource: String? = null,
+    initialUrl: String? = null,
     modifier: Modifier = Modifier,
     onPlayNow: ((Song) -> Unit)? = null,
 ) {
@@ -69,7 +81,7 @@ fun ImportPlaylistSheet(
     val scope = rememberCoroutineScope()
 
     var playlistTitle by remember { mutableStateOf("") }
-    var inputText by remember { mutableStateOf("") }
+    var inputText by remember { mutableStateOf(initialUrl.orEmpty()) }
     var parsedTracks by remember { mutableStateOf<List<PlaylistManager.ImportedTrack>>(emptyList()) }
     var directSongs by remember { mutableStateOf<List<Song>?>(null) }
     var isResolving by remember { mutableStateOf(false) }
@@ -77,13 +89,40 @@ fun ImportPlaylistSheet(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var selectedSource by remember(initialSource) { mutableStateOf(initialSource ?: "YOUTUBE") }
 
+    var spotifyProfilePlaylists by remember { mutableStateOf<List<PlaylistManager.SpotifyProfilePlaylist>>(emptyList()) }
+    var spotifyProfileUsername by remember { mutableStateOf<String?>(null) }
+    var selectedPlaylistIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var isBatchImporting by remember { mutableStateOf(false) }
+
     val resolveInput: (String) -> Unit = { text ->
         val trimmed = text.trim()
         errorMessage = null
-        val plId = PlaylistManager.extractPlaylistId(trimmed)
+        val spotifyUserId = PlaylistManager.extractSpotifyUserId(trimmed)
         val spotifyPlId = PlaylistManager.extractSpotifyPlaylistId(trimmed)
+        val plId = PlaylistManager.extractPlaylistId(trimmed)
         val videoId = PlaylistManager.extractVideoId(trimmed)
-        if (spotifyPlId != null) {
+
+        if (spotifyUserId != null) {
+            selectedSource = "SPOTIFY"
+            scope.launch {
+                isResolving = true
+                progressText = "Loading Spotify profile & public playlists..."
+                val profileResult = PlaylistManager.fetchSpotifyUserPlaylists(spotifyUserId)
+                isResolving = false
+                if (profileResult != null && profileResult.playlists.isNotEmpty()) {
+                    spotifyProfileUsername = profileResult.username
+                    spotifyProfilePlaylists = profileResult.playlists
+                    parsedTracks = emptyList()
+                    directSongs = null
+                    Toast.makeText(context, "Found ${profileResult.playlists.size} playlists from ${profileResult.username}", Toast.LENGTH_SHORT).show()
+                } else {
+                    errorMessage = "Could not find public playlists on this Spotify profile. Please ensure the profile has public playlists."
+                    Toast.makeText(context, "No public playlists found", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else if (spotifyPlId != null) {
+            spotifyProfilePlaylists = emptyList()
+            spotifyProfileUsername = null
             selectedSource = "SPOTIFY"
             scope.launch {
                 isResolving = true
@@ -101,6 +140,8 @@ fun ImportPlaylistSheet(
                 }
             }
         } else if (plId != null) {
+            spotifyProfilePlaylists = emptyList()
+            spotifyProfileUsername = null
             selectedSource = "YOUTUBE"
             scope.launch {
                 isResolving = true
@@ -148,6 +189,12 @@ fun ImportPlaylistSheet(
         }
     }
 
+    androidx.compose.runtime.LaunchedEffect(initialUrl) {
+        if (!initialUrl.isNullOrBlank()) {
+            resolveInput(initialUrl)
+        }
+    }
+
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
@@ -178,9 +225,12 @@ fun ImportPlaylistSheet(
         }
     }
 
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .verticalScroll(scrollState)
             .padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
         Row(
@@ -292,10 +342,24 @@ fun ImportPlaylistSheet(
                     resolveInput(input)
                 }
             },
-            placeholder = { Text("Paste YouTube / Spotify playlist link or M3U text") },
+            placeholder = { Text("Paste YouTube/Spotify link or User Profile link") },
             trailingIcon = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (inputText.isNotBlank()) {
+                        IconButton(onClick = {
+                            inputText = ""
+                            errorMessage = null
+                            spotifyProfilePlaylists = emptyList()
+                            spotifyProfileUsername = null
+                            parsedTracks = emptyList()
+                            directSongs = null
+                        }) {
+                            Icon(
+                                Icons.Rounded.Close,
+                                contentDescription = "Clear",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         IconButton(onClick = { resolveInput(inputText) }) {
                             Icon(
                                 Icons.AutoMirrored.Rounded.ArrowForward,
@@ -303,16 +367,17 @@ fun ImportPlaylistSheet(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         }
-                    }
-                    IconButton(onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = clipboard.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
-                        if (clip.isNotBlank()) {
-                            inputText = clip
-                            resolveInput(clip)
+                    } else {
+                        IconButton(onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = clipboard.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                            if (clip.isNotBlank()) {
+                                inputText = clip
+                                resolveInput(clip)
+                            }
+                        }) {
+                            Icon(Icons.Rounded.ContentPaste, contentDescription = "Paste", tint = MaterialTheme.colorScheme.primary)
                         }
-                    }) {
-                        Icon(Icons.Rounded.ContentPaste, contentDescription = "Paste", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             },
@@ -329,6 +394,191 @@ fun ImportPlaylistSheet(
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
+        }
+
+        // Spotify Profile Playlists Selection Section
+        if (spotifyProfilePlaylists.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "${spotifyProfileUsername ?: "User"}'s Playlists (${spotifyProfilePlaylists.size})",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                // Select All / Deselect All Toggle Button
+                val allSelected = selectedPlaylistIds.size == spotifyProfilePlaylists.size && spotifyProfilePlaylists.isNotEmpty()
+                Text(
+                    text = if (allSelected) "Deselect All" else "Select All",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable {
+                            selectedPlaylistIds = if (allSelected) {
+                                emptySet()
+                            } else {
+                                spotifyProfilePlaylists.map { it.id }.toSet()
+                            }
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // Action row if playlists are selected
+            AnimatedVisibility(visible = selectedPlaylistIds.isNotEmpty()) {
+                Column {
+                    Button(
+                        onClick = {
+                            val toImport = spotifyProfilePlaylists.filter { it.id in selectedPlaylistIds }
+                            scope.launch {
+                                isResolving = true
+                                isBatchImporting = true
+                                val userPrefix = spotifyProfileUsername ?: "Spotify"
+                                for ((idx, pl) in toImport.withIndex()) {
+                                    progressText = "Importing (${idx + 1}/${toImport.size}): ${pl.title}..."
+                                    val result = PlaylistManager.fetchSpotifyPlaylist(pl.id)
+                                    if (result != null && result.second.isNotEmpty()) {
+                                        val songs = PlaylistManager.resolveTracksToSongs(result.second) { cur, tot ->
+                                            progressText = "Resolving tracks ($cur/$tot) for ${pl.title}..."
+                                        }
+                                        val finalTitle = "${userPrefix} • ${result.first}"
+                                        onImportSuccess(finalTitle, songs, "SPOTIFY_PROFILE")
+                                    }
+                                }
+                                isBatchImporting = false
+                                isResolving = false
+                                Toast.makeText(context, "Successfully imported ${toImport.size} playlists!", Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            }
+                        },
+                        enabled = !isResolving,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.FileUpload,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Import Selected (${selectedPlaylistIds.size} Playlists)",
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+
+            Text(
+                text = "Select playlists to batch import or tap individual to load:",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+            Spacer(Modifier.height(6.dp))
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                spotifyProfilePlaylists.forEach { pl ->
+                    val isChecked = pl.id in selectedPlaylistIds
+                    Card(
+                        onClick = {
+                            resolveInput("https://open.spotify.com/playlist/${pl.id}")
+                        },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isChecked) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                            },
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 6.dp, vertical = 6.dp),
+                        ) {
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = { checked ->
+                                    selectedPlaylistIds = if (checked) {
+                                        selectedPlaylistIds + pl.id
+                                    } else {
+                                        selectedPlaylistIds - pl.id
+                                    }
+                                },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = MaterialTheme.colorScheme.primary,
+                                ),
+                            )
+                            if (!pl.imageUrl.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = pl.imageUrl,
+                                    contentDescription = pl.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = pl.title,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                                contentDescription = "Load",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .size(16.dp),
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         val totalTracks = directSongs?.size ?: parsedTracks.size

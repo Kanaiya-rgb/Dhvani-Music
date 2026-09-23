@@ -64,6 +64,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TileMode
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -99,6 +100,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.MoreHoriz
@@ -108,6 +110,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.foundation.combinedClickable
 import com.music.dhvani.ui.components.CanvasSourceSheet
 import com.music.dhvani.ui.components.AudioPipelineDialog
@@ -834,6 +837,7 @@ fun NowPlayingScreen(
     isPlaying: Boolean,
     isLoading: Boolean,
     positionMs: Long,
+    bufferedPositionMs: Long = 0L,
     durationMs: Long,
     queue: List<Song>,
     queueIndex: Int,
@@ -876,6 +880,7 @@ fun NowPlayingScreen(
     lyricsUnavailable: Boolean,
     onReloadLyrics: (() -> Unit)? = null,
     onListenTogether: (() -> Unit)? = null,
+    onOpenAudioEffects: (() -> Unit)? = null,
     /** The width of the window the player is in — see [fullBleedArtworkAvailable]. */
     windowWidth: Dp,
     /**
@@ -1180,6 +1185,7 @@ fun NowPlayingScreen(
     var pendingSeek by remember { mutableStateOf<Float?>(null) }
 
     val fraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
+    val bufferedFraction = if (durationMs > 0) (bufferedPositionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     val shown = when {
         scrubbing -> scrubValue
         pendingSeek != null -> pendingSeek!!
@@ -1233,10 +1239,17 @@ fun NowPlayingScreen(
     val scope = rememberCoroutineScope()
     // Animatable rather than plain state: a hardware volume step is a jump of
     // 1/15th of the bar, which reads as a stutter unless it's tweened.
+    // Supports 0.0f..1.5f (0% to 150% with hardware loudness booster)
     val volume = remember {
-        Animatable(
-            (audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0).toFloat() / maxVolume,
-        )
+        val initialStream = (audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0).toFloat() / maxVolume
+        val loudnessOn = com.music.dhvani.playback.eq.EqualizerManager.loudnessEnabled.value
+        val initialVal = if (loudnessOn && initialStream >= 0.98f) {
+            val boostMb = com.music.dhvani.playback.eq.EqualizerManager.loudnessBoostMb.value
+            1.0f + (boostMb / 1500f).coerceIn(0f, 1f) * 0.5f
+        } else {
+            initialStream
+        }
+        Animatable(initialVal)
     }
     var volumeDragging by remember { mutableStateOf(false) }
     var systemVolume by remember { mutableFloatStateOf(volume.value) }
@@ -1252,10 +1265,14 @@ fun NowPlayingScreen(
             return@LaunchedEffect
         }
         if (!volumeDragging) {
+            // Keep active booster position if hardware stream is maxed out
+            if (volume.value > 1.0f && systemVolume >= 0.99f) {
+                return@LaunchedEffect
+            }
             showVolumePercent = true
             volumeHideJob?.cancel()
             volumeHideJob = scope.launch {
-                delay(1200)
+                delay(1500)
                 showVolumePercent = false
             }
             volume.animateTo(systemVolume, tween(durationMillis = 220, easing = FastOutSlowInEasing))
@@ -1268,7 +1285,11 @@ fun NowPlayingScreen(
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
                 val current = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: return
-                systemVolume = current.toFloat() / maxVolume
+                val fraction = current.toFloat() / maxVolume
+                if (fraction < 0.99f && com.music.dhvani.playback.eq.EqualizerManager.loudnessEnabled.value) {
+                    com.music.dhvani.playback.eq.EqualizerManager.setLoudnessEnabled(false)
+                }
+                systemVolume = fraction
             }
         }
         context.contentResolver.registerContentObserver(
@@ -2282,6 +2303,40 @@ fun NowPlayingScreen(
                                 translationY = (1f - p) * 26.dp.toPx()
                             },
                     )
+
+                    // Close button at bottom-right for fullscreen lyrics mode to return to cover player
+                    if (lyricsFullScreen) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.55f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 16.dp, bottom = 16.dp)
+                                .size(46.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) {
+                                    haptics.play(Haptic.Tap)
+                                    lyricsOpen = false
+                                    lyricsFullScreen = false
+                                },
+                            shadowElevation = 8.dp,
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Close lyrics",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // Toggles and the queue arrive after the sleeve has finished
@@ -2778,8 +2833,7 @@ fun NowPlayingScreen(
                                 onClick = {
                                     queueOpen = false
                                     lyricsOpen = true
-                                    lyricsFullScreen = false
-                                    onLyricsInteraction()
+                                    lyricsFullScreen = true
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -2873,6 +2927,7 @@ fun NowPlayingScreen(
                 sliderStyle == SliderStyle.SLIM -> {
                     ThinSlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -3054,6 +3109,7 @@ fun NowPlayingScreen(
                 else -> {
                     ThinSlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -3407,23 +3463,39 @@ fun NowPlayingScreen(
                         Spacer(Modifier.width(10.dp))
                         ThinSlider(
                             value = volume.value,
+                            valueRange = 0f..1.5f,
+                            showOverdriveNotch = true,
+                            overdriveColor = Color(0xFFFF3D00),
                             onValueChange = {
                                 volumeDragging = true
                                 showVolumePercent = true
                                 volumeHideJob?.cancel()
                                 // Follow the finger exactly; only external changes tween.
                                 scope.launch { volume.snapTo(it) }
-                                audioManager?.setStreamVolume(
-                                    AudioManager.STREAM_MUSIC,
-                                    (it * maxVolume).roundToInt(),
-                                    0,
-                                )
+                                if (it <= 1.0f) {
+                                    audioManager?.setStreamVolume(
+                                        AudioManager.STREAM_MUSIC,
+                                        (it * maxVolume).roundToInt(),
+                                        0,
+                                    )
+                                    com.music.dhvani.playback.eq.EqualizerManager.setLoudnessEnabled(false)
+                                } else {
+                                    audioManager?.setStreamVolume(
+                                        AudioManager.STREAM_MUSIC,
+                                        maxVolume,
+                                        0,
+                                    )
+                                    val boostFraction = ((it - 1.0f) / 0.5f).coerceIn(0f, 1f)
+                                    val gainMb = (boostFraction * 1500).roundToInt()
+                                    com.music.dhvani.playback.eq.EqualizerManager.setLoudnessEnabled(true)
+                                    com.music.dhvani.playback.eq.EqualizerManager.setLoudnessBoostMb(gainMb)
+                                }
                             },
                             onValueChangeFinished = {
                                 volumeDragging = false
                                 volumeHideJob?.cancel()
                                 volumeHideJob = scope.launch {
-                                    delay(1200)
+                                    delay(1600)
                                     showVolumePercent = false
                                 }
                             },
@@ -3435,7 +3507,7 @@ fun NowPlayingScreen(
                         Icon(
                             Icons.AutoMirrored.Rounded.VolumeUp,
                             contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.5f),
+                            tint = if (volume.value > 1.0f) Color(0xFFFF5252) else Color.White.copy(alpha = 0.5f),
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -3447,21 +3519,46 @@ fun NowPlayingScreen(
                         exit = fadeOut(tween(300)) + scaleOut(targetScale = 0.85f, animationSpec = tween(300)),
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .offset(y = (-26).dp),
+                            .offset(y = (-30).dp),
                     ) {
+                        val percent = (volume.value * 100).roundToInt().coerceIn(0, 150)
+                        val isHarmful = percent > 100
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFF1E1E1E).copy(alpha = 0.92f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
-                            shadowElevation = 4.dp,
+                            color = if (isHarmful) Color(0xFFC62828).copy(alpha = 0.95f) else Color(0xFF1E1E1E).copy(alpha = 0.92f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isHarmful) Color(0xFFFF5252).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.2f),
+                            ),
+                            shadowElevation = 6.dp,
                         ) {
-                            Text(
-                                text = "${(volume.value * 100).roundToInt().coerceIn(0, 100)}%",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            ) {
+                                if (isHarmful) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Warning,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                    Spacer(Modifier.width(5.dp))
+                                    Text(
+                                        text = "$percent% • Harmful to ears",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                    )
+                                } else {
+                                    Text(
+                                        text = "$percent%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -3489,11 +3586,10 @@ fun NowPlayingScreen(
                             queueOpen = false
                             if (!lyricsOpen) {
                                 lyricsOpen = true
-                                lyricsFullScreen = false
-                                onLyricsInteraction()
+                                lyricsFullScreen = true
                             } else {
-                                lyricsFullScreen = !lyricsFullScreen
-                                lastLyricsInteractionMs = System.currentTimeMillis()
+                                lyricsOpen = false
+                                lyricsFullScreen = false
                             }
                         },
                         highlighted = lyricsOpen,
@@ -3525,6 +3621,24 @@ fun NowPlayingScreen(
                                     icon = Icons.Rounded.Person,
                                     contentDescription = "Listen Together",
                                     onClick = { onListenTogether?.invoke() },
+                                    haptic = Haptic.Tap,
+                                )
+                                PillDivider()
+                                val audioPresetState by AppSettings.audioPreset.collectAsStateWithLifecycle()
+                                val audioSpeedState by AppSettings.playbackSpeed.collectAsStateWithLifecycle()
+                                val audioEffectsActive = audioPresetState != com.music.dhvani.data.settings.AudioPreset.NORMAL || audioSpeedState != 1.0f
+                                PillSegment(
+                                    icon = Icons.Rounded.AutoAwesome,
+                                    label = when (audioPresetState) {
+                                        com.music.dhvani.data.settings.AudioPreset.SLOWED_REVERB -> "🌙"
+                                        com.music.dhvani.data.settings.AudioPreset.RAINY_LOFI -> "🌧️"
+                                        com.music.dhvani.data.settings.AudioPreset.NIGHTCORE -> "⚡"
+                                        com.music.dhvani.data.settings.AudioPreset.CUSTOM -> "🎧"
+                                        com.music.dhvani.data.settings.AudioPreset.NORMAL -> if (audioSpeedState != 1.0f) "${audioSpeedState}x" else null
+                                    },
+                                    contentDescription = "Slowed & Nightcore Effects",
+                                    highlighted = audioEffectsActive,
+                                    onClick = { onOpenAudioEffects?.invoke() },
                                     haptic = Haptic.Tap,
                                 )
                             } else {
@@ -7501,7 +7615,7 @@ private fun LosslessOrStats(
             onClick = onClick,
         )
         else -> LosslessLabel(
-            text = "High quality",
+            text = "Standard",
             animated = false,
             modifier = modifier,
             onClick = onClick,

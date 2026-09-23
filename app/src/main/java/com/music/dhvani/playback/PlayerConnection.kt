@@ -54,6 +54,8 @@ import java.util.Locale
 class PlaybackPosition internal constructor() {
     var positionMs by mutableLongStateOf(0L)
         internal set
+    var bufferedPositionMs by mutableLongStateOf(0L)
+        internal set
 }
 
 /** Snapshot of playback state, driven by the MediaController. */
@@ -129,6 +131,7 @@ fun rememberPlayerState(controller: MediaController?): PlayerState {
             // Synced here too, so seeking while paused or buffering still moves
             // the scrubber (the poll loop only runs on play).
             position.positionMs = player.currentPosition.coerceAtLeast(0L)
+            position.bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L)
             state = state.copy(
                 song = item?.toSong(),
                 isPlaying = player.isPlaying,
@@ -170,6 +173,7 @@ fun rememberPlayerState(controller: MediaController?): PlayerState {
     LaunchedEffect(controller, state.isPlaying, foreground) {
         while (controller != null && state.isPlaying && foreground) {
             position.positionMs = controller.currentPosition.coerceAtLeast(0L)
+            position.bufferedPositionMs = controller.bufferedPosition.coerceAtLeast(0L)
             val duration = controller.duration.coerceAtLeast(0L)
             if (duration != state.durationMs) state = state.copy(durationMs = duration)
             delay(500)

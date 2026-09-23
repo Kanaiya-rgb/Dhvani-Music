@@ -232,9 +232,9 @@ fun SongDetailsSheet(
             SectionTitle("Information")
             DetailsCard {
                 val media = details
-                val viewsFormatted = formatGermanNumber(media.viewCount)
-                val likesFormatted = formatGermanNumber(media.likes)
-                val dislikesFormatted = formatGermanNumber(media.dislikes)
+                val viewsFormatted = formatCountNumber(media.viewCount)
+                val likesFormatted = formatCountNumber(media.likes)
+                val dislikesFormatted = formatCountNumber(media.dislikes)
                 val itagFormatted = (media.itag ?: 251).toString()
                 val mimeFormatted = media.mimeType ?: nerdStats?.mimeType ?: "audio/webm"
                 val codecFormatted = media.codec ?: nerdStats?.mimeType?.substringAfterLast("/")?.lowercase() ?: "opus"
@@ -497,9 +497,9 @@ private fun formatStructuredDescription(song: Song, rawDesc: String?): String {
     }.trim()
 }
 
-private fun formatGermanNumber(count: Long?): String {
+private fun formatCountNumber(count: Long?): String {
     if (count == null || count <= 0L) return "—"
-    return String.format(Locale.GERMANY, "%,d", count)
+    return String.format(Locale.US, "%,d", count)
 }
 
 private fun formatShortFileSize(bytes: Long?): String {

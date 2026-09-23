@@ -253,12 +253,10 @@ object QualityUpgrade {
         // Already upgraded: this *is* the better copy.
         if (uri.getQueryParameter(MARKER) != null) return false
         if (mediaId in asked || mediaId in refused || pending.containsKey(mediaId)) return false
-        // Only look for a mid-track upgrade if lossless listening mode is requested
-        val wantsLossless = com.music.dhvani.data.settings.AppSettings.audioListeningMode.value ==
-            com.music.dhvani.data.settings.AudioListeningMode.LOSSLESS ||
-            com.music.dhvani.data.settings.AppSettings.audioListeningMode.value ==
-            com.music.dhvani.data.settings.AudioListeningMode.BOTH
-        if (!wantsLossless) return false
+        // Not gated on lossless mode — a source ranked above YouTube (e.g. JioSaavn 320 kbps)
+        // is worth upgrading to on bitrate alone. [SourceResolver.worthSwapping] applies the
+        // real quality bar; restricting here meant 320 kbps upgrades never fired unless the
+        // listener had explicitly switched to Lossless mode.
         return SourceResolver.canSubstituteForYouTube()
     }
 

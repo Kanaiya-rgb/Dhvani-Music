@@ -56,3 +56,13 @@ screen_*.png
 firebase.json
 dashboard/
 app/src/main/java/com/music/dhvani/data/telemetry/
+SVG_AND_SOUND_BOOSTER_GUIDE.md
+.backup/
+graphify-out/
+
+# Scratch & debug scripts
+parsed_profile.txt
+parse_profile.py
+*.pyc
+__pycache__/
+

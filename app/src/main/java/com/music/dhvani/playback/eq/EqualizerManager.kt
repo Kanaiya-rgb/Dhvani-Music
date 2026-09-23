@@ -17,6 +17,8 @@ object EqualizerManager {
     private const val KEY_PRESET = "eq_preset"
     private const val KEY_GAINS = "eq_gains"
     private const val KEY_PREAMP = "eq_preamp"
+    private const val KEY_LOUDNESS_ENABLED = "eq_loudness_enabled"
+    private const val KEY_LOUDNESS_BOOST_MB = "eq_loudness_boost_mb"
 
     private val processors = mutableListOf<CustomEqualizerAudioProcessor>()
 
@@ -32,6 +34,14 @@ object EqualizerManager {
     private val _preampGain = MutableStateFlow(0.0)
     val preampGain = _preampGain.asStateFlow()
 
+    // Loudness Booster (>100% Volume Boost via Android LoudnessEnhancer)
+    // 0 to 2000 mB (0 dB to +20 dB boost)
+    private val _loudnessEnabled = MutableStateFlow(false)
+    val loudnessEnabled = _loudnessEnabled.asStateFlow()
+
+    private val _loudnessBoostMb = MutableStateFlow(600) // Default +6.0 dB boost
+    val loudnessBoostMb = _loudnessBoostMb.asStateFlow()
+
     private var appContext: Context? = null
 
     fun init(context: Context) {
@@ -40,6 +50,8 @@ object EqualizerManager {
         _enabled.value = prefs.getBoolean(KEY_ENABLED, false)
         _selectedPreset.value = prefs.getString(KEY_PRESET, "Flat") ?: "Flat"
         _preampGain.value = prefs.getFloat(KEY_PREAMP, 0.0f).toDouble()
+        _loudnessEnabled.value = prefs.getBoolean(KEY_LOUDNESS_ENABLED, false)
+        _loudnessBoostMb.value = prefs.getInt(KEY_LOUDNESS_BOOST_MB, 600)
 
         val gainsStr = prefs.getString(KEY_GAINS, null)
         if (!gainsStr.isNullOrEmpty()) {
@@ -95,6 +107,19 @@ object EqualizerManager {
         applyCurrentState()
     }
 
+    fun setLoudnessEnabled(enable: Boolean) {
+        if (_loudnessEnabled.value == enable) return
+        _loudnessEnabled.value = enable
+        save()
+    }
+
+    fun setLoudnessBoostMb(gainMb: Int) {
+        val clamped = gainMb.coerceIn(0, 2000)
+        if (_loudnessBoostMb.value == clamped) return
+        _loudnessBoostMb.value = clamped
+        save()
+    }
+
     fun openSystemEqualizer(context: Context, audioSessionId: Int = 0): Boolean {
         return try {
             val intent = Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL).apply {
@@ -142,6 +167,8 @@ object EqualizerManager {
             .putString(KEY_PRESET, _selectedPreset.value)
             .putString(KEY_GAINS, _bandGains.value.joinToString(","))
             .putFloat(KEY_PREAMP, _preampGain.value.toFloat())
+            .putBoolean(KEY_LOUDNESS_ENABLED, _loudnessEnabled.value)
+            .putInt(KEY_LOUDNESS_BOOST_MB, _loudnessBoostMb.value)
             .apply()
     }
 }

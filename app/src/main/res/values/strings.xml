@@ -122,6 +122,10 @@
     <string name="failed">Failed</string>
     <string name="widget_square_label">Now playing 2×2</string>
     <string name="widget_wide_label">Now playing 4×2</string>
+    <string name="widget_pill_label">Minimal Capsule 4×1</string>
+    <string name="widget_pill_description">Ultra-sleek capsule player with circular artwork, song title and playback buttons.</string>
+    <string name="widget_turntable_label">Vinyl Turntable 3×3</string>
+    <string name="widget_turntable_description">Retro vinyl record turntable player with aesthetic grooves and center controls.</string>
     <string name="widget_square_description">Album art with playback controls, in a square.</string>
     <string name="widget_wide_description">Album art with the track and playback controls, full width.</string>
     <string name="widget_play">Play</string>

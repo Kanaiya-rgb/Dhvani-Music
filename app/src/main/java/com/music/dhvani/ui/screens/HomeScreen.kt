@@ -117,6 +117,8 @@ fun HomeScreen(
     loadingMore: Boolean = false,
     selectedCategory: String = "All Rhythms",
     onCategorySelected: ((String) -> Unit)? = null,
+    replayCard: com.music.dhvani.ui.replay.ReplayHeroCard? = null,
+    onOpenReplay: (() -> Unit)? = null,
 ) {
     PullToRefresh(
         refreshing = refreshing,
@@ -138,6 +140,15 @@ fun HomeScreen(
                         onChipSelect = { chip ->
                             onCategorySelected?.invoke(chip)
                         },
+                    )
+                }
+            }
+
+            if (replayCard != null && onOpenReplay != null) {
+                item(key = "home_wrapped_banner") {
+                    HomeReplayBanner(
+                        card = replayCard,
+                        onClick = onOpenReplay,
                     )
                 }
             }
@@ -1121,15 +1132,61 @@ internal fun ShelfCard(
                         .aspectRatio(1f)
                         .uiDesignCard(shape = RoundedCornerShape(16.dp)),
                 ) {
-                    AsyncImage(
-                        model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
-                        contentDescription = null,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(16.dp))
-                            .thumbnailBorder(RoundedCornerShape(16.dp)),
-                    )
+                    if (item.mosaicUrls.size >= 4) {
+                        // 2×2 mosaic collage (Spotify-style playlist cover)
+                        val mosaic = item.mosaicUrls.take(4)
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                                Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+                                    AsyncImage(
+                                        model = mosaic[0].artworkAt(CARD_ART_PX / 2),
+                                        contentDescription = null,
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                                Spacer(Modifier.width(1.5.dp))
+                                Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+                                    AsyncImage(
+                                        model = mosaic[1].artworkAt(CARD_ART_PX / 2),
+                                        contentDescription = null,
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(1.5.dp))
+                            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                                Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+                                    AsyncImage(
+                                        model = mosaic[2].artworkAt(CARD_ART_PX / 2),
+                                        contentDescription = null,
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                                Spacer(Modifier.width(1.5.dp))
+                                Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+                                    AsyncImage(
+                                        model = mosaic[3].artworkAt(CARD_ART_PX / 2),
+                                        contentDescription = null,
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        AsyncImage(
+                            model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
+                            contentDescription = null,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(16.dp))
+                                .thumbnailBorder(RoundedCornerShape(16.dp)),
+                        )
+                    }
                 }
             }
         }
@@ -1166,3 +1223,133 @@ internal fun ShelfCard(
         )
     }
 }
+
+@Composable
+private fun HomeReplayBanner(
+    card: com.music.dhvani.ui.replay.ReplayHeroCard,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = com.music.dhvani.ui.player.rememberArtworkColors(card.artworkUrl)
+    val accentGold = Color(0xFFFFD54F)
+    val accentCoral = Color(0xFFFF7043)
+    val accentViolet = Color(0xFFAB47BC)
+
+    Box(
+        modifier = modifier
+            .padding(horizontal = com.music.dhvani.ui.components.PAGE_GUTTER, vertical = 8.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .border(
+                width = 1.2.dp,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        accentGold.copy(alpha = 0.7f),
+                        accentCoral.copy(alpha = 0.5f),
+                        accentViolet.copy(alpha = 0.6f),
+                    ),
+                ),
+                shape = RoundedCornerShape(22.dp),
+            )
+            .clickable(onClick = onClick),
+    ) {
+        // Vibrant mesh background
+        Box(Modifier.matchParentSize()) {
+            com.music.dhvani.ui.player.MeshGradientBackground(
+                palette = palette,
+                trackKey = card.artworkUrl ?: "home_replay",
+                continuous = true,
+                blurRadius = 32.dp,
+            )
+        }
+        // Sophisticated frosted glass overlay
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Black.copy(alpha = 0.45f),
+                            Color.Black.copy(alpha = 0.75f),
+                        ),
+                    ),
+                ),
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Top Tag Pill
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(Color.White.copy(alpha = 0.15f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        text = "✨ REPLAY • WRAPPED",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.2.sp,
+                        color = accentGold,
+                    )
+                }
+
+                // Action Pill Button
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(accentGold.copy(alpha = 0.22f))
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = "View Story",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                        Icon(
+                            imageVector = com.music.dhvani.ui.icons.DhvaniIcons.ChevronRight,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            Text(
+                text = "Your Listening Journey",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Black,
+                color = Color.White,
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            Text(
+                text = "${card.value} ${card.label.lowercase(java.util.Locale.ROOT)} · ${card.detail}",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = Color.White.copy(alpha = 0.88f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+

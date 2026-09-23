@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -139,30 +140,50 @@ fun LibraryScreen(
     val pinnedPlaylists by AppSettings.pinnedPlaylists.collectAsStateWithLifecycle()
     val localCustomPlaylists by AppSettings.localCustomPlaylists.collectAsStateWithLifecycle()
     val ytCustomPlaylists = remember(localCustomPlaylists) {
-        localCustomPlaylists.filter { it.source != "SPOTIFY" }
+        localCustomPlaylists.filter { it.source != "SPOTIFY" && it.source != "SPOTIFY_PROFILE" }
     }
     val spotifyCustomPlaylists = remember(localCustomPlaylists) {
         localCustomPlaylists.filter { it.source == "SPOTIFY" }
     }
+    val spotifyProfilePlaylists = remember(localCustomPlaylists) {
+        localCustomPlaylists.filter { it.source == "SPOTIFY_PROFILE" }
+    }
     val ytShelfItems = remember(ytCustomPlaylists) {
         ytCustomPlaylists.map { pl ->
+            val thumbs = pl.songs.mapNotNull { it.thumbnailUrl?.takeIf { u -> u.isNotBlank() } }.distinct()
             ShelfItem(
                 title = pl.title,
                 subtitle = "${pl.songs.size} songs",
-                thumbnailUrl = pl.songs.firstOrNull()?.thumbnailUrl,
+                thumbnailUrl = thumbs.firstOrNull(),
                 videoId = null,
                 browseId = "local:custom:${pl.id}",
+                mosaicUrls = if (thumbs.size >= 4) thumbs.take(4) else emptyList(),
             )
         }
     }
     val spotifyShelfItems = remember(spotifyCustomPlaylists) {
         spotifyCustomPlaylists.map { pl ->
+            val thumbs = pl.songs.mapNotNull { it.thumbnailUrl?.takeIf { u -> u.isNotBlank() } }.distinct()
             ShelfItem(
                 title = pl.title,
                 subtitle = "${pl.songs.size} songs",
-                thumbnailUrl = pl.songs.firstOrNull()?.thumbnailUrl,
+                thumbnailUrl = thumbs.firstOrNull(),
                 videoId = null,
                 browseId = "local:custom:${pl.id}",
+                mosaicUrls = if (thumbs.size >= 4) thumbs.take(4) else emptyList(),
+            )
+        }
+    }
+    val spotifyProfileShelfItems = remember(spotifyProfilePlaylists) {
+        spotifyProfilePlaylists.map { pl ->
+            val thumbs = pl.songs.mapNotNull { it.thumbnailUrl?.takeIf { u -> u.isNotBlank() } }.distinct()
+            ShelfItem(
+                title = pl.title,
+                subtitle = "${pl.songs.size} songs",
+                thumbnailUrl = thumbs.firstOrNull(),
+                videoId = null,
+                browseId = "local:custom:${pl.id}",
+                mosaicUrls = if (thumbs.size >= 4) thumbs.take(4) else emptyList(),
             )
         }
     }
@@ -297,6 +318,19 @@ fun LibraryScreen(
                         },
                     )
                 }
+                if (spotifyProfileShelfItems.isNotEmpty()) {
+                    item(key = "shelf:$SPOTIFY_PROFILES") {
+                        val profileShelf = HomeShelf(SPOTIFY_PROFILES, spotifyProfileShelfItems)
+                        LibraryGridShelf(
+                            shelf = profileShelf,
+                            onItemClick = onShelfItemClick,
+                            onItemLongPress = onShelfItemLongPress,
+                            onShowAll = { onShowAll(profileShelf) },
+                            pinnedPlaylists = pinnedPlaylists,
+                            sectionIcon = Icons.Rounded.Person,
+                        )
+                    }
+                }
             } else when (state) {
                 is UiState.Loading -> librarySkeleton()
                 is UiState.Error -> item {
@@ -354,6 +388,19 @@ fun LibraryScreen(
                                     )
                                 },
                             )
+                        }
+                        if (spotifyProfileShelfItems.isNotEmpty()) {
+                            item(key = "shelf:$SPOTIFY_PROFILES") {
+                                val profileShelf = HomeShelf(SPOTIFY_PROFILES, spotifyProfileShelfItems)
+                                LibraryGridShelf(
+                                    shelf = profileShelf,
+                                    onItemClick = onShelfItemClick,
+                                    onItemLongPress = onShelfItemLongPress,
+                                    onShowAll = { onShowAll(profileShelf) },
+                                    pinnedPlaylists = pinnedPlaylists,
+                                    sectionIcon = Icons.Rounded.Person,
+                                )
+                            }
                         }
                     }
                     shelves.forEach { shelf ->
@@ -731,3 +778,4 @@ private const val PLAYLISTS = YtMusicRepository.PLAYLISTS_SHELF
 private const val ON_DEVICE = "On Device"
 const val YOUTUBE_PLAYLISTS = "YouTube Playlists"
 const val SPOTIFY_PLAYLISTS = "Spotify Playlists"
+const val SPOTIFY_PROFILES = "Spotify Profile Playlists"

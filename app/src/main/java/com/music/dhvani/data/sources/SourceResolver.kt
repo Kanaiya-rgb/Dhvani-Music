@@ -601,8 +601,14 @@ object SourceResolver {
      */
     internal fun worthSwapping(candidate: StreamFormat, playing: StreamFormat?): Boolean {
         if (candidate.isLossless == true) return true
-        val gain = (candidate.kbps ?: return false) - (playing?.kbps ?: return false)
-        return gain >= UPGRADE_MIN_GAIN_KBPS
+        val candidateKbps = candidate.kbps ?: return false
+        // When playing from cache, YouTube Opus carries no container bitrate field —
+        // `playing?.kbps` is null. Defaulting to 160 (the typical Opus rendition) is
+        // correct and conservative: it is where YouTube's Opus consistently lands, and
+        // using `return false` here was silently refusing JioSaavn's 320 kbps as
+        // "not worth swapping an unmeasured stream", killing the whole upgrade path.
+        val playingKbps = playing?.kbps ?: YOUTUBE_OPUS_FLOOR_KBPS
+        return candidateKbps - playingKbps >= UPGRADE_MIN_GAIN_KBPS
     }
 
     /**
@@ -994,4 +1000,15 @@ object SourceResolver {
      * much smaller would start firing on differences no one can hear.
      */
     private const val UPGRADE_MIN_GAIN_KBPS = 96
+
+    /**
+     * Assumed bitrate of a YouTube Opus stream that carries no container bitrate field.
+     *
+     * WebM/Opus has no bitrate atom, so `Format.bitrate` arrives as `NO_VALUE` for cached
+     * YouTube tracks. Rather than returning `false` (which silently blocked every 320kbps
+     * JioSaavn upgrade from cache), [worthSwapping] defaults to this floor — which is where
+     * YouTube's high-quality Opus rendition consistently lands — so the 320 - 160 = 160 gain
+     * correctly clears [UPGRADE_MIN_GAIN_KBPS].
+     */
+    private const val YOUTUBE_OPUS_FLOOR_KBPS = 160
 }
