@@ -1,6 +1,9 @@
 <div align="center">
 
 # 🎵 Dhvani Music
+
+<img src="https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/assets/Logo.png" width="130" height="130" alt="Dhvani Music Logo"/>
+
 ### *Premium Indian & Global Music — Ad-Free, Open Source, Beautiful*
 
 [![Latest Release](https://img.shields.io/github/v/release/Kanaiya-rgb/Dhvani-Music?style=for-the-badge&label=Latest%20Release&color=22c55e&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest)
