@@ -1,312 +1,412 @@
 <div align="center">
 
-# 🎵 Dhvani Music
-### *Aesthetic Indian & Global Music Client*
+<img src="https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="120" height="120" alt="Dhvani Music Logo" style="border-radius: 24px"/>
 
-[![Latest Release](https://img.shields.io/github/v/release/Kanaiya-rgb/Dhvani-Music?style=for-the-badge&label=Release&color=22c55e&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest)
+# 🎵 Dhvani Music
+### *Premium Indian & Global Music — Ad-Free, Open Source, Beautiful*
+
+[![Latest Release](https://img.shields.io/github/v/release/Kanaiya-rgb/Dhvani-Music?style=for-the-badge&label=Latest%20Release&color=22c55e&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Kanaiya-rgb/Dhvani-Music/total?style=for-the-badge&label=Total%20Downloads&color=3b82f6&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Dhvani-Music/releases)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white&labelColor=0d1117)](https://kotlinlang.org)
-[![Jetpack Compose](https://img.shields.io/badge/Jetpack-Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white&labelColor=0d1117)](https://developer.android.com/jetpack/compose)
-[![Material 3](https://img.shields.io/badge/Material_3-Material_You-E879F9?style=for-the-badge&logo=google&logoColor=white&labelColor=0d1117)](https://m3.material.io)
-[![Media3](https://img.shields.io/badge/Media3-ExoPlayer-E65100?style=for-the-badge&logo=googleplay&logoColor=white&labelColor=0d1117)](https://developer.android.com/media/media3)
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white&labelColor=0d1117)](https://ko-fi.com/kanaiya_rgb)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black&labelColor=0d1117)](https://buymeacoffee.com/kanaiya_rgb)
+[![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-UI-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white&labelColor=0d1117)](https://developer.android.com/jetpack/compose)
+[![Material 3](https://img.shields.io/badge/Material_You-Material_3-E879F9?style=for-the-badge&logo=google&logoColor=white&labelColor=0d1117)](https://m3.material.io)
+[![Media3](https://img.shields.io/badge/AndroidX-Media3-E65100?style=for-the-badge&logo=googleplay&logoColor=white&labelColor=0d1117)](https://developer.android.com/media/media3)
 [![License](https://img.shields.io/badge/License-GPLv3-ef4444?style=for-the-badge&labelColor=0d1117)](LICENSE)
 
 <br/>
 
-[📥 Download APK](#-download--installation) · [✨ Features](#-features) · [🎧 Categories](#-category--mood-explorer) · [☕ Support](#-support) · [⚙️ Setup](#-setup--optimization) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements) · [⚖️ Disclaimer](#-disclaimer--legal-notice) · [📜 License](#-license)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Dev-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white&labelColor=0d1117)](https://ko-fi.com/kanaiya_rgb)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black&labelColor=0d1117)](https://buymeacoffee.com/kanaiya_rgb)
+
+<br/>
+
+[📥 Download](#-download--installation) · [✨ Features](#-features) · [🏛️ Architecture](#-architecture--tech-stack) · [🛠️ Build](#-build-from-source) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements)
 
 </div>
 
 ---
 
 > [!WARNING]
-> **Dhvani Music is not affiliated with, endorsed by, or connected to YouTube, Google, Spotify, or Deezer in any way. Use it at your own discretion.**
+> **Dhvani Music is not affiliated with, endorsed by, or connected to YouTube, Google, Spotify, or any of their subsidiaries in any way. Use at your own discretion.**
 
 ---
 
 ## 📖 What is Dhvani Music?
 
-**Dhvani Music** is an elegant, open-source Android music client that fuses YouTube Music's colossal audio catalogue with **pristine Hi-Res lossless audio**, deep **multilingual localization**, and an expressive **Material 3 / Liquid Frosted-Glass aesthetic**.
+**Dhvani Music** is a feature-rich, open-source Android music client built for those who refuse to compromise. It fuses **YouTube Music's massive catalogue** with **Hi-Res lossless audio**, **real-time synced lyrics**, **Ambient Cinema landscape mode**, and an expressive **Material 3 / Frosted-Glass UI** — all completely ad-free and privacy-first.
 
-Built entirely in modern Kotlin with Jetpack Compose, Dhvani provides an ad-free, clutter-free listening experience that honors your battery, your privacy, and your ears.
+Built from the ground up in modern Kotlin with Jetpack Compose and AndroidX Media3, Dhvani is a next-generation music player designed to look premium, feel snappy, and sound incredible.
 
 ---
 
 ## ✨ Features
 
-### 🎧 Playback & Audio Engineering
-* **Vast YouTube Music Catalog** — Search, browse, and play anything available on YouTube Music with zero advertisements.
-* **Hi-Res Lossless Audio** — Stream audiophile-grade FLAC/ALAC from configured module sources, seamlessly falling back to YouTube Music.
-* **Gapless Playback with True Crossfade** — Smooth, configurable crossfades (0–12 seconds) so your music never drops a beat.
-* **Automix [Beta]** — DJ-style smooth transitions powered by a native C++ DSP analyzer (`dhvani_analysis`) with beat-matching and tempo alignment.
-* **Per-Network Quality Ceilings** — Set independent audio bitrates for Wi-Fi and mobile data to save bandwidth on cellular networks.
-* **Parametric Equalizer** — Tailor frequencies with built-in presets (Bass Boost, Acoustic, Vocal Enhancer) or build custom curve profiles.
-* **Background Playback** — Reliable background audio powered by AndroidX Media3 / ExoPlayer with a fully synchronized MediaSession.
-* **Playback Speed & Skip Silence** — Fine-tune playback speed from 0.5× to 2.0× and automatically bypass dead silence.
+### 🎧 Playback & Audio Engine
+
+| Feature | Details |
+|:---|:---|
+| **Ad-Free YouTube Music** | Full YouTube Music catalog — search, browse, queue — zero ads, zero interruptions. |
+| **Hi-Res Lossless Audio** | FLAC/ALAC streams up to 24-bit/192kHz via pluggable module sources with intelligent fallback. |
+| **Gapless Crossfade** | Smooth, configurable 0–12 second crossfades between tracks so your music never stops. |
+| **Automix (Beat-Match DSP)** | Native C++ `dhvani_analysis` engine with tempo alignment and DJ-style automated beat-matched transitions. |
+| **3D Spatial Audio** | Binaural DSP surround soundstage with dedicated per-mode equalizer curve presets. |
+| **Dolby Atmos / System DSP** | Direct integration with device hardware Dolby Atmos panel when supported. |
+| **10-Band Graphic Equalizer** | Fine-tune any frequency with custom preset profiles (Bass Boost, Acoustic, Vocal Enhancer, etc.). |
+| **Per-Network Quality Control** | Independent audio quality ceilings for Wi-Fi and mobile data to save bandwidth. |
+| **Skip Silence** | Automatically bypass dead air in podcasts and track intros without missing a beat. |
+| **Playback Speed** | 0.5× to 2.0× fine-grained speed control. |
+| **Live Audio Pipeline Inspector** | Real-time DSP sheet showing active bitrate, codec, bit depth, sample rate, and network buffer health. |
 
 ---
 
-### 🎨 Visuals & Liquid Aesthetics
-* **Spotify & Apple Music Canvas Video Loops *(New in v2.3.0)*** — Enjoy hypnotic, vertical video loops on the Now Playing player screen. Seamlessly switches between Spotify Canvas and Apple Music video loops with instant source & resolution control (720p/480p).
-* **Personalized Profiles & Avatar Studio *(New in v2.3.0)*** — Dynamic smart greeting on Home ("Good morning, Rahul ☀️") with a customizable profile header. Pick from 5 handcrafted glowing gradient avatar presets or upload your own custom profile picture from your gallery.
-* **Pure Material 3 (Material You)** — Built strictly on Android's latest design guidelines with soft curves, tonal elevation, and pill-shaped navigation.
-* **12+ Kinetic Text-Effects Lyrics Engine** — Complete overhaul inspired by [text-effects.colorion.co](https://text-effects.colorion.co/) featuring custom shaders, physics models, and persistent styling for every line:
-  - ⚡ **Neon Electric (`fx-neon`)** — High-voltage cyan/magenta gas discharge tube bloom with electrical flicker.
-  - 👾 **Digital Glitch (`fx-glitch`)** — Split-slice horizontal displacement with cyan/magenta chromatic channel shifts.
-  - 🌊 **Ocean Liquid Wave (`fx-liquid`)** — Hollow typography filled with an undulating sinusoidal fluid wave meniscus.
-  - 🌌 **Cosmic Aurora (`fx-aurora`)** — Living celestial northern lights holographic spectrum rotating across letters.
-  - 🌋 **Volcanic Ember (`fx-ember`)** — Molten incandescent magma with cracked orange/gold heat pulses.
-  - 🪞 **Liquid Chrome (`fx-chrome`)** — Specular liquid silver finish with continuous 45° sweeping lens glare.
-  - 📺 **Retro CRT Terminal (`fx-crt`)** — Vintage 1980s green phosphor bloom, CRT scanlines, and rolling refresh line.
-  - 🏄 **Dancing Sine Wave (`fx-wave`)** — Fluid bouncy typography where words physically oscillate in a sine wave.
-  - 💨 **Smoke-Signal** — Smoldering amber typography with rising multi-layer plumes of vapor clouds.
-  - 📊 **Kinetic Equalizer** — 5-band dynamic audio spectrum frequency bars leaping from active lyric words.
-  - 👻 **Ghostwrite** — Ethereal phantom typography with breathing mint-teal ectoplasm glow.
-  - ⌨️ **Mechanical Typewriter** — Monospace character-by-character snap with glowing typewriter caret.
-* **Dynamic Home-Screen Widgets *(New in v2.4.0)*** — Sleek Android home-screen media widgets:
-  - 💊 **MediaWidgetPill (4×1)** — Modern pill design with album art, track details, and playback controls.
-  - 💿 **MediaWidgetTurntable (3×3)** — Retro vinyl turntable player with real-time rotating disc aesthetic.
-* **4-Cover Mosaic Grid *(New in v2.4.0)*** — Automatic 2×2 artwork collage generation for imported Spotify and custom playlists.
-* **Dynamic Artwork Palette** — Liquid color theming dynamically extracted from album covers on every track change.
-* **Frosted-Glass UI (Haze)** — Silky, translucent navigation and bottom bars with real-time blurred backdrops.
-* **Next-Gen Interactive Sliders** — Liquid physics seek bars and volume sliders with subtle haptic ticks and expand-on-touch ergonomics.
-* **Live Word-by-Word Sing-along Lyrics** — Syllable-level synchronized lyrics highlighting with support for multiple providers (Better Lyrics, LrcLib, YouTube).
-* **Animated Album Canvas** — Immersive motion artwork backdrop in the player view.
-* **Stats for Nerds** — Real-time stream telemetry displaying format, codec, sample rate, bit depth, and cache status.
+### 🎬 Ambient Cinema & Visual Player *(New in v2.5.0)*
+
+| Feature | Details |
+|:---|:---|
+| **Ambient Cinema Landscape Mode** | Auto-rotate to a fullscreen cinematic landscape player when tilting your phone. Immersive ambient glow, vinyl turntable, and live playback controls. |
+| **Custom Seekbar Sync** | Unique seekbar style (Capsule, Wavy, Squiggle, Retro, Vinyl, etc.) stays perfectly synchronized across Portrait and Landscape Cinema views. |
+| **Spotify Canvas Video Loops** | Hypnotic vertical looping videos on the fullscreen Now Playing screen. Supports Spotify Canvas & Apple Music motion loops. |
+| **Multi-Point Mesh Gradient** | Fluid, multi-color mesh gradient backgrounds that adapt dynamically to every album cover's palette. |
+| **Frosted Glassmorphism UI** | Silky translucent navigation bars, bottom sheets, and player overlays with real-time blur. |
+| **12+ Kinetic Lyrics Text Effects** | Physics-based synced lyrics with Neon, Glitch, Ocean Wave, Aurora, Ember, Chrome, CRT, Sine Wave, Smoke, Kinetic Equalizer, Ghostwrite, and Typewriter effects. |
+| **Dynamic Artwork Color Theming** | Album cover palette extracted and applied across the entire player UI on every track change. |
 
 ---
 
-### 🧭 Explore: Moods & Genres, Charts & New Releases *(New in v2.0)*
-Dedicated **Explore** tab in the floating bottom navigation bar featuring 4 main discovery avenues and 50+ specialized moods and genres:
+### 🖼️ Lyrics Share Card Generator *(New in v2.5.0)*
 
-* **Top Discovery Rails**:
-  - 🌟 **Moods & genres** — Curated catalogs across *For you*, *Moods & moments*, and *Genres*.
-  - 💿 **New releases** — Real-time live drops of new albums, singles, and music videos.
-  - 📈 **Charts & Trending** — Numbered top 20 trending singles and global charts.
-  - 🎙️ **Podcasts & Long Listens** — Popular news, geopolitics,     storytelling, and 1–2 hour continuous jukeboxes.
-
-#### 🎧 Moods & Genres Taxonomy
-
-| Section | Categories & Highlights |
-|---|---|
-| **For you** | Romance 💖 · Hindi 🎬 · Feel good ✨ · Desi hip-hop 🔥 · Hip-hop 🎧 · Devotional 🕉️ |
-| **Moods & moments** | Chill ☕ · Commute 🚗 · Energize ⚡ · Feel good 🌟 · Focus 📚 · Gaming 🎮 · Party 🎉 · Romance 💖 · Sad 💔 · Sleep 🌙 · Workout 🏋️ |
-| **Regional & Global Genres** | Bhojpuri 🌾 · Haryanvi 🚜 · Punjabi 🪘 · Bengali 🪕 · Gujarati 🎭 · Marathi 🚩 · Tamil 🛕 · Telugu 🏹 · Kannada 🌴 · Malayalam 🛶 · Indian Indie 🌿 · Indian Pop 🌟 · Ghazal/Sufi 🕯️ · Hindustani Classical 🪕 · Carnatic Classical 🎻 · Monsoon 🌧️ · K-Pop 💜 · J-Pop 🌸 · Arabic 🏜️ · African 🌍 · Latin 💃 · Metal ⚡ · Jazz 🎷 · Dance & Electronic 🪩 · Decades (60s–2000s) ⏳ |
+- Select up to **7 synced lyric lines** to create a beautiful shareable quote card.
+- **5 themes**: Vibrant, Midnight, Sunset, Aurora, and Pure OLED.
+- **Flexible format**: Story mode (9:16) or Compact Card (4:5 / Square).
+- Optimized for **WhatsApp Status, Instagram Stories**, and general sharing.
 
 ---
 
-### 🌍 Multilingual Localization & Accessibility
-* **Native Multi-Language Support** — Full localization across English, Hindi (हिन्दी), Hinglish, Punjabi (ਪੰਜਾਬੀ), Tamil, Telugu, Spanish, French, German, Japanese, and Russian.
-* **Smart Voice Search** — Mic input with instant voice search recognition and recent search history management.
+### 📱 Home-Screen Widgets *(New in v2.4.0)*
+
+| Widget | Style | Details |
+|:---|:---|:---|
+| **Pill Widget** | 4×1 compact | Sleek modern pill with album art, track name, and playback controls. |
+| **Turntable Widget** | 3×3 premium | Retro rotating vinyl disc with real-time state sync and media controls. |
 
 ---
 
-### 🌐 Connectivity, Accounts & Sync
-* **YouTube Music Sync** — Optional Google account login to sync your saved playlists, liked tracks, and listening history.
-* **Listen Together** — Create or join synchronized group listening rooms with friends using room codes.
-* **Discord Rich Presence** — Showcase what you're listening to on Discord with live album artwork and track progress.
-* **Scrobbling** — Native integration with Last.fm and ListenBrainz.
-* **Playlist Import & Export** — Export playlists to JSON/M3U and import playlists seamlessly.
+### 🌐 Connectivity, Accounts & Social
+
+- **YouTube Music Sync** — Optional Google account login to sync playlists, liked songs, and history.
+- **Listen Together** — Real-time synchronized group listening rooms with room codes (host & guest roles).
+- **Discord Rich Presence** — Live track, album art, and playback progress shown on your Discord profile.
+- **Last.fm & ListenBrainz Scrobbling** — Native scrobbling with configurable timing and delay thresholds.
+- **Firebase Push Notifications** *(New in v2.5.0)* — Instant in-app update alerts when a new version is released.
 
 ---
 
-### 💾 Offline Downloads & Library
-* **Full Metadata Embedding** — Downloaded FLAC/M4A/MP3 files automatically embed high-res cover art, artist, album, and lyric tags.
-* **Local Device Storage Player** — Scan and play music files stored directly on your phone's internal memory or SD card.
+### 📜 Lyrics Engine
+
+- **Multi-source support**: LrcLib, Kugou, Musixmatch, Genius, YouTube, PaxSenix.
+- **Word-by-word synced highlighting** with syllable-level precision.
+- **Live source picker**: Switch between lyrics providers on-the-fly without interrupting playback.
+- **Translation**: Inline lyric translation to 100+ languages.
+- **Lyrics Share Card**: Export any lines as a beautiful aesthetic image.
+
+---
+
+### 🎨 Appearance & Customization
+
+- **12+ Player Seekbar Styles**: Capsule, Wavy, Squiggle, Retro Vinyl, Equalizer Bar, Geometric, and more.
+- **Player Background Styles**: Glassmorphism, Gradient, Animated Blur, Solid, and Mesh.
+- **Pure AMOLED Black, Dynamic HSL Accent, and Light/Dark modes.**
+- **High Refresh Rate**: 90Hz/120Hz smooth scrolling support.
+- **Dynamic Island Notch Player**: Floating mini-player with live equalizer animation (on compatible devices).
+- **Mini Player Backgrounds**, grid cell size, display density, and navigation bar style — all fully configurable.
+
+---
+
+### 🧭 Explore: 50+ Moods, Genres & Charts
+
+| Section | Highlights |
+|:---|:---|
+| **Moods & Moments** | Chill ☕ · Focus 📚 · Workout 🏋️ · Party 🎉 · Romance 💖 · Sleep 🌙 · Sad 💔 · Commute 🚗 |
+| **Indian Regional** | Bhojpuri · Haryanvi · Punjabi · Bengali · Gujarati · Marathi · Tamil · Telugu · Kannada · Malayalam · Ghazal/Sufi · Hindustani & Carnatic Classical |
+| **Global** | K-Pop 💜 · J-Pop 🌸 · Latin 💃 · Metal ⚡ · Jazz 🎷 · Arabic · African · Dance & Electronic |
+| **Charts** | Top 20 trending, New Releases, Podcasts & Long Listens |
+
+---
+
+### 💾 Offline & Local Music
+
+- **Full Metadata Embedding** — Downloaded files auto-embed hi-res cover art, artist, album, and lyrics tags.
+- **Local Device Music Player** — Scan and play music from internal storage or SD card.
+- **Auto-Download**: Liked songs and recently played tracks can be auto-downloaded in the background.
+- **Playlist Import/Export** — Spotify, YouTube Music, and JSON/M3U formats supported.
+- **6× Faster Playlist Import**: Parallel coroutine-based Spotify track resolver engine.
 
 ---
 
 ## 📦 Download & Installation
 
-### Option 1: Direct GitHub Release (Recommended)
-Grab the latest signed APK directly from the official Releases page:
-* **[📥 Click Here to Download Latest APK](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest)** *(Always points to the newest release)*
+### ⬇️ Direct GitHub Release *(Recommended)*
 
-### Installation Steps
-1. Download the latest **`.apk`** file from the [Releases Page](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest).
-2. Open your device's **Settings → Apps → Special app access → Install unknown apps** and allow installation for your browser/file manager.
-3. Tap on the downloaded APK file and click **Install**.
-4. Open **Dhvani Music** and immerse yourself in clean, ad-free music!
+| Platform | Link |
+|:---|:---|
+| **Latest APK** | [📥 Download DhvaniMusic-v2.5.0.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest) |
+| **All Releases** | [📋 View Release History](https://github.com/Kanaiya-rgb/Dhvani-Music/releases) |
 
----
+### 📲 Installation Steps
+1. Download the `.apk` from the [Releases page](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest).
+2. Go to **Settings → Apps → Special App Access → Install Unknown Apps** and allow installation from your browser/file manager.
+3. Tap the downloaded APK → **Install**.
+4. Open Dhvani Music and enjoy!
 
-## ⚙️ Setup & Optimization
-
-### 1. Disable Battery Optimization (Important)
-Android aggressively throttles background network connections for third-party music apps:
-1. Go to your phone's **Settings → Apps → Dhvani Music → Battery**.
-2. Select **Unrestricted** (or "Don't optimize").
-3. This ensures unbroken playback when your screen is locked and prevents stream cut-offs.
-
-### 2. Android Auto Setup
-To use Dhvani Music on your vehicle's head unit via Android Auto:
-1. Open **Android Auto Settings** on your phone.
-2. Scroll to **Version** and tap it 10 times consecutively to enable **Developer Settings**.
-3. Tap the three-dot menu at top-right → **Developer Settings**.
-4. Check **Unknown sources**.
-5. Connect to your vehicle; Dhvani Music will appear in your media dashboard.
+> [!TIP]
+> For best performance, go to **Settings → Apps → Dhvani Music → Battery** and set it to **Unrestricted** to prevent Android from throttling background playback.
 
 ---
 
-## 🏛️ Architecture & Project Directory Tree
+## 🏛️ Architecture & Tech Stack
 
-Dhvani Music is structured cleanly using single-activity **Jetpack Compose**, **AndroidX Media3**, and modern Kotlin coroutines/StateFlow. Here is a quick map of the repository:
+Dhvani Music is a modern, single-activity Android application built with clean separation of concerns and reactive state management throughout.
 
-| Module | Subsystems | Tech Stack | Role & Responsibility |
-|:---|:---|:---|:---|
-| **🎨 UI & Presentation** | `ui/screens/`<br/>`ui/player/`<br/>`ui/components/` | • Jetpack Compose<br/>• Material 3<br/>• Haze Glassmorphism | Pure reactive UI. Features full Now Playing player, synchronized lyrics view, dynamic mesh gradients, and 12+ seekbar designs. |
-| **🔊 Audio Engine** | `playback/`<br/>`playback/service/` | • AndroidX Media3<br/>• ExoPlayer<br/>• AudioFX DSP | High-fidelity audio playback pipeline. Handles 10-band graphic EQ, seamless crossfading, zero-latency LRU disk cache, and background service lifecycle. |
-| **🌐 Data & APIs** | `data/innertube/`<br/>`data/lyrics/`<br/>`data/lossless/` | • Ktor / OkHttp<br/>• KotlinX Serialization<br/>• Room DB | Content resolution layer. Interacts with YouTube Music InnerTube endpoints, fetches syllable-level lyrics (LrcLib/Genius), and resolves Hi-Res FLAC/ALAC lossless streams. |
-| **📱 Widgets & System** | `widget/`<br/>`glance/` | • AndroidX Glance<br/>• MediaSession | Modern home-screen media widgets (4×1 Pill and 3×3 Vinyl Turntable) with real-time state sync. |
-| **🚀 Companion Services**| `spotify/`<br/>`dashboard/` | • Python / Microservice<br/>• Web Telemetry | Spotify vertical looping Canvas extractor and live administrative telemetry dashboard. |
+```
+Single Activity (MainActivity.kt)
+│
+├── 🎨 UI Layer (Jetpack Compose + Material 3)
+│   ├── Screens      → Home, Search, Library, Explore, Local Music, Settings
+│   ├── Player       → NowPlaying, Ambient Cinema Landscape, Canvas Artwork
+│   ├── Components   → MiniPlayer, Dynamic Island, 12+ Seekbar Styles, Dialogs
+│   └── Theme        → Dynamic HSL palette, Glassmorphism, Typography, Shapes
+│
+├── 🔊 Playback Engine (AndroidX Media3 + ExoPlayer + C++ DSP)
+│   ├── PlaybackService   → Foreground MediaSession with full notification
+│   ├── AudioEngine       → Decoupled playback pipeline abstraction layer
+│   ├── PlaybackEngine    → Crossfade, speed control, gapless transitions
+│   ├── ChunkedDataSource → Progressive chunked streaming & LRU disk cache
+│   ├── EqualizerManager  → 10-band EQ, Dolby panel, spatial audio DSP
+│   └── dhvani_analysis   → Native C++ beat-tempo detector & DSP analyzer
+│
+├── 🌐 Data & API Layer (Ktor + KotlinX Serialization + Room DB)
+│   ├── innertube/         → YouTube Music stream resolver & InnerTube parser
+│   ├── lyrics/            → Multi-source synced lyrics engine
+│   ├── playlist/          → Import, export, sync & playlist manager
+│   ├── canvas/            → Spotify & community canvas video resolver
+│   └── settings/          → Reactive DataStore preferences (AppSettings.kt)
+│
+└── ⚙️ System & Integrations
+    ├── widget/            → Glance home-screen widgets (Pill 4×1, Turntable 3×3)
+    ├── listentogether/    → Real-time synchronized group listening
+    ├── FCM Notifications  → Firebase Cloud Messaging update alerts
+    └── discord/           → Discord Rich Presence RPC integration
+```
 
-<br/>
+### 🔧 Core Technology
 
-<details open>
-<summary><b>📂 Repository Directory Tree</b></summary>
+| Layer | Technology |
+|:---|:---|
+| **Language** | Kotlin 2.3 |
+| **UI** | Jetpack Compose + Material 3 (Material You) |
+| **Playback** | AndroidX Media3 / ExoPlayer |
+| **Native DSP** | C++ (NDK 28, CMake 3.22.1) |
+| **Networking** | Ktor + OkHttp |
+| **Serialization** | KotlinX Serialization |
+| **Database** | Room DB |
+| **Preferences** | AndroidX DataStore |
+| **Glassmorphism** | Haze library |
+| **Home Widgets** | AndroidX Glance |
+| **Push** | Firebase Cloud Messaging |
+
+---
+
+<details>
+<summary><b>📂 Full Repository Directory Tree</b></summary>
 <br/>
 
 ```plaintext
 Dhvani-Music/
 │
-├── 📱 app/                                    # 🚀 Primary Android Application (Jetpack Compose + Media3)
-│   ├── src/main/java/com/music/dhvani/
-│   │   ├── 🌟 MainActivity.kt                 # Single Activity entry point & root navigation router
-│   │   ├── 🚀 DhvaniApplication.kt            # Global Application lifecycle, crash handlers & DI
-│   │   │
-│   │   ├── 🎨 ui/                             # Declarative UI layer (Jetpack Compose + Material 3)
-│   │   │   ├── 📱 screens/                    # Standalone screens (Home, Search, Library, Explore, LocalMusic)
-│   │   │   ├── 🎵 player/                     # Fullscreen player, Turntable, Canvas video & Synced lyrics
-│   │   │   ├── 🧩 components/                 # MiniPlayer, Dynamic Island, 12+ Sliders, Equalizer
-│   │   │   └── 🌈 theme/                      # Dynamic color palettes, typography tokens & shapes
-│   │   │
-│   │   ├── 🔊 playback/                       # Audio playback subsystem (AndroidX Media3 & ExoPlayer)
-│   │   │   ├── ⚡ PlaybackService.kt          # Foreground MediaSession service with lifecycle protection
-│   │   │   ├── 💾 AudioCache.kt               # High-speed LRU disk cache for zero-latency seeking
-│   │   │   ├── 🎛️ CrossfadeController.kt      # Gapless DJ transitions & automatic volume crossfade
-│   │   │   └── 🔊 VolumeBooster.kt            # Decibel amplification & 10-band graphic equalizer
-│   │   │
-│   │   ├── 🌐 data/                           # Data persistence, network APIs & metadata engines
-│   │   │   ├── 📡 innertube/                  # YouTube Music stream resolution & InnerTube parser
-│   │   │   ├── 📜 lyrics/                     # Multi-source synced lyrics engine (LrcLib, Genius, YouTube)
-│   │   │   ├── 💎 lossless/                   # Pluggable Hi-Res FLAC/ALAC lossless audio stream resolvers
-│   │   │   ├── 🗄️ database/                   # Room Database (Playlists, history, cache & favorites)
-│   │   │   └── ⚙️ settings/AppSettings.kt     # Reactive DataStore persistent preferences & flags
-│   │   │
-│   │   └── 📱 widget/                         # Glance-powered Android home-screen media widgets
-│   │       ├── 💊 MediaWidgetPill.kt          # 4×1 sleek compact pill widget with media controls
-│   │       └── 💿 MediaWidgetTurntable.kt     # 3×3 vintage rotating vinyl turntable disc widget
-│   │
-│   ├── ⚙️ build.gradle.kts                    # App dependencies, NDK flags & build configs
-│   └── 🛡️ proguard-rules.pro                  # R8 code shrinking, obfuscation & optimization rules
+├── 📱 app/                                    # Primary Android Application
+│   └── src/main/java/com/music/dhvani/
+│       ├── 🌟 MainActivity.kt                 # Single Activity root nav host
+│       ├── 🚀 DhvaniApplication.kt            # App lifecycle, crash, channels
+│       │
+│       ├── 🎨 ui/
+│       │   ├── screens/
+│       │   │   ├── HomeScreen.kt              # Personalized feed & carousels
+│       │   │   ├── SearchScreen.kt            # Real-time search & voice input
+│       │   │   ├── LibraryScreen.kt           # Playlists, liked songs, downloads
+│       │   │   ├── LocalMusicScreen.kt        # Local device storage scanner
+│       │   │   ├── SettingsSheet.kt           # Central settings bottom sheet
+│       │   │   ├── AppearanceSettingsScreen.kt # Theme, seekbars, canvas styles
+│       │   │   ├── AccountAndScrobblingScreen.kt # Last.fm, ListenBrainz, Discord
+│       │   │   ├── ListenTogetherScreen.kt    # Real-time group listening rooms
+│       │   │   └── SourcesScreen.kt           # Audio source & quality config
+│       │   │
+│       │   ├── player/
+│       │   │   ├── NowPlayingScreen.kt        # Fullscreen portrait player
+│       │   │   ├── AmbientCinemaLandscapeOverlay.kt # 🆕 Landscape cinema mode
+│       │   │   ├── AudioPipelineSheet.kt      # 🆕 Live DSP telemetry inspector
+│       │   │   ├── LyricsShareCardSheet.kt    # 🆕 7-line lyrics image generator
+│       │   │   ├── LyricsSourcePickerSheet.kt # 🆕 On-the-fly lyrics source picker
+│       │   │   └── CanvasArtworkPlayer.kt     # Spotify/Apple Motion canvas loops
+│       │   │
+│       │   ├── components/
+│       │   │   ├── PlayerSliders.kt           # 12+ custom kinetic seekbar styles
+│       │   │   ├── AudioPipelineDialog.kt     # Quick stream info overlay
+│       │   │   ├── SongActionsSheet.kt        # Track long-press context menu
+│       │   │   ├── ImportPlaylistSheet.kt     # Parallel playlist import (6× faster)
+│       │   │   └── ...                        # Other dialogs & sheets
+│       │   │
+│       │   └── theme/                         # Colors, Typography, Shapes
+│       │
+│       ├── 🔊 playback/
+│       │   ├── PlaybackService.kt             # Foreground MediaSession service
+│       │   ├── AudioEngine.kt                 # 🆕 Decoupled audio pipeline
+│       │   ├── PlaybackEngine.kt              # 🆕 Crossfade & gapless engine
+│       │   ├── ChunkedDataSource.kt           # Progressive HTTP streaming cache
+│       │   └── eq/EqualizerManager.kt         # 10-band EQ + Dolby DSP manager
+│       │
+│       ├── 🌐 data/
+│       │   ├── innertube/                     # YouTube Music stream resolver
+│       │   ├── lyrics/LyricsRepository.kt    # Multi-source lyrics engine
+│       │   ├── playlist/
+│       │   │   ├── PlaylistManager.kt         # Core playlist CRUD
+│       │   │   ├── PlaylistImportManager.kt   # 🆕 Fast parallel Spotify importer
+│       │   │   └── PlaylistSyncManager.kt     # 🆕 Auto background sync engine
+│       │   ├── canvas/CommunityCanvas.kt      # Community canvas resolver
+│       │   ├── DhvaniFirebaseMessagingService.kt # 🆕 FCM push update alerts
+│       │   └── settings/AppSettings.kt        # Reactive DataStore preferences
+│       │
+│       └── 📱 widget/
+│           ├── MediaWidgetPill.kt             # 4×1 compact pill widget
+│           └── MediaWidgetTurntable.kt        # 3×3 retro vinyl widget
 │
-├── 🟢 spotify/                                # 🎬 Spotify Canvas & video extraction microservice
-├── 📊 dashboard/                              # 🌐 Real-time Web Telemetry & Admin Analytics Console
-├── 📦 apk/                                    # 💾 Pre-built release binaries & signed installation packages
-├── 🤝 CONTRIBUTING.md                         # 📜 Contributor onboarding, branch workflow & PR guide
-├── 🗺️ PROJECT_STRUCTURE.md                   # 📖 Full architectural mapping & file-by-file encyclopedia
-└── ⚡ version.json                            # 🚀 Over-the-air update manifest & CDN distribution
+├── 🟢 spotify/                                # Spotify Canvas extraction service
+├── 🤝 CONTRIBUTING.md                         # Contributor onboarding guide
+├── 🗺️ PROJECT_STRUCTURE.md                    # Full file-by-file architecture map
+├── ⚡ version.json                             # OTA update manifest
+└── 📜 LICENSE                                 # GNU GPLv3
 ```
-
 </details>
 
-<br/>
-
-<br/>
-
-> 💡 **Tip**: For detailed explanations and file-by-file documentation, please consult the **[Project Structure Guide](PROJECT_STRUCTURE.md)**.
+> 💡 For the complete file-by-file guide, see **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)**.
 
 ---
 
 ## 🛠️ Build from Source
 
 ### Prerequisites
-* Android Studio Ladybug (or newer) / IntelliJ IDEA
-* JDK 17 or higher
-* Android SDK 36 (compileSdk 36, minSdk 26)
-* Android NDK `28.2.13676358` with CMake 3.22.1
+- **Android Studio** Ladybug (2024.2.1+) or newer
+- **JDK 17** or JDK 21
+- **Android SDK**: compileSdk 36, minSdk 26
+- **Android NDK** `28.2.13676358` + CMake 3.22.1
 
 ### Build Instructions
 ```bash
-# Clone the repository
+# 1. Clone the repository
 git clone https://github.com/Kanaiya-rgb/Dhvani-Music.git
 cd Dhvani-Music
 
-# Build debug APK on Windows (PowerShell)
-.\gradlew assembleDevDebug
+# 2. Compile check (fast — no APK, just Kotlin validation)
+./gradlew :app:compileProdReleaseKotlin
 
-# Built APK will be located at:
-# app/build/outputs/apk/dev/debug/app-dev-debug.apk
+# 3. Build Dev Debug APK (for development/testing)
+./gradlew assembleDevDebug
+# Output: app/build/outputs/apk/dev/debug/app-dev-debug.apk
+
+# 4. Build Production Release APK (signed)
+./gradlew assembleProdRelease
+# Output: app/build/outputs/apk/prod/release/app-prod-release.apk
 ```
+
+> [!NOTE]
+> **Local secrets** (Last.fm API key, Spotify SP_DC token, Module Index URL) are read from `local.properties` which is git-ignored. The app builds cleanly without them — features that require them will gracefully show a "not configured" state in Settings.
+
+---
+
+## ⚙️ Setup & Optimization
+
+### Disable Battery Optimization *(Important for Background Playback)*
+1. **Settings → Apps → Dhvani Music → Battery**
+2. Select **Unrestricted** (or "Don't optimize")
+3. This ensures unbroken playback when screen is locked.
+
+### Android Auto Setup
+1. Open **Android Auto Settings** → tap **Version** 10 times to enter Developer mode.
+2. Tap **⋮ → Developer Settings → Unknown sources**.
+3. Connect to vehicle; Dhvani Music appears in media dashboard.
+
+---
+
+## 📱 Supported Android Versions
+
+| Android Version | Support |
+|:---|:---|
+| Android 8.0 Oreo (API 26) | ✅ Minimum supported |
+| Android 10–12 | ✅ Full support |
+| Android 13 | ✅ Full support (themed icons, media permissions) |
+| Android 14 | ✅ Full support (predictive back, photo picker) |
+| Android 15 | ✅ Full support (edge-to-edge enforcement, 120Hz) |
 
 ---
 
 ## ❓ Frequently Asked Questions
 
 <details>
-<summary><b>Q: Do I need a YouTube Music Premium account?</b></summary>
+<summary><b>Q: Do I need YouTube Music Premium?</b></summary>
 <br/>
-No. Dhvani Music streams freely using public and authenticated YouTube Music InnerTube APIs. All features (background playback, ad-blocking, skip tracks, high quality) work without any paid subscription.
+No. Dhvani streams freely using public and authenticated YouTube Music InnerTube APIs. All features — background playback, ad-blocking, high quality — work without any paid subscription.
 </details>
 
 <details>
-<summary><b>Q: How does Lossless Audio streaming work?</b></summary>
+<summary><b>Q: How does Lossless Audio work?</b></summary>
 <br/>
-Dhvani Music supports pluggable module resolvers (FLAC/ALAC up to 24-bit/192kHz). When enabled in Settings, the app queries the lossless catalog and matches tracks deterministically via ISRC. If a lossless stream is unavailable, it falls back seamlessly to YouTube Music's standard AAC stream without interruption.
+Dhvani supports pluggable module resolvers (FLAC/ALAC up to 24-bit/192kHz). When enabled in Settings → Sources, it queries the lossless catalog and falls back seamlessly to YouTube Music's AAC stream if unavailable.
 </details>
 
 <details>
-<summary><b>Q: Can my Google / YouTube account get banned?</b></summary>
+<summary><b>Q: Can my Google account get banned?</b></summary>
 <br/>
-Dhvani Music communicates using standard read-only client protocols. It does not manipulate watch hours, generate bot plays, or abuse platform resources. However, you can freely use Dhvani Music completely signed out without logging into any Google account.
+Dhvani uses standard read-only InnerTube client protocols. It does not manipulate watch hours or abuse platform resources. You can also use it completely signed out.
 </details>
 
 <details>
-<summary><b>Q: Does Dhvani work with Bluetooth headphones and AirPods?</b></summary>
+<summary><b>Q: Does it work with Bluetooth / Android Auto?</b></summary>
 <br/>
-Yes. Audio playback is routed through the standard Android AudioManager and Media3 ExoPlayer stack, fully supporting Bluetooth codecs (AAC, LDAC, aptX, SBC), media key controls (play/pause/next/previous), and car audio head units.
+Yes. Audio is routed through the standard Android AudioManager + Media3 ExoPlayer stack. Full Bluetooth codec support (LDAC, aptX, AAC, SBC), media key controls, and Android Auto are all supported.
+</details>
+
+<details>
+<summary><b>Q: How do I get the Ambient Cinema mode?</b></summary>
+<br/>
+Simply tilt your phone to landscape while the Now Playing fullscreen player is open. Dhvani automatically transitions into the full Ambient Cinema mode with live controls and ambient lighting.
 </details>
 
 ---
 
 ## ☕ Support the Project
 
-Dhvani Music is completely free, open-source, and ad-free. If you love using the app and want to support its active development, new features, and server upkeep, consider buying me a coffee:
+Dhvani Music is completely free, open-source, and ad-free. If you enjoy it, consider supporting active development:
 
 <div align="center">
 
 <a href='https://ko-fi.com/kanaiya_rgb' target='_blank'>
-  <img height='40' style='border:0px;height:40px;margin-right:10px;' src='https://storage.ko-fi.com/cdn/kofi3.png?v=3' border='0' alt='Buy Me a Coffee at ko-fi.com' />
+  <img height='40' src='https://storage.ko-fi.com/cdn/kofi3.png?v=3' alt='Buy Me a Coffee at ko-fi.com' />
 </a>
+&nbsp;&nbsp;
 <a href='https://buymeacoffee.com/kanaiya_rgb' target='_blank'>
-  <img height='40' style='border:0px;height:40px;' src='https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png' border='0' alt='Buy Me A Coffee' />
+  <img height='40' src='https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png' alt='Buy Me A Coffee' />
 </a>
 
 <br/><br/>
 
-[![Support me on Ko-fi](https://img.shields.io/badge/Support%20me%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/kanaiya_rgb)
+[![Support on Ko-fi](https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/kanaiya_rgb)
 &nbsp;
-[![Support me on Buy Me a Coffee](https://img.shields.io/badge/Support%20me%20on-Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/kanaiya_rgb)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/kanaiya_rgb)
 
 </div>
 
 ---
 
-## 🙏 Credits & Acknowledgements
-
-Dhvani Music is built with immense gratitude to the open-source community and is inspired by these remarkable projects:
-
-* **[Dhvani](https://github.com/kushagrasinghx/Dhvani)** by [Kushagra Singh](https://github.com/kushagrasinghx) — For pioneering architectural foundations, sophisticated audio playback pipelines, YouTube Music stream integration, and inspiring aesthetic UI concepts.
-* **[Meld](https://github.com/FrancescoGrazioso/Meld)** by [Francesco Grazioso](https://github.com/FrancescoGrazioso) — For elegant Material 3 design implementations, intuitive playlist & library management workflows, and exceptional contributions to the open-source Android music ecosystem.
-* **[NewPipe](https://github.com/TeamNewPipe/NewPipeExtractor)** — For robust, lightweight YouTube stream extraction infrastructure.
-* **[Jetpack Compose](https://developer.android.com/jetpack/compose)** & **[AndroidX Media3](https://developer.android.com/media/media3)** — The modern foundation powering our audio engine and UI components.
-
----
-
 ## 🤝 Contributors
-
-A huge thanks to all the amazing people who have contributed to Dhvani Music! 🎉
 
 <div align="center">
 
@@ -314,34 +414,47 @@ A huge thanks to all the amazing people who have contributed to Dhvani Music! �
   <img src="https://contrib.rocks/image?repo=Kanaiya-rgb/Dhvani-Music" alt="Dhvani Music Contributors" />
 </a>
 
-<br><br>
+<br/><br/>
 
-Want to contribute? Check out our [Contributing Guidelines](CONTRIBUTING.md) to get started!
+Want to contribute? Read **[CONTRIBUTING.md](CONTRIBUTING.md)** to get started!
 
 </div>
 
 ---
 
+## 🙏 Credits & Acknowledgements
+
+Dhvani Music is built with deep gratitude to these open-source projects:
+
+- **[Dhvani](https://github.com/kushagrasinghx/Dhvani)** by [Kushagra Singh](https://github.com/kushagrasinghx) — Pioneering architecture, YouTube Music stream integration, and aesthetic UI foundations.
+- **[Meld](https://github.com/FrancescoGrazioso/Meld)** by [Francesco Grazioso](https://github.com/FrancescoGrazioso) — Material 3 design, playlist management, and open-source Android music ecosystem contributions.
+- **[NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor)** — Robust, lightweight YouTube stream extraction infrastructure.
+- **[AndroidX Jetpack Compose](https://developer.android.com/jetpack/compose)** & **[Media3](https://developer.android.com/media/media3)** — The modern foundation powering our entire audio engine and UI.
+- **[Haze](https://github.com/chrisbanes/haze)** by Chris Banes — Beautiful real-time glassmorphism blur effects.
+
+---
+
 ## ⚖️ Disclaimer & Legal Notice
 
-**Dhvani Music is an independent, community-driven third-party audio player and client.** It is not associated with, sponsored by, or affiliated with Google LLC, YouTube, Alphabet Inc., Spotify AB, Deezer, or any of their subsidiary entities.
+**Dhvani Music is an independent, community-driven third-party audio player.** It is not associated with, sponsored by, or affiliated with Google LLC, YouTube, Alphabet Inc., Spotify AB, or any of their subsidiaries.
 
-* **No Media Hosting**: Dhvani Music does not host, upload, scrape, or store copyrighted music files on any server. It acts purely as a local client-side interface communicating with public, public-facing, or user-authenticated APIs.
-* **Fair Use & Educational Purpose**: This software is developed solely for personal research, educational study, and fair-use purposes. End users are individually responsible for ensuring their usage complies with regional copyright legislation and applicable terms of service.
-* **Copyleft**: Dhvani Music is free open-source software licensed under the **GNU General Public License v3.0 (GPLv3)**. Any redistribution or derivative work must remain publicly available under the exact same GPLv3 license terms.
+- **No Media Hosting**: Dhvani does not host, upload, or store copyrighted music files. It acts purely as a client communicating with public or user-authenticated APIs.
+- **Fair Use**: This software is developed for personal research and educational purposes. Users are individually responsible for compliance with regional copyright laws and terms of service.
+- **Copyleft**: Licensed under **GNU GPL v3.0** — any redistribution or derivative must remain open-source under the same license.
 
 ---
 
 ## 📜 License
 
-This project is licensed under the **GNU General Public License v3.0**.  
-See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GNU General Public License v3.0**.
+See the [LICENSE](LICENSE) file for full details.
 
 ---
 
 <div align="center">
 
-Made with ❤️ by [Kanaiya-rgb](https://github.com/Kanaiya-rgb)  
-**Dhvani Music Community** • [GitHub Issues](https://github.com/Kanaiya-rgb/Dhvani-Music/issues) • [Releases](https://github.com/Kanaiya-rgb/Dhvani-Music/releases)
+Made with ❤️ by [Kanaiya-rgb](https://github.com/Kanaiya-rgb)
+
+**Dhvani Music** • [Releases](https://github.com/Kanaiya-rgb/Dhvani-Music/releases) • [Issues](https://github.com/Kanaiya-rgb/Dhvani-Music/issues) • [CONTRIBUTING.md](CONTRIBUTING.md)
 
 </div>
