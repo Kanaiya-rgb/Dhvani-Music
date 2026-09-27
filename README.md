@@ -149,6 +149,76 @@ To use Dhvani Music on your vehicle's head unit via Android Auto:
 
 ---
 
+## 🏛️ Architecture & Project Directory Tree
+
+Dhvani Music is structured cleanly using single-activity **Jetpack Compose**, **AndroidX Media3**, and modern Kotlin coroutines/StateFlow. Here is a quick map of the repository:
+
+| Module | Subsystems | Tech Stack | Role & Responsibility |
+|:---|:---|:---|:---|
+| **🎨 UI & Presentation** | `ui/screens/`<br/>`ui/player/`<br/>`ui/components/` | • Jetpack Compose<br/>• Material 3<br/>• Haze Glassmorphism | Pure reactive UI. Features full Now Playing player, synchronized lyrics view, dynamic mesh gradients, and 12+ seekbar designs. |
+| **🔊 Audio Engine** | `playback/`<br/>`playback/service/` | • AndroidX Media3<br/>• ExoPlayer<br/>• AudioFX DSP | High-fidelity audio playback pipeline. Handles 10-band graphic EQ, seamless crossfading, zero-latency LRU disk cache, and background service lifecycle. |
+| **🌐 Data & APIs** | `data/innertube/`<br/>`data/lyrics/`<br/>`data/lossless/` | • Ktor / OkHttp<br/>• KotlinX Serialization<br/>• Room DB | Content resolution layer. Interacts with YouTube Music InnerTube endpoints, fetches syllable-level lyrics (LrcLib/Genius), and resolves Hi-Res FLAC/ALAC lossless streams. |
+| **📱 Widgets & System** | `widget/`<br/>`glance/` | • AndroidX Glance<br/>• MediaSession | Modern home-screen media widgets (4×1 Pill and 3×3 Vinyl Turntable) with real-time state sync. |
+| **🚀 Companion Services**| `spotify/`<br/>`dashboard/` | • Python / Microservice<br/>• Web Telemetry | Spotify vertical looping Canvas extractor and live administrative telemetry dashboard. |
+
+<br/>
+
+<details open>
+<summary><b>📂 Repository Directory Tree</b></summary>
+<br/>
+
+```plaintext
+Dhvani-Music/
+│
+├── 📱 app/                                    # 🚀 Primary Android Application (Jetpack Compose + Media3)
+│   ├── src/main/java/com/music/dhvani/
+│   │   ├── 🌟 MainActivity.kt                 # Single Activity entry point & root navigation router
+│   │   ├── 🚀 DhvaniApplication.kt            # Global Application lifecycle, crash handlers & DI
+│   │   │
+│   │   ├── 🎨 ui/                             # Declarative UI layer (Jetpack Compose + Material 3)
+│   │   │   ├── 📱 screens/                    # Standalone screens (Home, Search, Library, Explore, LocalMusic)
+│   │   │   ├── 🎵 player/                     # Fullscreen player, Turntable, Canvas video & Synced lyrics
+│   │   │   ├── 🧩 components/                 # MiniPlayer, Dynamic Island, 12+ Sliders, Equalizer
+│   │   │   └── 🌈 theme/                      # Dynamic color palettes, typography tokens & shapes
+│   │   │
+│   │   ├── 🔊 playback/                       # Audio playback subsystem (AndroidX Media3 & ExoPlayer)
+│   │   │   ├── ⚡ PlaybackService.kt          # Foreground MediaSession service with lifecycle protection
+│   │   │   ├── 💾 AudioCache.kt               # High-speed LRU disk cache for zero-latency seeking
+│   │   │   ├── 🎛️ CrossfadeController.kt      # Gapless DJ transitions & automatic volume crossfade
+│   │   │   └── 🔊 VolumeBooster.kt            # Decibel amplification & 10-band graphic equalizer
+│   │   │
+│   │   ├── 🌐 data/                           # Data persistence, network APIs & metadata engines
+│   │   │   ├── 📡 innertube/                  # YouTube Music stream resolution & InnerTube parser
+│   │   │   ├── 📜 lyrics/                     # Multi-source synced lyrics engine (LrcLib, Genius, YouTube)
+│   │   │   ├── 💎 lossless/                   # Pluggable Hi-Res FLAC/ALAC lossless audio stream resolvers
+│   │   │   ├── 🗄️ database/                   # Room Database (Playlists, history, cache & favorites)
+│   │   │   └── ⚙️ settings/AppSettings.kt     # Reactive DataStore persistent preferences & flags
+│   │   │
+│   │   └── 📱 widget/                         # Glance-powered Android home-screen media widgets
+│   │       ├── 💊 MediaWidgetPill.kt          # 4×1 sleek compact pill widget with media controls
+│   │       └── 💿 MediaWidgetTurntable.kt     # 3×3 vintage rotating vinyl turntable disc widget
+│   │
+│   ├── ⚙️ build.gradle.kts                    # App dependencies, NDK flags & build configs
+│   └── 🛡️ proguard-rules.pro                  # R8 code shrinking, obfuscation & optimization rules
+│
+├── 🟢 spotify/                                # 🎬 Spotify Canvas & video extraction microservice
+├── 📊 dashboard/                              # 🌐 Real-time Web Telemetry & Admin Analytics Console
+├── 📦 apk/                                    # 💾 Pre-built release binaries & signed installation packages
+├── 🤝 CONTRIBUTING.md                         # 📜 Contributor onboarding, branch workflow & PR guide
+├── 🗺️ PROJECT_STRUCTURE.md                   # 📖 Full architectural mapping & file-by-file encyclopedia
+└── ⚡ version.json                            # 🚀 Over-the-air update manifest & CDN distribution
+```
+
+</details>
+
+<br/>
+
+<br/>
+
+> 💡 **Tip**: For detailed explanations and file-by-file documentation, please consult the **[Project Structure Guide](PROJECT_STRUCTURE.md)**.
+
+---
+
 ## 🛠️ Build from Source
 
 ### Prerequisites
@@ -231,6 +301,24 @@ Dhvani Music is built with immense gratitude to the open-source community and is
 * **[Meld](https://github.com/FrancescoGrazioso/Meld)** by [Francesco Grazioso](https://github.com/FrancescoGrazioso) — For elegant Material 3 design implementations, intuitive playlist & library management workflows, and exceptional contributions to the open-source Android music ecosystem.
 * **[NewPipe](https://github.com/TeamNewPipe/NewPipeExtractor)** — For robust, lightweight YouTube stream extraction infrastructure.
 * **[Jetpack Compose](https://developer.android.com/jetpack/compose)** & **[AndroidX Media3](https://developer.android.com/media/media3)** — The modern foundation powering our audio engine and UI components.
+
+---
+
+## 🤝 Contributors
+
+A huge thanks to all the amazing people who have contributed to Dhvani Music! 🎉
+
+<div align="center">
+
+<a href="https://github.com/Kanaiya-rgb/Dhvani-Music/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Kanaiya-rgb/Dhvani-Music" alt="Dhvani Music Contributors" />
+</a>
+
+<br><br>
+
+Want to contribute? Check out our [Contributing Guidelines](CONTRIBUTING.md) to get started!
+
+</div>
 
 ---
 

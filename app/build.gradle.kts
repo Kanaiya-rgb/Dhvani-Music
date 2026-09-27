@@ -57,8 +57,8 @@ android {
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
         targetSdk = 36
-        versionCode = 36
-        versionName = "2.4.0"
+        versionCode = 37
+        versionName = "2.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -284,10 +284,11 @@ dependencies {
     // ---- JS module execution: QuickJS VM for style source plugins ----
     implementation("io.github.dokar3:quickjs-kt-android:1.0.5")
 
-    // ---- Firebase Analytics & Firestore ----
+    // ---- Firebase Analytics, Firestore & Cloud Messaging ----
     implementation(platform("com.google.firebase:firebase-bom:33.9.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-messaging")
 
     // ---- Background Update Worker ----
     implementation("androidx.work:work-runtime-ktx:2.9.1")

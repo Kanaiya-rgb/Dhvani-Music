@@ -57,6 +57,7 @@ object PlaylistManager {
     data class SpotifyProfileResult(
         val username: String,
         val playlists: List<SpotifyProfilePlaylist>,
+        val avatarUrl: String? = null,
     )
 
     @Serializable
@@ -298,6 +299,25 @@ object PlaylistManager {
         return null
     }
 
+    fun extractSpotifyAlbumId(input: String): String? {
+        val trimmed = input.trim()
+        if (trimmed.isBlank()) return null
+        val urlMatch = Regex("""open\.spotify\.com/(?:intl-[a-zA-Z]{2}/)?album/([a-zA-Z0-9]+)""").find(trimmed)
+        if (urlMatch != null) {
+            return urlMatch.groupValues[1]
+        }
+        val uriMatch = Regex("""spotify:album:([a-zA-Z0-9]+)""").find(trimmed)
+        if (uriMatch != null) {
+            return uriMatch.groupValues[1]
+        }
+        return null
+    }
+
+    fun isAlbumId(id: String): Boolean {
+        val clean = id.trim()
+        return clean.startsWith("OLAK5uy") || clean.startsWith("MPREb_")
+    }
+
     fun extractSpotifyUserId(input: String): String? {
         val trimmed = input.trim()
         if (trimmed.isBlank()) return null
@@ -323,19 +343,19 @@ object PlaylistManager {
 
     suspend fun resolveTracksToSongs(
         tracks: List<ImportedTrack>,
-        onProgress: (Int, Int) -> Unit = { _, _ -> },
+        onProgress: (Int, Int, String) -> Unit = { _, _, _ -> },
     ): List<Song> = withContext(Dispatchers.IO) {
         val total = tracks.size
         if (total == 0) return@withContext emptyList()
         val completedCount = java.util.concurrent.atomic.AtomicInteger(0)
-        // Concurrency limit of 6 keeps requests ultra-fast while avoiding server rate limits
-        val semaphore = Semaphore(6)
+        // Concurrency limit of 16 enables blazing fast parallel searches
+        val semaphore = Semaphore(16)
 
         tracks.map { track ->
             async {
                 if (!track.videoId.isNullOrBlank()) {
                     val current = completedCount.incrementAndGet()
-                    onProgress(current, total)
+                    onProgress(current, total, track.title)
                     Song(
                         videoId = track.videoId,
                         title = track.title,
@@ -345,12 +365,14 @@ object PlaylistManager {
                 } else {
                     semaphore.withPermit {
                         val query = listOf(track.title, track.artist).filter { it.isNotBlank() }.joinToString(" ")
-                        val searchHit = runCatching {
-                            YtMusicRepository.search(query, SearchFilter.SONGS).getOrNull()
-                        }.getOrNull()?.filterIsInstance<SearchResult.Track>()?.firstOrNull()?.song
+                        val searchHit = kotlinx.coroutines.withTimeoutOrNull(3500L) {
+                            runCatching {
+                                YtMusicRepository.search(query, SearchFilter.SONGS).getOrNull()
+                            }.getOrNull()?.filterIsInstance<SearchResult.Track>()?.firstOrNull()?.song
+                        }
 
                         val current = completedCount.incrementAndGet()
-                        onProgress(current, total)
+                        onProgress(current, total, track.title)
 
                         searchHit ?: Song(
                             videoId = "",
@@ -428,11 +450,32 @@ object PlaylistManager {
         )
     }
 
+    data class SpotifyEntityResult(
+        val title: String,
+        val tracks: List<ImportedTrack>,
+        val coverUrl: String?,
+        val isAlbum: Boolean = false,
+    ) {
+        val first: String get() = title
+        val second: List<ImportedTrack> get() = tracks
+        val third: String? get() = coverUrl
+        val fourth: Boolean get() = isAlbum
+    }
+
     suspend fun fetchSpotifyPlaylist(
         playlistId: String,
-    ): Pair<String, List<ImportedTrack>>? = withContext(Dispatchers.IO) {
-        val cleanId = playlistId.trim().removePrefix("spotify:playlist:")
-        val url = "https://open.spotify.com/embed/playlist/$cleanId"
+    ): SpotifyEntityResult? = fetchSpotifyEntity("playlist", playlistId)
+
+    suspend fun fetchSpotifyAlbum(
+        albumId: String,
+    ): SpotifyEntityResult? = fetchSpotifyEntity("album", albumId)
+
+    suspend fun fetchSpotifyEntity(
+        type: String, // "playlist" or "album"
+        id: String,
+    ): SpotifyEntityResult? = withContext(Dispatchers.IO) {
+        val cleanId = id.trim().removePrefix("spotify:$type:").removePrefix("spotify:playlist:").removePrefix("spotify:album:")
+        val url = "https://open.spotify.com/embed/$type/$cleanId"
         try {
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
@@ -458,15 +501,46 @@ object PlaylistManager {
             val data = state["data"]?.jsonObject ?: return@withContext null
             val entity = data["entity"]?.jsonObject ?: return@withContext null
 
+            val entityType = entity["type"]?.jsonPrimitive?.content ?: type
+            val isAlbum = entityType.equals("album", ignoreCase = true) || type == "album"
+
+            val defaultTitle = if (isAlbum) "Spotify Album" else "Spotify Playlist"
             val title = entity["title"]?.jsonPrimitive?.content
                 ?: entity["name"]?.jsonPrimitive?.content
-                ?: "Spotify Playlist"
+                ?: defaultTitle
+
+            val mainArtist = entity["subtitle"]?.jsonPrimitive?.content.orEmpty()
+
+            // 1. Check visualIdentity.image (used by Spotify Albums, array of {url, maxWidth, maxHeight})
+            val visualImages = entity["visualIdentity"]?.jsonObject?.get("image")?.jsonArray
+            val visualImg = visualImages?.maxByOrNull {
+                it.jsonObject["maxWidth"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+            }?.jsonObject?.get("url")?.jsonPrimitive?.content
+                ?: visualImages?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.content
+
+            // 2. Check coverArt sources (used by Spotify Playlists)
+            val coverArtSources = entity["coverArt"]?.jsonObject?.get("sources")?.jsonArray
+            val coverArtImg = coverArtSources?.maxByOrNull {
+                it.jsonObject["width"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+            }?.jsonObject?.get("url")?.jsonPrimitive?.content
+                ?: coverArtSources?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.content
+                ?: entity["coverArt"]?.jsonObject?.get("url")?.jsonPrimitive?.content
+
+            // 3. Fallbacks: images array, visual, image, imageUrl, or direct CDN regex from embed HTML
+            val coverImg = visualImg
+                ?: coverArtImg
+                ?: entity["images"]?.jsonArray?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.content
+                ?: entity["visual"]?.jsonObject?.get("url")?.jsonPrimitive?.content
+                ?: entity["image"]?.jsonPrimitive?.content
+                ?: entity["imageUrl"]?.jsonPrimitive?.content
+                ?: Regex("""https://(?:image-cdn-[a-z]+\.spotifycdn\.com|i\.scdn\.co)/image/[a-zA-Z0-9]+""").find(html)?.value
+                ?: Regex("""<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']""").find(html)?.groupValues?.get(1)
 
             val trackList = entity["trackList"]?.jsonArray.orEmpty()
             val tracks = trackList.mapNotNull { item ->
                 val trackObj = item.jsonObject
                 val trackTitle = trackObj["title"]?.jsonPrimitive?.content ?: return@mapNotNull null
-                val artist = trackObj["subtitle"]?.jsonPrimitive?.content.orEmpty()
+                val artist = trackObj["subtitle"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() } ?: mainArtist
                 val durationMs = trackObj["duration"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
                 ImportedTrack(
                     videoId = null,
@@ -476,7 +550,7 @@ object PlaylistManager {
                 )
             }
 
-            if (tracks.isEmpty()) null else title to tracks
+            if (tracks.isEmpty()) null else SpotifyEntityResult(title, tracks, coverImg, isAlbum)
         } catch (e: Exception) {
             null
         }
@@ -505,6 +579,9 @@ object PlaylistManager {
                     val body = conn.inputStream.bufferedReader().use { it.readText() }
                     val root = json.parseToJsonElement(body).jsonObject
                     val username = root["name"]?.jsonPrimitive?.content ?: "Spotify User"
+                    val avatarUrl = root["image_url"]?.jsonPrimitive?.content
+                        ?: root["avatar_url"]?.jsonPrimitive?.content
+                        ?: root["images"]?.jsonArray?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.content
                     val publicPlaylists = root["public_playlists"]?.jsonArray.orEmpty()
                     if (publicPlaylists.isNotEmpty()) {
                         val parsed = publicPlaylists.mapNotNull { item ->
@@ -520,7 +597,11 @@ object PlaylistManager {
                             )
                         }
                         if (parsed.isNotEmpty()) {
-                            return@withContext SpotifyProfileResult(username, parsed)
+                            return@withContext SpotifyProfileResult(
+                                username = username,
+                                playlists = parsed,
+                                avatarUrl = avatarUrl,
+                            )
                         }
                     }
                 }
@@ -547,6 +628,7 @@ object PlaylistManager {
             // Extract Username
             val userMatch = Regex("""<h1[^>]*>([^<]+)</h1>""").find(html)
             val username = userMatch?.groupValues?.get(1)?.trim()?.ifBlank { null } ?: "Spotify User"
+            val ogImage = Regex("""<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']""").find(html)?.groupValues?.get(1)
 
             // Extract Public Playlists: href="/playlist/{id}" ... <img ... src="{img}" ... <span ...>{title}</span>
             val pattern = Regex(
@@ -591,10 +673,45 @@ object PlaylistManager {
                 }
             }
 
-            if (playlists.isEmpty()) null else SpotifyProfileResult(username, playlists)
+            if (playlists.isEmpty()) null else SpotifyProfileResult(
+                username = username,
+                playlists = playlists,
+                avatarUrl = ogImage,
+            )
         } catch (e: Exception) {
             null
         }
+    }
+
+    suspend fun fetchSpotifyUserAvatar(usernameOrId: String): String? = withContext(Dispatchers.IO) {
+        val clean = usernameOrId.trim().removePrefix("spotify:user:")
+        if (clean.isBlank()) return@withContext null
+        if (clean.equals("Revibe", ignoreCase = true)) {
+            return@withContext "https://i.scdn.co/image/ab6775700000ee85eccb3d2f203ca94bf0e1afd0"
+        }
+        try {
+            val token = com.metrolist.spotify.SpotifyAuth.fetchAnonymousWebToken().getOrNull()
+            if (token != null) {
+                val apiUrl = "https://spclient.wg.spotify.com/user-profile-view/v3/profile/$clean?playlist_limit=1"
+                val conn = URL(apiUrl).openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 8_000
+                conn.readTimeout = 8_000
+                conn.setRequestProperty("Authorization", "Bearer $token")
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                conn.setRequestProperty("app-platform", "WebPlayer")
+                conn.setRequestProperty("origin", "https://open.spotify.com")
+                if (conn.responseCode in 200..299) {
+                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                    val root = json.parseToJsonElement(body).jsonObject
+                    val img = root["image_url"]?.jsonPrimitive?.content
+                        ?: root["avatar_url"]?.jsonPrimitive?.content
+                        ?: root["images"]?.jsonArray?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.content
+                    if (!img.isNullOrBlank()) return@withContext img
+                }
+            }
+        } catch (_: Exception) {}
+        null
     }
 
     fun buildSpotifyExportText(title: String, songs: List<Song>): String {

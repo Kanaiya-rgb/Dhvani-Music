@@ -226,6 +226,7 @@ class PlaybackService : MediaSessionService() {
     private val shuffleCommand = SessionCommand(ACTION_TOGGLE_SHUFFLE, Bundle.EMPTY)
 
     private var favoriteActionJob: Job? = null
+    private var bufferingStallJob: Job? = null
     private var autoplayLoadJob: Job? = null
     private var autoplaySeed: String? = null
 
@@ -339,8 +340,11 @@ class PlaybackService : MediaSessionService() {
                 }
             }
             if (isPlaying) {
+                cancelBufferingStallWatchdog()
                 registerCurrentPlay()
+                com.music.dhvani.data.telemetry.TelemetryManager.onPlaybackStateChanged(true)
             } else {
+                com.music.dhvani.data.telemetry.TelemetryManager.onPlaybackStateChanged(false)
                 com.music.dhvani.data.telemetry.TelemetryManager.reportBackgroundHeartbeat(null, isPlaying = false)
             }
             // Nothing to read ahead for while paused, and a pause is often
@@ -404,6 +408,12 @@ class PlaybackService : MediaSessionService() {
          * on the audio, which is what the media notification shows too.
          */
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            val exoPlayer = player
+            if (!playWhenReady) {
+                cancelBufferingStallWatchdog()
+            } else if (exoPlayer != null && exoPlayer.playbackState == Player.STATE_BUFFERING) {
+                scheduleBufferingStallWatchdog(exoPlayer)
+            }
             publishWidgetState(playing = playWhenReady)
         }
 
@@ -426,6 +436,7 @@ class PlaybackService : MediaSessionService() {
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            cancelBufferingStallWatchdog()
             losslessWatchdogA.resetForNewTrack()
             losslessWatchdogB.resetForNewTrack()
             // The player this fired on, which is by definition the one the
@@ -476,6 +487,7 @@ class PlaybackService : MediaSessionService() {
          * broken app looks like from the outside.
          */
         override fun onPlayerError(error: PlaybackException) {
+            cancelBufferingStallWatchdog()
             // The player this fired on, which is by definition the one the
             // session is currently pointed at.
             val exoPlayer = player ?: return
@@ -488,6 +500,11 @@ class PlaybackService : MediaSessionService() {
             // The player this fired on, which is by definition the one the
             // session is currently pointed at.
             val exoPlayer = player ?: return
+            if (state == Player.STATE_BUFFERING && exoPlayer.playWhenReady) {
+                scheduleBufferingStallWatchdog(exoPlayer)
+            } else {
+                cancelBufferingStallWatchdog()
+            }
             if (state == Player.STATE_ENDED) {
                 SleepTimer.cancel()
                 // The queue ran dry, so no transition will ever close the last
@@ -1618,6 +1635,11 @@ class PlaybackService : MediaSessionService() {
         ) {
             return
         }
+        if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS &&
+            fallbackHttp403Stream(player, item, position)
+        ) {
+            return
+        }
         // Giving up on the *retry*, not on everything below it.
         //
         // A track that has exhausted its attempts is not finished with.
@@ -1730,6 +1752,38 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    private fun scheduleBufferingStallWatchdog(player: ExoPlayer) {
+        cancelBufferingStallWatchdog()
+        val mediaId = player.currentMediaItem?.mediaId ?: return
+        val startBuffered = player.bufferedPosition
+        bufferingStallJob = scope.launch(TrackLog.about(mediaId)) {
+            delay(BUFFERING_STALL_TIMEOUT_MS)
+            val current = this@PlaybackService.player ?: return@launch
+            if (current !== player) return@launch
+            if (current.currentMediaItem?.mediaId != mediaId) return@launch
+            if (!current.playWhenReady || current.playbackState != Player.STATE_BUFFERING) return@launch
+            // If the buffer hasn't progressed by even 500ms over 6 seconds, the socket/stream is stalled or hung
+            if (current.bufferedPosition <= startBuffered + 500L) {
+                TrackLog.w(
+                    "DhvaniMusic",
+                    "Buffering stall detected for $mediaId (buffered=$startBuffered -> ${current.bufferedPosition}ms); recovering",
+                    about = mediaId,
+                )
+                val stallError = PlaybackException(
+                    "Buffering timeout: stream stalled",
+                    null,
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+                )
+                recoverFrom(stallError, current)
+            }
+        }
+    }
+
+    private fun cancelBufferingStallWatchdog() {
+        bufferingStallJob?.cancel()
+        bufferingStallJob = null
+    }
+
     /**
      * Swaps a track whose downloaded file has gone missing back onto a stream,
      * in place and at the same position.
@@ -1789,6 +1843,53 @@ class PlaybackService : MediaSessionService() {
         player.replaceMediaItem(player.currentMediaItemIndex, restreamed)
         player.seekTo(player.currentMediaItemIndex, position)
         player.prepare()
+        return true
+    }
+
+    /**
+     * Seamlessly recovers from HTTP 403 / IO Bad HTTP Status errors by invoking
+     * InnerTubeX multi-client rotation fallback (iOS, Web/TV, Android TestSuite)
+     * and replacing the stream in place without disturbing the playback queue.
+     */
+    private fun fallbackHttp403Stream(
+        player: ExoPlayer,
+        item: MediaItem,
+        position: Long,
+    ): Boolean {
+        val mediaId = item.mediaId
+        if (mediaId.startsWith("file://") || mediaId.startsWith("content://")) return false
+
+        scope.launch(Dispatchers.IO) {
+            TrackLog.w(
+                "DhvaniMusic",
+                "HTTP 403 detected for $mediaId; resolving with InnerTubeX multi-client fallback",
+                about = mediaId,
+            )
+            val fallback = runCatching {
+                com.music.dhvani.data.innertube.Innertube.resolveStreamWithFallback(mediaId)
+            }.getOrNull()
+
+            if (fallback != null) {
+                withContext(Dispatchers.Main) {
+                    val currentIdx = player.currentMediaItemIndex
+                    if (player.currentMediaItem?.mediaId == mediaId) {
+                        val newItem = item.buildUpon()
+                            .setUri(Uri.parse(fallback.url))
+                            .build()
+                        recoveries.remove(mediaId)
+                        player.replaceMediaItem(currentIdx, newItem)
+                        player.seekTo(currentIdx, position)
+                        player.prepare()
+                        player.play()
+                        TrackLog.d(
+                            "DhvaniMusic",
+                            "Seamlessly recovered $mediaId via ${fallback.client.clientName} client",
+                            about = mediaId,
+                        )
+                    }
+                }
+            }
+        }
         return true
     }
 
@@ -2233,14 +2334,16 @@ class PlaybackService : MediaSessionService() {
                 TrackLog.d("DhvaniMusic", "upgrade abandoned: its stream was dropped while it was being proved")
                 return@withContext
             }
-            // Not fatal, just slower than intended, and worth being able to see
-            // in a log: the audition buffers ahead of a moving target and can
-            // only lose that race on a connection that is barely keeping up.
-            if (now.position > warmedThrough) {
-                TrackLog.d(
+            // If playback has already overtaken or caught up right to the warmed
+            // cushion, abort the swap. Swapping onto a cold unbuffered network
+            // stream is what causes the infamous 3-second playback stall/infinite buffer.
+            if (now.position >= (warmedThrough - 1_000L).coerceAtLeast(0L)) {
+                TrackLog.w(
                     "DhvaniMusic",
-                    "upgrade landing at ${now.position}ms, past the ${warmedThrough}ms warmed for it",
+                    "upgrade abandoned: landing at ${now.position}ms, past/too close to warmed ${warmedThrough}ms",
                 )
+                QualityUpgrade.forget(mediaId)
+                return@withContext
             }
 
             // Read before the swap overwrites it — see [watchUpgrade]'s
@@ -2556,7 +2659,15 @@ class PlaybackService : MediaSessionService() {
                     val current = player?.takeIf { it.currentMediaItem?.mediaId == mediaId }
                         ?: return@withTimeoutOrNull false
                     val now = current.duration
-                    if (now > 0) return@withTimeoutOrNull abs(now - previousDuration) <= UPGRADE_LENGTH_SLACK_MS
+                    if (now > 0) {
+                        val lengthOk = abs(now - previousDuration) <= UPGRADE_LENGTH_SLACK_MS
+                        if (!lengthOk) return@withTimeoutOrNull false
+                        // Don't just check length: ensure the replacement stream is actually ready to play
+                        // or advancing, not trapped indefinitely in STATE_BUFFERING.
+                        if (current.playbackState == Player.STATE_READY || current.isPlaying || current.bufferedPosition > position + 1_000L) {
+                            return@withTimeoutOrNull true
+                        }
+                    }
                     // The failure this whole check exists for, caught when it
                     // happens rather than at the ceiling: a replacement that
                     // came up short does not raise an error, it reaches the
@@ -3427,10 +3538,12 @@ class PlaybackService : MediaSessionService() {
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        if (AppSettings.stopOnTaskRemoved.value) {
+        val isCurrentlyPlaying = player?.isPlaying == true || spare?.isPlaying == true
+        if (AppSettings.stopOnTaskRemoved.value || !isCurrentlyPlaying) {
             // Both, or a swipe-away mid-crossfade leaves the outgoing track
             // playing on its own out of a service that is on its way out.
             eachPlayer { it.stop() }
+            com.music.dhvani.data.telemetry.TelemetryManager.reportBackgroundHeartbeat(null, isPlaying = false)
             stopSelf()
         }
     }
@@ -3773,8 +3886,11 @@ class PlaybackService : MediaSessionService() {
          */
         const val BACK_BUFFER_MS = 30 * 1000
 
-        /** Enough to cover the decoder's own latency, not seconds of dead air. */
-        const val START_PLAYBACK_MS = 500
+        /** Enough to build a stable buffer so playback never starves at 3 seconds. */
+        const val START_PLAYBACK_MS = 2_000
+
+        /** Maximum time playback can sit in STATE_BUFFERING without progress before auto-recovery. */
+        const val BUFFERING_STALL_TIMEOUT_MS = 6_000L
 
         /** More room after a stall than at the start — see the load control. */
         const val RESUME_PLAYBACK_MS = 2_000
@@ -3867,7 +3983,7 @@ class PlaybackService : MediaSessionService() {
          * only bounds the genuinely stuck case, and can afford to be long
          * enough for a large file over a phone connection.
          */
-        const val UPGRADE_PROVE_MS = 10_000L
+        const val UPGRADE_PROVE_MS = 4_000L
         const val UPGRADE_PROVE_STEP_MS = 200L
 
         /**

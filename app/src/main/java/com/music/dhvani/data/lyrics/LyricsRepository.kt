@@ -3,9 +3,11 @@ package com.music.dhvani.data.lyrics
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Where the player gets its lyrics.
@@ -292,4 +294,103 @@ object LyricsRepository {
     fun hasCached(videoId: String): Boolean = videoId.isNotBlank() && lyricsCache.containsKey(videoId)
 
     fun getCached(videoId: String): LyricsRepository.Result? = if (videoId.isBlank()) null else lyricsCache[videoId]?.result
+
+    /**
+     * Asynchronously probes which lyrics providers return results for the active song.
+     * Uses a lightweight parallel check with a short timeout.
+     */
+    suspend fun probeAvailableSources(
+        title: String,
+        artist: String,
+        durationMs: Long,
+        album: String? = null,
+        videoId: String = "",
+    ): Map<LyricsSource, Boolean> = coroutineScope {
+        val searchTitle = title.forLyricsSearch()
+        val searchArtist = artist.artistForLyricsSearch()
+        val results = ConcurrentHashMap<LyricsSource, Boolean>()
+
+        val candidateSources = LyricsSource.entries
+
+        candidateSources.map { source ->
+            async(Dispatchers.IO) {
+                val found = runCatching {
+                    withTimeoutOrNull(2200L) {
+                        val lines = fetch(
+                            source = source,
+                            videoId = videoId,
+                            title = searchTitle,
+                            artist = searchArtist,
+                            durationMs = durationMs,
+                            album = album,
+                            isrc = isrcs[videoId],
+                            hit = null,
+                        )
+                        !lines.isNullOrEmpty()
+                    } ?: false
+                }.getOrDefault(false)
+                results[source] = found
+            }
+        }.awaitAll()
+
+        results
+    }
+
+    /**
+     * Allows on-the-fly manual selection of a specific lyrics provider without restarting playback.
+     */
+    suspend fun fetchLyricsFromExplicitSource(
+        source: LyricsSource,
+        videoId: String,
+        title: String,
+        artist: String,
+        durationMs: Long,
+        album: String? = null,
+    ): Result? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val searchTitle = title.forLyricsSearch()
+        val searchArtist = artist.artistForLyricsSearch()
+        val known = isrcs[videoId]
+        val hit = if (known == null && (source == LyricsSource.BINI_LYRICS || source.wordSynced)) {
+            runCatching {
+                identify(videoId, searchTitle, searchArtist, durationMs, album, listOf(source))
+            }.getOrNull()
+        } else null
+        val recording = known ?: hit?.isrc?.takeIf { it.isNotBlank() }
+
+        var lines = runCatching {
+            fetch(
+                source = source,
+                videoId = videoId,
+                title = searchTitle,
+                artist = searchArtist,
+                durationMs = durationMs,
+                album = album,
+                isrc = recording,
+                hit = hit,
+            )
+        }.getOrNull()
+
+        // If cleaned title missed, try with original title & artist
+        if (lines.isNullOrEmpty() && (searchTitle != title || searchArtist != artist)) {
+            lines = runCatching {
+                fetch(
+                    source = source,
+                    videoId = videoId,
+                    title = title,
+                    artist = artist,
+                    durationMs = durationMs,
+                    album = album,
+                    isrc = recording,
+                    hit = hit,
+                )
+            }.getOrNull()
+        }
+
+        if (lines.isNullOrEmpty()) return@withContext null
+        val res = result(source, lines)
+        if (videoId.isNotBlank()) {
+            lyricsCache[videoId] = CacheEntry(res)
+        }
+        res
+    }
 }

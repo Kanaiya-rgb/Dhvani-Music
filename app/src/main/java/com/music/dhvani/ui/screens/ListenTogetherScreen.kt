@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -128,6 +129,19 @@ fun ListenTogetherScreen(
     val isHost = role == RoomRole.HOST
     val currentRoom = roomState
 
+    val isAloneInRoom = isInRoom && (currentRoom?.users?.size ?: 0) <= 1
+    val handleBack: () -> Unit = {
+        if (isAloneInRoom) {
+            manager.leaveRoom()
+        }
+        onBack()
+    }
+
+    BackHandler(enabled = isAloneInRoom) {
+        manager.leaveRoom()
+        onBack()
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -183,7 +197,7 @@ fun ListenTogetherScreen(
                     modifier = Modifier.weight(1f),
                 ) {
                     IconButton(
-                        onClick = onBack,
+                        onClick = handleBack,
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
@@ -712,68 +726,108 @@ fun ListenTogetherScreen(
                     }
 
                     // Currently Playing Synced Track Card
+                    // Currently Playing Synced Track Card (Apple Music / Cyber-Aesthetic Glassmorphism)
                     currentRoom.currentTrack?.let { track ->
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(22.dp),
+                            shape = RoundedCornerShape(26.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                             ),
                             border = CardDefaults.outlinedCardBorder().copy(
                                 brush = Brush.horizontalGradient(
                                     listOf(
-                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.25f),
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                                     ),
                                 ),
                             ),
                         ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                            Column(modifier = Modifier.padding(18.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
-                                    if (!track.thumbnail.isNullOrBlank()) {
-                                        AsyncImage(
-                                            model = track.thumbnail,
-                                            contentDescription = null,
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop,
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF00E676)),
                                         )
-                                    } else {
-                                        Icon(
-                                            imageVector = Icons.Rounded.MusicNote,
-                                            contentDescription = null,
-                                            modifier = Modifier.align(Alignment.Center),
-                                            tint = MaterialTheme.colorScheme.primary,
+                                        Text(
+                                            text = "LIVE AUDIO STREAM • IN SYNC",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.ExtraBold,
+                                                letterSpacing = 1.2.sp,
+                                            ),
+                                            color = Color(0xFF00E676),
+                                        )
+                                    }
+                                    MiniSoundVisualizer()
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(68.dp)
+                                            .clip(RoundedCornerShape(18.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            .border(
+                                                1.dp,
+                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+                                                RoundedCornerShape(18.dp),
+                                            ),
+                                    ) {
+                                        if (!track.thumbnail.isNullOrBlank()) {
+                                            AsyncImage(
+                                                model = track.thumbnail,
+                                                contentDescription = null,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop,
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Rounded.MusicNote,
+                                                contentDescription = null,
+                                                modifier = Modifier.align(Alignment.Center),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = track.title,
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 17.sp,
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = track.artist,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 14.sp,
+                                            ),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
                                         )
                                     }
                                 }
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = track.title,
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = track.artist,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                MiniSoundVisualizer()
                             }
                         }
                     }

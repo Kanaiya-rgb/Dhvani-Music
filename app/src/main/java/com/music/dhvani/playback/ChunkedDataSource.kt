@@ -70,7 +70,11 @@ class ChunkedDataSource(
         position = dataSpec.position
 
         val total = dataSpec.uri.getQueryParameter("clen")?.toLongOrNull()
-        if (dataSpec.length != C.LENGTH_UNSET.toLong() || total == null) {
+        // ANDROID_VR URLs carry `clen` but their servers reject Range requests with 403.
+        // Force passthrough so the chunker does not try ranged fetches on these URLs.
+        val clientId = dataSpec.uri.getQueryParameter("c")
+        val noRangeClient = clientId == "ANDROID_VR" || clientId == "ANDROID_VR_LEGACY"
+        if (dataSpec.length != C.LENGTH_UNSET.toLong() || total == null || noRangeClient) {
             passthrough = true
             chunkOpen = true
             // Reported, not just thrown. Nothing but googlevideo carries `clen`,

@@ -2,8 +2,10 @@ package com.music.dhvani.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -95,20 +97,15 @@ fun UpdateAvailableDialog(
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val state by AppUpdateChecker.download.collectAsStateWithLifecycle()
     val shape = RoundedCornerShape(ALERT_CORNER)
-
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(SCRIM_COLOR)
-            // Tapping the scrim reads the same as Remind Me Later  nothing
-            // about this update is mandatory, so backing out of it should be as
-            // easy as getting into it. Mid-download it only closes the sheet;
-            // the download keeps going and the top-bar icon reopens this.
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() },
-                onClick = onDismiss,
-            ),
+            // Tapping the scrim reads the same as Remind Me Later.
+            // Using detectTapGestures ensures pointer events don't conflict or leak into underlying hierarchy.
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onDismiss() })
+            },
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -122,13 +119,10 @@ fun UpdateAvailableDialog(
                         Modifier.hazeEffect(state = hazeState, style = HazeMaterials.regular(MaterialTheme.colorScheme.surface))
                     },
                 )
-                // Swallows the tap before it reaches the scrim behind, so
-                // touching the card itself never dismisses it.
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() },
-                    onClick = {},
-                ),
+                // Consume clicks on the alert card so tapping inside doesn't hit the scrim behind it
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { /* swallow inside taps */ })
+                },
         ) {
             Column(
                 modifier = Modifier

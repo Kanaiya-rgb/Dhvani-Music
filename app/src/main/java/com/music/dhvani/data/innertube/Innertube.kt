@@ -34,6 +34,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -1168,5 +1169,93 @@ object Innertube {
             .digest("$timestamp $sapisid $origin".toByteArray())
             .joinToString("") { "%02x".format(Locale.ROOT, it) }
         return "SAPISIDHASH ${timestamp}_$digest"
+    }
+
+    data class StreamResult(
+        val url: String,
+        val client: PlayerClient,
+        val bitrateKbps: Int = 160,
+        val mimeType: String = "audio/webm",
+    )
+
+    private fun extractDirectAudioStreams(response: JsonObject): List<StreamResult> {
+        val adaptive = response["streamingData"]?.jsonObject
+            ?.get("adaptiveFormats")?.jsonArray ?: return emptyList()
+
+        return adaptive.mapNotNull { elem ->
+            val obj = elem.jsonObject
+            val mime = obj["mimeType"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            if (!mime.startsWith("audio/")) return@mapNotNull null
+            val url = obj["url"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val bitrate = ((obj["bitrate"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L) / 1000).toInt()
+            StreamResult(
+                url = url,
+                client = PlayerClient.ANDROID_TESTSUITE,
+                bitrateKbps = if (bitrate > 0) bitrate else 160,
+                mimeType = mime,
+            )
+        }.sortedByDescending { it.bitrateKbps }
+    }
+
+    suspend fun resolveAndroidStream(videoId: String): StreamResult {
+        val clients = listOf(PlayerClient.ANDROID_TESTSUITE, PlayerClient.ANDROID_MUSIC)
+        for (client in clients) {
+            val res = runCatching {
+                val resp = player(videoId, client)
+                val streams = extractDirectAudioStreams(resp)
+                streams.firstOrNull()?.copy(client = client)
+            }.getOrNull()
+            if (res != null) return res
+        }
+        throw IllegalStateException("No direct stream for Android clients")
+    }
+
+    suspend fun resolveIosStream(videoId: String): StreamResult {
+        val clients = listOf(PlayerClient.IOS, PlayerClient.IOS_RECENT)
+        for (client in clients) {
+            val res = runCatching {
+                val resp = player(videoId, client)
+                val streams = extractDirectAudioStreams(resp)
+                streams.firstOrNull()?.copy(client = client)
+            }.getOrNull()
+            if (res != null) return res
+        }
+        throw IllegalStateException("No direct stream for iOS clients")
+    }
+
+    suspend fun resolveWebStream(videoId: String): StreamResult {
+        val clients = listOf(PlayerClient.TVHTML5)
+        for (client in clients) {
+            val res = runCatching {
+                val resp = player(videoId, client)
+                val streams = extractDirectAudioStreams(resp)
+                streams.firstOrNull()?.copy(client = client)
+            }.getOrNull()
+            if (res != null) return res
+        }
+        val resolvedUrl = StreamResolver.resolve(videoId)
+        return StreamResult(
+            url = resolvedUrl,
+            client = PlayerClient.forStreamUrl(resolvedUrl),
+            bitrateKbps = 160,
+            mimeType = "audio/webm",
+        )
+    }
+
+    /**
+     * InnerTubeX multi-client rotation (ANDROID_MUSIC / IOS / TVHTML5 / NEWPIPE)
+     * with 0-pause resilient fallback and HTTP 403 circumvention.
+     */
+    suspend fun resolveStreamWithFallback(videoId: String): StreamResult {
+        StreamResolver.invalidate(videoId)
+
+        // 1. Try Primary client (Android TestSuite / Android Music)
+        runCatching { resolveAndroidStream(videoId) }.getOrNull()?.let { return it }
+
+        // 2. Try iOS client
+        runCatching { resolveIosStream(videoId) }.getOrNull()?.let { return it }
+
+        // 3. Fallback to Web/TV client
+        return resolveWebStream(videoId)
     }
 }

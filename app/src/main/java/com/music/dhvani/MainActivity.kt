@@ -57,6 +57,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.SystemUpdate
@@ -144,6 +145,7 @@ import com.music.dhvani.ui.components.BrowseActionsSheet
 import com.music.dhvani.ui.components.BrowseTarget
 import com.music.dhvani.ui.components.DownloadManagerSheet
 import com.music.dhvani.ui.components.ExportPlaylistSheet
+import com.music.dhvani.ui.components.ExportLibraryPlaylistSheet
 import com.music.dhvani.ui.components.ImportPlaylistSheet
 import com.music.dhvani.ui.components.PlaylistPickerSheet
 import com.music.dhvani.ui.components.SongActionsSheet
@@ -205,11 +207,14 @@ import dev.chrisbanes.haze.hazeSource
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import com.music.dhvani.data.playlist.PlaylistSyncManager
+import android.content.pm.ActivityInfo
 import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         enableEdgeToEdge()
         // Before the composition, so a cold launch from a widget's artwork has
         // the request already standing by the time DhvaniApp first reads it.
@@ -239,6 +244,10 @@ class MainActivity : AppCompatActivity() {
                     DhvaniApp(darkTheme = darkTheme, windowWidth = maxWidth)
                 }
             }
+        }
+        PlaylistSyncManager.init(this)
+        lifecycleScope.launch(Dispatchers.IO) {
+            PlaylistSyncManager.checkAllAsync(this@MainActivity, force = false)
         }
         if (intent?.getBooleanExtra("open_update_dialog", false) == true) {
             AppUpdateChecker.triggerDialog()
@@ -287,6 +296,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         DynamicIslandOverlayManager.setAppForeground(true)
+        com.music.dhvani.data.telemetry.TelemetryManager.onAppForeground()
         lifecycleScope.launch(Dispatchers.IO) {
             Downloads.syncWithDisk(this@MainActivity)
         }
@@ -295,6 +305,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         DynamicIslandOverlayManager.setAppForeground(false)
+        com.music.dhvani.data.telemetry.TelemetryManager.onAppBackground()
     }
 
     override fun onUserLeaveHint() {
@@ -412,6 +423,7 @@ private fun DhvaniApp(
     var showDownloadManager by remember { mutableStateOf(false) }
     var showEqualizerSheet by remember { mutableStateOf(false) }
     var showAudioEffectsSheet by remember { mutableStateOf(false) }
+    var showAmbientCinemaMode by rememberSaveable { mutableStateOf(false) }
     var showSongDetails by remember { mutableStateOf(false) }
     /** The song whose details are currently being shown in [showSongDetails]. */
     var detailsSong by remember { mutableStateOf<Song?>(null) }
@@ -521,6 +533,7 @@ private fun DhvaniApp(
     val lyricsTranslating by viewModel.lyricsTranslating.collectAsStateWithLifecycle()
     val lyricsSource by viewModel.lyricsSource.collectAsStateWithLifecycle()
     val lyricsChecked by viewModel.lyricsChecked.collectAsStateWithLifecycle()
+    val probedLyricsSources by viewModel.probedLyricsSources.collectAsStateWithLifecycle()
     val searchHistory by viewModel.searchHistory.collectAsStateWithLifecycle()
     val searchSuggestions by viewModel.suggestions.collectAsStateWithLifecycle()
     val detailStack by viewModel.detailStack.collectAsStateWithLifecycle()
@@ -1000,12 +1013,19 @@ private fun DhvaniApp(
             val id = item.browseId
             val type = id?.let { viewModel.browseTypeOf(it) }
             if (id != null && type != BrowseType.ARTIST) {
+                val isCustom = id.startsWith("local:custom:")
+                val localSongs = if (isCustom) {
+                    AppSettings.getLocalPlaylist(id.removePrefix("local:custom:"))?.songs.orEmpty()
+                } else {
+                    emptyList()
+                }
                 browseActions = BrowseTarget(
                     browseId = id,
                     title = item.title,
                     subtitle = item.subtitle,
                     thumbnailUrl = item.thumbnailUrl,
                     type = type ?: BrowseType.OTHER,
+                    songs = localSongs,
                     downloadId = downloadIdFor(id),
                 )
             }
@@ -1318,6 +1338,16 @@ private fun DhvaniApp(
             }
         }
     }
+    LaunchedEffect(player.song?.videoId) {
+        val s = player.song ?: return@LaunchedEffect
+        viewModel.probeLyricsSources(
+            title = s.title,
+            artist = s.artist,
+            durationMs = player.durationMs,
+            album = s.albumName,
+            videoId = s.videoId,
+        )
+    }
 
     // The player's whole parameter list, in one place because there are two
     // places it can be mounted: the sheet a phone raises over the page, and
@@ -1438,6 +1468,21 @@ private fun DhvaniApp(
             lyrics = lyrics,
             lyricsSource = lyricsSource,
             lyricsUnavailable = lyricsChecked && lyrics.isNullOrEmpty(),
+            availableLyricsSources = probedLyricsSources,
+            onSelectLyricsSource = { source ->
+                viewModel.switchLyricsSource(
+                    source = source,
+                    videoId = song.videoId,
+                    title = song.title,
+                    artist = song.artist,
+                    durationMs = player.durationMs,
+                    album = song.albumName,
+                )
+            },
+            onDislikeAndSkip = {
+                viewModel.dislikeAndSkipCurrentTrack(song.videoId, controller)
+                Toast.makeText(context, "Disliked track — skipping to next track", Toast.LENGTH_SHORT).show()
+            },
             onReloadLyrics = {
                 viewModel.reloadLyrics(
                     song.videoId,
@@ -1446,6 +1491,13 @@ private fun DhvaniApp(
                     player.durationMs,
                     song.albumName,
                     song.localUri,
+                )
+                viewModel.probeLyricsSources(
+                    title = song.title,
+                    artist = song.artist,
+                    durationMs = player.durationMs,
+                    album = song.albumName,
+                    videoId = song.videoId,
                 )
             },
             onListenTogether = {
@@ -1472,7 +1524,10 @@ private fun DhvaniApp(
             .background(MaterialTheme.colorScheme.background),
     ) {
         // A pushed album/artist/playlist page replaces the tab content but
-        // leaves the tab bar and mini player in place.
+        BackHandler(enabled = showAmbientCinemaMode) {
+            showAmbientCinemaMode = false
+            showNowPlaying = true
+        }
         // Replay's three layers unwind in the order they were opened. Ahead of
         // every other handler because they are drawn over everything else.
         BackHandler(enabled = showReplayShare) { showReplayShare = false }
@@ -1635,11 +1690,13 @@ private fun DhvaniApp(
                                 } else {
                                     null
                                 },
-                                onImportPlaylist = if (shelf.title == YtMusicRepository.PLAYLISTS_SHELF || shelf.title == com.music.dhvani.ui.screens.YOUTUBE_PLAYLISTS || shelf.title == com.music.dhvani.ui.screens.SPOTIFY_PLAYLISTS) {
+                                onImportPlaylist = if (shelf.title == YtMusicRepository.PLAYLISTS_SHELF || shelf.title == com.music.dhvani.ui.screens.YOUTUBE_PLAYLISTS || shelf.title == com.music.dhvani.ui.screens.SPOTIFY_PLAYLISTS || shelf.title == com.music.dhvani.ui.screens.SPOTIFY_PROFILES || shelf.title == com.music.dhvani.ui.screens.IMPORTED_ALBUMS) {
                                     {
                                         importPlaylistSource = when (shelf.title) {
                                             com.music.dhvani.ui.screens.SPOTIFY_PLAYLISTS -> "SPOTIFY"
+                                            com.music.dhvani.ui.screens.SPOTIFY_PROFILES -> "SPOTIFY_PROFILE"
                                             com.music.dhvani.ui.screens.YOUTUBE_PLAYLISTS -> "YOUTUBE"
+                                            com.music.dhvani.ui.screens.IMPORTED_ALBUMS -> "ALBUM"
                                             else -> null
                                         }
                                         showImportPlaylist = true
@@ -1788,6 +1845,7 @@ private fun DhvaniApp(
                             }
                         }
                         LocalMusicScreen(
+                            title = page.title,
                             songs = localSongs,
                             collections = downloadCollections,
                             onSongClick = play,
@@ -1824,6 +1882,9 @@ private fun DhvaniApp(
                             onExplore = {
                                 viewModel.closeDetail()
                                 selectedTab = TAB_SEARCH
+                            },
+                            onImport = {
+                                showImportPlaylist = true
                             },
                             onBack = {
                                 viewModel.closeDetail()
@@ -2157,7 +2218,7 @@ private fun DhvaniApp(
                                 ) {
                                     Box(contentAlignment = Alignment.TopEnd) {
                                         Icon(
-                                            androidx.compose.material.icons.Icons.Rounded.Person,
+                                            androidx.compose.material.icons.Icons.Rounded.Group,
                                             contentDescription = "Listen Together",
                                             tint = if (currentRoomState != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                         )
@@ -2331,7 +2392,7 @@ private fun DhvaniApp(
 
         // ---- Now Playing ----
         // Only raised where it isn't already open beside the page.
-        if (!playerDocked && showNowPlaying && playerSong != null) {
+        if (!playerDocked && showNowPlaying && playerSong != null && !showAmbientCinemaMode) {
             ModalBottomSheet(
                 onDismissRequest = { showNowPlaying = false },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -2445,6 +2506,13 @@ private fun DhvaniApp(
                     // in place, and people often thumb a song and then queue it.
                     onToggleLike = { viewModel.toggleLike(song.videoId, song) },
                     onToggleDislike = { viewModel.toggleDislike(song.videoId) },
+                    onDislikeAndSkip = {
+                        viewModel.dislikeAndSkipCurrentTrack(
+                            videoId = song.videoId,
+                            controller = if (song.videoId == player.song?.videoId) controller else null,
+                        )
+                        Toast.makeText(context, "Disliked track — skipping to next track", Toast.LENGTH_SHORT).show()
+                    },
                     onAddToPlaylist = {
                         songActions = null
                         viewModel.loadPlaylists()
@@ -2480,6 +2548,12 @@ private fun DhvaniApp(
                         songActions = null
                         showAudioEffectsSheet = true
                     },
+                    onEnterAmbientCinemaMode = if (fromPlayer) {
+                        {
+                            songActions = null
+                            showAmbientCinemaMode = true
+                        }
+                    } else null,
                     // Hidden outright when there's no real YouTube id behind
                     // this row to build a link from — SongActionsSheet already
                     // drops it for a local file via `isOffline`, this catches
@@ -2545,6 +2619,8 @@ private fun DhvaniApp(
             com.music.dhvani.ui.player.AudioEffectsSheet(onDismiss = { showAudioEffectsSheet = false })
         }
 
+
+
         // ---- Song Details sheet ----
         if (showSongDetails && detailsSong != null) {
             val detailNerdStats by NerdStats.current.collectAsStateWithLifecycle()
@@ -2593,6 +2669,7 @@ private fun DhvaniApp(
                         dismiss()
                         showImportPlaylist = true
                     },
+                    signedIn = signedIn,
                 )
             }
         }
@@ -2708,11 +2785,22 @@ private fun DhvaniApp(
                     onExportPlaylist = if (target.type == BrowseType.PLAYLIST) {
                         act { songs -> exportPlaylistTarget = target to songs }
                     } else null,
-                    onRename = playlist?.let { p ->
-                        { name: String ->
-                            browseActions = null
-                            viewModel.renamePlaylist(p, name)
+                    onRename = when {
+                        isCustomLocal -> {
+                            { name: String ->
+                                browseActions = null
+                                target.browseId.removePrefix("local:custom:").let { id ->
+                                    AppSettings.renameLocalPlaylist(id, name)
+                                }
+                            }
                         }
+                        playlist != null -> {
+                            { name: String ->
+                                browseActions = null
+                                viewModel.renamePlaylist(playlist, name)
+                            }
+                        }
+                        else -> null
                     },
                     onDelete = when {
                         isCustomLocal -> {
@@ -2773,14 +2861,21 @@ private fun DhvaniApp(
                         importPlaylistSource = null
                         importPlaylistInitialUrl = null
                     },
-                    onImportSuccess = { title: String, songs: List<Song>, source: String ->
+                    onImportSuccess = { title: String, songs: List<Song>, source: String, author: String?, authorAvatarUrl: String?, coverUrl: String?, isAlbum: Boolean ->
+                        val effectiveAuthor = author ?: if (source == "SPOTIFY_PROFILE" && title.contains(" • ")) {
+                            title.split(" • ", limit = 2)[0].trim()
+                        } else null
                         viewModel.createPlaylistWithSongs(
                             title = title,
                             privacy = PlaylistPrivacy.PRIVATE,
                             songs = songs,
                             source = source,
+                            author = effectiveAuthor,
+                            authorAvatarUrl = authorAvatarUrl,
+                            coverUrl = coverUrl,
+                            isAlbum = isAlbum,
                             onSuccess = {
-                                Toast.makeText(context, "Imported \"$title\" (${songs.size} songs)", Toast.LENGTH_SHORT).show()
+                                // Handled with professional in-app success modal in ImportPlaylistSheet
                             },
                             onFailure = { err ->
                                 Toast.makeText(context, "Failed to import playlist: $err", Toast.LENGTH_LONG).show()
@@ -2801,93 +2896,10 @@ private fun DhvaniApp(
                 onDismissRequest = { showExportLibraryPlaylist = false },
                 containerColor = MaterialTheme.colorScheme.background,
             ) {
-                if (localPlaylists.isEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = "No local playlists to export",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "Create a local playlist first, then you can export it.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        )
-                        Spacer(Modifier.height(24.dp))
-                    }
-                } else {
-                    var selectedPlaylist by remember { mutableStateOf(localPlaylists.first()) }
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
-                    ) {
-                        Text(
-                            text = "Export Local Playlist",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "Choose which playlist to export",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        localPlaylists.forEach { pl ->
-                            val isSelected = pl.id == selectedPlaylist.id
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                    )
-                                    .clickable { selectedPlaylist = pl }
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = pl.title,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    )
-                                    Text(
-                                        text = "${pl.songs.size} songs",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                if (isSelected) {
-                                    Icon(
-                                        Icons.Rounded.Check,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        ExportPlaylistSheet(
-                            title = selectedPlaylist.title,
-                            songs = selectedPlaylist.songs,
-                            onDismiss = { showExportLibraryPlaylist = false },
-                        )
-                    }
-                }
+                ExportLibraryPlaylistSheet(
+                    playlists = localPlaylists,
+                    onDismiss = { showExportLibraryPlaylist = false },
+                )
             }
         }
 
@@ -3143,6 +3155,28 @@ private fun DhvaniApp(
                     null
                 },
                 onDismiss = { customModuleAlert = false },
+            )
+        }
+
+        // ---- Ambient Cinema Landscape Overlay (Movie-style Fullscreen) ----
+        val cinemaSong = player.song
+        if (showAmbientCinemaMode && cinemaSong != null) {
+            com.music.dhvani.ui.player.AmbientCinemaLandscapeOverlay(
+                song = cinemaSong,
+                isPlaying = player.isPlaying,
+                positionMs = player.position.positionMs,
+                durationMs = player.durationMs,
+                lyrics = lyrics,
+                onPlayPause = {
+                    controller?.let { if (it.isPlaying) it.pause() else it.play() }
+                },
+                onNext = { controller?.seekToNextMediaItem() },
+                onPrevious = { controller?.seekToPrevious() },
+                onSeek = { target -> controller?.seekTo(target) },
+                onDismiss = {
+                    showAmbientCinemaMode = false
+                    showNowPlaying = true
+                },
             )
         }
     }

@@ -1,0 +1,145 @@
+name: Push Update Notification
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release Version (e.g. v1.2.0 or 1.2.0)'
+        required: true
+        default: 'latest'
+      title:
+        description: 'Notification Title'
+        required: false
+        default: '🎉 Dhvani Music New Update!'
+      notes:
+        description: 'Short Changelog / Highlights'
+        required: false
+        default: 'New features, performance enhancements, and bug fixes.'
+
+jobs:
+  notify-users: 
+    name: Send FCM Push to All Users
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Firebase Secret
+        run: |
+          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT secret is missing!"
+            echo "Please go to GitHub Repo -> Settings -> Secrets and variables -> Actions, and add FIREBASE_SERVICE_ACCOUNT with your Firebase Service Account JSON."
+            exit 1
+          fi
+
+      - name: Send Notification via Firebase Cloud Messaging
+        uses: actions/github-script@v7
+        env:
+          FIREBASE_KEY_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          EVENT_URL: ${{ github.event.release.html_url }}
+          EVENT_BODY: ${{ github.event.release.body }}
+          MANUAL_VERSION: ${{ github.event.inputs.version }}
+          MANUAL_TITLE: ${{ github.event.inputs.title }}
+          MANUAL_NOTES: ${{ github.event.inputs.notes }}
+        with:
+          script: |
+            const crypto = require('crypto');
+
+            const keyJsonStr = process.env.FIREBASE_KEY_JSON;
+            let serviceAccount;
+            try {
+              serviceAccount = JSON.parse(keyJsonStr);
+            } catch (e) {
+              core.setFailed('Invalid FIREBASE_SERVICE_ACCOUNT JSON: ' + e.message);
+              return;
+            }
+
+            const rawVersion = process.env.MANUAL_VERSION || process.env.EVENT_TAG || 'latest';
+            const cleanVersion = rawVersion.replace(/^v/, '').trim();
+            const tagWithV = cleanVersion.startsWith('v') ? cleanVersion : 'v' + cleanVersion;
+            const releaseUrl = process.env.EVENT_URL || `https://github.com/${context.repo.owner}/${context.repo.repo}/releases`;
+            const title = `New update available (${tagWithV})`;
+            const body = 'Click here to download';
+
+            core.info(`Sending FCM update notification for version: ${cleanVersion}`);
+
+            function base64url(str) {
+              return Buffer.from(str).toString('base64url');
+            }
+
+            async function getAccessToken(sa) {
+              const now = Math.floor(Date.now() / 1000);
+              const header = { alg: 'RS256', typ: 'JWT' };
+              const claimSet = {
+                iss: sa.client_email,
+                scope: 'https://www.googleapis.com/auth/firebase.messaging',
+                aud: 'https://oauth2.googleapis.com/token',
+                exp: now + 3600,
+                iat: now
+              };
+              const unsignedToken = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(claimSet))}`;
+              const sign = crypto.createSign('RSA-SHA256');
+              sign.update(unsignedToken);
+              sign.end();
+              const signature = sign.sign(sa.private_key, 'base64url');
+              const jwt = `${unsignedToken}.${signature}`;
+
+              const res = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                  grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                  assertion: jwt
+                })
+              });
+              const data = await res.json();
+              if (!data.access_token) {
+                throw new Error('OAuth token error: ' + JSON.stringify(data));
+              }
+              return data.access_token;
+            }
+
+            try {
+              const accessToken = await getAccessToken(serviceAccount);
+              const fcmUrl = `https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`;
+              
+              const payload = {
+                message: {
+                  topic: 'app_updates',
+                  notification: {
+                    title: title,
+                    body: body
+                  },
+                  data: {
+                    version: cleanVersion,
+                    release_url: releaseUrl
+                  },
+                  android: {
+                    priority: 'HIGH',
+                    notification: {
+                      sound: 'default',
+                      channel_id: 'dhvani_app_updates',
+                      notification_priority: 'PRIORITY_HIGH'
+                    }
+                  }
+                }
+              };
+
+              const response = await fetch(fcmUrl, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+              });
+
+              const result = await response.json();
+              if (response.ok) {
+                core.info(`✅ Successfully sent FCM notification to topic 'app_updates'! Message ID: ${result.name}`);
+              } else {
+                core.setFailed(`❌ FCM API Error: ${JSON.stringify(result)}`);
+              }
+            } catch (err) {
+              core.setFailed(`❌ Execution failed: ${err.message}`);
+            }

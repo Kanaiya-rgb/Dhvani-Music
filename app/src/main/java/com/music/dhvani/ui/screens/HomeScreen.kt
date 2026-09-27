@@ -1016,6 +1016,7 @@ internal fun ShelfCard(
     modifier: Modifier = Modifier.width(SHELF_CARD_WIDTH),
     /** Set on a Library playlist card that's in [AppSettings.pinnedPlaylists][com.music.dhvani.data.settings.AppSettings.pinnedPlaylists]. */
     isPinned: Boolean = false,
+    titleMaxLines: Int = 1,
 ) {
     Column(
         modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onLongPress),
@@ -1135,7 +1136,11 @@ internal fun ShelfCard(
                     if (item.mosaicUrls.size >= 4) {
                         // 2×2 mosaic collage (Spotify-style playlist cover)
                         val mosaic = item.mosaicUrls.take(4)
-                        Column(modifier = Modifier.fillMaxSize()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .thumbnailBorder(RoundedCornerShape(16.dp)),
+                        ) {
                             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                                 Box(modifier = Modifier.weight(1f).fillMaxSize()) {
                                     AsyncImage(
@@ -1176,7 +1181,7 @@ internal fun ShelfCard(
                                 }
                             }
                         }
-                    } else {
+                    } else if (!item.thumbnailUrl.isNullOrBlank()) {
                         AsyncImage(
                             model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
                             contentDescription = null,
@@ -1186,6 +1191,21 @@ internal fun ShelfCard(
                                 .clip(RoundedCornerShape(16.dp))
                                 .thumbnailBorder(RoundedCornerShape(16.dp)),
                         )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.LibraryMusic,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(36.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -1193,14 +1213,16 @@ internal fun ShelfCard(
         Spacer(Modifier.height(10.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
         ) {
             if (isPinned) {
                 Icon(
                     imageVector = DhvaniIcons.Pin,
                     contentDescription = "Pinned",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(14.dp),
+                    modifier = Modifier
+                        .padding(top = 3.dp)
+                        .size(14.dp),
                 )
                 Spacer(Modifier.width(4.dp))
             }
@@ -1209,7 +1231,7 @@ internal fun ShelfCard(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
+                maxLines = titleMaxLines,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )

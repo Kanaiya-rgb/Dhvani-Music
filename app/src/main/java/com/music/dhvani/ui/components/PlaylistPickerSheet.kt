@@ -84,6 +84,7 @@ fun PlaylistPickerSheet(
     song: Song? = null,
     startCreating: Boolean = false,
     onImport: (() -> Unit)? = null,
+    signedIn: Boolean = false,
 ) {
     var creating by remember { mutableStateOf(startCreating) }
 
@@ -93,6 +94,7 @@ fun PlaylistPickerSheet(
             // form; the sheet's own dismiss is the way out.
             onBack = if (startCreating) null else ({ creating = false }),
             onCreate = onCreate,
+            signedIn = signedIn,
             modifier = modifier,
         )
         return
@@ -207,6 +209,7 @@ private fun PlaylistRow(playlist: UserPlaylist, onClick: () -> Unit) {
 private fun NewPlaylistForm(
     onBack: (() -> Unit)?,
     onCreate: (String, PlaylistPrivacy) -> Unit,
+    signedIn: Boolean,
     modifier: Modifier = Modifier,
 ) {
     var name by remember { mutableStateOf("") }
@@ -254,7 +257,7 @@ private fun NewPlaylistForm(
                     color = MaterialTheme.colorScheme.onBackground,
                 )
                 Text(
-                    text = "Saved to your YouTube Music account",
+                    text = if (signedIn) "Saved to your YouTube Music account" else "Saved locally on this device",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -311,20 +314,53 @@ private fun NewPlaylistForm(
             }
         }
 
-        SheetHeading("WHO CAN SEE IT")
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            PlaylistPrivacy.entries.forEach { option ->
-                PrivacyPill(
-                    icon = option.icon,
-                    label = option.label,
-                    selected = option == privacy,
-                    onClick = { privacy = option },
-                )
+        if (signedIn) {
+            SheetHeading("WHO CAN SEE IT")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 22.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                PlaylistPrivacy.entries.forEach { option ->
+                    PrivacyPill(
+                        icon = option.icon,
+                        label = option.label,
+                        selected = option == privacy,
+                        onClick = { privacy = option },
+                    )
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 22.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Lock,
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            text = "Local Private Playlist • Stored on this device",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
 
@@ -354,7 +390,22 @@ internal fun RenamePlaylistForm(
     onRename: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var name by remember { mutableStateOf(playlist.title) }
+    RenamePlaylistForm(
+        title = playlist.title,
+        onBack = onBack,
+        onRename = onRename,
+        modifier = modifier,
+    )
+}
+
+@Composable
+internal fun RenamePlaylistForm(
+    title: String,
+    onBack: () -> Unit,
+    onRename: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var name by remember { mutableStateOf(title) }
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
@@ -421,7 +472,7 @@ internal fun RenamePlaylistForm(
         }
         Button(
             onClick = submit,
-            enabled = name.isNotBlank() && name != playlist.title,
+            enabled = name.isNotBlank() && name != title,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 22.dp),

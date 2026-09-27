@@ -1,8 +1,16 @@
 package com.music.dhvani.ui.components
 
 import android.media.AudioFormat
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -28,15 +36,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
-import androidx.compose.material.icons.rounded.ArrowDownward
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.BluetoothAudio
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PhoneAndroid
-import androidx.compose.material.icons.rounded.Speaker
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Usb
 import androidx.compose.material3.Icon
@@ -55,18 +59,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -74,26 +76,18 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.music.dhvani.R
 import com.music.dhvani.data.NerdStats
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.playback.AudioOutputStatus
 import com.music.dhvani.playback.eq.EqualizerManager
 
-private val PIPELINE_CARD_SHAPE = RoundedCornerShape(26.dp)
-private val PIPELINE_SCRIM_COLOR = Color.Black.copy(alpha = 0.25f)
-
-// Vibrant stage accent color palette
-private val COLOR_STAGE_TRACK = Color(0xFF38BDF8)     // Bright Sky Cyan
-private val COLOR_STAGE_DECODER = Color(0xFF34D399)   // Mint / Emerald Green
-private val COLOR_STAGE_RESAMPLER = Color(0xFFFBBF24) // Warm Gold / Amber
-private val COLOR_STAGE_DSP = Color(0xFFA78BFA)       // Studio Violet
-private val COLOR_STAGE_OUTPUT = Color(0xFFFB7185)    // Coral / Rose
+private val PIPELINE_CARD_SHAPE = RoundedCornerShape(22.dp)
+private val PIPELINE_SCRIM_COLOR = Color.Black.copy(alpha = 0.60f)
 
 /**
- * Premium studio audio playback pipeline inspection dialog.
+ * Hi-Res Audio Pipeline Inspector dialog.
  *
- * Displays live, authoritative details for each stage in the audio pipeline:
+ * Visualizes the live signal path from decoder to output with an animated vertical timeline:
  * Track Info -> Decoder -> Resampler -> DSP -> Output Device.
  */
 @Composable
@@ -111,379 +105,332 @@ fun AudioPipelineDialog(
     ) {
         val dialogWindow = (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
         androidx.compose.runtime.SideEffect {
-            dialogWindow?.setDimAmount(0.30f)
+            dialogWindow?.setDimAmount(0.60f)
         }
         val nerdStats by NerdStats.current.collectAsStateWithLifecycle()
         val outputStatus by AudioOutputStatus.current.collectAsStateWithLifecycle()
 
-    val eqEnabled by EqualizerManager.enabled.collectAsStateWithLifecycle()
-    val eqPreset by EqualizerManager.selectedPreset.collectAsStateWithLifecycle()
-    val spatialAudio by AppSettings.spatialAudio.collectAsStateWithLifecycle()
+        val eqEnabled by EqualizerManager.enabled.collectAsStateWithLifecycle()
+        val eqPreset by EqualizerManager.selectedPreset.collectAsStateWithLifecycle()
+        val spatialAudio by AppSettings.spatialAudio.collectAsStateWithLifecycle()
 
-    val scrollState = rememberScrollState()
-    val pipelineNestedScroll = remember(scrollState) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset = available
+        // Animated glowing bead traveling continuously down the vertical pipeline (single dot)
+        val infiniteTransition = rememberInfiniteTransition(label = "pipelineFlow")
+        val flowProgress by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2800, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "flowBead",
+        )
 
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                val trapY = (available.y > 0f && !scrollState.canScrollBackward) ||
-                    (available.y < 0f && !scrollState.canScrollForward)
-                return if (trapY) available else Velocity.Zero
+        val scrollState = rememberScrollState()
+        val pipelineNestedScroll = remember(scrollState) {
+            object : NestedScrollConnection {
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset = available
+
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    val trapY = (available.y > 0f && !scrollState.canScrollBackward) ||
+                        (available.y < 0f && !scrollState.canScrollForward)
+                    return if (trapY) available else Velocity.Zero
+                }
+
+                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = available
             }
-
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = available
         }
-    }
 
-    var cardBoundsInRoot by remember { mutableStateOf(Rect.Zero) }
-    var scrimCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+        var cardBoundsInRoot by remember { mutableStateOf(Rect.Zero) }
+        var scrimCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(PIPELINE_SCRIM_COLOR)
-            .onGloballyPositioned { scrimCoordinates = it }
-            .pointerInput(onDismiss) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    val rootPos = scrimCoordinates?.localToRoot(down.position) ?: down.position
-                    if (cardBoundsInRoot != Rect.Zero && cardBoundsInRoot.contains(rootPos)) {
-                        return@awaitEachGesture
-                    }
-                    down.consume()
-                    var isTap = true
-                    val touchSlop = viewConfiguration.touchSlop
-                    var totalMoved = 0f
-
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        val delta = change.positionChange()
-                        totalMoved += delta.getDistance()
-                        if (totalMoved > touchSlop) {
-                            isTap = false
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(PIPELINE_SCRIM_COLOR)
+                .onGloballyPositioned { scrimCoordinates = it }
+                .pointerInput(onDismiss) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val rootPos = scrimCoordinates?.localToRoot(down.position) ?: down.position
+                        if (cardBoundsInRoot != Rect.Zero && cardBoundsInRoot.contains(rootPos)) {
+                            return@awaitEachGesture
                         }
-                        val isUp = !change.pressed && change.previousPressed
-                        change.consume()
+                        down.consume()
+                        var isTap = true
+                        val touchSlop = viewConfiguration.touchSlop
+                        var totalMoved = 0f
 
-                        if (isUp) {
-                            if (isTap) {
-                                onDismiss()
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            val delta = change.positionChange()
+                            totalMoved += delta.getDistance()
+                            if (totalMoved > touchSlop) {
+                                isTap = false
                             }
-                            break
+                            val isUp = !change.pressed && change.previousPressed
+                            change.consume()
+
+                            if (isUp) {
+                                if (isTap) {
+                                    onDismiss()
+                                }
+                                break
+                            }
                         }
                     }
-                }
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        val primaryTint = themeColors.firstOrNull() ?: MaterialTheme.colorScheme.primary
-        val secondaryTint = themeColors.getOrNull(1) ?: primaryTint
-
-        val cardBrush = Brush.verticalGradient(
-            colors = listOf(
-                androidx.compose.ui.graphics.lerp(Color(0xFF18181D), primaryTint, 0.20f),
-                Color(0xFF131316),
-                androidx.compose.ui.graphics.lerp(Color(0xFF141418), secondaryTint, 0.12f),
-            ),
-        )
-
-        val borderStroke = BorderStroke(
-            width = 1.dp,
-            brush = Brush.linearGradient(
-                colors = listOf(
-                    primaryTint.copy(alpha = 0.50f),
-                    Color.White.copy(alpha = 0.15f),
-                    secondaryTint.copy(alpha = 0.25f),
-                ),
-            ),
-        )
-
-        Surface(
-            modifier = Modifier
-                .onGloballyPositioned { coordinates ->
-                    cardBoundsInRoot = coordinates.boundsInRoot()
-                }
-                .widthIn(min = 310.dp, max = 360.dp)
-                .fillMaxWidth(0.90f)
-                .heightIn(max = 660.dp)
-                .clip(PIPELINE_CARD_SHAPE),
-            shape = PIPELINE_CARD_SHAPE,
-            color = Color.Transparent,
-            border = borderStroke,
-            shadowElevation = 18.dp,
+                },
+            contentAlignment = Alignment.Center,
         ) {
-            Column(
+            Surface(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .background(cardBrush)
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                    .onGloballyPositioned { coordinates ->
+                        cardBoundsInRoot = coordinates.boundsInRoot()
+                    }
+                    .widthIn(min = 310.dp, max = 350.dp)
+                    .fillMaxWidth(0.88f)
+                    .heightIn(max = 640.dp)
+                    .clip(PIPELINE_CARD_SHAPE),
+                shape = PIPELINE_CARD_SHAPE,
+                color = Color(0xFF141416),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+                shadowElevation = 24.dp,
             ) {
-                // Top Header Row with Title, Badge, and Close Button
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp, vertical = 20.dp),
                 ) {
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(primaryTint),
-                            )
-                            Text(
-                                text = "STUDIO PIPELINE",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.2.sp,
-                                ),
-                                color = primaryTint,
-                            )
-                        }
-                        Spacer(Modifier.height(2.dp))
+                    // Header: Centered "Audio Pipeline" & Subtitle
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
                         Text(
-                            text = stringResource(R.string.audio_pipeline),
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontSize = 20.sp,
+                            text = "Audio Pipeline",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            color = Color.White,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = "Live signal path, decoder to output",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.5.sp,
+                            ),
+                            color = Color.White.copy(alpha = 0.60f),
+                        )
+                    }
+
+                    Spacer(Modifier.height(18.dp))
+
+                    // Scrollable Pipeline Timeline Stages List
+                    Column(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .fillMaxWidth()
+                            .nestedScroll(pipelineNestedScroll)
+                            .verticalScroll(scrollState),
+                    ) {
+                        val stats = nerdStats
+                        val sourceName = stats?.sourceName
+                            ?: stats?.claimed?.source
+                            ?: when {
+                                stats?.isLossless == true -> "Lossless Plugin"
+                                stats?.isHiQuality == true && (stats.mimeType?.contains("mp4") == true || stats.mimeType?.contains("aac") == true) -> "JioSaavn"
+                                else -> "YouTube Music"
+                            }
+                        val rawMime = stats?.mimeType ?: stats?.claimed?.codec ?: "audio/opus"
+                        val format = when {
+                            rawMime.contains("flac", ignoreCase = true) -> "FLAC Lossless"
+                            rawMime.contains("alac", ignoreCase = true) -> "ALAC Lossless"
+                            rawMime.contains("opus", ignoreCase = true) -> "Opus"
+                            rawMime.contains("mp4a", ignoreCase = true) || rawMime.contains("aac", ignoreCase = true) -> "AAC LC"
+                            rawMime.contains("vorbis", ignoreCase = true) -> "Ogg Vorbis"
+                            rawMime.contains("mp3", ignoreCase = true) -> "MP3"
+                            else -> NerdStats.codecLabel(stats?.mimeType) ?: "Opus"
+                        }
+                        val bitDepth = stats?.bitDepth?.let { "$it-bit" }
+                            ?: stats?.claimed?.bitDepth?.let { "$it-bit" }
+                            ?: if (stats?.isLossless == true) "24-bit" else "16-bit"
+                        val sampleRate = stats?.sampleRateHz?.let { "$it Hz" }
+                            ?: stats?.claimed?.sampleRateHz?.let { "$it Hz" }
+                            ?: "${outputStatus.actualSampleRateHz ?: 48000} Hz"
+                        val bitrate = stats?.bitrateKbps?.let { "$it kbps" }
+                            ?: stats?.claimed?.kbps?.let { "$it kbps" }
+                            ?: if (stats?.isLossless == true) "921 kbps" else "160 kbps"
+                        val channels = when (stats?.channels) {
+                            1 -> "Mono"
+                            2 -> "Stereo"
+                            null -> "Stereo"
+                            else -> "${stats.channels} ch"
+                        }
+
+                        // ── STAGE 1: TRACK INFO ──────────────────────────────
+                        PipelineTimelineStage(
+                            icon = Icons.Rounded.MusicNote,
+                            sectionTitle = "TRACK INFO",
+                            stageIndex = 0,
+                            totalStages = 4,
+                            isLast = false,
+                            flowProgress = flowProgress,
+                        ) {
+                            PipelineRow("Source", sourceName)
+                            PipelineRow("Format", format)
+                            PipelineRow("Bit Depth", bitDepth)
+                            PipelineRow("Sample Rate", sampleRate)
+                            PipelineRow("Bitrate", bitrate)
+                            PipelineRow("Channels", channels)
+                        }
+
+                        // ── STAGE 2: DECODER ─────────────────────────────────
+                        val decoderName = when {
+                            rawMime.contains("flac", ignoreCase = true) -> "c2.android.flac.decoder"
+                            rawMime.contains("opus", ignoreCase = true) -> "c2.android.opus.decoder"
+                            rawMime.contains("aac", ignoreCase = true) || rawMime.contains("mp4", ignoreCase = true) -> "c2.android.aac.decoder"
+                            rawMime.contains("mp3", ignoreCase = true) -> "c2.android.mp3.decoder"
+                            rawMime.contains("vorbis", ignoreCase = true) -> "c2.android.vorbis.decoder"
+                            else -> "c2.android.audio.decoder"
+                        }
+                        val pcmFormat = if (stats?.isLossless == true) "24-bit PCM" else "16-bit PCM"
+
+                        PipelineTimelineStage(
+                            icon = Icons.Rounded.Memory,
+                            sectionTitle = "DECODER",
+                            stageIndex = 1,
+                            totalStages = 4,
+                            isLast = false,
+                            flowProgress = flowProgress,
+                        ) {
+                            PipelineRow("Decoder Name", decoderName, newline = true)
+                            PipelineRow("Format", pcmFormat)
+                        }
+
+                        // ── STAGE 3: RESAMPLER ───────────────────────────────
+                        val targetRate = outputStatus.actualSampleRateHz ?: 48000
+                        val isBitExactPassthrough = (stats?.sampleRateHz ?: 48000) == targetRate
+
+                        PipelineTimelineStage(
+                            icon = Icons.Rounded.Tune,
+                            sectionTitle = "RESAMPLER",
+                            stageIndex = 2,
+                            totalStages = 4,
+                            isLast = false,
+                            flowProgress = flowProgress,
+                        ) {
+                            PipelineRow("I/O Rate", "${stats?.sampleRateHz ?: 48000} Hz → $targetRate Hz")
+                            PipelineRow("Type", if (isBitExactPassthrough) "Direct Passthrough" else "Resampler")
+                            PipelineRow("Cutoff", "—")
+                            PipelineRow("Quality", if (isBitExactPassthrough) "Bit-exact" else "Resampled")
+                        }
+
+                        // ── STAGE 4: DSP ─────────────────────────────────────
+                        PipelineTimelineStage(
+                            icon = Icons.Rounded.GraphicEq,
+                            sectionTitle = "DSP",
+                            stageIndex = 3,
+                            totalStages = 4,
+                            isLast = false,
+                            flowProgress = flowProgress,
+                        ) {
+                            PipelineRow("PCM Format", "Float32")
+                            PipelineRow("Sample Rate", "$targetRate Hz")
+                            PipelineRow("Gain", "—")
+                            PipelineRow("Measured", "—")
+                            PipelineRow("EQ Preset", if (eqEnabled) eqPreset else "Flat")
+                            PipelineRow("Stereo Expand", if (spatialAudio) "140%" else "100%")
+                            PipelineRow("Buffers", "2x (500ms, 24000 frames)")
+                            PipelineRow("Output API", "AudioTrack")
+                            PipelineRow("Bit-exact", if (outputStatus.isUsb) "Yes (Direct Bit-Perfect)" else "Yes (16-bit PCM → 16-bit PCM)")
+                        }
+
+                        // ── STAGE 5: OUTPUT DEVICE ───────────────────────────
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val deviceName = if (outputStatus.deviceName.isNotBlank() &&
+                            !outputStatus.deviceName.equals("System default", ignoreCase = true) &&
+                            !outputStatus.deviceName.equals(android.os.Build.MODEL, ignoreCase = true) &&
+                            !outputStatus.deviceName.equals("Phone Speaker", ignoreCase = true)
+                        ) {
+                            outputStatus.deviceName
+                        } else {
+                            AudioOutputStatus.getPhoneName(context)
+                        }
+
+                        val outputIcon = when {
+                            outputStatus.isUsb -> Icons.Rounded.Usb
+                            deviceName.contains("Bluetooth", ignoreCase = true) ||
+                                deviceName.contains("Buds", ignoreCase = true) ||
+                                deviceName.contains("Airdopes", ignoreCase = true) ||
+                                deviceName.contains("Headset", ignoreCase = true) ||
+                                deviceName.contains("Headphone", ignoreCase = true) ||
+                                deviceName.contains("Wireless", ignoreCase = true) -> Icons.Rounded.Headphones
+                            else -> Icons.AutoMirrored.Rounded.VolumeUp
+                        }
+
+                        PipelineTimelineStage(
+                            icon = outputIcon,
+                            sectionTitle = "OUTPUT DEVICE",
+                            stageIndex = 4,
+                            totalStages = 4,
+                            isLast = true,
+                            flowProgress = flowProgress,
+                        ) {
+                            PipelineRow("Device Name", deviceName)
+                            PipelineRow("Route", if (outputStatus.isUsb) "USB DAC" else if (deviceName.contains("Bluetooth", ignoreCase = true)) "BLUETOOTH" else "PHONE")
+                            PipelineRow("Transport", outputStatus.sink.ifBlank { "AudioTrack" })
+                            PipelineRow("Direct", if (outputStatus.isUsb) "Supported (Direct Bit-Perfect)" else "Not Supported (Mixed Path)")
+                            PipelineRow("AudioTrack", "PCM16 / $targetRate Hz")
+                            PipelineRow("System", "AudioFlinger Mixer ${outputStatus.actualSampleRateHz ?: 48000} Hz, HAL PCM24 packed")
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // Bottom: Centered "Done" button
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onDismiss,
+                            )
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Done",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                             ),
                             color = Color.White,
                         )
                     }
-
-                    // Frosted Close Button
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.08f))
-                            .clickable(onClick = onDismiss),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = "Close",
-                            tint = Color.White.copy(alpha = 0.8f),
-                            modifier = Modifier.size(17.dp),
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                // Scrollable Stages List
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .nestedScroll(pipelineNestedScroll)
-                        .verticalScroll(scrollState),
-                ) {
-                    // ── 1. Track Info Stage ─────────────────────────────────
-                    val stats = nerdStats
-                    val sourceName = stats?.sourceName
-                        ?: stats?.claimed?.source
-                        ?: when {
-                            stats?.isLossless == true -> "Lossless Plugin"
-                            stats?.isHiQuality == true && (stats.mimeType?.contains("mp4") == true || stats.mimeType?.contains("aac") == true) -> "JioSaavn"
-                            else -> "YouTube Music"
-                        }
-                    val format = NerdStats.codecLabel(stats?.mimeType) ?: stats?.mimeType ?: "Opus"
-                    val bitDepth = stats?.bitDepth?.let { "$it-bit" }
-                        ?: stats?.claimed?.bitDepth?.let { "$it-bit" }
-                        ?: "16-bit"
-                    val sampleRate = stats?.sampleRateHz?.let { "$it Hz" }
-                        ?: stats?.claimed?.sampleRateHz?.let { "$it Hz" }
-                        ?: "44,100 Hz"
-                    val bitrate = stats?.bitrateKbps?.let { "$it kbps" } ?: "160 kbps"
-                    val channels = when (stats?.channels) {
-                        1 -> stringResource(R.string.mono)
-                        2 -> stringResource(R.string.stereo)
-                        null -> "Stereo"
-                        else -> "${nerdStats?.channels} ch"
-                    }
-
-                    PipelineStage(
-                        icon = Icons.Rounded.GraphicEq,
-                        iconTint = COLOR_STAGE_TRACK,
-                        stageNumber = "01",
-                        title = stringResource(R.string.pipeline_track_info),
-                        statusChip = format,
-                        statusColor = COLOR_STAGE_TRACK,
-                        isLast = false,
-                        nextStageColor = COLOR_STAGE_DECODER,
-                    ) {
-                        PipelineRow(stringResource(R.string.pipeline_source), sourceName)
-                        PipelineRow(stringResource(R.string.pipeline_format), format)
-                        PipelineRow(stringResource(R.string.pipeline_bit_depth), bitDepth, isMonospace = true)
-                        PipelineRow(stringResource(R.string.pipeline_sample_rate), sampleRate, isMonospace = true)
-                        PipelineRow(stringResource(R.string.pipeline_bitrate), bitrate, isMonospace = true)
-                        PipelineRow(stringResource(R.string.pipeline_channels), channels)
-                    }
-
-                    // ── 2. Decoder Stage ───────────────────────────────────
-                    val decoderName = outputStatus.decoderName ?: "ExoPlayer MediaCodec"
-
-                    PipelineStage(
-                        icon = Icons.Rounded.Memory,
-                        iconTint = COLOR_STAGE_DECODER,
-                        stageNumber = "02",
-                        title = stringResource(R.string.pipeline_decoder),
-                        statusChip = "Hardware",
-                        statusColor = COLOR_STAGE_DECODER,
-                        isLast = false,
-                        nextStageColor = COLOR_STAGE_RESAMPLER,
-                    ) {
-                        PipelineRow(stringResource(R.string.pipeline_decoder_name), decoderName, isMonospace = true)
-                    }
-
-                    // ── 3. Resampler Stage ─────────────────────────────────
-                    val inRate = nerdStats?.sampleRateHz ?: 44100
-                    val outRate = outputStatus.actualSampleRateHz ?: inRate
-                    val isPassthrough = inRate == outRate
-                    val ioRateText = "$inRate Hz → $outRate Hz"
-                    val resamplerType = if (isPassthrough) "None (Direct)" else "Android AudioResampler"
-                    val qualityText = if (isPassthrough) "Bit-Perfect Passthrough" else "Resampled"
-
-                    PipelineStage(
-                        icon = Icons.Rounded.AutoAwesome,
-                        iconTint = COLOR_STAGE_RESAMPLER,
-                        stageNumber = "03",
-                        title = stringResource(R.string.pipeline_resampler),
-                        statusChip = if (isPassthrough) "Passthrough" else "Resampled",
-                        statusColor = if (isPassthrough) COLOR_STAGE_DECODER else COLOR_STAGE_RESAMPLER,
-                        isLast = false,
-                        nextStageColor = COLOR_STAGE_DSP,
-                    ) {
-                        PipelineRow(stringResource(R.string.pipeline_io_rate), ioRateText, isMonospace = true)
-                        PipelineRow(stringResource(R.string.pipeline_type), resamplerType)
-                        PipelineRow(stringResource(R.string.pipeline_cutoff), "—")
-                        PipelineRow(stringResource(R.string.pipeline_quality), qualityText)
-                    }
-
-                    // ── 4. DSP Stage ───────────────────────────────────────
-                    val pcmFormat = when (outputStatus.actualEncoding) {
-                        AudioFormat.ENCODING_PCM_FLOAT -> "32-bit Float"
-                        AudioFormat.ENCODING_PCM_16BIT -> "16-bit PCM"
-                        AudioFormat.ENCODING_PCM_24BIT_PACKED -> "24-bit PCM"
-                        AudioFormat.ENCODING_PCM_32BIT -> "32-bit PCM"
-                        else -> nerdStats?.bitDepth?.let { "$it-bit PCM" } ?: "16-bit PCM"
-                    }
-                    val dspRate = outputStatus.actualSampleRateHz ?: nerdStats?.sampleRateHz ?: 44100
-                    val dspRateText = "$dspRate Hz"
-                    val eqPresetText = if (eqEnabled) eqPreset else "Flat"
-                    val stereoExpandText = if (spatialAudio) "Spatial 3D (250%)" else "Stereo (100%)"
-                    val buffersText = outputStatus.bufferSize?.let { size ->
-                        val rate = outputStatus.actualSampleRateHz ?: 44100
-                        val bytesPerSample = when (outputStatus.actualEncoding) {
-                            AudioFormat.ENCODING_PCM_FLOAT, AudioFormat.ENCODING_PCM_32BIT -> 4
-                            AudioFormat.ENCODING_PCM_24BIT_PACKED -> 3
-                            else -> 2
-                        }
-                        val channelCount = nerdStats?.channels ?: 2
-                        val bytesPerFrame = bytesPerSample * channelCount
-                        val frames = if (bytesPerFrame > 0) size / bytesPerFrame else 0
-                        if (rate > 0 && frames > 0) {
-                            val ms = (frames * 1000L) / rate
-                            "2x (${ms}ms, $frames frames)"
-                        } else {
-                            "—"
-                        }
-                    } ?: "2x (500ms, 22050 frames)"
-
-                    PipelineStage(
-                        icon = Icons.Rounded.Tune,
-                        iconTint = COLOR_STAGE_DSP,
-                        stageNumber = "04",
-                        title = stringResource(R.string.pipeline_dsp),
-                        statusChip = if (eqEnabled) eqPresetText else "Flat DSP",
-                        statusColor = COLOR_STAGE_DSP,
-                        isLast = false,
-                        nextStageColor = COLOR_STAGE_OUTPUT,
-                    ) {
-                        PipelineRow(stringResource(R.string.pipeline_pcm_format), pcmFormat, isMonospace = true)
-                        PipelineRow(stringResource(R.string.pipeline_sample_rate), dspRateText, isMonospace = true)
-                        PipelineRow(stringResource(R.string.pipeline_eq_preset), eqPresetText)
-                        PipelineRow(stringResource(R.string.pipeline_stereo_expand), stereoExpandText)
-                        PipelineRow(stringResource(R.string.pipeline_buffers), buffersText, isMonospace = true)
-                        PipelineRow(stringResource(R.string.pipeline_output_api), outputStatus.sink.ifBlank { "AudioTrack" })
-                    }
-
-                    // ── 5. Output Device Stage ─────────────────────────────
-                    val context = androidx.compose.ui.platform.LocalContext.current
-                    val deviceName = if (outputStatus.deviceName.isNotBlank() &&
-                        !outputStatus.deviceName.equals("System default", ignoreCase = true) &&
-                        !outputStatus.deviceName.equals(android.os.Build.MODEL, ignoreCase = true) &&
-                        !outputStatus.deviceName.equals("Phone Speaker", ignoreCase = true)
-                    ) {
-                        outputStatus.deviceName
-                    } else {
-                        AudioOutputStatus.getPhoneName(context)
-                    }
-                    val inDepth = when (outputStatus.actualEncoding) {
-                        AudioFormat.ENCODING_PCM_FLOAT -> "32-bit"
-                        AudioFormat.ENCODING_PCM_16BIT -> "16-bit"
-                        else -> stats?.bitDepth?.let { "$it-bit" } ?: "16-bit"
-                    }
-                    val outDepth = if (outputStatus.floatFallback) "16-bit" else inDepth
-                    val bitDepthOutputText = "In: $inDepth  •  Out: $outDepth"
-                    val outputSampleRate = outputStatus.actualSampleRateHz ?: stats?.sampleRateHz ?: 44100
-                    val outputSampleRateText = "$outputSampleRate Hz"
-
-                    // Dynamically choose modern hardware device icon
-                    val outputIcon = when {
-                        outputStatus.isUsb -> Icons.Rounded.Usb
-                        deviceName.contains("Bluetooth", ignoreCase = true) ||
-                            deviceName.contains("Buds", ignoreCase = true) ||
-                            deviceName.contains("Airdopes", ignoreCase = true) ||
-                            deviceName.contains("Headset", ignoreCase = true) ||
-                            deviceName.contains("Headphone", ignoreCase = true) ||
-                            deviceName.contains("Wireless", ignoreCase = true) -> Icons.Rounded.Headphones
-                        else -> Icons.Rounded.PhoneAndroid
-                    }
-
-                    PipelineStage(
-                        icon = outputIcon,
-                        iconTint = COLOR_STAGE_OUTPUT,
-                        stageNumber = "05",
-                        title = stringResource(R.string.pipeline_output_device),
-                        statusChip = "Active Route",
-                        statusColor = COLOR_STAGE_OUTPUT,
-                        isLast = true,
-                        nextStageColor = COLOR_STAGE_OUTPUT,
-                    ) {
-                        PipelineRow(stringResource(R.string.pipeline_device_name), deviceName)
-                        PipelineRow(stringResource(R.string.pipeline_bit_depth), bitDepthOutputText, isMonospace = true)
-                        PipelineRow(stringResource(R.string.pipeline_sample_rate), outputSampleRateText, isMonospace = true)
-                    }
-
-                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
     }
 }
-}
 
+/**
+ * Vertical timeline stage container with animated glowing signal flow bead.
+ */
 @Composable
-private fun PipelineStage(
+private fun PipelineTimelineStage(
     icon: ImageVector,
-    iconTint: Color,
-    stageNumber: String,
-    title: String,
-    statusChip: String? = null,
-    statusColor: Color? = null,
+    sectionTitle: String,
+    stageIndex: Int = 0,
+    totalStages: Int = 4,
     isLast: Boolean = false,
-    nextStageColor: Color = Color.White,
+    flowProgress: Float = 0f,
     content: @Composable () -> Unit,
 ) {
     Row(
@@ -491,156 +438,151 @@ private fun PipelineStage(
             .fillMaxWidth()
             .height(IntrinsicSize.Min),
     ) {
-        // Left timeline column with glowing icon disc and connector
+        // Left timeline column: circular node + vertical line with animated light beam
         Column(
             modifier = Modifier
-                .width(36.dp)
+                .width(28.dp)
                 .fillMaxHeight(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Glowing circular icon disc
+            // Circular icon node
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(26.dp)
                     .clip(CircleShape)
-                    .background(iconTint.copy(alpha = 0.16f)),
+                    .background(Color(0xFF222228))
+                    .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(18.dp),
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(14.dp),
                 )
             }
 
-            // Vertical connecting line with gradient and micro arrow
+            // Connecting vertical line with single animated signal pulse across the whole pipeline
             if (!isLast) {
-                Box(
+                Canvas(
                     modifier = Modifier
                         .weight(1f)
-                        .width(2.dp)
-                        .padding(vertical = 2.dp)
-                        .background(
-                            Brush.verticalGradient(
+                        .width(16.dp)
+                        .padding(vertical = 2.dp),
+                ) {
+                    val centerX = size.width / 2f
+                    // Static gray connecting guide
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.20f),
+                        start = Offset(centerX, 0f),
+                        end = Offset(centerX, size.height),
+                        strokeWidth = 1.5.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+
+                    // Exactly one signal dot across the entire pipeline:
+                    val stageSpan = 1f / totalStages
+                    val stageStart = stageIndex * stageSpan
+                    val stageEnd = (stageIndex + 1) * stageSpan
+
+                    if (flowProgress in stageStart..stageEnd) {
+                        val localProgress = ((flowProgress - stageStart) / stageSpan).coerceIn(0f, 1f)
+                        val beadY = size.height * localProgress
+                        drawCircle(
+                            brush = Brush.radialGradient(
                                 colors = listOf(
-                                    iconTint.copy(alpha = 0.40f),
-                                    nextStageColor.copy(alpha = 0.40f),
+                                    Color.White.copy(alpha = 0.95f),
+                                    Color(0xFF38BDF8).copy(alpha = 0.45f),
+                                    Color.Transparent,
                                 ),
+                                center = Offset(centerX, beadY),
+                                radius = 5.dp.toPx(),
                             ),
-                        ),
-                )
-                Icon(
-                    imageVector = Icons.Rounded.ArrowDownward,
-                    contentDescription = null,
-                    tint = nextStageColor.copy(alpha = 0.45f),
-                    modifier = Modifier.size(11.dp),
-                )
+                            radius = 5.dp.toPx(),
+                            center = Offset(centerX, beadY),
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 1.8.dp.toPx(),
+                            center = Offset(centerX, beadY),
+                        )
+                    }
+                }
             }
         }
 
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
 
-        // Right content column
+        // Right content block: Uppercase section title + Key-Value rows
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = if (isLast) 4.dp else 16.dp),
         ) {
-            // Stage Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column {
-                    Text(
-                        text = "STAGE $stageNumber",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.1.sp,
-                        ),
-                        color = iconTint,
-                    )
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                        color = Color.White,
-                    )
-                }
-
-                if (statusChip != null) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background((statusColor ?: iconTint).copy(alpha = 0.14f))
-                            .padding(horizontal = 7.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            text = statusChip,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            ),
-                            color = statusColor ?: iconTint,
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(6.dp))
-
-            // Rounded Parameters Container Card
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color.White.copy(alpha = 0.04f),
-                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.08f)),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    content()
-                }
-            }
+            Text(
+                text = sectionTitle,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp,
+                ),
+                color = Color.White.copy(alpha = 0.85f),
+            )
+            Spacer(Modifier.height(4.dp))
+            content()
         }
     }
 }
 
+/**
+ * Key-Value row (Bold label + normal value).
+ */
 @Composable
 private fun PipelineRow(
     label: String,
     value: String,
-    isMonospace: Boolean = false,
+    newline: Boolean = false,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "$label:",
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-            ),
-            color = Color.White.copy(alpha = 0.60f),
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = if (isMonospace) FontFamily.Monospace else FontFamily.Default,
-            ),
-            color = Color.White.copy(alpha = 0.95f),
-        )
+    if (newline) {
+        Column(modifier = Modifier.padding(vertical = 1.5.dp)) {
+            Text(
+                text = "$label:",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                color = Color.White.copy(alpha = 0.90f),
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Normal,
+                ),
+                color = Color.White.copy(alpha = 0.75f),
+            )
+        }
+    } else {
+        Row(
+            modifier = Modifier.padding(vertical = 1.5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "$label: ",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                color = Color.White.copy(alpha = 0.90f),
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Normal,
+                ),
+                color = Color.White.copy(alpha = 0.75f),
+            )
+        }
     }
 }

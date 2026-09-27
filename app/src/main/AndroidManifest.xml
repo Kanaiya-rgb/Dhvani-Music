@@ -80,15 +80,14 @@
         </service>
 
         <!--
-          Portrait only. Every screen is laid out for a tall single column —
-          the player's artwork square, the frosted bars, the floating tab bar —
-          and none of it has a landscape design to fall back on.
+          Default portrait locked in MainActivity.onCreate. Handles orientation,
+          screenSize and screenLayout changes dynamically for Cinema Fullscreen mode.
         -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:theme="@style/Theme.DhvaniMusic">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -309,6 +308,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Firebase Cloud Messaging service for instant update notifications -->
+        <service
+            android:name=".data.DhvaniFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

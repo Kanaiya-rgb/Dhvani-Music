@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Share
@@ -158,9 +160,9 @@ fun BrowseActionsSheet(
     var confirmingDeleteDownload by remember { mutableStateOf(false) }
 
     val playlist = target.playlist
-    if (renaming && playlist != null && onRename != null) {
+    if (renaming && onRename != null) {
         RenamePlaylistForm(
-            playlist = playlist,
+            title = playlist?.title ?: target.title,
             onBack = { renaming = false },
             onRename = onRename,
             modifier = modifier,
@@ -218,7 +220,16 @@ fun BrowseActionsSheet(
             )
         }
         onOpen?.let {
-            ActionRow(DhvaniIcons.ChevronRight, "Open ${target.type.noun}".trim(), onClick = it)
+            val openLabel = if (target.type == BrowseType.PLAYLIST) {
+                "Open playlist"
+            } else {
+                "Open ${target.type.noun}".trim().ifBlank { "Open" }
+            }
+            ActionRow(
+                icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                label = openLabel,
+                onClick = it,
+            )
         }
         onTogglePin?.let {
             ActionRow(DhvaniIcons.Pin, if (isPinned) "Unpin" else "Pin", onClick = it)
@@ -235,10 +246,17 @@ fun BrowseActionsSheet(
                     icon = Icons.Rounded.DeleteForever,
                     label = "Delete \"${target.title}\" — tap to confirm",
                     tint = MaterialTheme.colorScheme.error,
+                    accent = MaterialTheme.colorScheme.error,
                     onClick = onDelete,
                 )
             } else {
-                ActionRow(Icons.Rounded.Delete, "Delete playlist") { confirmingDelete = true }
+                ActionRow(
+                    icon = Icons.Rounded.DeleteOutline,
+                    label = "Delete playlist",
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                    accent = MaterialTheme.colorScheme.error,
+                    onClick = { confirmingDelete = true },
+                )
             }
         }
         if (onDeleteDownload != null) {
@@ -247,13 +265,20 @@ fun BrowseActionsSheet(
                     icon = Icons.Rounded.DeleteForever,
                     label = "Remove \"${target.title}\" from this device — tap to confirm",
                     tint = MaterialTheme.colorScheme.error,
+                    accent = MaterialTheme.colorScheme.error,
                     onClick = onDeleteDownload,
                 )
             } else {
-                ActionRow(Icons.Rounded.Delete, "Delete download") { confirmingDeleteDownload = true }
+                ActionRow(
+                    icon = Icons.Rounded.DeleteOutline,
+                    label = "Delete download",
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                    accent = MaterialTheme.colorScheme.error,
+                    onClick = { confirmingDeleteDownload = true },
+                )
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
     }
 }
 

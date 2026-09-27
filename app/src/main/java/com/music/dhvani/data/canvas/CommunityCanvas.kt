@@ -11,7 +11,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Request
 
 /**
- * Community-curated motion canvas fallback index from ViviMusic / BitChord.
+ * Community-curated motion canvas fallback index.
  * Fetches and caches the index in-memory so lookups are fast and offline-friendly.
  */
 object CommunityCanvas {

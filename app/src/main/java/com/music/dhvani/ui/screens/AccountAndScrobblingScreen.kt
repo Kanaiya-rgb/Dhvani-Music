@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.MaterialTheme
@@ -77,7 +78,7 @@ fun AccountAndScrobblingScreen(
             footer = "Synchronize music playback in real-time with other listeners across devices.",
         ) {
             SettingsRow(
-                icon = androidx.compose.material.icons.Icons.Rounded.GraphicEq,
+                icon = androidx.compose.material.icons.Icons.Rounded.Group,
                 title = "Listen Together Room",
                 subtitle = if (listenTogetherRoomCode.isNotEmpty()) "Active room: $listenTogetherRoomCode" else "Create or join a listening room",
                 onClick = onOpenListenTogether,

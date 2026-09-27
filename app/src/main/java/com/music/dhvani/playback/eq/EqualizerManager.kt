@@ -141,6 +141,17 @@ object EqualizerManager {
         }
     }
 
+    fun reset() {
+        _enabled.value = false
+        _selectedPreset.value = "Flat"
+        _bandGains.value = List(10) { 0.0 }
+        _preampGain.value = 0.0
+        _loudnessEnabled.value = false
+        _loudnessBoostMb.value = 600
+        applyCurrentState()
+        save()
+    }
+
     private fun applyCurrentState() {
         synchronized(processors) {
             processors.forEach { applyToProcessor(it) }

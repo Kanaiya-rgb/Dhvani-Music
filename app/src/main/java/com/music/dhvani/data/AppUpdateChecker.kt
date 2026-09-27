@@ -468,45 +468,9 @@ object AppUpdateChecker {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val releasePageUrl = info.releaseUrl.takeIf { it.isNotBlank() } ?: "https://github.com/Kanaiya-rgb/Dhvani-Music/releases"
-        val releaseIntent = Intent(Intent.ACTION_VIEW, Uri.parse(releasePageUrl)).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-        val releasePendingIntent = PendingIntent.getActivity(
-            context,
-            1,
-            releaseIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
         val largeIcon = runCatching {
             BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher)
         }.getOrNull()
-
-        val cleanNotes = info.notes?.trim()?.takeIf { it.isNotEmpty() }
-        val bodyBuilder = buildString {
-            append("🎉 Dhvani Music v").append(info.version).append(" is ready to install!\n")
-            if (cleanNotes != null) {
-                append("\nHighlights:\n")
-                append(cleanNotes.take(280))
-                if (cleanNotes.length > 280) append("...")
-            } else {
-                append("\nIncludes faster streaming, synced lyrics enhancements, and bug fixes.")
-            }
-            append("\n\n⚡ Tap 'Update Now' to download and install instantly.")
-        }
-
-        val updateAction = NotificationCompat.Action.Builder(
-            R.drawable.ic_notification_logo,
-            "⚡ Update Now",
-            updatePendingIntent,
-        ).build()
-
-        val releaseAction = NotificationCompat.Action.Builder(
-            R.drawable.ic_notification_logo,
-            "🌐 What's New",
-            releasePendingIntent,
-        ).build()
 
         val notification = NotificationCompat.Builder(context, UPDATE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_logo)
@@ -514,19 +478,9 @@ object AppUpdateChecker {
                 if (largeIcon != null) setLargeIcon(largeIcon)
             }
             .setColor(0xFFF97316.toInt()) // Dhvani Orange
-            .setColorized(false)
-            .setSubText("✨ Update Available • v${info.version}")
-            .setContentTitle("🎵 New Update: Dhvani Music v${info.version}")
-            .setContentText("Version ${info.version} is now available! Tap to download & install.")
-            .setStyle(
-                NotificationCompat.BigTextStyle()
-                    .setBigContentTitle("🚀 Dhvani Music v${info.version} is here!")
-                    .setSummaryText("Tap to update")
-                    .bigText(bodyBuilder),
-            )
+            .setContentTitle("New update available (v${info.version})")
+            .setContentText("Click here to download")
             .setContentIntent(updatePendingIntent)
-            .addAction(updateAction)
-            .addAction(releaseAction)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)

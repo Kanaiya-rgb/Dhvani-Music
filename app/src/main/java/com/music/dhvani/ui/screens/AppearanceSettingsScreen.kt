@@ -145,7 +145,6 @@ fun AppearanceSettingsScreen(
     val communityCanvasStyle by AppSettings.communityCanvasStyle.collectAsStateWithLifecycle()
     val canvasPauseWithAudio by AppSettings.canvasPauseWithAudio.collectAsStateWithLifecycle()
     val playerDefaultViewMode by AppSettings.playerDefaultViewMode.collectAsStateWithLifecycle()
-    val showStatusBarIcon by AppSettings.showStatusBarIcon.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
 
@@ -259,7 +258,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.GridView,
                 title = stringResource(R.string.display_density),
-                subtitle = "Scale interface elements to fit more on screen",
                 value = DensityScale.fromValue(densityScale).label,
                 onClick = { showDensityDialog = true },
             )
@@ -311,14 +309,13 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.Tune,
                 title = stringResource(R.string.player_slider_style),
-                subtitle = "Choose between Capsule, Material, Wavy, Squiggly, or Slim",
                 value = when {
                     sliderStyle == SliderStyle.SQUIGGLY || (sliderStyle == SliderStyle.WAVY && squigglySlider) -> stringResource(R.string.squiggly)
                     sliderStyle == SliderStyle.WAVY -> stringResource(R.string.wavy)
                     sliderStyle == SliderStyle.SLIM -> stringResource(R.string.slim)
                     sliderStyle == SliderStyle.MATERIAL -> stringResource(R.string.material)
                     sliderStyle == SliderStyle.CAPSULE -> stringResource(R.string.capsule)
-                    else -> stringResource(R.string.capsule)
+                    else -> sliderStyle.label
                 },
                 onClick = { showSliderStyleDialog = true },
             )
@@ -326,7 +323,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.Layers,
                 title = stringResource(R.string.player_background_style),
-                subtitle = "Background style for the full-screen player",
                 value = when (playerBackgroundStyle) {
                     PlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
                     PlayerBackgroundStyle.GRADIENT -> stringResource(R.string.gradient)
@@ -338,7 +334,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.Palette,
                 title = stringResource(R.string.player_buttons_style),
-                subtitle = "Accent coloration on playback action buttons",
                 value = when (playerButtonsStyle) {
                     PlayerButtonsStyle.DEFAULT -> stringResource(R.string.default_style)
                     PlayerButtonsStyle.PRIMARY -> stringResource(R.string.primary_color_style)
@@ -385,7 +380,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.FullscreenExit,
                 title = stringResource(R.string.hide_status_bar_fullscreen),
-                subtitle = stringResource(R.string.hide_status_bar_fullscreen_desc),
                 trailing = {
                     Switch(
                         checked = hideStatusBarOnFullscreen,
@@ -402,7 +396,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.Swipe,
                 title = stringResource(R.string.enable_swipe_thumbnail),
-                subtitle = "Swipe left/right on cover art to skip songs",
                 trailing = {
                     Switch(
                         checked = swipeThumbnail,
@@ -430,7 +423,6 @@ fun AppearanceSettingsScreen(
                 SettingsRow(
                     icon = Icons.Rounded.Fullscreen,
                     title = "Album cover display style",
-                    subtitle = "Choose layout for static album artwork in player",
                     value = if (fullBleedArtwork) "Full-Bleed Banner" else "1:1 Square Card",
                     onClick = { showCoverStyleDialog = true },
                 )
@@ -439,7 +431,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.SlowMotionVideo,
                 title = "Spotify canvas style",
-                subtitle = "Choose layout for Spotify video canvas loops",
                 value = spotifyCanvasStyle.label,
                 onClick = { showSpotifyCanvasStyleDialog = true },
             )
@@ -447,7 +438,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.SlowMotionVideo,
                 title = "Apple Music canvas style",
-                subtitle = "Choose layout for Apple Music animated loops",
                 value = appleMusicCanvasStyle.label,
                 onClick = { showAppleCanvasStyleDialog = true },
             )
@@ -455,7 +445,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.SlowMotionVideo,
                 title = "Tidal canvas style",
-                subtitle = "Choose layout for Tidal motion video loops",
                 value = tidalCanvasStyle.label,
                 onClick = { showTidalCanvasStyleDialog = true },
             )
@@ -463,7 +452,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.SlowMotionVideo,
                 title = "Community canvas style",
-                subtitle = "Choose layout for Community video canvas clips",
                 value = communityCanvasStyle.label,
                 onClick = { showCommunityCanvasStyleDialog = true },
             )
@@ -479,7 +467,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.SlowMotionVideo,
                 title = "Canvas plays while paused",
-                subtitle = "Keep the video looping even when audio is paused",
                 trailing = {
                     Switch(
                         checked = !canvasPauseWithAudio,
@@ -492,28 +479,11 @@ fun AppearanceSettingsScreen(
                 },
                 onClick = { AppSettings.setCanvasPauseWithAudio(!canvasPauseWithAudio) },
             )
-            RowDivider()
-            SettingsRow(
-                icon = Icons.Rounded.Notifications,
-                title = "Status bar playback icon",
-                subtitle = "Show Dhvani logo in status bar while music is playing",
-                trailing = {
-                    Switch(
-                        checked = showStatusBarIcon,
-                        onCheckedChange = AppSettings::setShowStatusBarIcon,
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = MaterialTheme.colorScheme.primary,
-                            checkedBorderColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    )
-                },
-                onClick = { AppSettings.setShowStatusBarIcon(!showStatusBarIcon) },
-            )
+
             RowDivider()
             SettingsRow(
                 icon = Icons.Rounded.MotionPhotosOff,
                 title = stringResource(R.string.reduce_animation),
-                subtitle = stringResource(R.string.reduce_animation_subtitle),
                 trailing = {
                     Switch(
                         checked = reduceAnimation,
@@ -550,7 +520,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.ViewStream,
                 title = stringResource(R.string.mini_player_background_style),
-                subtitle = "Appearance of the floating playback strip",
                 value = when (miniPlayerBackgroundStyle) {
                     MiniPlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
                     MiniPlayerBackgroundStyle.TRANSPARENT -> stringResource(R.string.transparent)
@@ -604,7 +573,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.Dashboard,
                 title = stringResource(R.string.default_open_tab),
-                subtitle = "Tab selected when the app opens",
                 value = when (defaultOpenTab) {
                     0 -> "Play"
                     1 -> "Explore"
@@ -618,7 +586,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.GridView,
                 title = stringResource(R.string.grid_cell_size),
-                subtitle = "Density of card items on grids and albums",
                 value = gridItemSize.label,
                 onClick = { showGridSizeDialog = true },
             )
@@ -626,7 +593,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.ViewStream,
                 title = stringResource(R.string.slim_navbar),
-                subtitle = "Use a more compact bottom navigation dock",
                 trailing = {
                     Switch(
                         checked = slimNavBar,
@@ -643,7 +609,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.MusicNote,
                 title = stringResource(R.string.show_recognize_music_button),
-                subtitle = stringResource(R.string.show_recognize_music_button_desc),
                 trailing = {
                     Switch(
                         checked = showRecognizeButton,
@@ -660,7 +625,6 @@ fun AppearanceSettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.Shuffle,
                 title = stringResource(R.string.show_play_random_button),
-                subtitle = stringResource(R.string.show_play_random_button_desc),
                 trailing = {
                     Switch(
                         checked = showPlayRandomButton,

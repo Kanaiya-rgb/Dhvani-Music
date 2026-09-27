@@ -151,7 +151,7 @@ fun heroCardWidth(available: Dp): Dp = minOf(available * HERO_CARD_FRACTION, HER
 data class LibraryGridSpec(val columns: Int, val cardWidth: Dp)
 
 /** The narrowest a library grid card is let get before another column gives way. */
-private val LIBRARY_GRID_MIN_CARD_WIDTH = 84.dp
+private val LIBRARY_GRID_MIN_CARD_WIDTH = 150.dp
 
 /** Gap between cards in a library grid, in both directions. */
 val LIBRARY_GRID_SPACING = 12.dp

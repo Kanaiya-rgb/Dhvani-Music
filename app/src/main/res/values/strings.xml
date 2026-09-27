@@ -24,7 +24,7 @@
     <string name="on_device">On Device</string>
     <string name="playlists">Playlists</string>
     <string name="new_playlist">New playlist</string>
-    <string name="saved_to_youtube_music">Saved to YouTube Music</string>
+    <string name="saved_to_youtube_music">Saved locally</string>
     <string name="sign_in">Sign in</string>
     <string name="sign_out">Sign out</string>
     <string name="signed_in">Signed in</string>

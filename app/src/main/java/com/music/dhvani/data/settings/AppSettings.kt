@@ -538,7 +538,7 @@ object AppSettings {
     val communityCanvasStyle = MutableStateFlow(CanvasStyle.HALF_SCREEN)
 
     /** Whether to show the Dhvani app icon in the top status bar during playback. */
-    val showStatusBarIcon = MutableStateFlow(true)
+    val showStatusBarIcon = MutableStateFlow(false)
 
     /**
      * Time-synced lyrics on the player, lit up as they are sung.
@@ -610,7 +610,19 @@ object AppSettings {
         val title: String,
         val songs: List<Song>,
         val source: String = "YOUTUBE",
-    )
+        val author: String? = null,
+        val authorAvatarUrl: String? = null,
+        val sourceId: String? = null,
+        val lastSyncedAt: Long = 0L,
+        val coverUrl: String? = null,
+        val isAlbum: Boolean = false,
+    ) {
+        val displayTitle: String
+            get() = if (title.contains(" • ")) title.split(" • ", limit = 2)[1].trim() else title
+
+        val effectiveAuthor: String?
+            get() = author?.takeIf { it.isNotBlank() } ?: if (title.contains(" • ")) title.split(" • ", limit = 2)[0].trim() else null
+    }
 
     val localCustomPlaylists = MutableStateFlow<List<CustomLocalPlaylist>>(emptyList())
     private const val KEY_LOCAL_CUSTOM_PLAYLISTS = "local_custom_playlists_json"
@@ -799,6 +811,87 @@ object AppSettings {
         readAll()
     }
 
+    /**
+     * Resets all app preferences back to factory defaults.
+     * Preserves user account data (username, avatar, local playlists, scrobbler logins)
+     * by default so user is not logged out or data wiped.
+     */
+    fun resetAllSettings(preserveUserIdentity: Boolean = true) {
+        if (!this::prefs.isInitialized) return
+        val editor = prefs.edit()
+
+        // Temporarily stash user identity and local data if requested
+        val savedUserName = if (preserveUserIdentity) prefs.getString(KEY_USER_NAME, null) else null
+        val savedHasPromptedUserName = if (preserveUserIdentity) prefs.getBoolean(KEY_HAS_PROMPTED_USER_NAME, false) else false
+        val savedUserAvatarType = if (preserveUserIdentity) prefs.getString(KEY_USER_AVATAR_TYPE, null) else null
+        val savedUserPresetAvatarId = if (preserveUserIdentity) prefs.getInt(KEY_USER_PRESET_AVATAR_ID, 101) else 101
+        val savedUserCustomAvatarPath = if (preserveUserIdentity) prefs.getString(KEY_USER_CUSTOM_AVATAR_PATH, null) else null
+        val savedUserCity = if (preserveUserIdentity) prefs.getString(KEY_USER_CITY, null) else null
+        val savedUserState = if (preserveUserIdentity) prefs.getString(KEY_USER_STATE, null) else null
+        val savedLocalCustomPlaylists = if (preserveUserIdentity) prefs.getString(KEY_LOCAL_CUSTOM_PLAYLISTS, null) else null
+        val savedPinnedPlaylists = if (preserveUserIdentity) prefs.getString(KEY_PINNED_PLAYLISTS, null) else null
+
+        val savedLastfmEnabled = if (preserveUserIdentity) prefs.getBoolean(KEY_LASTFM_ENABLED, false) else false
+        val savedLastfmUsername = if (preserveUserIdentity) prefs.getString(KEY_LASTFM_USERNAME, null) else null
+        val savedLastfmSessionKey = if (preserveUserIdentity) prefs.getString(KEY_LASTFM_SESSION_KEY, null) else null
+        val savedLastfmApiKey = if (preserveUserIdentity) prefs.getString(KEY_LASTFM_API_KEY, null) else null
+        val savedLastfmSecret = if (preserveUserIdentity) prefs.getString(KEY_LASTFM_SECRET, null) else null
+
+        val savedListenBrainzEnabled = if (preserveUserIdentity) prefs.getBoolean(KEY_LISTENBRAINZ_ENABLED, false) else false
+        val savedListenBrainzToken = if (preserveUserIdentity) prefs.getString(KEY_LISTENBRAINZ_TOKEN, null) else null
+
+        val savedDiscordUsername = if (preserveUserIdentity) prefs.getString(KEY_DISCORD_USERNAME, null) else null
+        val savedDiscordName = if (preserveUserIdentity) prefs.getString(KEY_DISCORD_NAME, null) else null
+        val savedDiscordAvatar = if (preserveUserIdentity) prefs.getString(KEY_DISCORD_AVATAR, null) else null
+
+        // Preserve device-local records (e.g. downloaded tracks/collections)
+        val deviceLocalCopies = prefs.all.filterKeys { it in DEVICE_LOCAL }
+
+        // Clear all stored preferences
+        editor.clear()
+
+        // Restore device-local and user identity if preserved
+        deviceLocalCopies.forEach { (key, value) ->
+            when (value) {
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is Float -> editor.putFloat(key, value)
+                is String -> editor.putString(key, value)
+                is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                else -> Unit
+            }
+        }
+
+        if (preserveUserIdentity) {
+            savedUserName?.let { editor.putString(KEY_USER_NAME, it) }
+            if (savedHasPromptedUserName) editor.putBoolean(KEY_HAS_PROMPTED_USER_NAME, true)
+            savedUserAvatarType?.let { editor.putString(KEY_USER_AVATAR_TYPE, it) }
+            editor.putInt(KEY_USER_PRESET_AVATAR_ID, savedUserPresetAvatarId)
+            savedUserCustomAvatarPath?.let { editor.putString(KEY_USER_CUSTOM_AVATAR_PATH, it) }
+            savedUserCity?.let { editor.putString(KEY_USER_CITY, it) }
+            savedUserState?.let { editor.putString(KEY_USER_STATE, it) }
+            savedLocalCustomPlaylists?.let { editor.putString(KEY_LOCAL_CUSTOM_PLAYLISTS, it) }
+            savedPinnedPlaylists?.let { editor.putString(KEY_PINNED_PLAYLISTS, it) }
+
+            if (savedLastfmEnabled) editor.putBoolean(KEY_LASTFM_ENABLED, true)
+            savedLastfmUsername?.let { editor.putString(KEY_LASTFM_USERNAME, it) }
+            savedLastfmSessionKey?.let { editor.putString(KEY_LASTFM_SESSION_KEY, it) }
+            savedLastfmApiKey?.let { editor.putString(KEY_LASTFM_API_KEY, it) }
+            savedLastfmSecret?.let { editor.putString(KEY_LASTFM_SECRET, it) }
+
+            if (savedListenBrainzEnabled) editor.putBoolean(KEY_LISTENBRAINZ_ENABLED, true)
+            savedListenBrainzToken?.let { editor.putString(KEY_LISTENBRAINZ_TOKEN, it) }
+
+            savedDiscordUsername?.let { editor.putString(KEY_DISCORD_USERNAME, it) }
+            savedDiscordName?.let { editor.putString(KEY_DISCORD_NAME, it) }
+            savedDiscordAvatar?.let { editor.putString(KEY_DISCORD_AVATAR, it) }
+        }
+
+        editor.apply()
+        readAll()
+    }
+
     private fun readAll() {
         migrateSingleQuality()
         audioQualityWifi.value = readQuality(KEY_QUALITY_WIFI)
@@ -936,7 +1029,7 @@ object AppSettings {
         communityCanvasStyle.value = prefs.getString(KEY_COMMUNITY_CANVAS_STYLE, null)?.let {
             runCatching { CanvasStyle.valueOf(it) }.getOrNull()
         } ?: CanvasStyle.HALF_SCREEN
-        showStatusBarIcon.value = prefs.getBoolean(KEY_SHOW_STATUS_BAR_ICON, true)
+        showStatusBarIcon.value = prefs.getBoolean(KEY_SHOW_STATUS_BAR_ICON, false)
         syncedLyrics.value = prefs.getBoolean(KEY_SYNCED_LYRICS, true)
         lyricsSources.value = readLyricsSources()
         lyricsSourceOrder.value = readLyricsSourceOrder()
@@ -1546,20 +1639,226 @@ object AppSettings {
         com.music.dhvani.data.lyrics.Musixmatch.setUserToken(trimmed)
     }
 
-    fun saveLocalPlaylist(title: String, songs: List<Song>, source: String = "YOUTUBE"): String {
-        val id = "local_pl_" + System.currentTimeMillis()
-        val playlist = CustomLocalPlaylist(id, title, songs, source)
+    fun deduplicatePlaylists(list: List<CustomLocalPlaylist>): List<CustomLocalPlaylist> {
+        fun isValidProfileAvatar(url: String?, songs: List<Song>): Boolean {
+            if (url.isNullOrBlank()) return false
+            if (url.contains("mosaic.scdn.co") || url.startsWith("spotify:mosaic")) return false
+            return !songs.any { it.thumbnailUrl?.equals(url, ignoreCase = true) == true }
+        }
+
+        val result = mutableListOf<CustomLocalPlaylist>()
+        val seenKeys = mutableMapOf<String, Int>()
+
+        for (rawPl in list) {
+            val author = rawPl.effectiveAuthor
+            val isRevibe = author?.equals("Revibe", ignoreCase = true) == true
+            val cleanedAvatar = when {
+                isValidProfileAvatar(rawPl.authorAvatarUrl, rawPl.songs) -> rawPl.authorAvatarUrl
+                isRevibe -> "https://i.scdn.co/image/ab6775700000ee85eccb3d2f203ca94bf0e1afd0"
+                else -> null
+            }
+            val pl = rawPl.copy(authorAvatarUrl = cleanedAvatar)
+
+            val key = when {
+                !pl.sourceId.isNullOrBlank() -> "src:${pl.sourceId.lowercase()}"
+                pl.effectiveAuthor != null -> "author:${pl.effectiveAuthor!!.lowercase()}:${pl.displayTitle.lowercase()}"
+                else -> "title:${pl.displayTitle.lowercase()}"
+            }
+
+            val existingIndex = seenKeys[key]
+            if (existingIndex != null) {
+                val existing = result[existingIndex]
+                val mergedSongs = (existing.songs + pl.songs).distinctBy { s ->
+                    if (s.videoId.isNotBlank()) s.videoId else "${s.title.lowercase()}:${s.artist.lowercase()}"
+                }
+                val bestAuthor = existing.author ?: pl.author
+                val bestAvatar = when {
+                    isValidProfileAvatar(existing.authorAvatarUrl, existing.songs) -> existing.authorAvatarUrl
+                    isValidProfileAvatar(pl.authorAvatarUrl, pl.songs) -> pl.authorAvatarUrl
+                    isRevibe -> "https://i.scdn.co/image/ab6775700000ee85eccb3d2f203ca94bf0e1afd0"
+                    else -> null
+                }
+                val bestSourceId = existing.sourceId ?: pl.sourceId
+                val bestTitle = if (existing.title.contains(" • ")) existing.title else pl.title
+                val bestCoverUrl = existing.coverUrl ?: pl.coverUrl
+                val isAlbum = existing.isAlbum || pl.isAlbum
+                result[existingIndex] = existing.copy(
+                    title = bestTitle,
+                    songs = if (pl.songs.size > existing.songs.size) pl.songs else mergedSongs,
+                    author = bestAuthor,
+                    authorAvatarUrl = bestAvatar,
+                    sourceId = bestSourceId,
+                    lastSyncedAt = maxOf(existing.lastSyncedAt, pl.lastSyncedAt),
+                    coverUrl = bestCoverUrl,
+                    isAlbum = isAlbum,
+                )
+            } else {
+                seenKeys[key] = result.size
+                result.add(pl)
+            }
+        }
+        return result
+    }
+
+    fun updateAuthorAvatar(author: String, avatarUrl: String) {
+        if (author.isBlank() || avatarUrl.isBlank()) return
+        val current = readLocalCustomPlaylists().toMutableList()
+        var changed = false
+        for (i in current.indices) {
+            val pl = current[i]
+            if (pl.effectiveAuthor?.equals(author, ignoreCase = true) == true) {
+                if (pl.authorAvatarUrl != avatarUrl) {
+                    current[i] = pl.copy(authorAvatarUrl = avatarUrl)
+                    changed = true
+                }
+            }
+        }
+        if (changed) {
+            val deduplicated = deduplicatePlaylists(current)
+            localCustomPlaylists.value = deduplicated
+            persistLocalCustomPlaylists(deduplicated)
+        }
+    }
+
+    fun findDuplicatePlaylist(
+        title: String,
+        author: String? = null,
+        sourceId: String? = null,
+    ): CustomLocalPlaylist? {
+        val targetDisplay = if (title.contains(" • ")) title.split(" • ", limit = 2)[1].trim() else title
+        val targetAuthor = author?.takeIf { it.isNotBlank() } ?: if (title.contains(" • ")) title.split(" • ", limit = 2)[0].trim() else null
+
+        return localCustomPlaylists.value.firstOrNull { pl ->
+            if (!sourceId.isNullOrBlank() && !pl.sourceId.isNullOrBlank()) {
+                pl.sourceId.equals(sourceId, ignoreCase = true)
+            } else if (targetAuthor != null && pl.effectiveAuthor != null) {
+                pl.effectiveAuthor.equals(targetAuthor, ignoreCase = true) &&
+                    pl.displayTitle.equals(targetDisplay, ignoreCase = true)
+            } else {
+                pl.displayTitle.equals(targetDisplay, ignoreCase = true) ||
+                    pl.title.equals(title, ignoreCase = true)
+            }
+        }
+    }
+
+    fun saveLocalPlaylist(
+        title: String,
+        songs: List<Song>,
+        source: String = "YOUTUBE",
+        author: String? = null,
+        authorAvatarUrl: String? = null,
+        sourceId: String? = null,
+        coverUrl: String? = null,
+        isAlbum: Boolean = false,
+        replaceExisting: Boolean = true,
+    ): String {
+        val targetDisplay = if (title.contains(" • ")) title.split(" • ", limit = 2)[1].trim() else title
+        val targetAuthor = author?.takeIf { it.isNotBlank() } ?: if (title.contains(" • ")) title.split(" • ", limit = 2)[0].trim() else null
+
         val list = localCustomPlaylists.value.toMutableList()
-        list.add(0, playlist)
+        val existingIndex = list.indexOfFirst { pl ->
+            if (!sourceId.isNullOrBlank() && !pl.sourceId.isNullOrBlank()) {
+                pl.sourceId.equals(sourceId, ignoreCase = true)
+            } else if (targetAuthor != null && pl.effectiveAuthor != null) {
+                pl.effectiveAuthor.equals(targetAuthor, ignoreCase = true) &&
+                    pl.displayTitle.equals(targetDisplay, ignoreCase = true)
+            } else {
+                pl.title.equals(title, ignoreCase = true) || pl.displayTitle.equals(targetDisplay, ignoreCase = true)
+            }
+        }
+
+        val id: String
+        if (existingIndex >= 0 && replaceExisting) {
+            val existing = list[existingIndex]
+            id = existing.id
+            val mergedSongs = (existing.songs + songs).distinctBy { s ->
+                if (s.videoId.isNotBlank()) s.videoId else "${s.title.lowercase()}:${s.artist.lowercase()}"
+            }
+            val updated = existing.copy(
+                title = title,
+                songs = if (songs.size >= existing.songs.size) songs else mergedSongs,
+                source = source,
+                author = author ?: existing.author,
+                authorAvatarUrl = authorAvatarUrl ?: existing.authorAvatarUrl,
+                sourceId = sourceId ?: existing.sourceId,
+                lastSyncedAt = System.currentTimeMillis(),
+                coverUrl = coverUrl ?: existing.coverUrl,
+                isAlbum = isAlbum || existing.isAlbum,
+            )
+            list[existingIndex] = updated
+        } else {
+            id = "local_pl_" + System.currentTimeMillis()
+            val finalTitle = if (existingIndex >= 0 && !replaceExisting) "$title (Copy)" else title
+            val playlist = CustomLocalPlaylist(
+                id = id,
+                title = finalTitle,
+                songs = songs,
+                source = source,
+                author = author,
+                authorAvatarUrl = authorAvatarUrl,
+                sourceId = sourceId,
+                lastSyncedAt = System.currentTimeMillis(),
+                coverUrl = coverUrl,
+                isAlbum = isAlbum,
+            )
+            list.add(0, playlist)
+        }
+
+        val deduplicated = deduplicatePlaylists(list)
+        localCustomPlaylists.value = deduplicated
+        persistLocalCustomPlaylists(deduplicated)
+        return id
+    }
+
+    fun renameLocalPlaylist(id: String, newTitle: String) {
+        val trimmed = newTitle.trim().ifBlank { return }
+        val list = localCustomPlaylists.value.map { pl ->
+            if (pl.id == id) {
+                val author = pl.effectiveAuthor
+                val finalTitle = if (author != null && !trimmed.contains(" • ")) {
+                    "$author • $trimmed"
+                } else {
+                    trimmed
+                }
+                pl.copy(title = finalTitle)
+            } else {
+                pl
+            }
+        }
         localCustomPlaylists.value = list
         persistLocalCustomPlaylists(list)
-        return id
+    }
+
+    fun deleteLocalPlaylistsByAuthor(author: String) {
+        val list = localCustomPlaylists.value.filterNot { pl ->
+            pl.effectiveAuthor?.equals(author, ignoreCase = true) == true
+        }
+        localCustomPlaylists.value = list
+        persistLocalCustomPlaylists(list)
     }
 
     fun deleteLocalPlaylist(id: String) {
         val list = localCustomPlaylists.value.filterNot { it.id == id }
         localCustomPlaylists.value = list
         persistLocalCustomPlaylists(list)
+    }
+
+    fun addSongToLocalPlaylist(playlistIdOrTitle: String, song: Song) {
+        val list = localCustomPlaylists.value.toMutableList()
+        val index = list.indexOfFirst { it.id == playlistIdOrTitle || it.title.equals(playlistIdOrTitle, ignoreCase = true) }
+        if (index >= 0) {
+            val pl = list[index]
+            val alreadyIn = pl.songs.any { (it.videoId.isNotBlank() && it.videoId == song.videoId) || (it.title == song.title && it.artist == song.artist) }
+            if (!alreadyIn) {
+                list[index] = pl.copy(
+                    songs = pl.songs + song,
+                    lastSyncedAt = System.currentTimeMillis(),
+                    coverUrl = pl.coverUrl ?: song.thumbnailUrl,
+                )
+                localCustomPlaylists.value = list
+                persistLocalCustomPlaylists(list)
+            }
+        }
     }
 
     fun getLocalPlaylist(id: String): CustomLocalPlaylist? {
@@ -1643,7 +1942,24 @@ object AppSettings {
                     )
                 }
                 val source = (obj["source"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "YOUTUBE"
-                CustomLocalPlaylist(id = id, title = title, songs = songs, source = source)
+                val author = (obj["author"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                val authorAvatarUrl = (obj["authorAvatarUrl"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                val sourceId = (obj["sourceId"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                val lastSyncedAt = (obj["lastSyncedAt"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: 0L
+                val coverUrl = (obj["coverUrl"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                val isAlbum = (obj["isAlbum"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false
+                CustomLocalPlaylist(
+                    id = id,
+                    title = title,
+                    songs = songs,
+                    source = source,
+                    author = author,
+                    authorAvatarUrl = authorAvatarUrl,
+                    sourceId = sourceId,
+                    lastSyncedAt = lastSyncedAt,
+                    coverUrl = coverUrl,
+                    isAlbum = isAlbum,
+                )
             }
         }.getOrDefault(emptyList())
     }
@@ -1652,7 +1968,13 @@ object AppSettings {
         val raw = prefs.getString(KEY_LOCAL_CUSTOM_PLAYLISTS, null)
         if (!raw.isNullOrBlank()) {
             val parsed = parseCustomPlaylistsJson(raw)
-            if (parsed.isNotEmpty()) return parsed
+            if (parsed.isNotEmpty()) {
+                val deduplicated = deduplicatePlaylists(parsed)
+                if (deduplicated.size != parsed.size) {
+                    persistLocalCustomPlaylists(deduplicated)
+                }
+                return deduplicated
+            }
         }
         return emptyList()
     }
@@ -1665,6 +1987,12 @@ object AppSettings {
                         put("id", kotlinx.serialization.json.JsonPrimitive(pl.id))
                         put("title", kotlinx.serialization.json.JsonPrimitive(pl.title))
                         put("source", kotlinx.serialization.json.JsonPrimitive(pl.source))
+                        pl.author?.let { put("author", kotlinx.serialization.json.JsonPrimitive(it)) }
+                        pl.authorAvatarUrl?.let { put("authorAvatarUrl", kotlinx.serialization.json.JsonPrimitive(it)) }
+                        pl.sourceId?.let { put("sourceId", kotlinx.serialization.json.JsonPrimitive(it)) }
+                        pl.coverUrl?.let { put("coverUrl", kotlinx.serialization.json.JsonPrimitive(it)) }
+                        if (pl.isAlbum) put("isAlbum", kotlinx.serialization.json.JsonPrimitive(true))
+                        if (pl.lastSyncedAt > 0L) put("lastSyncedAt", kotlinx.serialization.json.JsonPrimitive(pl.lastSyncedAt))
                         put(
                             "songs",
                             kotlinx.serialization.json.buildJsonArray {

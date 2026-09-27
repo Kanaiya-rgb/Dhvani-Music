@@ -72,13 +72,16 @@ fun WavySlider(
     strokeWidth: Dp = 4.dp,
     thumbRadius: Dp = 8.dp,
     wavelength: Dp = 24.dp,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
     val density = LocalDensity.current
     val strokeWidthPx = with(density) { strokeWidth.toPx() }
     val thumbRadiusPx = with(density) { thumbRadius.toPx() }
     val wavelengthPx = with(density) { wavelength.toPx() }
 
-    val normalizedValue = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start))
+    val rangeSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
+    val normalizedValue = ((value - valueRange.start) / rangeSpan)
         .coerceIn(0f, 1f)
 
     var isDragging by remember { mutableStateOf(false) }
@@ -160,6 +163,8 @@ fun WavySlider(
             val centerY = size.height / 2f
             val totalWidth = size.width
             val progressX = totalWidth * displayValue
+            val bufferedFrac = ((bufferedValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val bufferedX = totalWidth * bufferedFrac
             val maxWaveHeight = 4.dp.toPx() * animatedAmplitude
 
             val activePath = Path()
@@ -192,15 +197,28 @@ fun WavySlider(
                 inactivePath.lineTo(totalWidth, centerY)
             }
 
-            drawPath(
-                path = activePath,
-                color = activeColor,
-                style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round),
-            )
-
+            // Inactive track
             drawPath(
                 path = inactivePath,
                 color = inactiveColor,
+                style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round),
+            )
+
+            // Buffered track (behind active wave)
+            if (bufferedX > progressX) {
+                drawLine(
+                    color = bufferedColor,
+                    start = Offset(progressX, centerY),
+                    end = Offset(bufferedX, centerY),
+                    strokeWidth = strokeWidthPx,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            // Active played wave path
+            drawPath(
+                path = activePath,
+                color = activeColor,
                 style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round),
             )
 
@@ -224,6 +242,8 @@ fun SquigglySlider(
     onValueChangeFinished: (() -> Unit)? = null,
     colors: SliderColors = SliderDefaults.colors(),
     isPlaying: Boolean = true,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
     val primaryColor = colors.activeTrackColor
     val inactiveColor = colors.inactiveTrackColor
@@ -232,7 +252,7 @@ fun SquigglySlider(
     var dragPosition by remember { mutableFloatStateOf(value) }
 
     val currentValue = if (isDragging) dragPosition else value
-    val duration = valueRange.endInclusive - valueRange.start
+    val duration = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
     val position = currentValue - valueRange.start
 
     var phaseOffset by remember { mutableFloatStateOf(0f) }
@@ -334,9 +354,11 @@ fun SquigglySlider(
                 .height(48.dp),
         ) {
             val strokeWidth = 5.dp.toPx()
-            val progress = if (duration > 0f) (position / duration).coerceIn(0f, 1f) else 0f
+            val progress = (position / duration).coerceIn(0f, 1f)
             val totalWidth = size.width
             val totalProgressPx = totalWidth * progress
+            val bufferedFrac = ((bufferedValue - valueRange.start) / duration).coerceIn(0f, 1f)
+            val totalBufferedPx = totalWidth * bufferedFrac
             val centerY = size.height / 2f
 
             val waveProgressPx = if (!transitionEnabled || progress > matchedWaveEndpoint) {
@@ -408,7 +430,12 @@ fun SquigglySlider(
             }
 
             drawPathSegment(0f, totalProgressPx, primaryColor)
-            drawPathSegment(totalProgressPx, totalWidth, inactiveTrackColor)
+            if (totalBufferedPx > totalProgressPx) {
+                drawPathSegment(totalProgressPx, totalBufferedPx, bufferedColor)
+                drawPathSegment(totalBufferedPx, totalWidth, inactiveTrackColor)
+            } else {
+                drawPathSegment(totalProgressPx, totalWidth, inactiveTrackColor)
+            }
 
             fun getWaveY(x: Float): Float {
                 val phase = (x - waveStart) / waveLength
@@ -468,19 +495,24 @@ fun PlayerSliderTrack(
     modifier: Modifier = Modifier,
     colors: SliderColors = SliderDefaults.colors(),
     trackHeight: Dp = 10.dp,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
     val inactiveTrackColor = colors.inactiveTrackColor
     val activeTrackColor = colors.activeTrackColor
     val valueRange = sliderState.valueRange
+    val rangeSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
     Canvas(
         modifier
             .fillMaxWidth()
             .height(trackHeight),
     ) {
-        val fraction = ((sliderState.value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+        val fraction = ((sliderState.value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+        val bufferedFraction = ((bufferedValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
         val centerY = size.height / 2f
         val stroke = trackHeight.toPx()
 
+        // Base inactive track
         drawLine(
             color = inactiveTrackColor,
             start = Offset(0f, centerY),
@@ -488,13 +520,28 @@ fun PlayerSliderTrack(
             strokeWidth = stroke,
             cap = StrokeCap.Round,
         )
-        drawLine(
-            color = activeTrackColor,
-            start = Offset(0f, centerY),
-            end = Offset(size.width * fraction, centerY),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
+
+        // Pre-buffered track (YouTube style)
+        if (bufferedFraction > fraction) {
+            drawLine(
+                color = bufferedColor,
+                start = Offset(0f, centerY),
+                end = Offset(size.width * bufferedFraction, centerY),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+        }
+
+        // Active played progress
+        if (fraction > 0f) {
+            drawLine(
+                color = activeTrackColor,
+                start = Offset(0f, centerY),
+                end = Offset(size.width * fraction, centerY),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+        }
     }
 }
 
@@ -511,8 +558,11 @@ fun NeonGlowSlider(
     colors: SliderColors = SliderDefaults.colors(),
     isPlaying: Boolean = true,
     enabled: Boolean = true,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
-    val normalizedValue = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+    val rangeSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
+    val normalizedValue = ((value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
     var isDragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(normalizedValue) }
     val displayValue = if (isDragging) dragValue else normalizedValue
@@ -571,6 +621,8 @@ fun NeonGlowSlider(
             val centerY = size.height / 2f
             val trackWidth = size.width
             val progressX = (trackWidth * displayValue).coerceIn(0f, trackWidth)
+            val bufferedFrac = ((bufferedValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val bufferedX = (trackWidth * bufferedFrac).coerceIn(0f, trackWidth)
 
             // Inactive track (hollow dark neon outline)
             drawRoundRect(
@@ -579,6 +631,16 @@ fun NeonGlowSlider(
                 size = Size(trackWidth, 5.dp.toPx()),
                 cornerRadius = CornerRadius(10f, 10f),
             )
+
+            // Buffered Track Layer
+            if (bufferedX > 0f) {
+                drawRoundRect(
+                    color = bufferedColor,
+                    topLeft = Offset(0f, centerY - 2.5.dp.toPx()),
+                    size = Size(bufferedX, 5.dp.toPx()),
+                    cornerRadius = CornerRadius(10f, 10f),
+                )
+            }
 
             // Active Track Multi-layered Neon Bloom
             if (progressX > 0f) {
@@ -650,8 +712,11 @@ fun GradientFlowSlider(
     colors: SliderColors = SliderDefaults.colors(),
     isPlaying: Boolean = true,
     enabled: Boolean = true,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
-    val normalizedValue = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+    val rangeSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
+    val normalizedValue = ((value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
     var isDragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(normalizedValue) }
     val displayValue = if (isDragging) dragValue else normalizedValue
@@ -710,6 +775,8 @@ fun GradientFlowSlider(
             val centerY = size.height / 2f
             val trackW = size.width
             val progressX = (trackW * displayValue).coerceIn(0f, trackW)
+            val bufferedFrac = ((bufferedValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val bufferedX = (trackW * bufferedFrac).coerceIn(0f, trackW)
             val trackH = (if (isDragging) 8.dp else 6.dp).toPx()
 
             // Inactive track capsule
@@ -719,6 +786,16 @@ fun GradientFlowSlider(
                 size = Size(trackW, trackH),
                 cornerRadius = CornerRadius(trackH / 2f, trackH / 2f),
             )
+
+            // Buffered track capsule
+            if (bufferedX > 0f) {
+                drawRoundRect(
+                    color = bufferedColor,
+                    topLeft = Offset(0f, centerY - trackH / 2f),
+                    size = Size(bufferedX, trackH),
+                    cornerRadius = CornerRadius(trackH / 2f, trackH / 2f),
+                )
+            }
 
             // Dynamic Aurora Gradient across progress
             if (progressX > 0f) {
@@ -778,8 +855,11 @@ fun CosmicSlider(
     colors: SliderColors = SliderDefaults.colors(),
     isPlaying: Boolean = true,
     enabled: Boolean = true,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
-    val normalizedValue = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+    val rangeSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
+    val normalizedValue = ((value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
     var isDragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(normalizedValue) }
     val displayValue = if (isDragging) dragValue else normalizedValue
@@ -838,6 +918,8 @@ fun CosmicSlider(
             val centerY = size.height / 2f
             val totalW = size.width
             val progressX = (totalW * displayValue).coerceIn(0f, totalW)
+            val bufferedFrac = ((bufferedValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val bufferedX = (totalW * bufferedFrac).coerceIn(0f, totalW)
 
             // Constellation line (inactive)
             drawLine(
@@ -847,6 +929,17 @@ fun CosmicSlider(
                 strokeWidth = 3.dp.toPx(),
                 cap = StrokeCap.Round,
             )
+
+            // Buffered nebulous trail
+            if (bufferedX > 0f) {
+                drawLine(
+                    color = bufferedColor,
+                    start = Offset(0f, centerY),
+                    end = Offset(bufferedX, centerY),
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+            }
 
             // Galactic core line
             if (progressX > 0f) {
@@ -903,8 +996,11 @@ fun LiquidLavaSlider(
     colors: SliderColors = SliderDefaults.colors(),
     isPlaying: Boolean = true,
     enabled: Boolean = true,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
-    val normalizedValue = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+    val rangeSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
+    val normalizedValue = ((value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
     var isDragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(normalizedValue) }
     val displayValue = if (isDragging) dragValue else normalizedValue
@@ -963,6 +1059,8 @@ fun LiquidLavaSlider(
             val centerY = size.height / 2f
             val totalW = size.width
             val progressX = (totalW * displayValue).coerceIn(0f, totalW)
+            val bufferedFrac = ((bufferedValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val bufferedX = (totalW * bufferedFrac).coerceIn(0f, totalW)
 
             // Inactive track container
             drawRoundRect(
@@ -971,6 +1069,16 @@ fun LiquidLavaSlider(
                 size = Size(totalW, 8.dp.toPx()),
                 cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
             )
+
+            // Buffered track
+            if (bufferedX > 0f) {
+                drawRoundRect(
+                    color = bufferedColor,
+                    topLeft = Offset(0f, centerY - 4.dp.toPx()),
+                    size = Size(bufferedX, 8.dp.toPx()),
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+                )
+            }
 
             if (progressX > 0f) {
                 // Organic morphing lava body
@@ -1025,8 +1133,11 @@ fun AudioBarsSlider(
     colors: SliderColors = SliderDefaults.colors(),
     isPlaying: Boolean = true,
     enabled: Boolean = true,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
-    val normalizedValue = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+    val rangeSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
+    val normalizedValue = ((value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
     var isDragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(normalizedValue) }
     val displayValue = if (isDragging) dragValue else normalizedValue
@@ -1085,6 +1196,8 @@ fun AudioBarsSlider(
             val centerY = size.height / 2f
             val totalW = size.width
             val progressX = (totalW * displayValue).coerceIn(0f, totalW)
+            val bufferedFrac = ((bufferedValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val bufferedX = (totalW * bufferedFrac).coerceIn(0f, totalW)
 
             val barCount = 38
             val gap = 3.dp.toPx()
@@ -1094,13 +1207,18 @@ fun AudioBarsSlider(
                 val barLeft = i * (barW + gap)
                 val barCenter = barLeft + barW / 2f
                 val isPlayed = barCenter <= progressX
+                val isBuffered = !isPlayed && barCenter <= bufferedX
 
                 // Height modulation simulating an audio spectrum
                 val factor = ((i * 3.7f) % 7f) / 7f
                 val liveBounce = if (isPlaying) sin(bouncePhase + i * 0.7f) * 0.4f + 0.6f else 0.5f
                 val barH = (6.dp.toPx() + 18.dp.toPx() * factor * liveBounce)
 
-                val barColor = if (isPlayed) primary else inactive
+                val barColor = when {
+                    isPlayed -> primary
+                    isBuffered -> bufferedColor
+                    else -> inactive
+                }
 
                 drawRoundRect(
                     color = barColor,
@@ -1135,8 +1253,11 @@ fun RetroDotMatrixSlider(
     colors: SliderColors = SliderDefaults.colors(),
     isPlaying: Boolean = true,
     enabled: Boolean = true,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
-    val normalizedValue = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+    val rangeSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
+    val normalizedValue = ((value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
     var isDragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(normalizedValue) }
     val displayValue = if (isDragging) dragValue else normalizedValue
@@ -1184,6 +1305,8 @@ fun RetroDotMatrixSlider(
             val centerY = size.height / 2f
             val totalW = size.width
             val progressX = (totalW * displayValue).coerceIn(0f, totalW)
+            val bufferedFrac = ((bufferedValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val bufferedX = (totalW * bufferedFrac).coerceIn(0f, totalW)
 
             val rows = 3
             val cols = 36
@@ -1194,13 +1317,15 @@ fun RetroDotMatrixSlider(
             for (c in 0 until cols) {
                 val cx = c * (dotRadius * 2f + colGap) + dotRadius
                 val isLit = cx <= progressX
+                val isBuffered = !isLit && cx <= bufferedX
 
                 for (r in 0 until rows) {
                     val cy = centerY + (r - 1) * (dotRadius * 2f + rowGap)
-                    val dotColor = if (isLit) {
-                        // Color glow variation
-                        if (c >= cols * 0.85f) Color(0xFFFF4D4D) else primary
-                    } else inactive
+                    val dotColor = when {
+                        isLit -> if (c >= cols * 0.85f) Color(0xFFFF4D4D) else primary
+                        isBuffered -> bufferedColor
+                        else -> inactive
+                    }
 
                     drawCircle(
                         color = dotColor,
@@ -1238,8 +1363,11 @@ fun VinylGrooveSlider(
     colors: SliderColors = SliderDefaults.colors(),
     isPlaying: Boolean = true,
     enabled: Boolean = true,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
-    val normalizedValue = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+    val rangeSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
+    val normalizedValue = ((value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
     var isDragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(normalizedValue) }
     val displayValue = if (isDragging) dragValue else normalizedValue
@@ -1287,6 +1415,8 @@ fun VinylGrooveSlider(
             val centerY = size.height / 2f
             val totalW = size.width
             val progressX = (totalW * displayValue).coerceIn(0f, totalW)
+            val bufferedFrac = ((bufferedValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val bufferedX = (totalW * bufferedFrac).coerceIn(0f, totalW)
 
             // Multiple micro-grooves (vinyl sound grooves)
             val grooves = 5
@@ -1299,6 +1429,15 @@ fun VinylGrooveSlider(
                     end = Offset(totalW, gy),
                     strokeWidth = 1.dp.toPx(),
                 )
+                // Buffered groove portion
+                if (bufferedX > 0f) {
+                    drawLine(
+                        color = bufferedColor,
+                        start = Offset(0f, gy),
+                        end = Offset(bufferedX, gy),
+                        strokeWidth = 1.2.dp.toPx(),
+                    )
+                }
                 // Active played groove
                 if (progressX > 0f) {
                     drawLine(
@@ -1342,8 +1481,11 @@ fun CyberBeamSlider(
     colors: SliderColors = SliderDefaults.colors(),
     isPlaying: Boolean = true,
     enabled: Boolean = true,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
-    val normalizedValue = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+    val rangeSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.001f)
+    val normalizedValue = ((value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
     var isDragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(normalizedValue) }
     val displayValue = if (isDragging) dragValue else normalizedValue
@@ -1402,6 +1544,8 @@ fun CyberBeamSlider(
             val centerY = size.height / 2f
             val totalW = size.width
             val progressX = (totalW * displayValue).coerceIn(0f, totalW)
+            val bufferedFrac = ((bufferedValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val bufferedX = (totalW * bufferedFrac).coerceIn(0f, totalW)
 
             // Geometric tech bounds (brackets on left and right)
             val bracketH = 8.dp.toPx()
@@ -1410,6 +1554,11 @@ fun CyberBeamSlider(
 
             // Laser rail
             drawLine(inactive, Offset(0f, centerY), Offset(totalW, centerY), 3.dp.toPx())
+
+            // Buffered laser rail glow
+            if (bufferedX > 0f) {
+                drawLine(bufferedColor, Offset(0f, centerY), Offset(bufferedX, centerY), 3.5.dp.toPx())
+            }
 
             if (progressX > 0f) {
                 // High voltage laser beam
@@ -1453,6 +1602,7 @@ fun CyberBeamSlider(
  * Universal player slider component that dynamically renders the exact [SliderStyle]
  * configured by the user (Wavy, Squiggly, Neon Glow, Cosmic, Audio Bars, Cyber Beam, etc.)
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DynamicPlayerSlider(
     value: Float,
@@ -1466,6 +1616,8 @@ fun DynamicPlayerSlider(
     modifier: Modifier = Modifier,
     mixing: Boolean = false,
     transitionWindow: ClosedFloatingPointRange<Float>? = null,
+    bufferedValue: Float = 0f,
+    bufferedColor: Color = Color.White.copy(alpha = 0.38f),
 ) {
     val artworkSliderColors = SliderDefaults.colors(
         activeTrackColor = activeColor,
@@ -1482,6 +1634,8 @@ fun DynamicPlayerSlider(
                 isPlaying = isPlaying,
                 colors = artworkSliderColors,
                 modifier = modifier.fillMaxWidth(),
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
         sliderStyle == SliderStyle.WAVY -> {
@@ -1492,6 +1646,8 @@ fun DynamicPlayerSlider(
                 isPlaying = isPlaying,
                 colors = artworkSliderColors,
                 modifier = modifier.fillMaxWidth(),
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
         sliderStyle == SliderStyle.SLIM -> {
@@ -1504,6 +1660,8 @@ fun DynamicPlayerSlider(
                 activeHeight = 4.dp,
                 activeColor = activeColor,
                 inactiveColor = inactiveColor,
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
         sliderStyle == SliderStyle.MATERIAL -> {
@@ -1513,6 +1671,14 @@ fun DynamicPlayerSlider(
                 onValueChangeFinished = onValueChangeFinished,
                 colors = artworkSliderColors,
                 modifier = modifier.fillMaxWidth(),
+                track = { sliderState ->
+                    PlayerSliderTrack(
+                        sliderState = sliderState,
+                        colors = artworkSliderColors,
+                        bufferedValue = bufferedValue,
+                        bufferedColor = bufferedColor,
+                    )
+                },
             )
         }
         sliderStyle == SliderStyle.NEON_GLOW -> {
@@ -1523,6 +1689,8 @@ fun DynamicPlayerSlider(
                 isPlaying = isPlaying,
                 colors = artworkSliderColors,
                 modifier = modifier.fillMaxWidth(),
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
         sliderStyle == SliderStyle.GRADIENT_FLOW -> {
@@ -1533,6 +1701,8 @@ fun DynamicPlayerSlider(
                 isPlaying = isPlaying,
                 colors = artworkSliderColors,
                 modifier = modifier.fillMaxWidth(),
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
         sliderStyle == SliderStyle.COSMIC -> {
@@ -1543,6 +1713,8 @@ fun DynamicPlayerSlider(
                 isPlaying = isPlaying,
                 colors = artworkSliderColors,
                 modifier = modifier.fillMaxWidth(),
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
         sliderStyle == SliderStyle.LIQUID_LAVA -> {
@@ -1553,6 +1725,8 @@ fun DynamicPlayerSlider(
                 isPlaying = isPlaying,
                 colors = artworkSliderColors,
                 modifier = modifier.fillMaxWidth(),
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
         sliderStyle == SliderStyle.AUDIO_BARS -> {
@@ -1563,6 +1737,8 @@ fun DynamicPlayerSlider(
                 isPlaying = isPlaying,
                 colors = artworkSliderColors,
                 modifier = modifier.fillMaxWidth(),
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
         sliderStyle == SliderStyle.RETRO_LED -> {
@@ -1573,6 +1749,8 @@ fun DynamicPlayerSlider(
                 isPlaying = isPlaying,
                 colors = artworkSliderColors,
                 modifier = modifier.fillMaxWidth(),
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
         sliderStyle == SliderStyle.VINYL_GROOVE -> {
@@ -1583,6 +1761,8 @@ fun DynamicPlayerSlider(
                 isPlaying = isPlaying,
                 colors = artworkSliderColors,
                 modifier = modifier.fillMaxWidth(),
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
         sliderStyle == SliderStyle.CYBER_BEAM -> {
@@ -1593,6 +1773,8 @@ fun DynamicPlayerSlider(
                 isPlaying = isPlaying,
                 colors = artworkSliderColors,
                 modifier = modifier.fillMaxWidth(),
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
         else -> {
@@ -1604,6 +1786,8 @@ fun DynamicPlayerSlider(
                 activeColor = activeColor,
                 inactiveColor = inactiveColor,
                 transitionWindow = transitionWindow,
+                bufferedValue = bufferedValue,
+                bufferedColor = bufferedColor,
             )
         }
     }

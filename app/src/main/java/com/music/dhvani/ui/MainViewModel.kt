@@ -42,6 +42,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -227,6 +228,56 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val _lyricsChecked = MutableStateFlow(false)
     val lyricsChecked: StateFlow<Boolean> = _lyricsChecked.asStateFlow()
+
+    private val _probedLyricsSources = MutableStateFlow<Map<LyricsSource, Boolean>>(emptyMap())
+    val probedLyricsSources: StateFlow<Map<LyricsSource, Boolean>> = _probedLyricsSources.asStateFlow()
+
+    fun probeLyricsSources(
+        title: String,
+        artist: String,
+        durationMs: Long,
+        album: String? = null,
+        videoId: String = "",
+    ) {
+        viewModelScope.launch {
+            val results = com.music.dhvani.data.lyrics.LyricsRepository.probeAvailableSources(
+                title = title,
+                artist = artist,
+                durationMs = durationMs,
+                album = album,
+                videoId = videoId,
+            )
+            _probedLyricsSources.value = results
+        }
+    }
+
+    fun switchLyricsSource(
+        source: LyricsSource,
+        videoId: String,
+        title: String,
+        artist: String,
+        durationMs: Long,
+        album: String? = null,
+    ) {
+        lyricsJob?.cancel()
+        lyricsJob = viewModelScope.launch {
+            _lyricsChecked.value = false
+            val result = com.music.dhvani.data.lyrics.LyricsRepository.fetchLyricsFromExplicitSource(
+                source = source,
+                videoId = videoId,
+                title = title,
+                artist = artist,
+                durationMs = durationMs,
+                album = album,
+            )
+            if (result != null && result.lines.isNotEmpty()) {
+                _lyrics.value = result.lines
+                _lyricsSource.value = result.source
+                lyricsFor = videoId to setOf(source)
+            }
+            _lyricsChecked.value = true
+        }
+    }
 
     private var lyricsJob: Job? = null
 
@@ -564,6 +615,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     /**
+     * Instantly marks the track as disliked locally in the database & remote API,
+     * and triggers a smooth 150ms fade-out and skip to the next track.
+     */
+    fun dislikeAndSkipCurrentTrack(
+        videoId: String,
+        controller: androidx.media3.session.MediaController? = null,
+        onDone: (() -> Unit)? = null,
+    ) {
+        setLike(videoId, LikeStatus.DISLIKE)
+        if (controller != null) {
+            viewModelScope.launch {
+                val initialVol = controller.volume
+                val steps = 5
+                for (i in 1..steps) {
+                    delay(30)
+                    controller.volume = (initialVol * (1f - (i.toFloat() / steps))).coerceAtLeast(0f)
+                }
+                controller.seekToNextMediaItem()
+                controller.volume = initialVol
+                onDone?.invoke()
+            }
+        } else {
+            onDone?.invoke()
+        }
+    }
+
+    /**
      * Saves the album or playlist [browseId] to the library, or takes it out.
      *
      * Written to the screen first and rolled back if YouTube refuses, for the
@@ -654,10 +732,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Re-fetched rather than cached for the session: playlists are edited here. */
     fun loadPlaylists() {
-        if (!_signedIn.value || _playlistsLoading.value) return
+        val local = AppSettings.localCustomPlaylists.value.map { pl ->
+            UserPlaylist(
+                playlistId = pl.id,
+                title = pl.title,
+                subtitle = "${pl.songs.size} songs",
+                thumbnailUrl = pl.coverUrl ?: pl.songs.firstOrNull()?.thumbnailUrl,
+            )
+        }
+        if (!_signedIn.value) {
+            _playlists.value = local
+            return
+        }
+        if (_playlistsLoading.value) return
         _playlistsLoading.value = true
         viewModelScope.launch {
-            YtMusicRepository.userPlaylists().onSuccess { _playlists.value = it }
+            YtMusicRepository.userPlaylists().onSuccess { ytList ->
+                _playlists.value = (ytList + local).distinctBy { it.playlistId }
+            }
             _playlistsLoading.value = false
         }
     }
@@ -731,6 +823,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * part of fixing. Still after the answer, not ahead of it.
      */
     fun addToPlaylist(playlist: UserPlaylist, song: Song) {
+        val isLocal = playlist.playlistId.startsWith("local_") ||
+            AppSettings.localCustomPlaylists.value.any { it.id == playlist.playlistId || it.title.equals(playlist.title, ignoreCase = true) }
+        if (isLocal || !_signedIn.value) {
+            AppSettings.addSongToLocalPlaylist(playlist.playlistId, song)
+            libraryStale = true
+            loadLibrary()
+            loadPlaylists()
+            return
+        }
         if (!requireSignIn()) return
         viewModelScope.launch {
             YtMusicRepository.addToPlaylist(playlist.playlistId, listOf(song.videoId)).fold(
@@ -752,8 +853,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * playlist the user has to add to again.
      */
     fun createPlaylist(title: String, privacy: PlaylistPrivacy, song: Song? = null) {
-        if (!requireSignIn()) return
         val name = title.trim().ifBlank { "New playlist" }
+        if (!_signedIn.value) {
+            val songs = listOfNotNull(song)
+            val newId = AppSettings.saveLocalPlaylist(
+                title = name,
+                songs = songs,
+                source = "LOCAL",
+                author = AppSettings.userName.value,
+                coverUrl = song?.thumbnailUrl,
+            )
+            libraryStale = true
+            loadLibrary()
+            loadPlaylists()
+            val created = UserPlaylist(
+                playlistId = newId,
+                title = name,
+                subtitle = if (song != null) "1 song" else "0 songs",
+                thumbnailUrl = song?.thumbnailUrl,
+            )
+            _playlists.value = listOf(created) + _playlists.value.filterNot { it.playlistId == created.playlistId }
+            return
+        }
+        if (!requireSignIn()) return
         viewModelScope.launch {
             YtMusicRepository.createPlaylist(
                 title = name,
@@ -810,14 +932,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         privacy: PlaylistPrivacy = PlaylistPrivacy.PRIVATE,
         songs: List<Song>,
         source: String = "YOUTUBE",
+        author: String? = null,
+        authorAvatarUrl: String? = null,
+        coverUrl: String? = null,
+        isAlbum: Boolean = false,
         onSuccess: ((String) -> Unit)? = null,
         onFailure: ((String) -> Unit)? = null,
     ) {
-        val name = title.trim().ifBlank { "Imported Playlist" }
+        val name = title.trim().ifBlank { if (isAlbum) "Imported Album" else "Imported Playlist" }
         val videoIds = songs.mapNotNull { it.videoId.takeIf { id -> id.isNotBlank() } }
 
         viewModelScope.launch {
-            if (_signedIn.value && source != "SPOTIFY") {
+            if (_signedIn.value && source != "SPOTIFY" && source != "SPOTIFY_PROFILE" && !isAlbum) {
                 YtMusicRepository.createPlaylist(
                     title = name,
                     privacy = privacy,
@@ -836,7 +962,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             playlistId = playlistId,
                             title = name,
                             subtitle = "${songs.size} songs",
-                            thumbnailUrl = songs.firstOrNull()?.thumbnailUrl,
+                            thumbnailUrl = coverUrl ?: songs.firstOrNull()?.thumbnailUrl,
                         )
                         _playlists.value = listOf(created) +
                             _playlists.value.filterNot { it.playlistId == created.playlistId }
@@ -851,19 +977,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 ),
                             ) + items.filterNot { it.browseId == created.browseId }
                         }
-                        AppSettings.saveLocalPlaylist(name, songs, source)
+                        AppSettings.saveLocalPlaylist(name, songs, source, author, authorAvatarUrl, coverUrl = coverUrl, isAlbum = isAlbum)
                         onSuccess?.invoke(name)
                     },
                     onFailure = {
                         // If YouTube sync fails, save to local device library
-                        AppSettings.saveLocalPlaylist(name, songs, source)
+                        AppSettings.saveLocalPlaylist(name, songs, source, author, authorAvatarUrl, coverUrl = coverUrl, isAlbum = isAlbum)
                         libraryStale = true
                         loadLibrary()
                         onSuccess?.invoke(name)
                     },
                 )
             } else {
-                AppSettings.saveLocalPlaylist(name, songs, source)
+                AppSettings.saveLocalPlaylist(name, songs, source, author, authorAvatarUrl, coverUrl = coverUrl, isAlbum = isAlbum)
                 libraryStale = true
                 loadLibrary()
                 onSuccess?.invoke(name)
@@ -1797,8 +1923,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val id = browseId.removePrefix("local:custom:")
                     val pl = AppSettings.getLocalPlaylist(id)
                     if (pl != null) {
-                        name = pl.title
-                        credit = "${pl.songs.size} songs"
+                        val (displayTitle, author) = if (pl.title.contains(" • ")) {
+                            val parts = pl.title.split(" • ", limit = 2)
+                            parts[1].trim() to parts[0].trim()
+                        } else {
+                            pl.title to null
+                        }
+                        name = displayTitle
+                        credit = if (author != null) "$author • ${pl.songs.size} songs" else "${pl.songs.size} songs"
                         artwork = pl.songs.firstOrNull()?.thumbnailUrl
                         UiState.Success(pl.songs)
                     } else {
@@ -2048,7 +2180,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun browseTypeOf(browseId: String, fallback: BrowseType = BrowseType.OTHER): BrowseType = when {
         // Not one of YouTube's, and the only one of these that says outright what
         // it is rather than being read off a prefix convention.
-        browseId.startsWith(Downloads.PLAYLIST_PREFIX) || browseId == "local:liked" -> BrowseType.PLAYLIST
+        browseId.startsWith(Downloads.PLAYLIST_PREFIX) ||
+            browseId == "local:liked" ||
+            browseId.startsWith("local:custom:") -> BrowseType.PLAYLIST
         browseId.startsWith("UC") -> BrowseType.ARTIST
         browseId.startsWith("MPREb") -> BrowseType.ALBUM
         browseId.startsWith("VL") || browseId.startsWith("PL") -> BrowseType.PLAYLIST
@@ -2076,6 +2210,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val context = getApplication<Application>()
             val result = when {
+                browseId.startsWith("local:custom:") -> runCatching {
+                    val plId = browseId.removePrefix("local:custom:")
+                    AppSettings.getLocalPlaylist(plId)?.songs.orEmpty()
+                        .ifEmpty { error("No songs in playlist") }
+                }
                 Downloads.recordIdOf(browseId) != null -> runCatching {
                     downloadedPlaylist(browseId).ifEmpty { error(DOWNLOADS_GONE) }
                 }

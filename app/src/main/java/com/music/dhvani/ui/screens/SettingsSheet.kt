@@ -51,6 +51,7 @@ import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Language
@@ -72,6 +73,7 @@ import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.content.ComponentName
@@ -113,6 +115,9 @@ import com.music.dhvani.data.changelog.ChangelogRepository
 import com.music.dhvani.data.changelog.ReleaseChangelog
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -254,6 +259,7 @@ fun SettingsScreen(
     val listenerName by AppSettings.userName.collectAsStateWithLifecycle()
     var showEditUserNameDialog by remember { mutableStateOf(false) }
     var showProfileCustomizationDialog by remember { mutableStateOf(false) }
+
 
     val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
     val sessionId by AppSettings.audioSessionId.collectAsStateWithLifecycle()
@@ -760,7 +766,7 @@ fun SettingsScreen(
                 title = "Listen Together",
                 subtitle = "Host or join synchronized music sessions with friends",
                 category = "Accounts & Integrations",
-                icon = Icons.Rounded.GraphicEq,
+                icon = Icons.Rounded.Group,
                 onClick = onAccountScrobbling,
             ),
             SearchableSettingItem(
@@ -828,6 +834,7 @@ fun SettingsScreen(
                     confirmImport = true
                 },
             ),
+
 
             // About & Updates
             SearchableSettingItem(
@@ -1098,6 +1105,7 @@ fun SettingsScreen(
                             subtitle = "Export or restore settings and listening history",
                             onClick = { currentSubScreen = SettingsSubScreen.BACKUP_RESTORE },
                         ),
+
                     ),
                 )
 
@@ -1116,13 +1124,11 @@ fun SettingsScreen(
                         MeldSettingsItemData(
                             icon = Icons.AutoMirrored.Rounded.Article,
                             title = "Changelog",
-                            subtitle = "Release notes & what's new",
                             onClick = { currentSubScreen = SettingsSubScreen.CHANGELOG },
                         ),
                         MeldSettingsItemData(
                             icon = Icons.Rounded.Info,
                             title = "About Dhvani Music",
-                            subtitle = "Version, developer, community & licenses",
                             onClick = { currentSubScreen = SettingsSubScreen.ABOUT },
                         ),
                     ),
@@ -1234,7 +1240,6 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.Rounded.GraphicEq,
                             title = "System equalizer",
-                            subtitle = "Open device audio effects panel",
                             trailing = { Chevron() },
                             onClick = { openEqualizer(context, sessionId) },
                         )
@@ -1306,11 +1311,9 @@ fun SettingsScreen(
                             icon = Icons.Rounded.SurroundSound,
                             title = "System Dolby Atmos panel",
                             badge = if (!hasDolbyPanel) "Not Supported" else null,
-                            subtitle = if (hasDolbyPanel) {
-                                "Launch device hardware Dolby Atmos or acoustic settings"
-                            } else {
+                            subtitle = if (!hasDolbyPanel) {
                                 "System Dolby Atmos control panel is not installed on this phone."
-                            },
+                            } else null,
                             enabled = hasDolbyPanel,
                             trailing = if (hasDolbyPanel) { { Chevron() } } else null,
                             onClick = if (hasDolbyPanel) { { DolbyUtils.openDolbyAtmos(context) } } else null,
@@ -1319,7 +1322,6 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.AutoMirrored.Rounded.VolumeOff,
                             title = stringResource(R.string.skip_silence),
-                            subtitle = stringResource(R.string.skip_silence_subtitle),
                             trailing = {
                                 Switch(
                                     checked = skipSilence,
@@ -1427,7 +1429,6 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.AutoMirrored.Rounded.Notes,
                             title = stringResource(R.string.synced_lyrics),
-                            subtitle = stringResource(R.string.synced_lyrics_subtitle),
                             trailing = {
                                 Switch(
                                     checked = syncedLyrics,
@@ -1494,7 +1495,6 @@ fun SettingsScreen(
                             SettingsRow(
                                 icon = Icons.Rounded.Tune,
                                 title = stringResource(R.string.lyrics_text_position),
-                                subtitle = "Horizontal alignment of sung lyric lines",
                                 value = when (lyricsPosition) {
                                     LyricsPosition.LEFT -> stringResource(R.string.left)
                                     LyricsPosition.CENTER -> stringResource(R.string.center)
@@ -1506,7 +1506,6 @@ fun SettingsScreen(
                             SettingsRow(
                                 icon = Icons.Rounded.AutoAwesome,
                                 title = stringResource(R.string.lyrics_animation_style_title),
-                                subtitle = "Transition effect as lines are highlighted",
                                 value = when (lyricsAnimationStyle) {
                                     LyricsAnimationStyle.NONE -> stringResource(R.string.lyrics_animation_none)
                                     LyricsAnimationStyle.FADE -> stringResource(R.string.lyrics_animation_fade)
@@ -1548,7 +1547,6 @@ fun SettingsScreen(
                             SettingsRow(
                                 icon = Icons.Rounded.Tune,
                                 title = stringResource(R.string.lyrics_text_size),
-                                subtitle = "Font size for lyric playback lines",
                                 value = "${lyricsTextSize.roundToInt()} sp",
                                 onClick = { showLyricsTextSizeDialog = true },
                             )
@@ -1556,7 +1554,6 @@ fun SettingsScreen(
                             SettingsRow(
                                 icon = Icons.Rounded.Tune,
                                 title = stringResource(R.string.lyrics_line_spacing),
-                                subtitle = "Vertical spacing multiplier between lyric lines",
                                 value = String.format(Locale.US, "%.1fx", lyricsLineSpacing),
                                 onClick = { showLyricsLineSpacingDialog = true },
                             )
@@ -1625,7 +1622,6 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.Rounded.AutoAwesome,
                             title = "Auto-download liked songs",
-                            subtitle = "Automatically download songs to your offline library when you like or favorite them",
                             trailing = {
                                 Switch(
                                     checked = autoDownloadLiked,
@@ -1642,7 +1638,6 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.Rounded.CloudDownload,
                             title = "Auto-download played songs",
-                            subtitle = "Download currently playing tracks automatically in the background",
                             trailing = {
                                 Switch(
                                     checked = autoDownloadOnPlay,
@@ -1680,7 +1675,6 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.AutoMirrored.Rounded.HelpOutline,
                             title = "Ask quality before download",
-                            subtitle = "Prompt to select audio quality and network policy every time you download a song",
                             trailing = {
                                 Switch(
                                     checked = alwaysAskDownloadOptions,
@@ -1865,7 +1859,6 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.Rounded.BluetoothAudio,
                             title = stringResource(R.string.resume_on_bluetooth),
-                            subtitle = stringResource(R.string.resume_on_bluetooth_subtitle),
                             trailing = {
                                 Switch(
                                     checked = resumeOnBluetooth,
@@ -1915,17 +1908,19 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.Rounded.FileUpload,
                             title = stringResource(R.string.export_data),
-                            subtitle = exportStatus ?: "Export settings and listening history as a unified JSON file",
+                            subtitle = exportStatus,
                             onClick = { exportPicker.launch(Backup.suggestedName()) },
                         )
                         RowDivider()
                         SettingsRow(
                             icon = Icons.Rounded.FileDownload,
                             title = stringResource(R.string.import_data),
-                            subtitle = importStatus ?: "Restore settings and listening history from a JSON backup file",
+                            subtitle = importStatus,
                             onClick = { confirmImport = true },
                         )
                     }
+
+
                 }
 
                 SettingsSubScreen.CHANGELOG -> {
@@ -2618,6 +2613,8 @@ fun SettingsScreen(
             },
         )
     }
+
+
 
     if (showProfileCustomizationDialog || showEditUserNameDialog) {
         var nameInput by remember { mutableStateOf(listenerName) }

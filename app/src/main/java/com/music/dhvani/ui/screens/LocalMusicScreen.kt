@@ -7,6 +7,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,9 +41,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Album
-import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MusicNote
@@ -63,6 +72,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -112,6 +123,7 @@ private const val LOCAL_TAB_ALBUMS = 2
  */
 @Composable
 fun LocalMusicScreen(
+    title: String = "Downloads",
     songs: List<Song>,
     onSongClick: (List<Song>, Int) -> Unit,
     onSongLongPress: (Song) -> Unit,
@@ -145,6 +157,7 @@ fun LocalMusicScreen(
      */
     collections: List<DownloadedCollection> = emptyList(),
     onExplore: (() -> Unit)? = null,
+    onImport: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -184,63 +197,136 @@ fun LocalMusicScreen(
     // right below the bar, so it only needs to clear the bar itself.
     val barHeight = topBarHeight()
 
+    val songsCount = songs.size
+    val artistsCount = remember(songs) { songs.map { it.artist }.filter { it.isNotBlank() }.distinct().size }
+    val albumsList = remember(songs, collections) { albumEntries(songs, collections) }
+    val albumsCount = albumsList.size
+
     Column(modifier = modifier.fillMaxSize()) {
-        // ── Search ───────────────────────────────────────────────────────────
-        // Above the tabs rather than inside each one, since a query typed on
-        // Songs is just as reasonable to carry over to Artists or Albums.
+        // ── Hero Header ───────────────────────────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    top = barHeight + TopBarContentGap,
+                    start = PAGE_GUTTER,
+                    end = PAGE_GUTTER,
+                    bottom = 8.dp,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = (-0.5).sp,
+                        ),
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    // Status Pill
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (songs.isNotEmpty()) Color(0xFF0F3824)
+                                else Color(0xFF282A2E)
+                            )
+                            .border(
+                                1.dp,
+                                if (songs.isNotEmpty()) Color(0xFF59DDA9).copy(alpha = 0.45f)
+                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                RoundedCornerShape(50),
+                            )
+                            .padding(horizontal = 9.dp, vertical = 3.5.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (songs.isNotEmpty()) Color(0xFF59DDA9) else Color(0xFFFF8A3D)),
+                            )
+                            Text(
+                                text = if (songs.isNotEmpty()) "OFFLINE READY" else "OFFLINE",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 0.6.sp,
+                                ),
+                                color = if (songs.isNotEmpty()) Color(0xFF59DDA9) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                if (songs.isNotEmpty()) {
+                    Text(
+                        text = "${songs.size} ${if (songs.size == 1) "track" else "tracks"} saved on device",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                        ),
+                    )
+                }
+            }
+        }
+
+        // ── Search Field ───────────────────────────────────────────────────────
         LocalSearchField(
             query = searchQuery,
             onQueryChange = { searchQuery = it },
-            modifier = Modifier.padding(
-                // The same clearance every other page under the frosted bar
-                // gets — see topBarContentPadding, which this screen can't use
-                // directly since its tab row is fixed and only the search field
-                // above it needs to clear the bar.
-                top = barHeight + TopBarContentGap,
-                start = PAGE_GUTTER,
-                end = PAGE_GUTTER,
-                bottom = 4.dp,
-            ),
+            modifier = Modifier
+                .padding(horizontal = PAGE_GUTTER)
+                .padding(bottom = 10.dp),
         )
 
-        // ── Tab row ──────────────────────────────────────────────────────────
-        TabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = MaterialTheme.colorScheme.background,
-            contentColor = MaterialTheme.colorScheme.primary,
-            indicator = { tabPositions ->
-                TabRowDefaults.SecondaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            },
+        // ── Modern Segmented Pill Tabs ─────────────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = PAGE_GUTTER)
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            LocalTab(
+            ModernPillTab(
                 icon = Icons.Rounded.MusicNote,
                 label = stringResource(R.string.songs),
+                count = if (songsCount > 0) songsCount else null,
                 selected = selectedTab == LOCAL_TAB_SONGS,
                 onClick = {
                     selectedTab = LOCAL_TAB_SONGS
                     leaveDrillDown()
                 },
+                modifier = Modifier.weight(1f),
             )
-            LocalTab(
+            ModernPillTab(
                 icon = Icons.Rounded.Person,
                 label = stringResource(R.string.artists),
+                count = if (artistsCount > 0) artistsCount else null,
                 selected = selectedTab == LOCAL_TAB_ARTISTS,
                 onClick = {
                     selectedTab = LOCAL_TAB_ARTISTS
                     leaveDrillDown()
                 },
+                modifier = Modifier.weight(1f),
             )
-            LocalTab(
+            ModernPillTab(
                 icon = Icons.Rounded.Album,
                 label = stringResource(R.string.albums),
+                count = if (albumsCount > 0) albumsCount else null,
                 selected = selectedTab == LOCAL_TAB_ALBUMS,
                 onClick = {
                     selectedTab = LOCAL_TAB_ALBUMS
                     leaveDrillDown()
                 },
+                modifier = Modifier.weight(1f),
             )
         }
 
@@ -260,23 +346,6 @@ fun LocalMusicScreen(
             modifier = Modifier.fillMaxSize(),
         ) { key ->
             when {
-                // Nothing to tab through or empty state: render Dhvani Offline mode banner
-                songs.isEmpty() -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(bodyContentPadding),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        DhvaniOfflineBanner(
-                            songCount = 0,
-                            totalDurationMs = 0L,
-                            onExplore = onExplore ?: {},
-                            onBack = onBack ?: {},
-                        )
-                    }
-                }
-
                 key.startsWith("drill:") -> {
                     // Drill-down song list for artist / album
                     DrillDownSongList(
@@ -296,17 +365,43 @@ fun LocalMusicScreen(
                 }
 
                 key == "tab:$LOCAL_TAB_SONGS" -> {
-                    val filteredSongs = remember(songs, searchQuery) {
-                        if (searchQuery.isBlank()) songs
-                        else songs.filter { it.matchesSearch(searchQuery) }
+                    if (songs.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(bodyContentPadding),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            DhvaniOfflineBanner(
+                                songCount = 0,
+                                totalDurationMs = 0L,
+                                onExplore = onExplore ?: {},
+                                onImport = onImport,
+                                onBack = onBack ?: {},
+                            )
+                        }
+                    } else {
+                        val filteredSongs = remember(songs, searchQuery) {
+                            if (searchQuery.isBlank()) songs
+                            else songs.filter { it.matchesSearch(searchQuery) }
+                        }
+                        if (searchQuery.isNotBlank() && filteredSongs.isEmpty()) {
+                            EmptySearchResult(
+                                query = searchQuery,
+                                onClear = { searchQuery = "" },
+                                modifier = Modifier.padding(bodyContentPadding),
+                            )
+                        } else {
+                            SongsTab(
+                                songs = filteredSongs,
+                                onSongClick = onSongClick,
+                                onSongLongPress = onSongLongPress,
+                                onSongSwipe = onSongSwipe,
+                                onShuffle = onShuffle,
+                                contentPadding = bodyContentPadding,
+                            )
+                        }
                     }
-                    SongsTab(
-                        songs = filteredSongs,
-                        onSongClick = onSongClick,
-                        onSongLongPress = onSongLongPress,
-                        onSongSwipe = onSongSwipe,
-                        contentPadding = bodyContentPadding,
-                    )
                 }
 
                 key == "tab:$LOCAL_TAB_ARTISTS" -> {
@@ -316,16 +411,35 @@ fun LocalMusicScreen(
                             .filter { searchQuery.isBlank() || it.key.contains(searchQuery, ignoreCase = true) }
                             .sortedBy { it.key.lowercase(Locale.ROOT) }
                     }
-                    ArtistsTab(
-                        artists = artists,
-                        onArtistClick = { artist, artistSongs ->
-                            drillDownLabel = artist
-                            drillDownSongs = artistSongs
-                            drillDownArt = null
-                        },
-                        onArtistLongPress = onCollectionLongPress,
-                        contentPadding = bodyContentPadding,
-                    )
+                    if (songs.isEmpty() || (searchQuery.isBlank() && artists.isEmpty())) {
+                        OfflineTabEmptyState(
+                            icon = Icons.Rounded.Person,
+                            accentColor = Color(0xFF59DDA9),
+                            title = "No Offline Artists",
+                            subtitle = "Artists of your downloaded songs will appear here. Download songs to listen to your favorite artists offline anytime.",
+                            onExplore = onExplore ?: {},
+                            onImport = onImport,
+                            onBack = onBack ?: {},
+                            modifier = Modifier.padding(bodyContentPadding),
+                        )
+                    } else if (searchQuery.isNotBlank() && artists.isEmpty()) {
+                        EmptySearchResult(
+                            query = searchQuery,
+                            onClear = { searchQuery = "" },
+                            modifier = Modifier.padding(bodyContentPadding),
+                        )
+                    } else {
+                        ArtistsTab(
+                            artists = artists,
+                            onArtistClick = { artist, artistSongs ->
+                                drillDownLabel = artist
+                                drillDownSongs = artistSongs
+                                drillDownArt = null
+                            },
+                            onArtistLongPress = onCollectionLongPress,
+                            contentPadding = bodyContentPadding,
+                        )
+                    }
                 }
 
                 else -> {
@@ -337,16 +451,35 @@ fun LocalMusicScreen(
                                 it.artist.contains(searchQuery, ignoreCase = true)
                         }
                     }
-                    AlbumsTab(
-                        albums = albums,
-                        onAlbumClick = { entry ->
-                            drillDownLabel = entry.title
-                            drillDownSongs = entry.songs
-                            drillDownArt = entry.thumbnailUrl
-                        },
-                        onAlbumLongPress = onCollectionLongPress,
-                        contentPadding = bodyContentPadding,
-                    )
+                    if (songs.isEmpty() || (searchQuery.isBlank() && albums.isEmpty())) {
+                        OfflineTabEmptyState(
+                            icon = Icons.Rounded.Album,
+                            accentColor = Color(0xFFFF848E),
+                            title = "No Offline Albums",
+                            subtitle = "Downloaded albums and offline playlists will appear here. Save complete albums to listen anytime offline without internet.",
+                            onExplore = onExplore ?: {},
+                            onImport = onImport,
+                            onBack = onBack ?: {},
+                            modifier = Modifier.padding(bodyContentPadding),
+                        )
+                    } else if (searchQuery.isNotBlank() && albums.isEmpty()) {
+                        EmptySearchResult(
+                            query = searchQuery,
+                            onClear = { searchQuery = "" },
+                            modifier = Modifier.padding(bodyContentPadding),
+                        )
+                    } else {
+                        AlbumsTab(
+                            albums = albums,
+                            onAlbumClick = { entry ->
+                                drillDownLabel = entry.title
+                                drillDownSongs = entry.songs
+                                drillDownArt = entry.thumbnailUrl
+                            },
+                            onAlbumLongPress = onCollectionLongPress,
+                            contentPadding = bodyContentPadding,
+                        )
+                    }
                 }
             }
         }
@@ -355,18 +488,38 @@ fun LocalMusicScreen(
 
 // ── Songs tab ─────────────────────────────────────────────────────────────────
 
+private enum class LocalSortOrder(val label: String) {
+    RECENT("Recent"),
+    TITLE("A-Z"),
+    ARTIST("Artist"),
+    DURATION("Duration"),
+}
+
 @Composable
 private fun SongsTab(
     songs: List<Song>,
     onSongClick: (List<Song>, Int) -> Unit,
     onSongLongPress: (Song) -> Unit,
     onSongSwipe: (Song) -> Unit,
+    onShuffle: (List<Song>) -> Unit,
     contentPadding: PaddingValues,
 ) {
+    var sortOrder by rememberSaveable { mutableStateOf(LocalSortOrder.RECENT) }
+    val sortedSongs = remember(songs, sortOrder) {
+        when (sortOrder) {
+            LocalSortOrder.RECENT -> songs
+            LocalSortOrder.TITLE -> songs.sortedBy { it.title.lowercase(Locale.ROOT) }
+            LocalSortOrder.ARTIST -> songs.sortedBy { it.artist.lowercase(Locale.ROOT) }
+            LocalSortOrder.DURATION -> songs.sortedByDescending { it.durationMillis() }
+        }
+    }
+
     val listState = rememberLazyListState()
     val totalPlaybackMs = remember(songs) {
         songs.sumOf { it.durationMillis() }
     }
+    val haptics = rememberHaptics()
+
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
@@ -378,23 +531,141 @@ private fun SongsTab(
                 totalDurationMs = totalPlaybackMs,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+                    .padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
             )
+        }
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                // Play All
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFFFF8A3D), Color(0xFFFF5E00))
+                            )
+                        )
+                        .clickable { if (sortedSongs.isNotEmpty()) onSongClick(sortedSongs, 0) }
+                        .padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.Black,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Play All",
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.Black,
+                        ),
+                    )
+                }
+                // Shuffle
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xFF1E2024))
+                        .border(1.dp, Color(0xFF2E323A), RoundedCornerShape(50))
+                        .clickable { if (sortedSongs.isNotEmpty()) onShuffle(sortedSongs) }
+                        .padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        Icons.Rounded.Shuffle,
+                        contentDescription = null,
+                        tint = Color(0xFF59DDA9),
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Shuffle",
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFE2E2E8),
+                        ),
+                    )
+                }
+            }
+        }
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.Sort,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+                LocalSortOrder.entries.forEach { order ->
+                    val isSelected = order == sortOrder
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (isSelected) Color(0xFFFF8A3D).copy(alpha = 0.18f)
+                                else Color(0xFF16181C)
+                            )
+                            .border(
+                                1.dp,
+                                if (isSelected) Color(0xFFFF8A3D).copy(alpha = 0.6f)
+                                else Color(0xFF282A2E),
+                                RoundedCornerShape(50),
+                            )
+                            .clickable {
+                                if (!isSelected) {
+                                    haptics.play(Haptic.Select)
+                                    sortOrder = order
+                                }
+                            }
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = order.label,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp,
+                            ),
+                            color = if (isSelected) Color(0xFFFF8A3D) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
         }
         item {
             SectionHeader(
                 icon = Icons.Rounded.LibraryMusic,
-                title = formatSongsCount(songs.size),
+                title = formatSongsCount(sortedSongs.size),
             )
         }
-        itemsIndexed(songs) { index, song ->
+        itemsIndexed(sortedSongs, key = { index, s -> if (s.videoId.isNotBlank()) "${s.videoId}_$index" else "local_$index" }) { index, song ->
             SongRow(
                 song = song,
-                onClick = { onSongClick(songs, index) },
+                onClick = { onSongClick(sortedSongs, index) },
                 onLongPress = { onSongLongPress(song) },
                 onSwipeToQueue = { onSongSwipe(song) },
             )
-            if (index < songs.lastIndex) {
+            if (index < sortedSongs.lastIndex) {
                 HorizontalDivider(
                     modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
                     thickness = 0.5.dp,
@@ -423,7 +694,7 @@ private fun ArtistsTab(
         item {
             SectionHeader(
                 icon = Icons.Rounded.Person,
-                title = "${artists.size} artists",
+                title = "${artists.size} ${if (artists.size == 1) "artist" else "artists"}",
             )
         }
         items(artists) { (artist, artistSongs) ->
@@ -456,21 +727,22 @@ private fun ArtistRow(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(horizontal = PAGE_GUTTER, vertical = 10.dp),
+            .padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Avatar circle
+        // Avatar circle with subtle outline border
         val avatarUrl = artistSongs.firstOrNull { !it.thumbnailUrl.isNullOrBlank() }?.thumbnailUrl
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(52.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             if (!avatarUrl.isNullOrBlank()) {
                 AsyncImage(
-                    model = avatarUrl,
+                    model = avatarUrl.artworkAt(ROW_ART_PX),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.matchParentSize().clip(CircleShape),
@@ -479,7 +751,7 @@ private fun ArtistRow(
                 Icon(
                     imageVector = Icons.Rounded.Person,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(26.dp),
                 )
             }
@@ -488,23 +760,52 @@ private fun ArtistRow(
         Column(Modifier.weight(1f)) {
             Text(
                 text = name,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = "$songCount ${if (songCount == 1) "song" else "songs"}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Spacer(Modifier.height(2.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                ) {
+                    Text(
+                        text = "ARTIST",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                }
+                Text(
+                    text = "$songCount ${if (songCount == 1) "track" else "tracks"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
             )
         }
-        Icon(
-            imageVector = Icons.Rounded.PlayArrow,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
     }
 }
 
@@ -609,20 +910,8 @@ private fun AlbumsTab(
         item {
             SectionHeader(
                 icon = Icons.Rounded.Album,
-                title = "${albums.size} ${if (albums.size == 1) "album" else "albums"}",
+                title = "${albums.size} ${if (albums.size == 1) "album / playlist" else "albums & playlists"}",
             )
-        }
-        // Songs but no albums: nothing here was downloaded as a release and
-        // nothing carries an album tag either. Worth saying outright — a track
-        // downloaded one at a time from a row that never named a release has no
-        // album for any player to group it under.
-        if (albums.isEmpty()) {
-            item {
-                MessageState(
-                    message = "Nothing here belongs to an album or playlist yet. " +
-                        "Download a whole one and it turns up here.",
-                )
-            }
         }
         items(albums, key = { it.key }) { entry ->
             AlbumRow(
@@ -650,47 +939,94 @@ private fun AlbumRow(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(horizontal = PAGE_GUTTER, vertical = 10.dp),
+            .padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CollectionArtwork(
-            url = entry.thumbnailUrl,
-            playlist = entry.playlist,
-            size = 48.dp,
-        )
+        val shape = RoundedCornerShape(10.dp)
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (entry.playlist) Icons.AutoMirrored.Rounded.QueueMusic else Icons.Rounded.Album,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(26.dp),
+            )
+            if (!entry.thumbnailUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = entry.thumbnailUrl.artworkAt(ROW_ART_PX),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize().clip(shape),
+                )
+            }
+        }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 text = entry.title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = buildString {
-                    // A playlist's tracks are off forty different releases, so
-                    // the first one's artist is not a credit for it — the kind
-                    // of thing it is says more, and is true.
-                    if (entry.playlist) {
-                        append("Playlist · ")
-                    } else if (entry.artist.isNotBlank() && entry.artist != entry.title) {
+            Spacer(Modifier.height(2.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            if (entry.playlist) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)
+                            else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        )
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                ) {
+                    Text(
+                        text = if (entry.playlist) "PLAYLIST" else "ALBUM",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (entry.playlist) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                }
+                val subtext = buildString {
+                    if (!entry.playlist && entry.artist.isNotBlank() && entry.artist != entry.title) {
                         append("${entry.artist} · ")
                     }
-                    append("${entry.songs.size} ${if (entry.songs.size == 1) "song" else "songs"}")
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                    append("${entry.songs.size} ${if (entry.songs.size == 1) "track" else "tracks"}")
+                }
+                Text(
+                    text = subtext,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
             )
         }
-        Icon(
-            imageVector = Icons.Rounded.PlayArrow,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
     }
 }
 
@@ -771,7 +1107,7 @@ private fun DrillDownSongList(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.ArrowBack,
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Back",
                         tint = MaterialTheme.colorScheme.onBackground,
                     )
@@ -918,9 +1254,10 @@ private fun LocalSearchField(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(44.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
-            .padding(horizontal = 12.dp),
+            .height(46.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -929,20 +1266,20 @@ private fun LocalSearchField(
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(10.dp))
         Box(Modifier.weight(1f)) {
             if (query.isEmpty()) {
                 Text(
                     text = "Search this folder",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 )
             }
             BasicTextField(
                 value = query,
                 onValueChange = onQueryChange,
                 singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
                     color = MaterialTheme.colorScheme.onBackground,
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -954,6 +1291,7 @@ private fun LocalSearchField(
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
                     .clickable { onQueryChange("") },
                 contentAlignment = Alignment.Center,
             ) {
@@ -969,34 +1307,336 @@ private fun LocalSearchField(
 }
 
 @Composable
-private fun LocalTab(
+private fun ModernPillTab(
     icon: ImageVector,
     label: String,
+    count: Int? = null,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    // Fired here rather than at each of the three call sites, so Songs, Artists
-    // and Albums can't drift apart — and the Downloads folder, which is this
-    // same screen, gets it for free. Silent on the tab that's already showing.
     val haptics = rememberHaptics()
-    Tab(
-        selected = selected,
-        onClick = {
-            if (!selected) haptics.play(Haptic.Select)
-            onClick()
-        },
-        selectedContentColor = MaterialTheme.colorScheme.primary,
-        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    val shape = RoundedCornerShape(50)
+    val saffronGradient = Brush.horizontalGradient(
+        listOf(Color(0xFFFF8A3D), Color(0xFFFF5E00))
+    )
+
+    Box(
+        modifier = modifier
+            .height(42.dp)
+            .clip(shape)
+            .then(
+                if (selected) {
+                    Modifier.background(saffronGradient)
+                } else {
+                    Modifier
+                        .background(Color(0xFF16181C))
+                        .border(1.dp, Color(0xFF282A2E), shape)
+                }
+            )
+            .clickable {
+                if (!selected) haptics.play(Haptic.Select)
+                onClick()
+            }
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.Center,
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(5.dp))
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                    fontSize = 12.5.sp,
+                ),
+                color = if (selected) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            if (count != null && count > 0) {
+                Spacer(Modifier.width(5.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(
+                            if (selected) Color.Black.copy(alpha = 0.2f)
+                            else Color(0xFF282A2E)
+                        )
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "$count",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = if (selected) Color.Black else Color(0xFFFF7A29),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OfflineTabEmptyState(
+    icon: ImageVector,
+    accentColor: Color,
+    title: String,
+    subtitle: String,
+    onExplore: () -> Unit,
+    onImport: (() -> Unit)? = null,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val cardBg = Color(0xFF16181C)
+    val cardBorder = Color(0xFF2E323A)
+
+    val infiniteTransition = rememberInfiniteTransition(label = "empty_tab_pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.95f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulse_scale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulse_alpha"
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        // Glowing orbital circle with dynamic pulse
+        Box(
+            modifier = Modifier
+                .size(112.dp * pulseScale)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            accentColor.copy(alpha = 0.28f * pulseAlpha),
+                            Color(0xFF16181C).copy(alpha = 0.5f),
+                        )
+                    )
+                )
+                .border(1.5.dp, accentColor.copy(alpha = 0.5f * pulseAlpha), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF1E2024))
+                    .border(1.dp, accentColor.copy(alpha = 0.35f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(36.dp),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // Title
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineSmall.copy(
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 22.sp,
+            ),
+            color = Color.White,
+            textAlign = TextAlign.Center,
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        // Subtitle
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+            ),
+            color = Color.White.copy(alpha = 0.65f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+
+        Spacer(Modifier.height(26.dp))
+
+        // Explore button
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(50))
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color(0xFFFF8A3D), Color(0xFFFF5E00))
+                    )
+                )
+                .clickable(onClick = onExplore),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = null,
+                    tint = Color.Black,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = "Explore & Download Music",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.Black,
+                    ),
+                )
+            }
+        }
+
+        if (onImport != null) {
+            Spacer(Modifier.height(10.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(0xFF1A261F))
+                    .border(1.dp, Color(0xFF59DDA9).copy(alpha = 0.4f), RoundedCornerShape(50))
+                    .clickable(onClick = onImport),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.FileDownload,
+                        contentDescription = null,
+                        tint = Color(0xFF59DDA9),
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = "Import Playlists / Albums",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF59DDA9),
+                        ),
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // Go Back button
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .clip(RoundedCornerShape(50))
+                .background(cardBg)
+                .border(1.dp, cardBorder, RoundedCornerShape(50))
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = stringResource(R.string.offline_go_back),
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptySearchResult(
+    query: String,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp, vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Search,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(48.dp),
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "No results found",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Nothing matching \"$query\"",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(16.dp))
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable(onClick = onClear)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Text(
+                text = "Clear search",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.primary,
             )
         }
     }
@@ -1060,54 +1700,132 @@ fun OfflineStatsSummaryCard(
     totalDurationMs: Long,
     modifier: Modifier = Modifier,
 ) {
-    val saffron = androidx.compose.ui.graphics.Color(0xFFFF7A29)
-    val cardBg = androidx.compose.ui.graphics.Color(0xFF16181C)
-    val cardBorder = androidx.compose.ui.graphics.Color(0xFF2E323A)
+    val saffron = Color(0xFFFF7A29)
+    val emerald = Color(0xFF59DDA9)
+    val cardBg = Color(0xFF16181C)
+    val cardBorder = Color(0xFF2E323A)
 
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
-            .padding(vertical = 12.dp, horizontal = 12.dp),
+            .border(1.dp, cardBorder, RoundedCornerShape(18.dp))
+            .padding(vertical = 12.dp, horizontal = 16.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = formatSongsCount(songCount),
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = saffron,
-                ),
-            )
-            Text(
-                text = stringResource(R.string.offline_downloaded_label),
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.sp,
-                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
-                ),
-            )
+        // Songs Count
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(saffron.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.MusicNote,
+                    contentDescription = null,
+                    tint = saffron,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Column {
+                Text(
+                    text = formatSongsCount(songCount),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                    ),
+                )
+                Text(
+                    text = "Saved Offline",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.5.sp,
+                        color = Color.White.copy(alpha = 0.55f),
+                    ),
+                )
+            }
         }
+
         Box(
             modifier = Modifier
                 .width(1.dp)
-                .height(28.dp)
+                .height(32.dp)
                 .background(cardBorder),
         )
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+        // Continuous Playback
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(emerald.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.Headphones,
+                    contentDescription = null,
+                    tint = emerald,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+            Column {
+                Text(
+                    text = formatPlaybackDuration(totalDurationMs),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        color = emerald,
+                    ),
+                )
+                Text(
+                    text = "Continuous Play",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.5.sp,
+                        color = Color.White.copy(alpha = 0.55f),
+                    ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OfflineBenefitRow(
+    emoji: String,
+    title: String,
+    desc: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = emoji,
+            fontSize = 20.sp,
+        )
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = formatPlaybackDuration(totalDurationMs),
-                style = MaterialTheme.typography.titleMedium.copy(
+                text = title,
+                style = MaterialTheme.typography.labelLarge.copy(
                     fontWeight = FontWeight.Bold,
-                    color = androidx.compose.ui.graphics.Color(0xFF34D399),
+                    color = Color.White,
                 ),
             )
             Text(
-                text = stringResource(R.string.offline_continuous_playback_label),
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.sp,
-                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
+                text = desc,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 11.5.sp,
+                    color = Color.White.copy(alpha = 0.6f),
+                    lineHeight = 15.sp,
                 ),
             )
         }
@@ -1115,134 +1833,285 @@ fun OfflineStatsSummaryCard(
 }
 
 /**
- * Offline Mode Banner with accurate dynamic stats, localized texts, and responsive actions.
+ * Offline Mode Banner with accurate dynamic stats, localized texts, interactive launch action cards,
+ * animated breathing aura, and responsive actions.
  */
 @Composable
 fun DhvaniOfflineBanner(
     songCount: Int,
     totalDurationMs: Long,
     onExplore: () -> Unit,
+    onImport: (() -> Unit)? = null,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val saffron = androidx.compose.ui.graphics.Color(0xFFFF7A29)
-    val cardBg = androidx.compose.ui.graphics.Color(0xFF16181C)
-    val cardBorder = androidx.compose.ui.graphics.Color(0xFF2E323A)
+    val saffron = Color(0xFFFF7A29)
+    val emerald = Color(0xFF59DDA9)
+    val cardBg = Color(0xFF16181C)
+    val cardBorder = Color(0xFF2E323A)
+
+    val infiniteTransition = rememberInfiniteTransition(label = "banner_pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulse_scale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulse_alpha"
+    )
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 20.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        // Icon graphic
+        // Glowing Art Graphic Centerpiece with Ambient Breathing Glow
         Box(
             modifier = Modifier
-                .size(100.dp)
+                .size(126.dp * pulseScale)
                 .clip(CircleShape)
-                .background(cardBg)
-                .border(1.dp, cardBorder, CircleShape),
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            saffron.copy(alpha = 0.28f * pulseAlpha),
+                            Color(0xFF1B1612).copy(alpha = 0.4f),
+                        )
+                    )
+                )
+                .border(1.5.dp, saffron.copy(alpha = 0.45f * pulseAlpha), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            Box(
+                modifier = Modifier
+                    .size(82.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF261A12))
+                    .border(1.5.dp, saffron.copy(alpha = 0.6f), CircleShape),
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.MusicNote,
+                    imageVector = Icons.Rounded.Headphones,
                     contentDescription = null,
                     tint = saffron,
-                    modifier = Modifier.size(34.dp),
+                    modifier = Modifier.size(40.dp),
                 )
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(androidx.compose.ui.graphics.Color(0xFF262A32))
-                        .padding(horizontal = 8.dp, vertical = 2.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.offline_badge),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        ),
-                        color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f),
-                    )
-                }
             }
         }
 
-        // Pill
+        // Feature Pill Badge
         Box(
             modifier = Modifier
-                .clip(CircleShape)
-                .background(androidx.compose.ui.graphics.Color(0xFF25201A))
-                .border(1.dp, saffron.copy(alpha = 0.35f), CircleShape)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0xFF221710))
+                .border(1.dp, saffron.copy(alpha = 0.4f), RoundedCornerShape(50))
                 .padding(horizontal = 14.dp, vertical = 5.dp),
         ) {
-            Text(
-                text = stringResource(R.string.offline_pill),
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                ),
-                color = saffron,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(emerald),
+                )
+                Text(
+                    text = "ZERO CELLULAR DATA • OFFLINE VAULT",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 10.sp,
+                        letterSpacing = 0.6.sp,
+                    ),
+                    color = saffron,
+                )
+            }
         }
 
-        // Headline & Subtitle
+        // Headline & Narrative
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = stringResource(R.string.offline_title),
+                text = "Music That Never Stops",
                 style = MaterialTheme.typography.headlineSmall.copy(
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 22.sp,
-                    lineHeight = 28.sp,
+                    fontSize = 24.sp,
+                    lineHeight = 30.sp,
                 ),
-                color = androidx.compose.ui.graphics.Color.White,
+                color = Color.White,
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = if (songCount == 0) {
-                    stringResource(R.string.offline_subtitle)
-                } else {
-                    stringResource(R.string.offline_subtitle_with_songs)
-                },
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 12.5.sp,
-                    lineHeight = 17.sp,
+                text = "Download your favorite tracks, albums, or playlists to listen anytime, anywhere — even without an internet connection or cellular data.",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 13.5.sp,
+                    lineHeight = 19.sp,
                 ),
-                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f),
+                color = Color.White.copy(alpha = 0.65f),
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 12.dp),
+                modifier = Modifier.padding(horizontal = 8.dp),
             )
         }
 
-        // Stats Row (Dynamic song count & playback)
-        OfflineStatsSummaryCard(
-            songCount = songCount,
-            totalDurationMs = totalDurationMs,
+        // ── Interactive Quick Launch Cards ───────────────────────────────────────
+        Column(
             modifier = Modifier.fillMaxWidth(),
-        )
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            // Card 1: Discover & Download
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(cardBg)
+                    .border(1.dp, saffron.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                    .clickable(onClick = onExplore)
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(saffron.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = null,
+                        tint = saffron,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Discover & Download Songs",
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        ),
+                    )
+                    Text(
+                        text = "Search trending charts, artists, and download tracks in 1-tap",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 11.5.sp,
+                            color = Color.White.copy(alpha = 0.6f),
+                        ),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(saffron.copy(alpha = 0.18f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        text = "Search →",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = saffron,
+                            fontSize = 11.sp,
+                        ),
+                    )
+                }
+            }
+
+            // Card 2: Import Playlists & Albums
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(cardBg)
+                    .border(1.dp, emerald.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                    .clickable { onImport?.invoke() ?: onExplore() }
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(emerald.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.FileDownload,
+                        contentDescription = null,
+                        tint = emerald,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Import Playlists & Albums",
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        ),
+                    )
+                    Text(
+                        text = "Paste Spotify or YouTube links to sync and download directly",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 11.5.sp,
+                            color = Color.White.copy(alpha = 0.6f),
+                        ),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(emerald.copy(alpha = 0.18f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        text = "Import →",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = emerald,
+                            fontSize = 11.sp,
+                        ),
+                    )
+                }
+            }
+        }
+
+
+
 
         // Action Buttons
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Saffron Primary: Explore Music
+            // Saffron Gradient Primary: Explore & Download Music
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(saffron)
-                    .clickable(onClick = onExplore)
-                    .padding(vertical = 14.dp),
+                    .height(50.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFFFF8A3D), Color(0xFFFF5E00))
+                        )
+                    )
+                    .clickable(onClick = onExplore),
                 contentAlignment = Alignment.Center,
             ) {
                 Row(
@@ -1252,14 +2121,15 @@ fun DhvaniOfflineBanner(
                     Icon(
                         imageVector = Icons.Rounded.Search,
                         contentDescription = null,
-                        tint = androidx.compose.ui.graphics.Color.Black,
-                        modifier = Modifier.size(18.dp),
+                        tint = Color.Black,
+                        modifier = Modifier.size(19.dp),
                     )
                     Text(
-                        text = stringResource(R.string.offline_explore_music),
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = androidx.compose.ui.graphics.Color.Black,
+                        text = "Explore & Download Music",
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.Black,
+                            fontSize = 15.sp,
                         ),
                     )
                 }
@@ -1269,11 +2139,11 @@ fun DhvaniOfflineBanner(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(50))
                     .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
-                    .clickable(onClick = onBack)
-                    .padding(vertical = 13.dp),
+                    .border(1.dp, cardBorder, RoundedCornerShape(50))
+                    .clickable(onClick = onBack),
                 contentAlignment = Alignment.Center,
             ) {
                 Row(
@@ -1283,14 +2153,14 @@ fun DhvaniOfflineBanner(
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = null,
-                        tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f),
+                        tint = Color.White.copy(alpha = 0.85f),
                         modifier = Modifier.size(16.dp),
                     )
                     Text(
                         text = stringResource(R.string.offline_go_back),
                         style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            color = androidx.compose.ui.graphics.Color.White,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
                         ),
                     )
                 }

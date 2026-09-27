@@ -22,9 +22,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import com.music.dhvani.data.settings.AppSettings
+import com.music.dhvani.data.settings.CanvasStyle
 import com.music.dhvani.data.settings.DownloadNetwork
 import com.music.dhvani.data.settings.DownloadQuality
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CropSquare
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.ViewStream
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
@@ -127,6 +131,7 @@ fun SongActionsSheet(
     onDownload: () -> Unit,
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
+    onDislikeAndSkip: (() -> Unit)? = null,
     onAddToPlaylist: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     onOpenArtist: (String) -> Unit,
@@ -135,6 +140,7 @@ fun SongActionsSheet(
     showSleepTimer: Boolean = false,
     onOpenEqualizer: (() -> Unit)? = null,
     onOpenAudioEffects: (() -> Unit)? = null,
+    onEnterAmbientCinemaMode: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     /**
      * Copies what the app logged while starting this track. Null everywhere
@@ -168,8 +174,6 @@ fun SongActionsSheet(
     // A local file or a finished download has no YouTube identity behind it to
     // rate, save, queue into a playlist, fetch again, or share a link for.
     val isOffline = song.localUri != null
-    val equalizerEnabled by EqualizerManager.enabled.collectAsStateWithLifecycle()
-    val equalizerPreset by EqualizerManager.selectedPreset.collectAsStateWithLifecycle()
 
     TintedSheet(palette = palette, imageUrl = song.thumbnailUrl, modifier = modifier) {
         if (pickingSleepTimer) {
@@ -190,10 +194,16 @@ fun SongActionsSheet(
             )
             ActionRow(
                 icon = if (disliked) Icons.Rounded.ThumbDown else Icons.Rounded.ThumbDownOffAlt,
-                label = if (disliked) "Undo dislike" else "Dislike",
+                label = if (disliked) "Undo dislike" else "Dislike & skip",
                 tint = if (disliked) palette.accent else null,
                 accent = palette.accent,
-                onClick = onToggleDislike,
+                onClick = {
+                    if (!disliked && onDislikeAndSkip != null) {
+                        onDislikeAndSkip()
+                    } else {
+                        onToggleDislike()
+                    }
+                },
             )
             ActionRow(
                 icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
@@ -201,6 +211,14 @@ fun SongActionsSheet(
                 accent = palette.accent,
                 onClick = onAddToPlaylist,
             )
+            onEnterAmbientCinemaMode?.let { enterCinema ->
+                ActionRow(
+                    icon = Icons.Rounded.Fullscreen,
+                    label = "Cinema Full Screen",
+                    accent = palette.accent,
+                    onClick = enterCinema,
+                )
+            }
             onRemoveFromPlaylist?.let {
                 ActionRow(
                     icon = Icons.Rounded.PlaylistRemove,
@@ -241,7 +259,6 @@ fun SongActionsSheet(
             ActionRow(
                 icon = Icons.Rounded.Bedtime,
                 label = "Sleep timer",
-                value = sleepTimerStatus(),
                 accent = palette.accent,
             ) { pickingSleepTimer = true }
         }
@@ -249,28 +266,19 @@ fun SongActionsSheet(
             ActionRow(
                 icon = Icons.Rounded.Tune,
                 label = "Equalizer",
-                value = if (equalizerEnabled) equalizerPreset else "Off",
                 accent = palette.accent,
                 onClick = openEq,
             )
         }
         onOpenAudioEffects?.let { openEffects ->
-            val preset by AppSettings.audioPreset.collectAsStateWithLifecycle()
-            val speed by AppSettings.playbackSpeed.collectAsStateWithLifecycle()
             ActionRow(
                 icon = Icons.Rounded.AutoAwesome,
                 label = "Slowed / Nightcore Mode",
-                value = when (preset) {
-                    com.music.dhvani.data.settings.AudioPreset.NORMAL -> if (speed != 1.0f) "${speed}x" else "Normal"
-                    com.music.dhvani.data.settings.AudioPreset.SLOWED_REVERB -> "Slowed 🌙"
-                    com.music.dhvani.data.settings.AudioPreset.RAINY_LOFI -> "Rainy Lo-Fi 🌧️"
-                    com.music.dhvani.data.settings.AudioPreset.NIGHTCORE -> "Nightcore ⚡"
-                    com.music.dhvani.data.settings.AudioPreset.CUSTOM -> "Custom 🎧"
-                },
                 accent = palette.accent,
                 onClick = openEffects,
             )
         }
+
         if (!isOffline) {
             onShare?.let {
                 ActionRow(Icons.Rounded.Share, "Share", accent = palette.accent, onClick = it)
@@ -283,7 +291,6 @@ fun SongActionsSheet(
             ActionRow(
                 icon = Icons.Rounded.Info,
                 label = "Details",
-                value = "View song details",
                 accent = palette.accent,
                 onClick = it,
             )
@@ -442,15 +449,9 @@ private fun DownloadRow(song: Song, palette: ArtworkPalette, isOffline: Boolean,
                 accent = palette.accent,
             ) { scope.launch { Downloads.delete(context, song.videoId) } }
         } else if (!isOffline) {
-            val netLabel = when (downloadNetwork) {
-                DownloadNetwork.BOTH -> "Wi-Fi & Data"
-                DownloadNetwork.WIFI_ONLY -> "Wi-Fi"
-                DownloadNetwork.CELLULAR_ONLY -> "Mobile Data"
-            }
             ActionRow(
                 icon = Icons.Rounded.Download,
                 label = "Download",
-                value = "${downloadQuality.label} • $netLabel",
                 accent = palette.accent,
                 onClick = {
                     if (alwaysAskDownloadOptions) {
@@ -663,6 +664,7 @@ private fun SleepTimerPicker(palette: ArtworkPalette, onBack: () -> Unit) {
         Spacer(Modifier.height(24.dp))
     }
 }
+
 
 @Composable
 private fun SleepOption(

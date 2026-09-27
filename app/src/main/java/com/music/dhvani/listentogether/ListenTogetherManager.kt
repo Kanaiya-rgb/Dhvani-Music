@@ -235,6 +235,33 @@ class ListenTogetherManager private constructor(
                     )
                 }
             }
+            is ListenTogetherEvent.Disconnected -> {
+                Log.i(TAG, "Disconnected from Listen Together")
+                val currentRoom = roomState.value
+                TelemetryManager.updateListenTogetherState(
+                    isInRoom = false,
+                    roomCode = currentRoom?.roomCode,
+                    isHost = isHost
+                )
+            }
+            is ListenTogetherEvent.ConnectionError -> {
+                Log.w(TAG, "Connection error: ${event.error}")
+                val currentRoom = roomState.value
+                TelemetryManager.updateListenTogetherState(
+                    isInRoom = false,
+                    roomCode = currentRoom?.roomCode,
+                    isHost = isHost
+                )
+            }
+            is ListenTogetherEvent.Kicked -> {
+                Log.i(TAG, "Kicked from room: ${event.reason}")
+                val currentRoom = roomState.value
+                TelemetryManager.updateListenTogetherState(
+                    isInRoom = false,
+                    roomCode = currentRoom?.roomCode,
+                    isHost = false
+                )
+            }
             else -> Unit
         }
     }
@@ -515,13 +542,13 @@ class ListenTogetherManager private constructor(
 
     fun leaveRoom() {
         val currentRoom = roomState.value
-        if (currentRoom != null) {
-            TelemetryManager.updateListenTogetherState(
-                isInRoom = false,
-                roomCode = currentRoom.roomCode,
-                isHost = isHost
-            )
-        }
+        val code = currentRoom?.roomCode
+        val wasHost = isHost
+        TelemetryManager.updateListenTogetherState(
+            isInRoom = false,
+            roomCode = code,
+            isHost = wasHost
+        )
         controller?.removeListener(playerListener)
         client.leaveRoom()
     }

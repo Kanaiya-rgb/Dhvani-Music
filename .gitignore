@@ -36,6 +36,8 @@ keystore.properties
 *.keystore
 google-services.json
 app/google-services.json
+*-firebase-adminsdk-*.json
+flux-music-13836-firebase-adminsdk-fbsvc-76e95cf252.json
 
 # Project scratch / debug artifacts
 .shots/
@@ -69,4 +71,9 @@ __pycache__/
 # Internal docs / notes (keep only README.md public)
 RELEASE_v2.4.0_CHANGELOG.md
 UPCOMING_FEATURES.md
+ADVANCED_FEATURES_SPEC.md
+
+# Local C/C++ tooling
+.clangd
+compile_commands.json
 

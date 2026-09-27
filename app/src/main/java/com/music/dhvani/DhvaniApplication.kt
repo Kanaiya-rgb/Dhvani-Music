@@ -24,6 +24,7 @@ import com.music.dhvani.data.sources.SourceRegistry
 import com.music.dhvani.data.stats.ArtistFacts
 import com.music.dhvani.data.stats.ListeningStats
 import com.music.dhvani.download.Downloads
+import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,6 +34,9 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
+        runCatching {
+            FirebaseMessaging.getInstance().subscribeToTopic("app_updates")
+        }
         AppUpdateChecker.schedulePeriodicCheck(this)
         AppUpdateChecker.startNetworkUpdateObserver(this)
         // PlaybackService shares this process, so seeding the cookie here means

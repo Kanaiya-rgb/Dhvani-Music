@@ -137,6 +137,21 @@ data class PlayerClient(
         )
 
         /**
+         * Android TestSuite client: low-latency unciphered audio stream format.
+         */
+        val ANDROID_TESTSUITE = PlayerClient(
+            clientName = "ANDROID_TESTSUITE",
+            clientVersion = "1.9",
+            clientId = "30",
+            userAgent = "google-play-services/24.26.32 (Linux; Android 14; Pixel 8 Pro)",
+            osName = "Android",
+            osVersion = "14",
+            deviceMake = "Google",
+            deviceModel = "Pixel 8 Pro",
+            androidSdkVersion = "34",
+        )
+
+        /**
          * The Quest's YouTube app, and the first thing to try: unciphered,
          * login-free, no proof-of-origin token and no signature timestamp, so
          * a stream is one POST away with no player JavaScript in the path.
@@ -245,6 +260,7 @@ data class PlayerClient(
                 name == "ANDROID_VR" ->
                     if (version == ANDROID_VR_LEGACY.clientVersion) ANDROID_VR_LEGACY else ANDROID_VR
                 name == "ANDROID_MUSIC" -> ANDROID_MUSIC
+                name.startsWith("ANDROID_TESTSUITE") -> ANDROID_TESTSUITE
                 name.startsWith("ANDROID") -> ANDROID
                 name.startsWith("TVHTML5") -> TVHTML5
                 name == "WEB_REMIX" -> WEB_REMIX

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.music.dhvani.ui.player
 
 import android.database.ContentObserver
@@ -37,7 +39,12 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import com.music.dhvani.ui.components.TranslationLanguageDialog
+import dev.chrisbanes.haze.HazeState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
@@ -50,6 +57,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.Box
@@ -100,8 +108,12 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.FullscreenExit
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Pause
@@ -109,6 +121,8 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.SurroundSound
+import androidx.compose.material.icons.rounded.ThumbDown
+import androidx.compose.material.icons.rounded.ThumbDownOffAlt
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.foundation.combinedClickable
@@ -194,6 +208,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -224,6 +239,7 @@ import com.music.dhvani.data.settings.TrackAnalysisState
 import com.music.dhvani.playback.AudioOutputStatus
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Translate
+import androidx.compose.material.icons.rounded.Share
 import android.widget.Toast
 import com.music.dhvani.data.lyrics.LyricLine
 import com.music.dhvani.data.lyrics.LyricWord
@@ -240,6 +256,7 @@ import com.music.dhvani.data.settings.AudioQuality
 import com.music.dhvani.data.settings.SliderStyle
 import com.music.dhvani.data.settings.LyricsPosition
 import com.music.dhvani.data.settings.LyricsAnimationStyle
+import com.music.dhvani.ui.components.PlayerSliderTrack
 import com.music.dhvani.ui.components.WavySlider
 import com.music.dhvani.ui.components.SquigglySlider
 import com.music.dhvani.ui.components.NeonGlowSlider
@@ -831,6 +848,7 @@ private fun CanvasTopPillToggle(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NowPlayingScreen(
     song: Song,
@@ -881,6 +899,9 @@ fun NowPlayingScreen(
     onReloadLyrics: (() -> Unit)? = null,
     onListenTogether: (() -> Unit)? = null,
     onOpenAudioEffects: (() -> Unit)? = null,
+    onDislikeAndSkip: (() -> Unit)? = null,
+    availableLyricsSources: Map<LyricsSource, Boolean> = emptyMap(),
+    onSelectLyricsSource: ((LyricsSource) -> Unit)? = null,
     /** The width of the window the player is in — see [fullBleedArtworkAvailable]. */
     windowWidth: Dp,
     /**
@@ -914,6 +935,10 @@ fun NowPlayingScreen(
         mutableStateOf(!CanvasRepository.hasCached(song.videoId))
     }
     var showCanvasSourceSheet by remember { mutableStateOf(false) }
+    var showLyricsPickerSheet by remember { mutableStateOf(false) }
+    var showLangSelector by remember { mutableStateOf(false) }
+    var showLyricsShareSheet by remember { mutableStateOf(false) }
+    var initialLyricsShareLine by remember { mutableStateOf<LyricLine?>(null) }
 
     var canvasNoticeMessage by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(canvasNoticeMessage) {
@@ -1008,18 +1033,14 @@ fun NowPlayingScreen(
     var lyricsFullScreen by remember { mutableStateOf(false) }
     var lastLyricsInteractionMs by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(lyricsOpen, lyricsFullScreen, lastLyricsInteractionMs, isPlaying) {
-        if (lyricsOpen && !lyricsFullScreen && isPlaying) {
-            delay(5000)
-            lyricsFullScreen = true
-        }
+    val onLyricsInteraction: () -> Unit = {
+        lastLyricsInteractionMs = System.currentTimeMillis()
     }
 
-    val onLyricsInteraction: () -> Unit = {
-        if (lyricsFullScreen) {
-            lyricsFullScreen = false
+    LaunchedEffect(lyricsOpen) {
+        if (lyricsOpen) {
+            lastLyricsInteractionMs = System.currentTimeMillis()
         }
-        lastLyricsInteractionMs = System.currentTimeMillis()
     }
 
     var showAudioPipeline by remember { mutableStateOf(false) }
@@ -1697,11 +1718,27 @@ fun NowPlayingScreen(
                 if (p > 0.3f || lyricsOpen || queueOpen) {
                     Box(
                         modifier = Modifier
-                            .width(36.dp)
-                            .height(4.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.28f)),
-                    )
+                            .width(56.dp)
+                            .height(24.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {
+                                if (lyricsFullScreen) {
+                                    lyricsFullScreen = false
+                                    onLyricsInteraction()
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.28f)),
+                        )
+                    }
                 } else {
                     CanvasTopPillToggle(
                         currentMode = playerViewMode,
@@ -2019,6 +2056,7 @@ fun NowPlayingScreen(
                                 Modifier.clickable {
                                     queueOpen = false
                                     lyricsOpen = false
+                                    lyricsFullScreen = false
                                 }
                             } else {
                                 Modifier
@@ -2221,6 +2259,15 @@ fun NowPlayingScreen(
                         .offset(y = titleTop)
                         .padding(start = titleStart)
                         .height(HEADER_HEIGHT)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            if (lyricsFullScreen) {
+                                lyricsFullScreen = false
+                                onLyricsInteraction()
+                            }
+                        }
                         // Where the dismiss band ends — see its top on the
                         // artwork above. Taken from the row rather than added up
                         // from the sleeve so the gap between the two is inside
@@ -2263,12 +2310,23 @@ fun NowPlayingScreen(
                     // how the queue plays. Works for both signed-in and guest users.
                     if (song.localUri == null) {
                         val liked = likeStatus == LikeStatus.LIKE
+                        val disliked = likeStatus == LikeStatus.DISLIKE
                         CircleGlyph(
                             icon = if (liked) DhvaniIcons.HeartFilled else DhvaniIcons.Heart,
                             contentDescription = if (liked) "Remove from Liked Music" else "Like",
                             onClick = onToggleLike,
                             active = liked,
                             haptic = if (liked) Haptic.ToggleOff else Haptic.ToggleOn,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        CircleGlyph(
+                            icon = if (disliked) Icons.Rounded.ThumbDown else Icons.Rounded.ThumbDownOffAlt,
+                            contentDescription = "Dislike and Skip",
+                            onClick = {
+                                onDislikeAndSkip?.invoke() ?: onToggleLike()
+                            },
+                            active = disliked,
+                            haptic = Haptic.ToggleOff,
                         )
                         Spacer(Modifier.width(8.dp))
                     }
@@ -2289,10 +2347,25 @@ fun NowPlayingScreen(
                             onLyricsInteraction()
                             onSeek(it)
                         },
+                        onLineLongClick = { line ->
+                            haptics.play(Haptic.Select)
+                            initialLyricsShareLine = line
+                            showLyricsShareSheet = true
+                        },
                         onUserInteraction = onLyricsInteraction,
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = HEADER_HEIGHT + 10.dp)
+                            .fillMaxWidth()
+                            .then(
+                                if (lyricsFullScreen) {
+                                    Modifier
+                                        .fillMaxHeight(0.60f)
+                                        .align(Alignment.Center)
+                                } else {
+                                    Modifier
+                                        .fillMaxSize()
+                                        .padding(top = HEADER_HEIGHT + 10.dp)
+                                }
+                            )
                             // Arrives once the sleeve has finished collapsing
                             // into the header, the same beat the queue below
                             // already waits for — fading lyrics in over a
@@ -2304,36 +2377,53 @@ fun NowPlayingScreen(
                             },
                     )
 
-                    // Close button at bottom-right for fullscreen lyrics mode to return to cover player
+                    // Bottom controls & touch area for fullscreen lyrics
                     if (lyricsFullScreen) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.55f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(end = 16.dp, bottom = 16.dp)
-                                .size(46.dp)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                ) {
-                                    haptics.play(Haptic.Tap)
-                                    lyricsOpen = false
-                                    lyricsFullScreen = false
-                                },
-                            shadowElevation = 8.dp,
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .fillMaxHeight(0.18f)
+                                .padding(horizontal = 24.dp, vertical = 20.dp),
+                            contentAlignment = Alignment.CenterEnd,
                         ) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center,
+                            // Premium Frosted Glass Cross [ ✕ ] button to exit fullscreen lyrics
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.White.copy(alpha = 0.14f),
+                                border = BorderStroke(
+                                    1.2.dp,
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            Color.White.copy(alpha = 0.45f),
+                                            Color.White.copy(alpha = 0.15f),
+                                        )
+                                    ),
+                                ),
+                                shadowElevation = 16.dp,
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                    ) {
+                                        haptics.play(Haptic.Tap)
+                                        lyricsFullScreen = false
+                                        lyricsOpen = false
+                                        onLyricsInteraction()
+                                    },
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Close,
-                                    contentDescription = "Close lyrics",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(24.dp),
-                                )
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Close,
+                                        contentDescription = "Exit Fullscreen Lyrics",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
                             }
                         }
                     }
@@ -2382,82 +2472,93 @@ fun NowPlayingScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                 if (lyricsOpen) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    ) {
+                        // Action buttons row: Sync offset adjust (left) and Translator (right)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 4.dp, vertical = 6.dp),
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            val isPlainLyrics = remember(lyrics) { lyrics.orEmpty().any { it.isEstimatedTiming } }
-                            Text(
-                                text = when {
-                                    showingTranslation && translatedLyrics != null -> "Translated to $targetName"
-                                    translationLoading -> "Translating to $targetName..."
-                                    translationStatus != null -> translationStatus!!
-                                    isPlainLyrics -> "Plain lyrics • ${lyricsSource?.label ?: "Online"}"
-                                    lyricsSource != null -> "Lyrics by ${lyricsSource.label}"
-                                    lyrics.isNullOrEmpty() -> "No lyrics found"
-                                    else -> "Lyrics saved with this download"
-                                },
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontSize = 13.sp,
-                                    fontWeight = if (showingTranslation) FontWeight.SemiBold else FontWeight.Medium,
-                                ),
-                                color = Color.White.copy(alpha = if (showingTranslation) 0.85f else 0.65f),
-                                modifier = Modifier.clickable(
-                                    enabled = onReloadLyrics != null && !showingTranslation,
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                ) {
-                                    haptics.play(Haptic.Tap)
-                                    onReloadLyrics?.invoke()
-                                },
-                            )
+                            // Sync Offset Adjuster Button
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = if (showSyncAdjuster || lyricsOffsetMs != 0L) 0.28f else 0.14f))
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                    ) {
+                                        haptics.play(Haptic.Tap)
+                                        showSyncAdjuster = !showSyncAdjuster
+                                        onLyricsInteraction()
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Tune,
+                                    contentDescription = "Adjust lyrics sync offset",
+                                    tint = if (showSyncAdjuster || lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
+                                    modifier = Modifier.size(19.dp),
+                                )
+                            }
 
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                // Sync Offset Adjuster Button
+                                // Share Lyrics Card Button
                                 Box(
                                     modifier = Modifier
-                                        .size(36.dp)
+                                        .size(38.dp)
                                         .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = if (showSyncAdjuster || lyricsOffsetMs != 0L) 0.28f else 0.12f))
+                                        .background(Color.White.copy(alpha = 0.14f))
                                         .clickable(
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,
                                         ) {
                                             haptics.play(Haptic.Tap)
-                                            showSyncAdjuster = !showSyncAdjuster
+                                            val firstLine = displayedLyrics.firstOrNull { it.text.isNotBlank() }
+                                            initialLyricsShareLine = firstLine
+                                            showLyricsShareSheet = true
                                             onLyricsInteraction()
                                         },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Rounded.Tune,
-                                        contentDescription = "Adjust lyrics sync offset",
-                                        tint = if (showSyncAdjuster || lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
+                                        imageVector = Icons.Rounded.Share,
+                                        contentDescription = "Share lyrics card",
+                                        tint = Color.White.copy(alpha = 0.90f),
                                         modifier = Modifier.size(18.dp),
                                     )
                                 }
 
-                                // Right: Translator [ 文A ] button
+                                // Translator [ 文A ] button
                                 Box(
                                     modifier = Modifier
-                                        .size(36.dp)
+                                        .size(38.dp)
                                         .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = if (showingTranslation) 0.28f else 0.12f))
-                                        .clickable(
+                                        .background(Color.White.copy(alpha = if (showingTranslation) 0.28f else 0.14f))
+                                        .combinedClickable(
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,
-                                        ) {
-                                            haptics.play(Haptic.Tap)
-                                            toggleTranslation()
-                                            onLyricsInteraction()
-                                        },
+                                            // Single tap → translation toggle
+                                            onClick = {
+                                                haptics.play(Haptic.Tap)
+                                                toggleTranslation()
+                                                onLyricsInteraction()
+                                            },
+                                            // Long press → language picker
+                                            onLongClick = {
+                                                showLangSelector = true
+                                            },
+                                        ),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     if (translationLoading) {
@@ -2470,12 +2571,56 @@ fun NowPlayingScreen(
                                         Icon(
                                             imageVector = Icons.Rounded.Translate,
                                             contentDescription = if (showingTranslation) "Show original lyrics" else "Translate lyrics",
-                                            tint = if (showingTranslation) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
-                                            modifier = Modifier.size(18.dp),
+                                            tint = if (showingTranslation) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.90f),
+                                            modifier = Modifier.size(19.dp),
                                         )
                                     }
                                 }
                             }
+                        }
+
+                        // Lyrics source attribution + "Change" link
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) {
+                                    haptics.play(Haptic.Tap)
+                                    showLyricsPickerSheet = true
+                                    onLyricsInteraction()
+                                }
+                                .padding(horizontal = 4.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val providerName = lyricsSource?.label ?: "Dhvani"
+                            val hasNoLyrics = lyrics.isNullOrEmpty()
+                            val prefixText = when {
+                                showingTranslation && translatedLyrics != null -> "Lyrics translated to $targetName"
+                                hasNoLyrics -> "No lyrics found"
+                                else -> "Lyrics by $providerName"
+                            }
+
+                            Text(
+                                text = prefixText,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Normal,
+                                ),
+                                color = Color.White.copy(alpha = 0.70f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Change",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    textDecoration = TextDecoration.Underline,
+                                ),
+                                color = Color.White,
+                            )
                         }
 
                         // Floating sync adjustment panel
@@ -2833,7 +2978,8 @@ fun NowPlayingScreen(
                                 onClick = {
                                     queueOpen = false
                                     lyricsOpen = true
-                                    lyricsFullScreen = true
+                                    lyricsFullScreen = false
+                                    onLyricsInteraction()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -2891,6 +3037,7 @@ fun NowPlayingScreen(
                 sliderStyle == SliderStyle.SQUIGGLY || (sliderStyle == SliderStyle.WAVY && squigglySlider) -> {
                     SquigglySlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -2909,6 +3056,7 @@ fun NowPlayingScreen(
                 sliderStyle == SliderStyle.WAVY -> {
                     WavySlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -2960,11 +3108,19 @@ fun NowPlayingScreen(
                         },
                         colors = artworkSliderColors,
                         modifier = Modifier.fillMaxWidth(),
+                        track = { sliderState ->
+                            PlayerSliderTrack(
+                                sliderState = sliderState,
+                                colors = artworkSliderColors,
+                                bufferedValue = bufferedFraction,
+                            )
+                        },
                     )
                 }
                 sliderStyle == SliderStyle.NEON_GLOW -> {
                     NeonGlowSlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -2983,6 +3139,7 @@ fun NowPlayingScreen(
                 sliderStyle == SliderStyle.GRADIENT_FLOW -> {
                     GradientFlowSlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -3001,6 +3158,7 @@ fun NowPlayingScreen(
                 sliderStyle == SliderStyle.COSMIC -> {
                     CosmicSlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -3019,6 +3177,7 @@ fun NowPlayingScreen(
                 sliderStyle == SliderStyle.LIQUID_LAVA -> {
                     LiquidLavaSlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -3037,6 +3196,7 @@ fun NowPlayingScreen(
                 sliderStyle == SliderStyle.AUDIO_BARS -> {
                     AudioBarsSlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -3055,6 +3215,7 @@ fun NowPlayingScreen(
                 sliderStyle == SliderStyle.RETRO_LED -> {
                     RetroDotMatrixSlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -3073,6 +3234,7 @@ fun NowPlayingScreen(
                 sliderStyle == SliderStyle.VINYL_GROOVE -> {
                     VinylGrooveSlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -3091,6 +3253,7 @@ fun NowPlayingScreen(
                 sliderStyle == SliderStyle.CYBER_BEAM -> {
                     CyberBeamSlider(
                         value = shown,
+                        bufferedValue = bufferedFraction,
                         onValueChange = {
                             scrubbing = true
                             scrubValue = it
@@ -3578,13 +3741,13 @@ fun NowPlayingScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Left: Lyrics button
+                    // Left: Lyrics button - directly opens full screen lyrics
                     BottomGlyph(
                         icon = DhvaniIcons.Lyrics,
                         contentDescription = "Lyrics",
                         onClick = {
                             queueOpen = false
-                            if (!lyricsOpen) {
+                            if (!lyricsOpen || !lyricsFullScreen) {
                                 lyricsOpen = true
                                 lyricsFullScreen = true
                             } else {
@@ -3592,8 +3755,8 @@ fun NowPlayingScreen(
                                 lyricsFullScreen = false
                             }
                         },
-                        highlighted = lyricsOpen,
-                        haptic = if (lyricsOpen) Haptic.Tap else Haptic.Expand,
+                        highlighted = lyricsOpen && lyricsFullScreen,
+                        haptic = if (lyricsOpen && lyricsFullScreen) Haptic.Tap else Haptic.Expand,
                     )
 
                     // Center: Capsule Pill (Audio Pipeline & Party Mode or Shuffle/Repeat/AutoPlay in Queue)
@@ -3618,7 +3781,7 @@ fun NowPlayingScreen(
                                 )
                                 PillDivider()
                                 PillSegment(
-                                    icon = Icons.Rounded.Person,
+                                    icon = Icons.Rounded.Group,
                                     contentDescription = "Listen Together",
                                     onClick = { onListenTogether?.invoke() },
                                     haptic = Haptic.Tap,
@@ -3731,10 +3894,40 @@ fun NowPlayingScreen(
     }
 
     if (showAudioPipeline) {
-        AudioPipelineDialog(
+        com.music.dhvani.ui.components.AudioPipelineDialog(
             onDismiss = { showAudioPipeline = false },
             themeColors = meshColors.colors,
         )
+    }
+
+
+    if (showLyricsPickerSheet) {
+        LyricsSourcePickerSheet(
+            currentSource = lyricsSource,
+            availableSources = availableLyricsSources,
+            onSelectSource = { source ->
+                showLyricsPickerSheet = false
+                onSelectLyricsSource?.invoke(source)
+            },
+            onDismiss = { showLyricsPickerSheet = false },
+        )
+    }
+
+    // Language selector dialog – opens on long-press of the translate button
+    if (showLangSelector) {
+        val langDialogHaze = remember { HazeState() }
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showLangSelector = false },
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+            ),
+        ) {
+            TranslationLanguageDialog(
+                hazeState = langDialogHaze,
+                onDismiss = { showLangSelector = false },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 
     if (showCanvasSourceSheet) {
@@ -3749,6 +3942,18 @@ fun NowPlayingScreen(
                 showCanvasSourceSheet = false
             },
             onDismiss = { showCanvasSourceSheet = false },
+        )
+    }
+
+    if (showLyricsShareSheet) {
+        LyricsShareCardSheet(
+            song = song,
+            lines = displayedLyrics,
+            initialSelectedLine = initialLyricsShareLine,
+            onDismiss = {
+                showLyricsShareSheet = false
+                initialLyricsShareLine = null
+            },
         )
     }
 }
@@ -5431,6 +5636,7 @@ private fun LyricsPanel(
     onSeekToLine: (Long) -> Unit,
     lyricsOffsetMs: Long = 0L,
     onUserInteraction: () -> Unit = {},
+    onLineLongClick: ((LyricLine) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val displayLines = remember(lines) { lines.withKaraokeSyllables() }
@@ -5684,6 +5890,18 @@ private fun LyricsPanel(
                         alpha = lineAlpha
                     }
                     .clip(RoundedCornerShape(10.dp))
+                    .then(
+                        if (onLineLongClick != null && line.text.isNotBlank()) {
+                            Modifier.pointerInput(line) {
+                                detectTapGestures(
+                                    onLongPress = {
+                                        onUserInteraction()
+                                        onLineLongClick(line)
+                                    },
+                                )
+                            }
+                        } else Modifier
+                    )
 
                 val nextLine = effectiveLines.getOrNull(index + 1)
                 val lineEndMs = if (line.hasKnownEnd) {
@@ -5729,6 +5947,7 @@ private fun LyricsPanel(
                         lineEndMs = lineEndMs,
                         lyricsPosition = lyricsPosition,
                         onSeekToPosition = seekCallback,
+                        onLineLongClick = onLineLongClick,
                     )
                     line.background?.let { backing ->
                         PanelVoice(
@@ -5949,6 +6168,7 @@ private fun PanelVoice(
     lineEndMs: Long = line.endMs,
     lyricsPosition: LyricsPosition = LyricsPosition.LEFT,
     onSeekToPosition: ((Long) -> Unit)? = null,
+    onLineLongClick: ((LyricLine) -> Unit)? = null,
 ) {
     val tail by animateFloatAsState(
         targetValue = if (isActive) UNSUNG_ALPHA else 1f,
@@ -6158,8 +6378,13 @@ private fun PanelVoice(
             onSeekToPosition = onSeekToPosition,
         )
     } else {
-        val tapModifier = if (onSeekToPosition != null) {
-            Modifier.clickable { onSeekToPosition(line.timeMs) }
+        val tapModifier = if (onSeekToPosition != null || onLineLongClick != null) {
+            Modifier.pointerInput(line) {
+                detectTapGestures(
+                    onTap = { onSeekToPosition?.invoke(line.timeMs) },
+                    onLongPress = { onLineLongClick?.invoke(line) },
+                )
+            }
         } else Modifier
 
         if (glowAlpha > 0.01f && isActive && !browsing) {
