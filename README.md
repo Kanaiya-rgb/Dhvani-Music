@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="120" height="120" alt="Dhvani Music Logo" style="border-radius: 24px"/>
-
 # 🎵 Dhvani Music
 ### *Premium Indian & Global Music — Ad-Free, Open Source, Beautiful*
 
