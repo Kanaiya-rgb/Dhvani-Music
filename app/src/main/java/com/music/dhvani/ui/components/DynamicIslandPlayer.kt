@@ -250,39 +250,11 @@ private fun CompactIslandContent(
             model = song.artworkAt(100) ?: song.thumbnailUrl,
             contentDescription = null,
             modifier = Modifier
-                .size(26.dp)
+                .size(24.dp)
                 .clip(CircleShape)
                 .background(Color(0xFF1E1E1E))
                 .then(if (isPlaying) Modifier.rotate(rotation) else Modifier),
         )
-
-        // Song title and artist
-        Column(
-            modifier = Modifier
-                .widthIn(min = 70.dp, max = 150.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                ),
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = song.artist,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.Normal,
-                ),
-                color = Color.White.copy(alpha = 0.65f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
 
         // Live Audio Equalizer Bars or Loading Spinner
         if (isLoading) {
@@ -290,14 +262,14 @@ private fun CompactIslandContent(
                 color = palette.accent,
                 strokeWidth = 2.dp,
                 modifier = Modifier
-                    .size(16.dp)
-                    .padding(end = 4.dp),
+                    .size(15.dp)
+                    .padding(end = 2.dp),
             )
         } else {
             DynamicIslandEqualizer(
                 isPlaying = isPlaying,
                 color = palette.accent,
-                modifier = Modifier.padding(end = 4.dp),
+                modifier = Modifier.padding(end = 2.dp),
             )
         }
     }

@@ -24,7 +24,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -538,6 +542,7 @@ private fun DhvaniApp(
     val searchSuggestions by viewModel.suggestions.collectAsStateWithLifecycle()
     val detailStack by viewModel.detailStack.collectAsStateWithLifecycle()
     val detail = detailStack.lastOrNull()
+    val showPlayRandomButton by AppSettings.showPlayRandomButton.collectAsStateWithLifecycle()
     // Local Music has no artwork to wash the bar in, so it renders with a
     // plain status bar rather than the artwork-driven blur other detail
     // pages (album/artist/playlist) get. Downloads is the same page, and the
@@ -922,6 +927,30 @@ private fun DhvaniApp(
     }
     val addSongsToQueue: (List<Song>) -> Unit = { songs -> queueSongs(songs, false) }
     val playSongsNext: (List<Song>) -> Unit = { songs -> queueSongs(songs, true) }
+
+    val onPlayRandom: () -> Unit = {
+        val songs = (homeState as? UiState.Success)?.data
+            ?.flatMap { it.items }
+            ?.filter { !it.videoId.isNullOrBlank() }
+            ?.map { item ->
+                Song(
+                    videoId = item.videoId!!,
+                    title = item.title,
+                    artist = InnertubeParser.artistFromSubtitle(item.subtitle),
+                    thumbnailUrl = item.thumbnailUrl,
+                )
+            }
+            ?.distinctBy { it.videoId }
+            ?.shuffled()
+            .orEmpty()
+
+        if (songs.isNotEmpty()) {
+            play(songs, 0)
+            Toast.makeText(context, "Shuffling home mix (${songs.size} tracks)", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Loading recommendations...", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // ---- Links from outside the app ----
 
@@ -2004,6 +2033,7 @@ private fun DhvaniApp(
                             loadingMore = homeLoadingMore,
                             selectedCategory = selectedCategory,
                             onCategorySelected = viewModel::setHomeCategory,
+                            onPlayRandom = onPlayRandom,
                         )
                         TAB_EXPLORE -> selectedMoodGenre?.let { category ->
                             MoodGenrePlaylistsScreen(
@@ -2376,6 +2406,55 @@ private fun DhvaniApp(
                     onOpenFullPlayer = { showNowPlaying = true },
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
+
+                // Floating Quick Shuffle Button (Positioned at bottom-right right above Mini Player)
+                val showFloatingShuffle = showPlayRandomButton &&
+                    selectedTab == TAB_HOME &&
+                    !showNowPlaying &&
+                    detail == null &&
+                    !showSettings &&
+                    !showAppearanceSettings &&
+                    !showSources &&
+                    !showAccountScrobbling &&
+                    !showHistory &&
+                    !showDiscord &&
+                    !showReplay
+                if (showFloatingShuffle) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .navigationBarsPadding()
+                            .padding(
+                                end = 18.dp,
+                                bottom = if (player.song != null && !playerDocked) 152.dp else 84.dp,
+                            )
+                            .size(52.dp)
+                            .shadow(
+                                elevation = 10.dp,
+                                shape = CircleShape,
+                                ambientColor = Color.Black.copy(alpha = 0.5f),
+                                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                            )
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFFE85A1D), // Warm Amber Saffron
+                                        Color(0xFFBA3E08),
+                                    ),
+                                ),
+                            )
+                            .clickable { onPlayRandom() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = DhvaniIcons.Shuffle,
+                            contentDescription = "Quick Shuffle",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
             }
 
             // The player, open for as long as the app is. There is no way to
@@ -3167,12 +3246,16 @@ private fun DhvaniApp(
                 positionMs = player.position.positionMs,
                 durationMs = player.durationMs,
                 lyrics = lyrics,
+                queue = player.queue,
+                queueIndex = player.queueIndex,
                 onPlayPause = {
                     controller?.let { if (it.isPlaying) it.pause() else it.play() }
                 },
                 onNext = { controller?.seekToNextMediaItem() },
                 onPrevious = { controller?.seekToPrevious() },
                 onSeek = { target -> controller?.seekTo(target) },
+                onJumpTo = { index -> controller?.seekToDefaultPosition(index) },
+                onRemoveFromQueue = { index -> controller?.removeMediaItem(index) },
                 onDismiss = {
                     showAmbientCinemaMode = false
                     showNowPlaying = true

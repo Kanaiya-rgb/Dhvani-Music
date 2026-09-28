@@ -1,8 +1,8 @@
 {
-  "version": "2.5.0",
-  "versionCode": 37,
-  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.5.0",
-  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.5.0/DhvaniMusic-v2.5.0.apk",
-  "notes": "v2.5.0: Added Ambient Cinema landscape player with live controls, synchronized custom seekbar across all orientations, 7-line lyrics image share card generator, live audio pipeline inspector, background FCM update notifications, and streamlined settings UI."
+  "version": "2.5.1",
+  "versionCode": 38,
+  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.5.1",
+  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.5.1/DhvaniMusic-v2.5.1.apk",
+  "notes": "v2.5.1: Cinema Mode interactive queue drawer with remove songs ('X'), enlarged cover art & boosted lyrics; new Quick Shuffle floating button on Home; layout-matching loading skeletons; and ultra-compact in-app dynamic island."
 }
 

@@ -199,9 +199,63 @@ fun ShelfSkeleton(index: Int = 0, cardWidth: Dp = SHELF_CARD_WIDTH, cardCorner: 
     }
 }
 
+/**
+ * Skeleton for YouTube Music / Dhvani style Quick Picks / Listen Again shelf (compact song rows)
+ * Matches the actual loaded layout to eliminate layout shift and large empty boxes.
+ */
+@Composable
+fun SongShelfSkeleton(index: Int = 0, rows: Int = 3) {
+    Column(Modifier.padding(bottom = 24.dp)) {
+        SectionHeaderSkeleton(index = index)
+        BoxWithConstraints {
+            val screenWidth = maxWidth
+            val columnWidth = if (screenWidth > 600.dp) 340.dp else screenWidth * 0.88f
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                userScrollEnabled = false,
+            ) {
+                items(2) { colIndex ->
+                    Column(
+                        modifier = Modifier.width(columnWidth),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        repeat(rows) { rowIndex ->
+                            val itemIndex = colIndex * rows + rowIndex
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp, horizontal = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                ShimmerBox(
+                                    modifier = Modifier.size(50.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    SkeletonLine(
+                                        fraction = TitleWidths[itemIndex % TitleWidths.size],
+                                        height = 14.dp,
+                                    )
+                                    Spacer(Modifier.height(5.dp))
+                                    SkeletonLine(
+                                        fraction = SubtitleWidths[itemIndex % SubtitleWidths.size],
+                                        height = 11.dp,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** Home and Explore while the first page of shelves is still loading. */
 fun LazyListScope.feedSkeleton(shelves: Int = 3) {
-    item(key = "skeleton:hero") { HeroShelfSkeleton() }
+    item(key = "skeleton:quick_picks") { SongShelfSkeleton(index = 0, rows = 3) }
     items(shelves - 1, key = { "skeleton:shelf:$it" }) { index ->
         ShelfSkeleton(index = index + 1)
     }

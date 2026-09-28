@@ -15,20 +15,28 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,15 +49,19 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeMute
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
@@ -129,10 +141,15 @@ fun AmbientCinemaLandscapeOverlay(
     positionMs: Long,
     durationMs: Long,
     lyrics: List<LyricLine>?,
+    queue: List<Song> = emptyList(),
+    queueIndex: Int = 0,
+    nextSong: Song? = null,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
+    onJumpTo: (Int) -> Unit = {},
+    onRemoveFromQueue: (Int) -> Unit = {},
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -277,7 +294,7 @@ fun AmbientCinemaLandscapeOverlay(
         brightnessTimer = System.currentTimeMillis()
     }
 
-    // 4. Volume Management
+    // 4. Volume Management (Continuous fine-grained 1% to 2% precision)
     val audioManager = remember(context) {
         context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     }
@@ -287,6 +304,10 @@ fun AmbientCinemaLandscapeOverlay(
     var currentVolume by remember(audioManager) {
         mutableIntStateOf(audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: (maxVolume / 2))
     }
+    val initialVolPercent = remember(audioManager, maxVolume) {
+        if (maxVolume > 0) (audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: (maxVolume / 2)).toFloat() / maxVolume.toFloat() else 0.5f
+    }
+    var smoothVolumePercent by remember { mutableFloatStateOf(initialVolPercent) }
 
     var showVolumeHud by remember { mutableStateOf(false) }
     var volumeTimer by remember { mutableLongStateOf(0L) }
@@ -298,14 +319,29 @@ fun AmbientCinemaLandscapeOverlay(
         }
     }
 
-    fun updateVolume(delta: Int) {
-        val newVol = (currentVolume + delta).coerceIn(0, maxVolume)
-        if (newVol != currentVolume) {
-            currentVolume = newVol
-            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+    fun updateSmoothVolume(deltaFraction: Float) {
+        val newPercent = (smoothVolumePercent + deltaFraction).coerceIn(0f, 1f)
+        smoothVolumePercent = newPercent
+        val targetSysVol = if (maxVolume > 0) (newPercent * maxVolume).roundToInt().coerceIn(0, maxVolume) else 0
+        if (targetSysVol != currentVolume) {
+            currentVolume = targetSysVol
+            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetSysVol, 0)
         }
         volumeTimer = System.currentTimeMillis()
     }
+
+    // 5. Controls Visibility (Clean view by default, tap left side to show/hide with 5s auto-hide)
+    var areControlsVisible by remember { mutableStateOf(false) }
+    var controlsTimer by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(controlsTimer) {
+        if (controlsTimer > 0L && areControlsVisible) {
+            delay(5000)
+            areControlsVisible = false
+        }
+    }
+
+    // 6. Queue Panel state (Slide-out Queue drawer with full playlist and song removal)
+    var showQueuePanel by remember { mutableStateOf(false) }
 
     // Root container: Stationary, 100% opaque solid background
     // Covers the physical screen completely so rotating or dragging never reveals underlying app content!
@@ -344,288 +380,458 @@ fun AmbientCinemaLandscapeOverlay(
 
         // Main Interactive Foreground Content Container
         // ONLY this container moves with the swipe-down gesture and dims gracefully
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(0, animOffsetY.value.roundToInt()) }
                 .alpha(contentAlpha.value * (1f - (animOffsetY.value / 420f)).coerceIn(0f, 1f)),
         ) {
+            val totalHeight = maxHeight
+            val isVeryCompact = totalHeight < 360.dp
+            val isCompact = totalHeight < 410.dp
+
+            val topPadding = when {
+                isVeryCompact -> 34.dp
+                isCompact -> 38.dp
+                else -> 44.dp
+            }
+            val bottomPadding = when {
+                isVeryCompact -> 8.dp
+                isCompact -> 12.dp
+                else -> 16.dp
+            }
+            val horizontalPadding = when {
+                isVeryCompact -> 20.dp
+                isCompact -> 24.dp
+                else -> 28.dp
+            }
+            val columnSpacing = when {
+                isVeryCompact -> 16.dp
+                isCompact -> 22.dp
+                else -> 28.dp
+            }
+
+            val availableColHeight = totalHeight - topPadding - bottomPadding
+
+            // Dynamically scale artwork based on device screen height & controls visibility
+            val targetArtworkSize = when {
+                !areControlsVisible -> when {
+                    availableColHeight < 280.dp -> 170.dp
+                    availableColHeight < 330.dp -> 205.dp
+                    availableColHeight < 380.dp -> 236.dp
+                    else -> 265.dp
+                }
+                else -> when {
+                    availableColHeight < 260.dp -> 126.dp
+                    availableColHeight < 300.dp -> 146.dp
+                    availableColHeight < 360.dp -> 168.dp
+                    availableColHeight < 410.dp -> 188.dp
+                    else -> 212.dp
+                }
+            }
+            val artworkSize by animateDpAsState(
+                targetValue = targetArtworkSize,
+                animationSpec = tween(durationMillis = 280, easing = LinearOutSlowInEasing),
+                label = "artworkSize",
+            )
+            val haloSize = artworkSize + 22.dp
+            val artworkShapeRadius = if (isCompact) 20.dp else 24.dp
+
+            // Proportionate, compact slider width aligned with artwork
+            val sliderWidth = (artworkSize + 28.dp).coerceIn(180.dp, 255.dp)
+
+            // Spacers between elements
+            val artworkToTitleGap = when {
+                isVeryCompact -> 6.dp
+                isCompact -> 8.dp
+                else -> 12.dp
+            }
+            val artistToSliderGap = when {
+                isVeryCompact -> 2.dp
+                isCompact -> 4.dp
+                else -> 6.dp
+            }
+            val sliderToControlsGap = when {
+                isVeryCompact -> 4.dp
+                isCompact -> 6.dp
+                else -> 8.dp
+            }
+
+            // Typography
+            val titleFontSize = when {
+                isVeryCompact -> 14.5.sp
+                isCompact -> 15.5.sp
+                else -> 17.sp
+            }
+            val artistFontSize = when {
+                isVeryCompact -> 11.sp
+                isCompact -> 11.5.sp
+                else -> 12.5.sp
+            }
+
+            // Slider height
+            val sliderBoxHeight = if (isCompact) 28.dp else 34.dp
+
+            // Controls buttons
+            val playPausePillSize = when {
+                isVeryCompact -> 38.dp
+                isCompact -> 42.dp
+                else -> 46.dp
+            }
+            val playPauseIconSize = when {
+                isVeryCompact -> 22.dp
+                isCompact -> 24.dp
+                else -> 26.dp
+            }
+            val skipButtonSize = when {
+                isVeryCompact -> 36.dp
+                isCompact -> 40.dp
+                else -> 48.dp
+            }
+            val skipIconSize = when {
+                isVeryCompact -> 22.dp
+                isCompact -> 24.dp
+                else -> 28.dp
+            }
+            val controlsSpacing = when {
+                isVeryCompact -> 14.dp
+                isCompact -> 18.dp
+                else -> 20.dp
+            }
+
             // Main Horizontal Split View (Left: Artwork & Controls | Right: Live Synced Lyrics)
             Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 44.dp, bottom = 12.dp, start = 24.dp, end = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(28.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // LEFT COLUMN: Center-aligned Cover Art + Song Info + Playback Controls
-            Column(
                 modifier = Modifier
-                    .weight(0.42f)
-                    .fillMaxHeight(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
+                    .fillMaxSize()
+                    .padding(
+                        top = topPadding,
+                        bottom = bottomPadding,
+                        start = horizontalPadding,
+                        end = horizontalPadding,
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(columnSpacing),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Artwork with ambient shadow glow
-                Box(contentAlignment = Alignment.Center) {
-                    // Ambient halo behind card (smooth radial gradient without GPU blur overhead)
-                    Box(
-                        modifier = Modifier
-                            .size(200.dp)
-                            .background(
-                                Brush.radialGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                        Color.Transparent,
-                                    )
+                // LEFT COLUMN: Center-aligned Cover Art + Song Info + Playback Controls
+                Column(
+                    modifier = Modifier
+                        .weight(0.42f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(24.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            areControlsVisible = !areControlsVisible
+                            if (areControlsVisible) {
+                                controlsTimer = System.currentTimeMillis()
+                            }
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    // Artwork with ambient shadow glow
+                    Box(contentAlignment = Alignment.Center) {
+                        // Ambient halo behind card (smooth radial gradient without GPU blur overhead)
+                        Box(
+                            modifier = Modifier
+                                .size(haloSize)
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = listOf(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                            Color.Transparent,
+                                        )
+                                    ),
+                                    CircleShape,
                                 ),
-                                CircleShape,
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(artworkShapeRadius),
+                            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.25f)),
+                            shadowElevation = if (isCompact) 12.dp else 20.dp,
+                            modifier = Modifier.size(artworkSize),
+                        ) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(song.artworkAt(800) ?: song.thumbnailUrl)
+                                    .build(),
+                                contentDescription = song.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(artworkToTitleGap))
+
+                    // Song Title & Artist (Smooth auto-marquee moving text effect when text overflows)
+                    Text(
+                        text = song.title,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = titleFontSize,
+                        ),
+                        color = Color.White,
+                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .basicMarquee(
+                                iterations = Int.MAX_VALUE,
+                                initialDelayMillis = 1500,
+                                repeatDelayMillis = 1200,
+                                velocity = 32.dp,
+                            ),
+                    )
+                    Text(
+                        text = song.artist,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = artistFontSize,
+                        ),
+                        color = Color.White.copy(alpha = 0.70f),
+                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .basicMarquee(
+                                iterations = Int.MAX_VALUE,
+                                initialDelayMillis = 1500,
+                                repeatDelayMillis = 1200,
+                                velocity = 30.dp,
                             ),
                     )
 
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.25f)),
-                        shadowElevation = 20.dp,
-                        modifier = Modifier.size(190.dp),
-                    ) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(context)
-                                .data(song.artworkAt(800) ?: song.thumbnailUrl)
-                                .build(),
-                            contentDescription = song.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                // Song Title & Artist
-                Text(
-                    text = song.title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                    ),
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(0.90f),
-                )
-                Text(
-                    text = song.artist,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 12.5.sp,
-                    ),
-                    color = Color.White.copy(alpha = 0.70f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(0.90f),
-                )
-
-                Spacer(Modifier.height(6.dp))
-
-                // Dynamic Player Slider (Honors user's chosen SliderStyle: Wavy, Squiggly, Neon, Cosmic, etc.)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.88f)
-                        .height(34.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    DynamicPlayerSlider(
-                        value = displayFraction,
-                        onValueChange = { frac ->
-                            isScrubbing = true
-                            scrubFraction = frac
-                        },
-                        onValueChangeFinished = {
-                            onSeek((scrubFraction * durationMs).toLong())
-                            isScrubbing = false
-                        },
-                        isPlaying = isPlaying,
-                        sliderStyle = sliderStyle,
-                        squigglySlider = squigglySlider,
-                        activeColor = MaterialTheme.colorScheme.primary,
-                        inactiveColor = Color.White.copy(alpha = 0.28f),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth(0.88f)
-                        .padding(horizontal = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = formatTime(displayPositionMs),
-                        fontSize = 10.5.sp,
-                        color = Color.White.copy(alpha = 0.60f),
-                    )
-                    Text(
-                        text = formatTime(durationMs),
-                        fontSize = 10.5.sp,
-                        color = Color.White.copy(alpha = 0.60f),
-                    )
-                }
-
-                Spacer(Modifier.height(4.dp))
-
-                // Transport Controls
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = onPrevious) {
-                        Icon(
-                            imageVector = Icons.Rounded.SkipPrevious,
-                            contentDescription = "Previous",
-                            tint = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.size(28.dp),
-                        )
-                    }
-
-                    // Play / Pause glowing pill
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary,
-                        shadowElevation = 8.dp,
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clickable { onPlayPause() },
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = if (isPlaying) "Pause" else "Play",
-                                tint = Color.Black,
-                                modifier = Modifier.size(26.dp),
-                            )
-                        }
-                    }
-
-                    IconButton(onClick = onNext) {
-                        Icon(
-                            imageVector = Icons.Rounded.SkipNext,
-                            contentDescription = "Next",
-                            tint = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.size(28.dp),
-                        )
-                    }
-                }
-            }
-
-            // RIGHT COLUMN: Synchronized Live Karaoke Lyrics (Centered in Right Half)
-            Column(
-                modifier = Modifier
-                    .weight(0.58f)
-                    .fillMaxHeight()
-                    .padding(start = 20.dp, end = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                if (lyrics.isNullOrEmpty()) {
-                    // No lyrics fallback
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
+                    // Player Slider & Playback Transport Buttons (Shown on tap, hidden by default for clean view)
+                    AnimatedVisibility(
+                        visible = areControlsVisible,
+                        enter = fadeIn(tween(220)) + expandVertically(tween(220)),
+                        exit = fadeOut(tween(180)) + shrinkVertically(tween(180)),
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Icon(
-                                imageVector = Icons.Rounded.MusicNote,
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.35f),
-                                modifier = Modifier.size(48.dp),
-                            )
-                            Text(
-                                text = "Lyrics unavailable for this track",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = Color.White.copy(alpha = 0.60f),
-                            )
-                        }
-                    }
-                } else {
-                    val activeIndex = remember(lyrics, positionMs) {
-                        val idx = lyrics.indexOfLast { it.timeMs <= positionMs }
-                        if (idx >= 0) idx else 0
-                    }
+                            Spacer(Modifier.height(artistToSliderGap))
 
-                    val listState = rememberLazyListState()
-
-                    // Auto-scroll so the currently active singing line stays centered
-                    LaunchedEffect(activeIndex) {
-                        if (activeIndex in lyrics.indices) {
-                            val targetIndex = (activeIndex - 1).coerceAtLeast(0)
-                            listState.animateScrollToItem(
-                                index = targetIndex,
-                                scrollOffset = -40,
-                            )
-                        }
-                    }
-
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 50.dp),
-                    ) {
-                        itemsIndexed(
-                            lyrics,
-                            key = { index, line -> "${line.timeMs}_$index" }
-                        ) { index, line ->
-                            val isActive = index == activeIndex
-                            val isUpcoming = index > activeIndex
-
-                            val targetAlpha = when {
-                                isActive -> 1f
-                                isUpcoming -> 0.42f
-                                else -> 0.28f
-                            }
-                            val alpha by animateFloatAsState(
-                                targetValue = targetAlpha,
-                                animationSpec = tween(durationMillis = 200),
-                                label = "lyricAlpha",
-                            )
-
-                            val fontSize = if (isActive) 23.sp else 17.5.sp
-                            val fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Medium
-
-                            Text(
-                                text = line.text,
-                                style = MaterialTheme.typography.headlineSmall.copy(
-                                    fontSize = fontSize,
-                                    fontWeight = fontWeight,
-                                    lineHeight = if (isActive) 32.sp else 25.sp,
-                                    shadow = if (isActive) {
-                                        Shadow(
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.70f),
-                                            offset = Offset(0f, 0f),
-                                            blurRadius = 14f,
-                                        )
-                                    } else null,
-                                ),
-                                textAlign = TextAlign.Center,
-                                color = if (isActive) Color.White else Color.White.copy(alpha = alpha),
+                            // Dynamic Player Slider (Proportionate compact width aligned with artwork)
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth(0.94f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { onSeek(line.timeMs) }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                            )
+                                    .width(sliderWidth)
+                                    .height(sliderBoxHeight),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                DynamicPlayerSlider(
+                                    value = displayFraction,
+                                    onValueChange = { frac ->
+                                        isScrubbing = true
+                                        scrubFraction = frac
+                                        controlsTimer = System.currentTimeMillis()
+                                    },
+                                    onValueChangeFinished = {
+                                        onSeek((scrubFraction * durationMs).toLong())
+                                        isScrubbing = false
+                                        controlsTimer = System.currentTimeMillis()
+                                    },
+                                    isPlaying = isPlaying,
+                                    sliderStyle = sliderStyle,
+                                    squigglySlider = squigglySlider,
+                                    activeColor = MaterialTheme.colorScheme.primary,
+                                    inactiveColor = Color.White.copy(alpha = 0.28f),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .width(sliderWidth)
+                                    .padding(horizontal = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    text = formatTime(displayPositionMs),
+                                    fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                                    color = Color.White.copy(alpha = 0.60f),
+                                )
+                                Text(
+                                    text = formatTime(durationMs),
+                                    fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                                    color = Color.White.copy(alpha = 0.60f),
+                                )
+                            }
+
+                            Spacer(Modifier.height(3.dp))
+
+                            // Transport Controls
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(controlsSpacing),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        controlsTimer = System.currentTimeMillis()
+                                        onPrevious()
+                                    },
+                                    modifier = Modifier.size(skipButtonSize),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SkipPrevious,
+                                        contentDescription = "Previous",
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(skipIconSize),
+                                    )
+                                }
+
+                                // Play / Pause glowing pill
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shadowElevation = if (isCompact) 6.dp else 8.dp,
+                                    modifier = Modifier
+                                        .size(playPausePillSize)
+                                        .clickable {
+                                            controlsTimer = System.currentTimeMillis()
+                                            onPlayPause()
+                                        },
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                            contentDescription = if (isPlaying) "Pause" else "Play",
+                                            tint = Color.Black,
+                                            modifier = Modifier.size(playPauseIconSize),
+                                        )
+                                    }
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        controlsTimer = System.currentTimeMillis()
+                                        onNext()
+                                    },
+                                    modifier = Modifier.size(skipButtonSize),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SkipNext,
+                                        contentDescription = "Next",
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(skipIconSize),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // RIGHT COLUMN: Synchronized Live Karaoke Lyrics (Centered in Right Half)
+                Column(
+                    modifier = Modifier
+                        .weight(0.58f)
+                        .fillMaxHeight()
+                        .padding(start = if (isVeryCompact) 10.dp else 18.dp, end = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    if (lyrics.isNullOrEmpty()) {
+                        // No lyrics fallback
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.MusicNote,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.35f),
+                                    modifier = Modifier.size(if (isCompact) 36.dp else 48.dp),
+                                )
+                                Text(
+                                    text = "Lyrics unavailable for this track",
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontSize = if (isCompact) 14.sp else 16.sp,
+                                    ),
+                                    color = Color.White.copy(alpha = 0.60f),
+                                )
+                            }
+                        }
+                    } else {
+                        val activeIndex = remember(lyrics, positionMs) {
+                            val idx = lyrics.indexOfLast { it.timeMs <= positionMs }
+                            if (idx >= 0) idx else 0
+                        }
+
+                        val listState = rememberLazyListState()
+
+                        // Auto-scroll so the currently active singing line stays centered
+                        LaunchedEffect(activeIndex) {
+                            if (activeIndex in lyrics.indices) {
+                                val targetIndex = (activeIndex - 1).coerceAtLeast(0)
+                                listState.animateScrollToItem(
+                                    index = targetIndex,
+                                    scrollOffset = -40,
+                                )
+                            }
+                        }
+
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(if (isCompact) 14.dp else 18.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = if (isCompact) 32.dp else 52.dp),
+                        ) {
+                            itemsIndexed(
+                                lyrics,
+                                key = { index, line -> "${line.timeMs}_$index" }
+                            ) { index, line ->
+                                val isActive = index == activeIndex
+                                val isUpcoming = index > activeIndex
+
+                                val targetAlpha = when {
+                                    isActive -> 1f
+                                    isUpcoming -> 0.42f
+                                    else -> 0.28f
+                                }
+                                val alpha by animateFloatAsState(
+                                    targetValue = targetAlpha,
+                                    animationSpec = tween(durationMillis = 200),
+                                    label = "lyricAlpha",
+                                )
+
+                                val fontSize = if (isActive) (if (isCompact) 23.sp else 29.sp) else (if (isCompact) 16.5.sp else 21.sp)
+                                val fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Medium
+
+                                Text(
+                                    text = line.text,
+                                    style = MaterialTheme.typography.headlineSmall.copy(
+                                        fontSize = fontSize,
+                                        fontWeight = fontWeight,
+                                        lineHeight = if (isActive) (if (isCompact) 32.sp else 39.sp) else (if (isCompact) 23.sp else 29.sp),
+                                        shadow = if (isActive) {
+                                            Shadow(
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.70f),
+                                                offset = Offset(0f, 0f),
+                                                blurRadius = 14f,
+                                            )
+                                        } else null,
+                                    ),
+                                    textAlign = TextAlign.Center,
+                                    color = if (isActive) Color.White else Color.White.copy(alpha = alpha),
+                                    modifier = Modifier
+                                        .fillMaxWidth(0.94f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { onSeek(line.timeMs) }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
 
         // Left Edge Gesture Strip: Brightness (starts below top header so exit button is never blocked)
         Box(
@@ -645,35 +851,20 @@ fun AmbientCinemaLandscapeOverlay(
                 }
         )
 
-        // Right Edge Gesture Strip: Volume (starts below top header and isolated to 54dp outer strip)
-        var volumeDragAccumulator by remember { mutableFloatStateOf(0f) }
+        // Right Edge Gesture Strip: Volume (starts below top header and isolated to 48dp outer strip)
         Box(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .fillMaxHeight()
-                .padding(top = 56.dp, bottom = 16.dp)
-                .width(54.dp)
+                .padding(top = 56.dp, bottom = 56.dp)
+                .width(48.dp)
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onVerticalDrag = { change, dragAmount ->
                             change.consume()
-                            volumeDragAccumulator += -dragAmount
-                            val stepPx = 20f
-                            if (volumeDragAccumulator >= stepPx) {
-                                val steps = (volumeDragAccumulator / stepPx).toInt()
-                                updateVolume(steps)
-                                volumeDragAccumulator -= steps * stepPx
-                            } else if (volumeDragAccumulator <= -stepPx) {
-                                val steps = ((-volumeDragAccumulator) / stepPx).toInt()
-                                updateVolume(-steps)
-                                volumeDragAccumulator += steps * stepPx
-                            }
-                        },
-                        onDragEnd = {
-                            volumeDragAccumulator = 0f
-                        },
-                        onDragCancel = {
-                            volumeDragAccumulator = 0f
+                            // Smooth continuous 1% to 2% precision per drag step
+                            val delta = -dragAmount / 450f
+                            updateSmoothVolume(delta)
                         }
                     )
                 }
@@ -740,10 +931,9 @@ fun AmbientCinemaLandscapeOverlay(
                 .align(Alignment.CenterEnd)
                 .padding(end = 64.dp),
         ) {
-            val volFraction = if (maxVolume > 0) (currentVolume.toFloat() / maxVolume.toFloat()).coerceIn(0f, 1f) else 0f
             val volIcon = when {
-                currentVolume == 0 -> Icons.AutoMirrored.Rounded.VolumeMute
-                currentVolume < maxVolume / 2 -> Icons.AutoMirrored.Rounded.VolumeDown
+                smoothVolumePercent <= 0.01f -> Icons.AutoMirrored.Rounded.VolumeMute
+                smoothVolumePercent < 0.5f -> Icons.AutoMirrored.Rounded.VolumeDown
                 else -> Icons.AutoMirrored.Rounded.VolumeUp
             }
             Surface(
@@ -774,16 +964,267 @@ fun AmbientCinemaLandscapeOverlay(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .fillMaxHeight(volFraction)
+                                .fillMaxHeight(smoothVolumePercent.coerceIn(0.01f, 1f))
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.primary),
                         )
                     }
                     Text(
-                        text = "${(volFraction * 100).roundToInt()}%",
+                        text = "${(smoothVolumePercent * 100).roundToInt()}%",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
+                    )
+                }
+            }
+        }
+
+        // Dim Scrim Backdrop when Queue Drawer is open
+        AnimatedVisibility(
+            visible = showQueuePanel,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(180)),
+            modifier = Modifier.fillMaxSize().zIndex(18f),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { showQueuePanel = false },
+            )
+        }
+
+        // Full Interactive Queue Drawer (Slides in from the right side)
+        AnimatedVisibility(
+            visible = showQueuePanel,
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(280, easing = LinearOutSlowInEasing)) + fadeIn(tween(200)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(240, easing = FastOutLinearInEasing)) + fadeOut(tween(180)),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(360.dp)
+                .zIndex(20f),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
+                color = Color(0xF5111422),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+                shadowElevation = 24.dp,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 16.dp, bottom = 14.dp, start = 16.dp, end = 16.dp)
+                ) {
+                    // Header Row
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = "Queue",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                ),
+                                color = Color.White,
+                            )
+                            if (queue.isNotEmpty()) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                                ) {
+                                    Text(
+                                        text = "${queue.size}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    )
+                                }
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { showQueuePanel = false },
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "Close Queue",
+                                tint = Color.White.copy(alpha = 0.70f),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+
+                    if (queue.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No songs in queue",
+                                fontSize = 13.sp,
+                                color = Color.White.copy(alpha = 0.50f)
+                            )
+                        }
+                    } else {
+                        val queueListState = rememberLazyListState()
+                        LaunchedEffect(showQueuePanel, queueIndex) {
+                            if (showQueuePanel && queueIndex in queue.indices) {
+                                queueListState.scrollToItem(queueIndex.coerceAtLeast(0))
+                            }
+                        }
+
+                        LazyColumn(
+                            state = queueListState,
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            itemsIndexed(
+                                queue,
+                                key = { index, s -> "${s.videoId}_$index" }
+                            ) { index, queueSong ->
+                                val isCurrent = index == queueIndex
+                                val isPast = index < queueIndex
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = when {
+                                        isCurrent -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                        else -> Color.White.copy(alpha = 0.04f)
+                                    },
+                                    border = if (isCurrent) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)) else null,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            onJumpTo(index)
+                                        },
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        // Index or Equalizer Playing indicator
+                                        Box(
+                                            modifier = Modifier.width(24.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (isCurrent) {
+                                                Icon(
+                                                    imageVector = Icons.Rounded.GraphicEq,
+                                                    contentDescription = "Playing",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                            } else {
+                                                Text(
+                                                    text = "${index + 1}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = Color.White.copy(alpha = if (isPast) 0.30f else 0.50f),
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(Modifier.width(6.dp))
+
+                                        // Artwork thumbnail
+                                        AsyncImage(
+                                            model = ImageRequest.Builder(context)
+                                                .data(queueSong.artworkAt(120) ?: queueSong.thumbnailUrl)
+                                                .build(),
+                                            contentDescription = queueSong.title,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(RoundedCornerShape(8.dp)),
+                                        )
+
+                                        Spacer(Modifier.width(10.dp))
+
+                                        // Title & Artist
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = queueSong.title,
+                                                fontSize = 13.sp,
+                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                                                color = if (isCurrent) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = if (isPast) 0.55f else 0.95f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Text(
+                                                text = queueSong.artist,
+                                                fontSize = 11.sp,
+                                                color = Color.White.copy(alpha = if (isPast) 0.35f else 0.60f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+
+                                        // Cross icon to remove song from queue
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(CircleShape)
+                                                .clickable { onRemoveFromQueue(index) },
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Close,
+                                                contentDescription = "Remove from Queue",
+                                                tint = Color.White.copy(alpha = 0.55f),
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Bottom-Right Corner: Floating Queue Toggle Button
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 12.dp, end = 18.dp)
+                .zIndex(10f),
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = if (showQueuePanel) MaterialTheme.colorScheme.primary else Color(0x99202434),
+                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.25f)),
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clickable {
+                        showQueuePanel = !showQueuePanel
+                    },
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                        contentDescription = "Queue",
+                        tint = if (showQueuePanel) Color.Black else Color.White.copy(alpha = 0.90f),
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }

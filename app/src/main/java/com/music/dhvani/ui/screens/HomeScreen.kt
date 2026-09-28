@@ -119,6 +119,7 @@ fun HomeScreen(
     onCategorySelected: ((String) -> Unit)? = null,
     replayCard: com.music.dhvani.ui.replay.ReplayHeroCard? = null,
     onOpenReplay: (() -> Unit)? = null,
+    onPlayRandom: (() -> Unit)? = null,
 ) {
     PullToRefresh(
         refreshing = refreshing,
@@ -134,7 +135,7 @@ fun HomeScreen(
             item(key = "home_title") {
                 Column {
                     // ── Dhvani Stitch Home: Greeting + Language Filter Rail ──────────────
-                    DhvaniHomeHeader()
+                    DhvaniHomeHeader(onPlayRandom = onPlayRandom)
                     MoodGenreChips(
                         selectedChip = selectedCategory,
                         onChipSelect = { chip ->
@@ -186,7 +187,9 @@ fun HomeScreen(
  * Matches "Dhvani - Home" screen (projects/6466663551718142121/screens/9afd8dc206ae4127bdcf40f2a709775e)
  */
 @Composable
-private fun DhvaniHomeHeader() {
+private fun DhvaniHomeHeader(
+    onPlayRandom: (() -> Unit)? = null,
+) {
     val isHindi = remember {
         try {
             val firstLocale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)
