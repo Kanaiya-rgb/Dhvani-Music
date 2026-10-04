@@ -371,3 +371,12 @@ data class MoodGenre(
     val thumbnailUrl: String? = null,
 )
 
+/** A search suggestion item: either an entity song with artwork cover or a text query. */
+sealed interface SearchSuggestionItem {
+    val query: String
+    data class Track(val song: Song) : SearchSuggestionItem {
+        override val query: String get() = song.title
+    }
+    data class Text(override val query: String) : SearchSuggestionItem
+}
+

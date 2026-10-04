@@ -201,17 +201,33 @@ object SourceResolver {
      * runs with sound already playing and is where a slow source's better answer
      * gets its hearing.
      */
-    suspend fun substituteForYouTube(target: TrackMatcher.Target): SourceStream? {
+    suspend fun substituteForYouTube(
+        target: TrackMatcher.Target,
+        request: StreamRequest = requestForNow(),
+    ): SourceStream? {
         if (target.title.isBlank()) return null
         val active = SourceRegistry.active()
         val youtube = active.firstOrNull { it.kind == SourceKind.YOUTUBE } ?: return null
-        val request = requestForNow()
-        val (source, stream) = bestAcross(rankedAbove(youtube.configId, active), target, request)
+        val candidates = rankedAbove(youtube.configId, active)
+
+        // When Lossless is requested, query lossless-capable sources (Tidal, Module) first!
+        // Do NOT let a fast lossy 320k response from JioSaavn kill the lossless source.
+        if (request is StreamRequest.Lossless) {
+            val bitExactSources = candidates.filter { it.kind.canServeLossless }
+            for (source in bitExactSources) {
+                val stream = matchAndStream(source, target, request, waitForAll = true)
+                if (stream != null && stream.format.isLossless == true) {
+                    TrackLog.d(
+                        TAG,
+                        "substituted lossless: '${target.title}' served by ${source.displayName} over YouTube at ${stream.format.summary}",
+                    )
+                    return stream.copy(format = stream.format.copy(source = source.displayName))
+                }
+            }
+        }
+
+        val (source, stream) = bestAcross(candidates, target, request)
             ?: return null
-        // Says what was found, not what the caller will do with it. This
-        // line used to read "substituted" unconditionally, including for
-        // streams the caller went on to refuse — which made a log of a
-        // track that played on YouTube look like a track that hadn't.
         TrackLog.d(
             TAG,
             "substituted: '${target.title}' served by ${source.displayName} over YouTube" +

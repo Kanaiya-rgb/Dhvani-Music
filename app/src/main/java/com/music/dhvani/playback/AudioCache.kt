@@ -351,10 +351,19 @@ object AudioCache {
             // still held.
             ?.let { videoId ->
                 val rendition = QualityUpgrade.cacheTag(spec.uri)
+                val isDirectYoutube = spec.uri.getQueryParameter(DIRECT_YOUTUBE_PARAMETER) == "1" ||
+                    spec.uri.getQueryParameter("q") == "original" ||
+                    OriginalVersion.isPinned(videoId)
+                val isLossless = spec.uri.getQueryParameter("q") == "lossless"
+                val isHifi = spec.uri.getQueryParameter("q") == "hifi"
+
                 when {
                     rendition != null -> "$videoId#$rendition"
+                    isDirectYoutube -> "$videoId#yt"
+                    isLossless -> "$videoId#flac"
+                    isHifi -> "$videoId#hifi"
                     SourceResolver.canSubstituteForYouTube() -> "$videoId#alt"
-                    else -> videoId
+                    else -> "$videoId#yt"
                 }
             }
             // A source-backed track keys on the source and its track id alone.

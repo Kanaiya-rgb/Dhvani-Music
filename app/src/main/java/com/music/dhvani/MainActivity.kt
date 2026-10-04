@@ -139,6 +139,10 @@ import com.music.dhvani.playback.QueueShuffle
 import com.music.dhvani.playback.autoplaySectionStart
 import com.music.dhvani.playback.playSongs
 import com.music.dhvani.playback.toMediaItem
+import com.music.dhvani.playback.toDirectYouTubeMediaItem
+import com.music.dhvani.playback.toHighQualityMediaItem
+import com.music.dhvani.playback.OriginalVersion
+import com.music.dhvani.playback.swapQuality
 import com.music.dhvani.playback.toggleAutoplay
 import com.music.dhvani.download.DownloadSession
 import com.music.dhvani.download.DownloadStore
@@ -427,6 +431,7 @@ private fun DhvaniApp(
     var showDownloadManager by remember { mutableStateOf(false) }
     var showEqualizerSheet by remember { mutableStateOf(false) }
     var showAudioEffectsSheet by remember { mutableStateOf(false) }
+    var showAudioQualitySheet by remember { mutableStateOf(false) }
     var showAmbientCinemaMode by rememberSaveable { mutableStateOf(false) }
     var showSongDetails by remember { mutableStateOf(false) }
     /** The song whose details are currently being shown in [showSongDetails]. */
@@ -748,29 +753,28 @@ private fun DhvaniApp(
     val scope = rememberCoroutineScope()
 
     val play: (List<Song>, Int) -> Unit = { songs, index ->
-        scope.launch {
-            val starting = YtMusicRepository.resolveAudio(songs[index])
-            val queued = songs.toMutableList().also { it[index] = starting }
-            controller?.playSongs(queued, index)
-            // Nothing to raise where the player is already open beside the page.
+        val safeIndex = index.coerceIn(0, (songs.size - 1).coerceAtLeast(0))
+        val starting = songs.getOrNull(safeIndex)
+        if (starting != null) {
+            // Immediate zero-delay start
+            controller?.playSongs(songs, safeIndex)
             if (!playerDocked) showNowPlaying = true
-            // Starting playback only waits on the track about to play; the
-            // rest of a long album/playlist resolves in the background and
-            // is patched into the queue well before it's reached.
-            queued.forEachIndexed { i, song ->
-                if (i == index || !song.isVideo) return@forEachIndexed
-                launch {
-                    val resolved = YtMusicRepository.resolveAudio(song)
-                    if (resolved.videoId == song.videoId) return@launch
-                    // Found by id rather than by the index it went in at:
-                    // shuffling and queue edits both move tracks around while
-                    // this is in flight, and a song that has since been removed
-                    // must not have something else overwritten in its place.
-                    val c = controller ?: return@launch
-                    val at = (0 until c.mediaItemCount)
-                        .firstOrNull { c.getMediaItemAt(it).mediaId == song.videoId }
-                        ?: return@launch
-                    c.replaceMediaItem(at, resolved.toMediaItem())
+
+            // Background conversion of video tracks to official album audio
+            if (AppSettings.convertVideoToAudio.value) {
+                scope.launch {
+                    songs.forEachIndexed { i, song ->
+                        if (!song.isVideo) return@forEachIndexed
+                        launch {
+                            val resolved = YtMusicRepository.resolveAudio(song)
+                            if (resolved.videoId == song.videoId) return@launch
+                            val c = controller ?: return@launch
+                            val at = (0 until c.mediaItemCount)
+                                .firstOrNull { c.getMediaItemAt(it).mediaId == song.videoId }
+                                ?: return@launch
+                            c.replaceMediaItem(at, resolved.toMediaItem())
+                        }
+                    }
                 }
             }
         }
@@ -784,28 +788,55 @@ private fun DhvaniApp(
      * where the surrounding list *is* the thing the user asked for.
      */
     val playRadio: (Song) -> Unit = { song ->
-        scope.launch {
-            val resolved = YtMusicRepository.resolveAudio(song)
-            controller?.playSongs(listOf(resolved), 0)
-            if (!playerDocked) showNowPlaying = true
+        // Start playback and open player immediately with ZERO latency
+        controller?.playSongs(listOf(song), 0)
+        if (!playerDocked) showNowPlaying = true
+
+        if (song.isVideo && AppSettings.convertVideoToAudio.value) {
+            scope.launch {
+                val resolved = YtMusicRepository.resolveAudio(song)
+                if (resolved.videoId != song.videoId) {
+                    val c = controller ?: return@launch
+                    val at = (0 until c.mediaItemCount)
+                        .firstOrNull { c.getMediaItemAt(it).mediaId == song.videoId }
+                        ?: return@launch
+                    c.replaceMediaItem(at, resolved.toMediaItem())
+                }
+            }
         }
     }
     val addToQueue: (Song) -> Unit = { song ->
-        scope.launch {
-            val resolved = YtMusicRepository.resolveAudio(song)
-            // The end of what the user queued, not the end of the queue: a song
-            // asked for by name outranks whatever AutoPlay lined up behind it.
-            controller?.let { it.addMediaItem(it.autoplaySectionStart(), resolved.toMediaItem()) }
+        controller?.let { it.addMediaItem(it.autoplaySectionStart(), song.toMediaItem()) }
+        if (song.isVideo && AppSettings.convertVideoToAudio.value) {
+            scope.launch {
+                val resolved = YtMusicRepository.resolveAudio(song)
+                if (resolved.videoId != song.videoId) {
+                    val c = controller ?: return@launch
+                    val at = (0 until c.mediaItemCount)
+                        .firstOrNull { c.getMediaItemAt(it).mediaId == song.videoId }
+                        ?: return@launch
+                    c.replaceMediaItem(at, resolved.toMediaItem())
+                }
+            }
         }
     }
     val playNext: (Song) -> Unit = { song ->
-        scope.launch {
-            val resolved = YtMusicRepository.resolveAudio(song)
-            controller?.let {
-                it.addMediaItem(
-                    (it.currentMediaItemIndex + 1).coerceAtMost(it.mediaItemCount),
-                    resolved.toMediaItem(),
-                )
+        controller?.let {
+            it.addMediaItem(
+                (it.currentMediaItemIndex + 1).coerceAtMost(it.mediaItemCount),
+                song.toMediaItem(),
+            )
+        }
+        if (song.isVideo && AppSettings.convertVideoToAudio.value) {
+            scope.launch {
+                val resolved = YtMusicRepository.resolveAudio(song)
+                if (resolved.videoId != song.videoId) {
+                    val c = controller ?: return@launch
+                    val at = (0 until c.mediaItemCount)
+                        .firstOrNull { c.getMediaItemAt(it).mediaId == song.videoId }
+                        ?: return@launch
+                    c.replaceMediaItem(at, resolved.toMediaItem())
+                }
             }
         }
     }
@@ -2564,6 +2595,18 @@ private fun DhvaniApp(
             // carries the per-entry id a removal is expressed in.
             val editable = viewModel.editablePlaylist(detail?.browseId)
                 ?.takeIf { !fromPlayer && song.setVideoId != null }
+
+            val isPlayingOriginal = com.music.dhvani.playback.OriginalVersion.isPinned(song.videoId)
+
+            val performQualitySwitch: (Boolean) -> Unit = { toHighQuality ->
+                val s = player.song ?: song
+                if (toHighQuality) {
+                    com.music.dhvani.playback.OriginalVersion.unpin(s.videoId)
+                } else {
+                    com.music.dhvani.playback.OriginalVersion.pin(s.videoId)
+                }
+                controller?.swapQuality(toHighQuality)
+            }
             ModalBottomSheet(
                 onDismissRequest = { songActions = null },
                 // The sheet paints itself in the track's own colours, corners
@@ -2619,6 +2662,18 @@ private fun DhvaniApp(
                     // whatever ids it's ever going to have.
                     resolvingLinks = fromPlayer && linksLoading,
                     showSleepTimer = fromPlayer,
+                    onRollbackToOriginal = if (fromPlayer && !isPlayingOriginal && song.localUri == null && controller?.currentMediaItem?.mediaId == song.videoId) {
+                        {
+                            songActions = null
+                            performQualitySwitch(false)
+                        }
+                    } else null,
+                    onUpgradeQuality = if (fromPlayer && isPlayingOriginal && song.localUri == null && controller?.currentMediaItem?.mediaId == song.videoId) {
+                        {
+                            songActions = null
+                            performQualitySwitch(true)
+                        }
+                    } else null,
                     onOpenEqualizer = {
                         songActions = null
                         showEqualizerSheet = true
@@ -2696,6 +2751,47 @@ private fun DhvaniApp(
 
         if (showAudioEffectsSheet) {
             com.music.dhvani.ui.player.AudioEffectsSheet(onDismiss = { showAudioEffectsSheet = false })
+        }
+
+
+
+        if (showAudioQualitySheet) {
+            val currentNerdStats by com.music.dhvani.data.NerdStats.current.collectAsStateWithLifecycle()
+            val preferredSource by com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.collectAsStateWithLifecycle()
+            val sourceConfigs by com.music.dhvani.data.sources.SourceRegistry.configs.collectAsStateWithLifecycle()
+            val hasLosslessModule = sourceConfigs.any { it.kind.canServeLossless && it.enabled && it.isComplete }
+
+            com.music.dhvani.ui.player.AudioQualityPickerSheet(
+                song = player.song,
+                nerdStats = currentNerdStats,
+                preferredSource = preferredSource,
+                hasLosslessModule = hasLosslessModule,
+                onSelectQuality = { mode ->
+                    showAudioQualitySheet = false
+                    val s = player.song
+                    if (s != null) {
+                        when (mode) {
+                            com.music.dhvani.ui.player.PlaybackQualityMode.ORIGINAL_YT -> {
+                                com.music.dhvani.playback.OriginalVersion.pin(s.videoId)
+                                com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource("YOUTUBE")
+                            }
+                            com.music.dhvani.ui.player.PlaybackQualityMode.HIGH_QUALITY -> {
+                                com.music.dhvani.playback.OriginalVersion.unpin(s.videoId)
+                                com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource("JIOSAAVN")
+                            }
+                            com.music.dhvani.ui.player.PlaybackQualityMode.LOSSLESS -> {
+                                com.music.dhvani.playback.OriginalVersion.unpin(s.videoId)
+                                com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource("LOSSLESS")
+                                com.music.dhvani.data.settings.AppSettings.audioQualityWifi.value = com.music.dhvani.data.settings.AudioQuality.LOSSLESS
+                                com.music.dhvani.data.settings.AppSettings.audioQualityCellular.value = com.music.dhvani.data.settings.AudioQuality.LOSSLESS
+                            }
+                        }
+                        controller?.swapQuality(mode.name)
+                    }
+                },
+
+                onDismiss = { showAudioQualitySheet = false },
+            )
         }
 
 

@@ -14,6 +14,7 @@ import com.music.dhvani.data.model.MoodGenre
 import com.music.dhvani.data.model.MoodGenreSection
 import com.music.dhvani.data.model.SongMenu
 import com.music.dhvani.data.model.UserPlaylist
+import com.music.dhvani.data.model.SearchSuggestionItem
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -67,28 +68,36 @@ object InnertubeParser {
     }
 
     /**
-     * The typeahead queries out of a `music/get_search_suggestions` response.
-     *
-     * Two sections come back. The first is what this reads: query strings, as
-     * `searchSuggestionRenderer`. The second — present signed in, and for
-     * some terms signed out — is entity rows for songs and artists, as the
-     * same `musicResponsiveListItemRenderer` a search result uses. Those are
-     * deliberately ignored: what the field is being filled in with is a
-     * query, and a row that navigates straight to a track instead is a
-     * different feature with a different tap target.
-     *
-     * `searchEndpoint.query` is preferred over the display text because the
-     * display text arrives split into runs purely so the typed prefix can be
-     * bold-faced, with no separator of its own to rejoin on.
+     * The typeahead suggestions out of a `music/get_search_suggestions` response.
+     * Parses both entity song tracks (with full artwork cover, title, artist) and
+     * query string completions.
      */
-    fun parseSearchSuggestions(response: JsonObject): List<String> =
-        collectRenderers(response, "searchSuggestionRenderer")
-            .mapNotNull { renderer ->
-                val query = renderer.o("navigationEndpoint").o("searchEndpoint").s("query")
-                    ?: renderer.o("suggestion").runs()
-                query.takeIf { it.isNotBlank() }
+    fun parseSearchSuggestions(response: JsonObject): List<SearchSuggestionItem> {
+        val seen = HashSet<String>()
+        val textItems = mutableListOf<SearchSuggestionItem.Text>()
+        val trackItems = mutableListOf<SearchSuggestionItem.Track>()
+
+        // 1. Query completions from searchSuggestionRenderer
+        collectRenderers(response, "searchSuggestionRenderer").forEach { renderer ->
+            val query = renderer.o("navigationEndpoint").o("searchEndpoint").s("query")
+                ?: renderer.o("suggestion").runs()
+            if (query.isNotBlank() && seen.add("q:${query.lowercase()}")) {
+                textItems.add(SearchSuggestionItem.Text(query))
             }
-            .distinct()
+        }
+
+        // 2. Entity songs with artwork/cover from musicResponsiveListItemRenderer
+        collectRenderers(response, "musicResponsiveListItemRenderer").forEach { renderer ->
+            parseResponsiveListItem(renderer)?.let { song ->
+                if (!song.isVideo && seen.add("v:${song.videoId}")) {
+                    trackItems.add(SearchSuggestionItem.Track(song))
+                }
+            }
+        }
+
+        // Return top 4 text suggestions first, then songs with covers, then remaining text suggestions
+        return textItems.take(4) + trackItems + textItems.drop(4)
+    }
 
     /** Depth-first collection of a named renderer, preserving document order. */
     private fun collectRenderers(root: JsonElement, name: String): List<JsonObject> {

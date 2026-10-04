@@ -117,8 +117,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.runtime.rememberCoroutineScope
+import com.music.dhvani.data.canvas.SpotifyRemoteToken
+import kotlinx.coroutines.launch
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -248,6 +252,9 @@ fun SettingsScreen(
     val musixmatchUserToken by AppSettings.musixmatchUserToken.collectAsStateWithLifecycle()
     val spotifySpdcToken by AppSettings.spotifySpdcToken.collectAsStateWithLifecycle()
     val isCustomSpotifyToken by AppSettings.isCustomSpotifyToken.collectAsStateWithLifecycle()
+    val remoteSpotifyToken by AppSettings.remoteSpotifyToken.collectAsStateWithLifecycle()
+    val spotifyRemoteTokenUrl by AppSettings.spotifyRemoteTokenUrl.collectAsStateWithLifecycle()
+    val coroutineScope = rememberCoroutineScope()
 
     var showLyricsPositionDialog by remember { mutableStateOf(false) }
     var showLyricsAnimDialog by remember { mutableStateOf(false) }
@@ -302,10 +309,11 @@ fun SettingsScreen(
     val equalizerPreset by EqualizerManager.selectedPreset.collectAsStateWithLifecycle()
     var showEqualizerSheet by remember { mutableStateOf(false) }
 
-    // Whether the module index URL is baked into this build.
-    val losslessConfigured = BuildConfig.MODULE_INDEX_URL.trim().isNotEmpty()
-    // Whether the module source is currently enabled (toggle state).
-    val moduleEnabled = sourceConfigs.any { it.kind == SourceKind.MODULE && it.enabled && it.isComplete }
+    // Whether lossless capability is configured in this build (Module or Native Tidal HiFi).
+    val losslessConfigured = BuildConfig.MODULE_INDEX_URL.trim().isNotEmpty() ||
+        sourceConfigs.any { it.kind.canServeLossless && it.enabled && it.isComplete }
+    // Whether any lossless source is currently enabled (toggle state).
+    val moduleEnabled = sourceConfigs.any { it.kind.canServeLossless && it.enabled && it.isComplete }
 
     // Scrobbling states
     val lastfmEnabled by AppSettings.lastfmEnabled.collectAsStateWithLifecycle()
@@ -609,7 +617,7 @@ fun SettingsScreen(
             ),
             SearchableSettingItem(
                 title = "Spotify Canvas / SP_DC token",
-                subtitle = if (spotifySpdcToken.isNotBlank()) "Active" else "Optional sp_dc cookie or Bearer token for Spotify Canvas videos",
+                subtitle = if (isCustomSpotifyToken) "Active (Custom Key)" else if (remoteSpotifyToken.isNotBlank()) "Active (Cloud Key Synced)" else if (spotifySpdcToken.isNotBlank()) "Active (Built-in)" else "Cloud Sync Ready",
                 category = "Lyrics & Content",
                 icon = Icons.Rounded.Key,
                 onClick = {
@@ -1484,7 +1492,7 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.Rounded.Key,
                             title = "Spotify Canvas Token",
-                            subtitle = if (spotifySpdcToken.isNotBlank()) "Active (Looping Canvas Ready)" else "sp_dc cookie or Bearer token for Spotify Canvas",
+                            subtitle = if (isCustomSpotifyToken) "Active (Custom Key)" else if (remoteSpotifyToken.isNotBlank()) "Active (Cloud Key Synced)" else if (spotifySpdcToken.isNotBlank()) "Active (Built-in)" else "Auto-synced from Cloud",
                             trailing = { Chevron() },
                             onClick = { showSpotifyTokenDialog = true },
                         )
@@ -3268,27 +3276,86 @@ fun SettingsScreen(
         var input by remember(spotifySpdcToken, isCustomSpotifyToken) {
             mutableStateOf(if (isDefaultToken) "" else spotifySpdcToken)
         }
+        var gistUrlInput by remember(spotifyRemoteTokenUrl) {
+            mutableStateOf(spotifyRemoteTokenUrl)
+        }
+        var isSyncing by remember { mutableStateOf(false) }
+        var syncMessage by remember { mutableStateOf<String?>(null) }
+
         AlertDialog(
             onDismissRequest = { showSpotifyTokenDialog = false },
-            title = { Text("Spotify Canvas / SP_DC Token") },
+            title = { Text("Spotify Canvas / Cloud Key") },
             text = {
-                Column {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     Text(
-                        text = if (isDefaultToken) {
-                            "Spotify Canvas is currently active using the built-in system key. Enter a custom sp_dc cookie or Bearer token below only if you want to override it."
-                        } else {
-                            "Custom token is currently active. You can enter a new token or tap 'Restore Built-in' to revert back to the default working key."
+                        text = when {
+                            isCustomSpotifyToken -> "Custom user token is currently active."
+                            remoteSpotifyToken.isNotBlank() -> "Cloud Key is currently active (Synced from GitHub Gist). All users get canvas automatically without login!"
+                            else -> "Built-in system key is currently active."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+
+                    OutlinedButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                isSyncing = true
+                                syncMessage = null
+                                val res = SpotifyRemoteToken.fetchOrRefresh(force = true)
+                                isSyncing = false
+                                syncMessage = if (res.isSuccess) "✓ Synced successfully from cloud!" else "✗ ${res.exceptionOrNull()?.message ?: "Failed"}"
+                            }
+                        },
+                        enabled = !isSyncing,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Syncing...")
+                        } else {
+                            Icon(Icons.Rounded.Cloud, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Sync Cloud Key Now")
+                        }
+                    }
+
+                    syncMessage?.let { msg ->
+                        Text(
+                            text = msg,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (msg.startsWith("✓")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        )
+                    }
+
+                    Text(
+                        text = "Remote Gist / Raw URL (Optional)",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    OutlinedTextField(
+                        value = gistUrlInput,
+                        onValueChange = { gistUrlInput = it },
+                        singleLine = true,
+                        placeholder = {
+                            Text("Default Cloud Gist")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    Text(
+                        text = "Custom sp_dc Token (Optional Override)",
+                        style = MaterialTheme.typography.labelMedium,
                     )
                     OutlinedTextField(
                         value = input,
                         onValueChange = { input = it },
                         singleLine = true,
                         placeholder = {
-                            Text(if (isDefaultToken) "•••••••••••••••••••••••• (Built-in active)" else "Paste sp_dc cookie or Bearer token")
+                            Text(if (!isCustomSpotifyToken) "•••••••••••••••••••••••• (Cloud Key Active)" else "Paste custom sp_dc")
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -3299,16 +3366,19 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (isCustomSpotifyToken) {
+                    if (isCustomSpotifyToken || spotifyRemoteTokenUrl.isNotBlank()) {
                         TextButton(onClick = {
                             AppSettings.resetSpotifySpdcToken()
+                            AppSettings.setSpotifyRemoteTokenUrl("")
                             input = ""
+                            gistUrlInput = ""
                             showSpotifyTokenDialog = false
                         }) {
-                            Text("Restore Built-in")
+                            Text("Restore Cloud")
                         }
                     }
                     TextButton(onClick = {
+                        AppSettings.setSpotifyRemoteTokenUrl(gistUrlInput.trim())
                         AppSettings.setSpotifySpdcToken(input.trim())
                         showSpotifyTokenDialog = false
                     }) {

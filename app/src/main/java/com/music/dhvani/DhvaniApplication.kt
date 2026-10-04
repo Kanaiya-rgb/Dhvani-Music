@@ -74,6 +74,7 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
         // One cache directory can only be opened once per process, and
         // PlaybackService shares this one — so it's opened here, not there.
         AudioCache.init(this)
+        com.music.dhvani.playback.OriginalVersion.init(this)
         com.music.dhvani.data.canvas.CanvasCache.init(this)
         com.music.dhvani.data.canvas.CanvasRepository.init(this)
         com.music.dhvani.listentogether.ListenTogetherManager.init(this)

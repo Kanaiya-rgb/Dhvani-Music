@@ -35,19 +35,31 @@ object SpotifyCanvas {
     @Volatile
     private var tokenExpiryMs: Long = 0L
 
-    /**
-     * Checks if a Spotify token or sp_dc cookie is configured.
-     */
     fun isConfigured(): Boolean {
-        return AppSettings.spotifySpdcToken.value.isNotBlank()
+        return AppSettings.isCustomSpotifyToken.value ||
+            AppSettings.remoteSpotifyToken.value.isNotBlank() ||
+            AppSettings.spotifySpdcToken.value.isNotBlank() ||
+            AppSettings.DEFAULT_SPOTIFY_SPDC_TOKEN.isNotBlank() ||
+            SpotifyRemoteToken.hasToken()
     }
 
     suspend fun fetch(title: String, artist: String, album: String? = null): CanvasArtwork? =
         withContext(Dispatchers.IO) {
-            val tokenConfig = AppSettings.spotifySpdcToken.value.trim()
+            var tokenConfig = SpotifyRemoteToken.getEffectiveToken()
+            if (tokenConfig.isBlank() && !AppSettings.isCustomSpotifyToken.value) {
+                tokenConfig = SpotifyRemoteToken.fetchOrRefresh().getOrNull().orEmpty()
+            }
             if (tokenConfig.isBlank()) return@withContext null
 
-            val accessToken = getAccessToken(tokenConfig) ?: return@withContext null
+            var accessToken = getAccessToken(tokenConfig)
+            if (accessToken == null && !AppSettings.isCustomSpotifyToken.value) {
+                val refreshed = SpotifyRemoteToken.fetchOrRefresh(force = true).getOrNull()
+                if (!refreshed.isNullOrBlank() && refreshed != tokenConfig) {
+                    tokenConfig = refreshed
+                    accessToken = getAccessToken(tokenConfig)
+                }
+            }
+            if (accessToken == null) return@withContext null
 
             val cleanTitle = LyricsCleaner.cleanTitle(title, artist)
             val cleanArtist = LyricsCleaner.cleanArtist(artist)
@@ -153,6 +165,10 @@ object SpotifyCanvas {
 
         return runCatching {
             Http.client.newCall(request).execute().use { response ->
+                if (response.code == 401 || response.code == 403) {
+                    cachedAccessToken = null
+                    tokenExpiryMs = 0L
+                }
                 if (!response.isSuccessful) return@use null
                 val bytes = response.body?.bytes() ?: return@use null
                 val canvasUrl = extractCanvasUrl(bytes) ?: return@use null

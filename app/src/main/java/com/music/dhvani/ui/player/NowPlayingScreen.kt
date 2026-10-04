@@ -1489,9 +1489,10 @@ fun NowPlayingScreen(
             null -> CanvasStyle.FULL_SCREEN
         }
 
-        val isFullScreenCanvas = (docked || playerFillsWindow(windowWidth)) && canvasArtwork != null && activeCanvasStyle == CanvasStyle.FULL_SCREEN
-        val isBannerCanvas = heroMode && canvasArtwork != null && activeCanvasStyle == CanvasStyle.HALF_SCREEN
-        val isCardCanvas = canvasArtwork != null && (activeCanvasStyle == CanvasStyle.SQUARE_CARD || !heroMode)
+        val fillsWindow = docked || playerFillsWindow(windowWidth)
+        val isFullScreenCanvas = fillsWindow && canvasArtwork != null && activeCanvasStyle == CanvasStyle.FULL_SCREEN
+        val isBannerCanvas = fillsWindow && canvasArtwork != null && activeCanvasStyle == CanvasStyle.HALF_SCREEN
+        val isCardCanvas = canvasArtwork != null && (activeCanvasStyle == CanvasStyle.SQUARE_CARD || !fillsWindow)
 
         val showCanvasVideo = isVideoActive && canvasArtwork != null
         val ambientPosterAlpha by animateFloatAsState(
@@ -1534,7 +1535,7 @@ fun NowPlayingScreen(
         }
 
         // Full-screen edge-to-edge video artwork (Spotify, or any source configured to Full Screen)
-        if (isFullScreenCanvas && (p < 0.5f || heroVisible > 0.001f)) {
+        if (isFullScreenCanvas && p < 0.5f) {
             key(canvasArtwork?.url) {
                 CanvasArtworkPlayer(
                     artwork = canvasArtwork!!,
@@ -1546,7 +1547,7 @@ fun NowPlayingScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = if (isVideoActive) heroVisible else 0f
+                            alpha = if (isVideoActive) (1f - p) else 0f
                         },
                 )
             }

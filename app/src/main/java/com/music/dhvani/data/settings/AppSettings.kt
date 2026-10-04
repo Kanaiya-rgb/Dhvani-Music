@@ -384,6 +384,7 @@ object AppSettings {
     // which now reads [effectiveAudioQuality] and nothing else.
 
     val crossfadeSeconds = MutableStateFlow(0)
+    val preferredPlaybackSource = MutableStateFlow("JIOSAAVN")
 
     /**
      * Lets Automix's analyzer decide the transition's timing and length
@@ -673,6 +674,8 @@ object AppSettings {
     val listenBrainzToken = MutableStateFlow("")
     val spotifySpdcToken = MutableStateFlow(BuildConfig.DEFAULT_SPOTIFY_SPDC_TOKEN)
     val isCustomSpotifyToken = MutableStateFlow(false)
+    val spotifyRemoteTokenUrl = MutableStateFlow("")
+    val remoteSpotifyToken = MutableStateFlow("")
     val appleMusicUserToken = MutableStateFlow(DEFAULT_APPLE_MUSIC_USER_TOKEN)
     val appleMusicDevToken = MutableStateFlow(DEFAULT_APPLE_MUSIC_DEV_TOKEN)
 
@@ -949,6 +952,7 @@ object AppSettings {
             ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "DARK")
         }.getOrDefault(ThemeMode.DARK)
         autoplay.value = prefs.getBoolean(KEY_AUTOPLAY, true)
+        preferredPlaybackSource.value = prefs.getString(KEY_PREFERRED_PLAYBACK_SOURCE, "JIOSAAVN") ?: "JIOSAAVN"
         showNerdStats.value = prefs.getBoolean(KEY_NERD_STATS, false)
         reduceAnimation.value = prefs.getBoolean(KEY_REDUCE_ANIMATION, false)
         stopOnTaskRemoved.value = prefs.getBoolean(KEY_STOP_ON_TASK_REMOVED, false)
@@ -1057,6 +1061,8 @@ object AppSettings {
         val savedSpotifyToken = prefs.getString(KEY_SPOTIFY_SPDC_TOKEN, null)
         isCustomSpotifyToken.value = !savedSpotifyToken.isNullOrBlank()
         spotifySpdcToken.value = if (!savedSpotifyToken.isNullOrBlank()) savedSpotifyToken else DEFAULT_SPOTIFY_SPDC_TOKEN
+        spotifyRemoteTokenUrl.value = prefs.getString(KEY_SPOTIFY_REMOTE_TOKEN_URL, "").orEmpty()
+        remoteSpotifyToken.value = prefs.getString(KEY_REMOTE_SPOTIFY_TOKEN, "").orEmpty()
         appleMusicUserToken.value = prefs.getString(KEY_APPLE_MUSIC_USER_TOKEN, DEFAULT_APPLE_MUSIC_USER_TOKEN).orEmpty()
         appleMusicDevToken.value = prefs.getString(KEY_APPLE_MUSIC_DEV_TOKEN, DEFAULT_APPLE_MUSIC_DEV_TOKEN).orEmpty()
         replayGenres.value = prefs.getBoolean(KEY_REPLAY_GENRES, true)
@@ -1210,6 +1216,11 @@ object AppSettings {
         audioQualityCellular.value = value
         prefs.edit().putString(KEY_QUALITY_CELLULAR, value.name).apply()
         syncListeningMode()
+    }
+
+    fun setPreferredPlaybackSource(value: String) {
+        preferredPlaybackSource.value = value
+        prefs.edit().putString(KEY_PREFERRED_PLAYBACK_SOURCE, value).apply()
     }
 
     fun setDownloadQuality(value: DownloadQuality) {
@@ -2320,6 +2331,18 @@ object AppSettings {
         prefs.edit().remove(KEY_SPOTIFY_SPDC_TOKEN).apply()
     }
 
+    fun setSpotifyRemoteTokenUrl(value: String) {
+        val trimmed = value.trim()
+        spotifyRemoteTokenUrl.value = trimmed
+        prefs.edit().putString(KEY_SPOTIFY_REMOTE_TOKEN_URL, trimmed).apply()
+    }
+
+    fun setRemoteSpotifyToken(value: String) {
+        val trimmed = value.trim()
+        remoteSpotifyToken.value = trimmed
+        prefs.edit().putString(KEY_REMOTE_SPOTIFY_TOKEN, trimmed).apply()
+    }
+
     fun setAppleMusicUserToken(value: String) {
         appleMusicUserToken.value = value
         prefs.edit().putString(KEY_APPLE_MUSIC_USER_TOKEN, value).apply()
@@ -2622,6 +2645,7 @@ object AppSettings {
     private const val KEY_SKIP_SILENCE = "skip_silence"
     private const val KEY_SPATIAL_AUDIO = "spatial_audio"
     private const val KEY_DOLBY_ATMOS_ENABLED = "dolby_atmos_enabled"
+    private const val KEY_PREFERRED_PLAYBACK_SOURCE = "preferred_playback_source"
     private const val KEY_AUDIO_LISTENING_MODE = "audio_listening_mode"
     private const val KEY_SPEED = "playback_speed"
     private const val KEY_PITCH = "playback_pitch"
@@ -2709,6 +2733,9 @@ object AppSettings {
     private const val KEY_LISTENBRAINZ_TOKEN = "listenbrainz_token"
     val DEFAULT_SPOTIFY_SPDC_TOKEN: String = BuildConfig.DEFAULT_SPOTIFY_SPDC_TOKEN
     private const val KEY_SPOTIFY_SPDC_TOKEN = "spotify_spdc_token"
+    const val DEFAULT_SPOTIFY_REMOTE_TOKEN_URL = "https://gist.githubusercontent.com/Kanaiya-rgb/d92b26ecfcee065ecbf75283cedc7272/raw/spotify_spdc.txt"
+    private const val KEY_SPOTIFY_REMOTE_TOKEN_URL = "spotify_remote_token_url"
+    private const val KEY_REMOTE_SPOTIFY_TOKEN = "remote_spotify_token"
     const val DEFAULT_APPLE_MUSIC_USER_TOKEN = "0.AtD3rSsiNHsC6xGrKVuH9D8Q3wLfagnppQVNecUb8c4urIsjzfQjX6NRY4hl04yQ/KfFYuTiiX09EGrnFGsjaK1EUQNWEU6l5smve9Md4kVQ9oz5VUN4uVPHYzwAcbEs6hp17uRNAG1TzE2tSeEKm/P/4BqhRNHsH3nxFdPYyN8n2pjGUx6xMwGOku3qNcMVWxIf4Hw3glOhfWAFbA0Eit3x03Z89D24dUn0MBJ/bRIwO0I7dg="
     const val DEFAULT_APPLE_MUSIC_DEV_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzg2NjMyOTI0LCJleHAiOjE3OTI2ODA5MjQsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.hBgj61sZf-y7bmuvT-joXAUAcf7TVJ51732xnH5vFkLHOmsQHxVqGMYUuI4h8c0-RX3fRY3moylhLW8fewFJyw"
     private const val KEY_APPLE_MUSIC_USER_TOKEN = "apple_music_user_token"

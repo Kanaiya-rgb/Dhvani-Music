@@ -345,10 +345,20 @@ fun AmbientCinemaLandscapeOverlay(
 
     // Root container: Stationary, 100% opaque solid background
     // Covers the physical screen completely so rotating or dragging never reveals underlying app content!
+    // Consumes all unhandled touches to prevent background pass-through to underlying portrait screens/tabs!
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF06080F)),
+            .background(Color(0xFF06080F))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                areControlsVisible = !areControlsVisible
+                if (areControlsVisible) {
+                    controlsTimer = System.currentTimeMillis()
+                }
+            },
     ) {
         // Full-screen ambient blurred artwork backdrop (downscaled for 60/120fps smooth render)
         // PINNED TO SCREEN: stays stationary so dragging down or rotating never reveals the app behind!
@@ -1013,7 +1023,12 @@ fun AmbientCinemaLandscapeOverlay(
                 color = Color(0xF5111422),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
                 shadowElevation = 24.dp,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {},
             ) {
                 Column(
                     modifier = Modifier

@@ -309,11 +309,50 @@ private fun resolvePlaybackUri(uriString: String, localPath: String?): String {
  * simply omits it and the match is made on title and artist alone, as it was
  * before.
  */
-private fun Song.matchQuery(): String = buildString {
+const val DIRECT_YOUTUBE_PARAMETER = "direct_youtube"
+const val ACTION_SWAP_QUALITY = "com.music.dhvani.action.SWAP_QUALITY"
+
+fun MediaController.swapQuality(toHighQuality: Boolean) {
+    swapQuality(if (toHighQuality) "HIGH_QUALITY" else "ORIGINAL_YT")
+}
+
+fun MediaController.swapQuality(mode: String) {
+    val toHighQuality = mode != "ORIGINAL_YT" && mode != "YOUTUBE"
+    sendCustomCommand(
+        SessionCommand(ACTION_SWAP_QUALITY, android.os.Bundle.EMPTY),
+        bundleOf("mode" to mode, "toHighQuality" to toHighQuality),
+    )
+}
+
+fun Song.matchQuery(): String = buildString {
     append("&n=").append(Uri.encode(title))
     append("&a=").append(Uri.encode(artist))
     TrackMatcher.secondsOf(durationText)?.let { append("&d=").append(it) }
 }
+
+fun Song.directYouTubeUri(): String =
+    "flux://watch?v=$videoId${matchQuery()}&$DIRECT_YOUTUBE_PARAMETER=1&q=original"
+
+fun Song.toDirectYouTubeMediaItem(): MediaItem =
+    toMediaItem().buildUpon()
+        .setUri(directYouTubeUri())
+        .build()
+
+fun Song.highQualityUri(): String =
+    "flux://watch?v=$videoId${matchQuery()}&q=hifi"
+
+fun Song.toHighQualityMediaItem(): MediaItem =
+    toMediaItem().buildUpon()
+        .setUri(highQualityUri())
+        .build()
+
+fun Song.losslessUri(): String =
+    "flux://watch?v=$videoId${matchQuery()}&q=lossless"
+
+fun Song.toLosslessMediaItem(): MediaItem =
+    toMediaItem().buildUpon()
+        .setUri(losslessUri())
+        .build()
 
 fun Song.toMediaItem(): MediaItem {
     val sourceTrack = SourceRegistry.parseTrackKey(videoId)
@@ -354,6 +393,7 @@ fun Song.toMediaItem(): MediaItem {
         // option either.
         sourceTrack != null -> SourceRegistry.trackUri(sourceTrack.first, sourceTrack.second)
             .let { "$it${matchQuery()}" }
+        OriginalVersion.isPinned(videoId) -> directYouTubeUri()
         // The same three fields, for the same reason, on the YouTube path: a
         // source ranked above YouTube gets offered this track before YouTube
         // resolves it — see [SourceResolver.substituteForYouTube] — and that

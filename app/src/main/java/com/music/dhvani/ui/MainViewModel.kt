@@ -28,6 +28,7 @@ import com.music.dhvani.data.model.SearchFilter
 import com.music.dhvani.data.model.SearchResult
 import com.music.dhvani.data.model.ShelfItem
 import com.music.dhvani.data.model.Song
+import com.music.dhvani.data.model.SearchSuggestionItem
 import com.music.dhvani.data.model.MoodGenre
 import com.music.dhvani.data.model.MoodGenreSection
 import com.music.dhvani.data.model.SongMenu
@@ -129,8 +130,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * stays correct if it never does — YouTube's list never contains the
      * half-typed text, only completions of it.
      */
-    private val _suggestions = MutableStateFlow<List<String>>(emptyList())
-    val suggestions: StateFlow<List<String>> = _suggestions.asStateFlow()
+    private val _suggestions = MutableStateFlow<List<SearchSuggestionItem>>(emptyList())
+    val suggestions: StateFlow<List<SearchSuggestionItem>> = _suggestions.asStateFlow()
 
     // The search pipeline's own state. Declared here, above [init], because
     // that is where the collector is started from and a property declared
@@ -1531,7 +1532,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             emptyList()
         }
-        _suggestions.value = listOf(value) + stale.filterNot { it.equals(value, true) }
+        _suggestions.value = listOf(SearchSuggestionItem.Text(value)) + stale.filterNot { it.query.equals(value, true) }
         suggestRequests.tryEmit(value)
     }
 
@@ -1705,8 +1706,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ?: return@collectLatest
                 // Asked again on the way back; the field is live throughout.
                 if (!stillWanted(input)) return@collectLatest
-                _suggestions.value = listOf(input) +
-                    fetched.filterNot { it.equals(input, ignoreCase = true) }
+                _suggestions.value = listOf(SearchSuggestionItem.Text(input)) +
+                    fetched.filterNot { it.query.equals(input, ignoreCase = true) }
             }
     }
 

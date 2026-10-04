@@ -32,12 +32,27 @@ Thumbs.db
 
 # Release signing & Services credentials — never commit secrets
 keystore.properties
+secrets.properties
 *.jks
 *.keystore
+*.p8
+*.p12
+*.key
+*.pem
 google-services.json
 app/google-services.json
 *-firebase-adminsdk-*.json
 flux-music-13836-firebase-adminsdk-fbsvc-76e95cf252.json
+*credentials*.json
+*service-account*.json
+client_secret*.json
+spotify_spdc.txt
+*spdc*.txt
+*sp_dc*.txt
+*token*.txt
+.env
+.env.*
+*.env
 
 # Project scratch / debug artifacts
 .shots/
@@ -47,10 +62,14 @@ flux-music-13836-firebase-adminsdk-fbsvc-76e95cf252.json
 .agents/
 AGENTS.md
 *.apk
+*.aab
 *.idsig
 apk/
+bundle/
 screen_*.png
 *_PROMPT.md
+desktop.ini
+test_*.py
 
 # Firebase Hosting & Web Dashboard (Private admin files)
 .firebase/
@@ -66,7 +85,13 @@ graphify-out/
 parsed_profile.txt
 parse_profile.py
 *.pyc
+*.pyo
+*.pyd
 __pycache__/
+.venv/
+venv/
+env/
+.pytest_cache/
 
 # Internal docs / notes (keep only README.md public)
 RELEASE_v2.4.0_CHANGELOG.md
@@ -75,5 +100,22 @@ ADVANCED_FEATURES_SPEC.md
 
 # Local C/C++ tooling
 .clangd
+.cache/
 compile_commands.json
+
+# JVM & Compiler outputs / Crash dumps
+hs_err_pid*
+replay_pid*
+out/
+*.class
+*.dex
+
+# Editor temporary & swap files
+*.bak
+*.tmp
+*.swp
+*.swo
+*~
+ehthumbs.db
+ehthumbs_vista.db
 

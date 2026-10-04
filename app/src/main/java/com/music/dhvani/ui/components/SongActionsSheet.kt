@@ -1,5 +1,9 @@
 package com.music.dhvani.ui.components
 
+import com.music.dhvani.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.material.icons.automirrored.rounded.Undo
+
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -35,6 +39,7 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Tune
@@ -138,6 +143,18 @@ fun SongActionsSheet(
     modifier: Modifier = Modifier,
     onRemoveFromPlaylist: (() -> Unit)? = null,
     showSleepTimer: Boolean = false,
+    /**
+     * Drops any substituted module audio and reopens the current track
+     * through YouTube's original stream instead.
+     */
+    onRollbackToOriginal: (() -> Unit)? = null,
+    /**
+     * Replaces YouTube's stream with higher quality substituted audio (e.g. JioSaavn).
+     */
+    onUpgradeQuality: (() -> Unit)? = null,
+    /** Keeps the upgrade row visible but untappable while its lookup is running. */
+    upgradeQualityInProgress: Boolean = false,
+    onOpenAudioQuality: (() -> Unit)? = null,
     onOpenEqualizer: (() -> Unit)? = null,
     onOpenAudioEffects: (() -> Unit)? = null,
     onEnterAmbientCinemaMode: (() -> Unit)? = null,
@@ -183,6 +200,36 @@ fun SongActionsSheet(
 
         SheetTrackHeader(song, subtitleColor = palette.onBackgroundVariant)
         HorizontalDivider(thickness = 0.5.dp, color = palette.divider)
+
+        // Leads the list whenever it's available (like BitChord):
+        // Which recording/quality is playing is the one question that has to be answered
+        // before any of the rows below mean anything.
+        if (onRollbackToOriginal != null || onUpgradeQuality != null) {
+            (onRollbackToOriginal ?: onUpgradeQuality)?.let { action ->
+                ActionRow(
+                    icon = if (onRollbackToOriginal != null) {
+                        Icons.AutoMirrored.Rounded.Undo
+                    } else {
+                        Icons.Rounded.HighQuality
+                    },
+                    label = stringResource(
+                        if (onRollbackToOriginal != null) {
+                            R.string.revert_to_original
+                        } else {
+                            R.string.upgrade_quality
+                        },
+                    ),
+                    accent = palette.accent,
+                    enabled = onRollbackToOriginal != null || !upgradeQualityInProgress,
+                    onClick = action,
+                )
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 6.dp),
+                thickness = 0.5.dp,
+                color = palette.divider,
+            )
+        }
 
         if (!isOffline) {
             ActionRow(
@@ -262,6 +309,7 @@ fun SongActionsSheet(
                 accent = palette.accent,
             ) { pickingSleepTimer = true }
         }
+
         onOpenEqualizer?.let { openEq ->
             ActionRow(
                 icon = Icons.Rounded.Tune,
@@ -739,26 +787,31 @@ internal fun ActionRow(
     value: String? = null,
     tint: Color? = null,
     accent: Color = MaterialTheme.colorScheme.primary,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 22.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = tint ?: MaterialTheme.colorScheme.onBackground,
+            tint = (tint ?: MaterialTheme.colorScheme.onBackground).copy(
+                alpha = if (enabled) 1f else 0.4f,
+            ),
             modifier = Modifier.size(22.dp),
         )
         Spacer(Modifier.width(18.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onBackground,
+            color = MaterialTheme.colorScheme.onBackground.copy(
+                alpha = if (enabled) 1f else 0.4f,
+            ),
             modifier = Modifier.weight(1f),
         )
         if (value != null) {
@@ -766,7 +819,7 @@ internal fun ActionRow(
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyLarge,
-                color = accent,
+                color = accent.copy(alpha = if (enabled) 1f else 0.4f),
                 maxLines = 1,
             )
         }

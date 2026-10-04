@@ -369,7 +369,9 @@ private fun ServerEditorDialog(
                     value = baseUrl,
                     onValueChange = { baseUrl = it; result = null },
                     label = { Text(stringResource(R.string.link)) },
-                    placeholder = { Text("https://example.com/modules/index.json") },
+                    placeholder = {
+                        Text("https://example.com/modules/index.json")
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )

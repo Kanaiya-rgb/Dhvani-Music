@@ -78,6 +78,7 @@ import com.music.dhvani.data.model.ROW_ART_PX
 import com.music.dhvani.data.model.SearchFilter
 import com.music.dhvani.data.model.artworkAt
 import com.music.dhvani.data.model.SearchResult
+import com.music.dhvani.data.model.SearchSuggestionItem
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.UiState
 import com.music.dhvani.R
@@ -111,7 +112,7 @@ fun SearchScreen(
      */
     onBrowseLongPress: ((BrowseItem) -> Unit)? = null,
     history: List<String>,
-    suggestions: List<String>,
+    suggestions: List<SearchSuggestionItem>,
     onSubmit: () -> Unit,
     onSuggestionClick: (String) -> Unit,
     onHistoryClick: (String) -> Unit,
@@ -174,7 +175,7 @@ fun SearchScreen(
                 onVoiceClick = launchVoiceSearch,
                 onFocusChanged = { isSearchFocused = it },
                 focusRequester = focusRequester,
-                modifier = Modifier.padding(start = PAGE_GUTTER, end = PAGE_GUTTER, bottom = 4.dp),
+                modifier = Modifier.padding(start = PAGE_GUTTER, end = PAGE_GUTTER, bottom = 6.dp),
             )
             // The filters only mean something once there is a result set to narrow;
             // they stay up for an empty or failed search too, or picking a filter
@@ -187,21 +188,29 @@ fun SearchScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
+            contentPadding = PaddingValues(
+                top = 6.dp,
+                bottom = contentPadding.calculateBottomPadding(),
+            ),
         ) {
             when {
                 suggesting -> searchSuggestions(
                     suggestions = suggestions,
-                    // Picking one is done typing, so the keyboard comes down
-                    // with it and the results get the whole screen.
-                    onClick = { term ->
+                    currentQuery = query,
+                    onTrackClick = { song ->
+                        com.music.dhvani.data.settings.SearchHistory.record(song.title)
+                        focusManager.clearFocus()
+                        onSongClick(listOf(song), 0)
+                        onQueryChange("")
+                    },
+                    onQueryClick = { term ->
                         onSuggestionClick(term)
                         focusManager.clearFocus()
                     },
                     onFill = onQueryChange,
                 )
-                // When search bar is clicked/focused or when there are no results yet, show recent searches + quick explore
-                (isSearchFocused && query.isBlank()) || results == null -> {
+                // When search bar is clicked/focused and query is blank, show recent searches + quick explore
+                isSearchFocused && query.isBlank() -> {
                     if (history.isNotEmpty()) {
                         recentSearches(
                             history = history,
@@ -221,6 +230,17 @@ fun SearchScreen(
                         },
                     )
                 }
+                // When normal search page is open (search bar not focused, query is blank):
+                // Do NOT show search history! Only show quick explore recommendations.
+                results == null && query.isBlank() -> {
+                    quickExploreSuggestions(
+                        onTagClick = { tag ->
+                            onQueryChange(tag)
+                            onSuggestionClick(tag)
+                            focusManager.clearFocus()
+                        },
+                    )
+                }
                 results is UiState.Loading -> songListSkeleton(circular = filter == SearchFilter.ARTISTS)
                 results is UiState.Error -> item { MessageState(results.message) }
                 results is UiState.Success -> {
@@ -228,7 +248,21 @@ fun SearchScreen(
                     val tracks = results.data
                         .filterIsInstance<SearchResult.Track>()
                         .map { it.song }
-                    itemsIndexed(results.data) { index, row ->
+                    itemsIndexed(
+                        items = results.data,
+                        key = { _, row ->
+                            when (row) {
+                                is SearchResult.Track -> "track:${row.song.videoId}"
+                                is SearchResult.Browse -> "browse:${row.item.browseId}"
+                            }
+                        },
+                        contentType = { _, row ->
+                            when (row) {
+                                is SearchResult.Track -> "track"
+                                is SearchResult.Browse -> "browse"
+                            }
+                        },
+                    ) { index, row ->
                         when (row) {
                             is SearchResult.Track -> SongRow(
                                 song = row.song,
@@ -268,29 +302,130 @@ fun SearchScreen(
  * past.
  */
 private fun LazyListScope.searchSuggestions(
-    suggestions: List<String>,
-    onClick: (String) -> Unit,
+    suggestions: List<SearchSuggestionItem>,
+    currentQuery: String,
+    onTrackClick: (Song) -> Unit,
+    onQueryClick: (String) -> Unit,
     onFill: (String) -> Unit,
 ) {
-    itemsIndexed(suggestions, key = { _, term -> "suggest:$term" }) { index, term ->
-        SuggestionRow(
-            term = term,
-            // The lead row *is* what's in the field, so there is nothing to
-            // fill it with and the arrow would be a no-op button.
-            onFill = if (index == 0) null else ({ onFill(term) }),
-            onClick = { onClick(term) },
+    val textItems = suggestions.filterIsInstance<SearchSuggestionItem.Text>()
+    val trackItems = suggestions.filterIsInstance<SearchSuggestionItem.Track>()
+
+    val topText = textItems.take(4)
+    val remainingText = textItems.drop(4)
+
+    // 1. Top 3-4 text suggestions on top
+    items(
+        items = topText,
+        key = { "suggest:top:${it.query}" },
+        contentType = { "text_suggestion" },
+    ) { item ->
+        val isFirst = topText.firstOrNull() == item
+        QuerySuggestionRow(
+            term = item.query,
+            onFill = if (isFirst && item.query.equals(currentQuery, ignoreCase = true)) null else ({ onFill(item.query) }),
+            onClick = { onQueryClick(item.query) },
         )
+    }
+
+    // 2. Song suggestions with artwork covers directly below the top text suggestions
+    if (trackItems.isNotEmpty()) {
+        items(
+            items = trackItems,
+            key = { "suggest:track:${it.song.videoId}" },
+            contentType = { "track_suggestion" },
+        ) { item ->
+            TrackSuggestionRow(
+                song = item.song,
+                onClick = { onTrackClick(item.song) },
+                onFill = { onFill(item.song.title) },
+            )
+        }
+    }
+
+    // 3. Remaining text suggestions at the bottom
+    if (remainingText.isNotEmpty()) {
+        items(
+            items = remainingText,
+            key = { "suggest:more:${it.query}" },
+            contentType = { "text_suggestion" },
+        ) { item ->
+            QuerySuggestionRow(
+                term = item.query,
+                onFill = { onFill(item.query) },
+                onClick = { onQueryClick(item.query) },
+            )
+        }
     }
 }
 
-/**
- * One typeahead row: tap the text to search it, or the arrow to put it in the
- * field and carry on typing — the pair YouTube, Google and every mobile
- * keyboard's own suggestion strip use, and the reason a longer completion
- * isn't a dead end when it's only nearly right.
- */
 @Composable
-private fun SuggestionRow(term: String, onFill: (() -> Unit)?, onClick: () -> Unit) {
+private fun TrackSuggestionRow(
+    song: Song,
+    onClick: () -> Unit,
+    onFill: (() -> Unit)?,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(start = PAGE_GUTTER, end = 8.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AsyncImage(
+            model = song.artworkAt(ROW_ART_PX),
+            contentDescription = null,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .thumbnailBorder(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = song.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "${if (song.isVideo) "Video" else "Song"} • ${song.artist}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (onFill != null) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onFill),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.NorthWest,
+                    contentDescription = stringResource(R.string.recent_search_edit, song.title),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        } else {
+            Spacer(Modifier.width(40.dp))
+        }
+    }
+}
+
+@Composable
+private fun QuerySuggestionRow(
+    term: String,
+    onFill: (() -> Unit)?,
+    onClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -329,8 +464,6 @@ private fun SuggestionRow(term: String, onFill: (() -> Unit)?, onClick: () -> Un
                 )
             }
         } else {
-            // Keeps the text column the same width as the rows below, so the
-            // lead row doesn't sit a touch wider than its completions.
             Spacer(Modifier.width(40.dp))
         }
     }
@@ -631,6 +764,12 @@ private fun SearchField(
             .fillMaxWidth()
             .height(52.dp)
             .uiDesignCard(shape = CircleShape, backgroundColor = MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+            ) {
+                focusRequester.requestFocus()
+            }
             .padding(start = 12.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -685,7 +824,7 @@ private fun SearchField(
                     .clip(CircleShape)
                     .clickable {
                         onQueryChange("")
-                        focusManager.clearFocus()
+                        focusRequester.requestFocus()
                     },
                 contentAlignment = Alignment.Center,
             ) {

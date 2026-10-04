@@ -166,6 +166,11 @@ object StreamChoice {
         refusedSubstitutes[videoId] = SystemClock.elapsedRealtime()
     }
 
+    /** Allows substitutions again for [videoId], clearing any active refusal. */
+    fun allowSubstitutes(videoId: String) {
+        refusedSubstitutes.remove(videoId)
+    }
+
     /** Whether a substitution has broken [videoId] recently enough to still count. */
     fun substitutesRefused(videoId: String): Boolean {
         val at = refusedSubstitutes[videoId] ?: return false

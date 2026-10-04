@@ -9,6 +9,7 @@ import com.music.dhvani.download.DownloadStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -45,6 +46,11 @@ object CanvasRepository {
 
     fun init(context: Context) {
         appContext = context.applicationContext
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            if (!AppSettings.isCustomSpotifyToken.value) {
+                SpotifyRemoteToken.fetchOrRefresh(force = false)
+            }
+        }
     }
 
     fun getSelectedSource(videoId: String): CanvasSource? {

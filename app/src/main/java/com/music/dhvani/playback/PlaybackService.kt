@@ -73,8 +73,11 @@ import com.music.dhvani.data.scrobbling.ScrobbleManager
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.settings.AudioListeningMode
 import com.music.dhvani.data.sources.SourceResolver
+import com.music.dhvani.data.sources.SourceRegistry
+import com.music.dhvani.data.sources.SourceKind
 import com.music.dhvani.data.sources.SourceStream
 import com.music.dhvani.data.sources.StreamFormat
+import com.music.dhvani.data.sources.StreamRequest
 import com.music.dhvani.data.sources.TrackMatcher
 import com.music.dhvani.download.Downloads
 import com.music.dhvani.widget.MediaWidget
@@ -281,6 +284,7 @@ class PlaybackService : MediaSessionService() {
                 .add(favoriteCommand)
                 .add(autoplayCommand)
                 .add(shuffleCommand)
+                .add(SessionCommand(ACTION_SWAP_QUALITY, Bundle.EMPTY))
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
@@ -298,6 +302,10 @@ class PlaybackService : MediaSessionService() {
                 ACTION_TOGGLE_SHUFFLE -> toggleShuffleFromNotification()
                 ACTION_TOGGLE_FAVORITE -> session.player.currentMediaItem?.mediaId?.let {
                     toggleFavoriteFromNotification(it)
+                }
+                ACTION_SWAP_QUALITY -> {
+                    val mode = args.getString("mode") ?: if (args.getBoolean("toHighQuality", true)) "HIGH_QUALITY" else "ORIGINAL_YT"
+                    swapCurrentQuality(mode)
                 }
                 else -> return Futures.immediateFuture(
                     SessionResult(SessionError.ERROR_NOT_SUPPORTED),
@@ -785,6 +793,68 @@ class PlaybackService : MediaSessionService() {
             }
             val videoId = dataSpec.uri.getQueryParameter("v")
                 ?: return@Factory dataSpec
+
+            val isExplicitOriginal = dataSpec.uri.getQueryParameter(DIRECT_YOUTUBE_PARAMETER) == "1" ||
+                dataSpec.uri.getQueryParameter("q") == "original" ||
+                OriginalVersion.isPinned(videoId)
+            val isExplicitHifi = dataSpec.uri.getQueryParameter("q") == "hifi"
+            val isExplicitLossless = dataSpec.uri.getQueryParameter("q") == "lossless"
+
+            // An explicit rollback or pinned YouTube track is not a preference for a different
+            // candidate: it means this exact YouTube rendition, immediately.
+            if (isExplicitOriginal) {
+                QualityUpgrade.forget(videoId)
+                StreamChoice.forget(videoId)
+                NerdStats.clearDeclared(videoId)
+                val streamUrl = try {
+                    runBlocking(about) {
+                        withTimeout(RESOLVE_TIMEOUT_MS) { StreamResolver.resolve(videoId) }
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    throw java.io.IOException("Stream resolution timed out for $videoId", e)
+                }
+                val headers = PlayerClient.forStreamUrl(streamUrl).mediaHeaders()
+                val ytFormat = StreamFormat(source = "YouTube Music", codec = "opus", kbps = 160)
+                NerdStats.onSourceStream(videoId, ytFormat)
+                StreamChoice.remember(videoId, SourceStream(streamUrl, headers = headers, format = ytFormat), substituted = false)
+                return@Factory dataSpec.buildUpon()
+                    .setUri(Uri.parse(streamUrl))
+                    .setHttpRequestHeaders(headers)
+                    .build()
+            }
+
+            if (isExplicitHifi || isExplicitLossless) {
+                QualityUpgrade.forget(videoId)
+                StreamChoice.forget(videoId)
+                val won = runBlocking(about) {
+                    resolveWithModulePriority(
+                        videoId = videoId,
+                        target = SourceResolver.targetIn(dataSpec.uri),
+                        forceHighQuality = isExplicitHifi,
+                        forceLossless = isExplicitLossless,
+                    )
+                }
+                when (won) {
+                    is Resolved.Module -> {
+                        NerdStats.onSourceStream(videoId, won.stream.format)
+                        StreamChoice.remember(videoId, won.stream, substituted = true)
+                        return@Factory dataSpec.buildUpon()
+                            .setUri(Uri.parse(won.stream.url))
+                            .setHttpRequestHeaders(won.stream.headers)
+                            .build()
+                    }
+                    is Resolved.YouTube -> {
+                        val headers = PlayerClient.forStreamUrl(won.url).mediaHeaders()
+                        val ytFormat = StreamFormat(source = "YouTube Music", codec = "opus", kbps = 160)
+                        NerdStats.onSourceStream(videoId, ytFormat)
+                        StreamChoice.remember(videoId, SourceStream(won.url, headers = headers, format = ytFormat), substituted = false)
+                        return@Factory dataSpec.buildUpon()
+                            .setUri(Uri.parse(won.url))
+                            .setHttpRequestHeaders(headers)
+                            .build()
+                    }
+                }
+            }
             // An upgraded item carries a marker and its stream has already
             // been found — see [QualityUpgrade]. Answered before anything
             // else, and without re-resolving: this exact URL is what the
@@ -1237,6 +1307,10 @@ class PlaybackService : MediaSessionService() {
      * requests at once and never briefly holds none.
      */
     private fun adoptPlayer(outgoing: ExoPlayer, incoming: ExoPlayer) {
+        adoptPlayer(outgoing, incoming, isQualitySwap = false)
+    }
+
+    private fun adoptPlayer(outgoing: ExoPlayer, incoming: ExoPlayer, isQualitySwap: Boolean) {
         setSessionOwner(outgoing, owns = false)
         setSessionOwner(incoming, owns = true)
 
@@ -1254,19 +1328,146 @@ class PlaybackService : MediaSessionService() {
 
         mediaSession?.player = SessionPlayer(incoming, requireNotNull(crossfade))
 
-        // The queue moving on used to arrive here as an item transition on the
-        // one player that owned the queue. It cannot any more — the incoming
-        // track started as its own player's *first* item, which fires on a
-        // player nothing was listening to yet — so the bookkeeping that hung off
-        // that callback is driven explicitly instead. Without this the crossfade
-        // would silently stop scrobbling, stop writing history, stop honouring
-        // "sleep after this song" and stop reading ahead.
-        onTrackBecameCurrent(
-            incoming.currentMediaItem,
-            previousEnded = true,
-            reason = Player.MEDIA_ITEM_TRANSITION_REASON_AUTO,
-            alreadyAudible = true,
-        )
+        if (!isQualitySwap) {
+            onTrackBecameCurrent(
+                incoming.currentMediaItem,
+                previousEnded = true,
+                reason = Player.MEDIA_ITEM_TRANSITION_REASON_AUTO,
+                alreadyAudible = true,
+            )
+        } else {
+            reportProgress()
+            publishWidgetState()
+        }
+    }
+
+    private var qualitySwapJob: Job? = null
+
+    private fun swapCurrentQuality(toHighQuality: Boolean) {
+        swapCurrentQuality(if (toHighQuality) "HIGH_QUALITY" else "ORIGINAL_YT")
+    }
+
+    private fun swapCurrentQuality(mode: String) {
+        qualitySwapJob?.cancel()
+        qualitySwapJob = scope.launch(Dispatchers.Main) {
+            val active = player ?: return@launch
+            val standby = spare ?: return@launch
+            val currIdx = active.currentMediaItemIndex
+            if (currIdx !in 0 until active.mediaItemCount) return@launch
+            val currItem = active.currentMediaItem ?: return@launch
+            val song = currItem.toSong()
+            val videoId = song.videoId
+            val currentPos = active.currentPosition
+            val wasPlaying = active.playWhenReady
+
+            val targetItem = when (mode) {
+                "ORIGINAL_YT", "YOUTUBE" -> {
+                    OriginalVersion.pin(videoId)
+                    AppSettings.setPreferredPlaybackSource("YOUTUBE")
+                    StreamChoice.refuseSubstitutes(videoId)
+                    StreamChoice.forget(videoId)
+                    QualityUpgrade.forget(videoId)
+                    song.toDirectYouTubeMediaItem()
+                }
+                "LOSSLESS" -> {
+                    OriginalVersion.unpin(videoId)
+                    AppSettings.setPreferredPlaybackSource("LOSSLESS")
+                    val losslessConfig = SourceRegistry.configs.value.firstOrNull { it.kind.canServeLossless }
+                    if (losslessConfig != null && !losslessConfig.enabled) {
+                        SourceRegistry.setEnabled(losslessConfig.id, true)
+                    }
+                    StreamChoice.allowSubstitutes(videoId)
+                    StreamChoice.forget(videoId)
+                    QualityUpgrade.forget(videoId)
+                    song.toLosslessMediaItem()
+                }
+                else -> { // HIGH_QUALITY / JIOSAAVN
+                    OriginalVersion.unpin(videoId)
+                    AppSettings.setPreferredPlaybackSource("JIOSAAVN")
+                    val jio = SourceRegistry.configs.value.firstOrNull { it.kind == SourceKind.JIOSAAVN }
+                    if (jio != null && !jio.enabled) {
+                        SourceRegistry.setEnabled(jio.id, true)
+                    }
+                    StreamChoice.allowSubstitutes(videoId)
+                    StreamChoice.forget(videoId)
+                    QualityUpgrade.forget(videoId)
+                    song.toHighQualityMediaItem()
+                }
+            }
+
+            val queueItems = (0 until active.mediaItemCount).map { i ->
+                if (i == currIdx) targetItem else active.getMediaItemAt(i)
+            }
+
+            standby.stop()
+            standby.clearMediaItems()
+            standby.skipSilenceEnabled = active.skipSilenceEnabled
+            standby.repeatMode = active.repeatMode
+            standby.shuffleModeEnabled = active.shuffleModeEnabled
+            standby.playbackParameters = active.playbackParameters
+            // Mute standby so it resolves and buffers in parallel silently
+            standby.volume = 0f
+            standby.setMediaItems(queueItems, currIdx, currentPos)
+            standby.playWhenReady = wasPlaying
+            standby.prepare()
+
+            val startTime = SystemClock.elapsedRealtime()
+            while (isActive && standby.playbackState != Player.STATE_READY && standby.playerError == null) {
+                if (active.currentMediaItemIndex != currIdx || active.currentMediaItem?.mediaId != videoId) {
+                    standby.stop()
+                    standby.clearMediaItems()
+                    standby.volume = 1f
+                    return@launch
+                }
+                if (SystemClock.elapsedRealtime() - startTime > 10000L) {
+                    // Timeout fallback: abort standby
+                    standby.stop()
+                    standby.clearMediaItems()
+                    standby.volume = 1f
+                    return@launch
+                }
+                delay(25)
+            }
+
+            if (!isActive || standby.playerError != null) {
+                standby.stop()
+                standby.clearMediaItems()
+                standby.volume = 1f
+                return@launch
+            }
+
+            // Standby is ready with audio!
+            if (wasPlaying && active.isPlaying) {
+                val activePos = active.currentPosition
+                val standbyPos = standby.currentPosition
+                if (kotlin.math.abs(activePos - standbyPos) > 150L) {
+                    standby.seekTo(currIdx, activePos)
+                    delay(35)
+                }
+
+                // Smooth 200ms crossfade between the two players
+                val fadeSteps = 10
+                val stepDelay = 20L
+                for (step in 1..fadeSteps) {
+                    if (!isActive) break
+                    val progress = step.toFloat() / fadeSteps.toFloat()
+                    active.volume = (1f - progress).coerceIn(0f, 1f)
+                    standby.volume = progress.coerceIn(0f, 1f)
+                    delay(stepDelay)
+                }
+            }
+
+            standby.volume = 1f
+            active.volume = 0f
+
+            adoptPlayer(outgoing = active, incoming = standby, isQualitySwap = true)
+
+            active.stop()
+            active.clearMediaItems()
+            active.volume = 1f
+
+            publishNerdStats()
+        }
     }
 
     /**
@@ -2777,6 +2978,8 @@ class PlaybackService : MediaSessionService() {
     private suspend fun resolveWithModulePriority(
         videoId: String,
         target: TrackMatcher.Target,
+        forceHighQuality: Boolean = false,
+        forceLossless: Boolean = false,
     ): Resolved {
         // A substitute already broke this track once — see
         // [StreamChoice.refuseSubstitutes]. Racing the modules again would find
@@ -2795,8 +2998,14 @@ class PlaybackService : MediaSessionService() {
         // [TrackLog.about]. Without it the module walk and the client walk both
         // log from a scope that knows nothing, which is most of what a resolve
         // has to say about itself.
+        val req = when {
+            forceLossless -> StreamRequest.Lossless
+            forceHighQuality -> StreamRequest.Best
+            else -> SourceResolver.requestForNow()
+        }
+        val timeoutMs = if (forceHighQuality || forceLossless) 4000L else SUBSTITUTE_TIMEOUT_MS
         val lookup = scope.async(Dispatchers.IO + TrackLog.about(videoId)) {
-            withTimeoutOrNull(SUBSTITUTE_TIMEOUT_MS) { SourceResolver.substituteForYouTube(target) }
+            withTimeoutOrNull(timeoutMs) { SourceResolver.substituteForYouTube(target, req) }
         }
         // Started now rather than after the modules have had their say, and
         // wrapped rather than thrown from: it is awaited only on the paths
@@ -2806,24 +3015,20 @@ class PlaybackService : MediaSessionService() {
             runCatching { StreamResolver.resolve(videoId) }
         }
 
-        // First past the post. A null because [lookup] won is a module miss; a
-        // null because [fallback] won means YouTube has a URL and the modules
-        // are still looking — [lookup.isActive] below is what tells those
-        // apart, which is the question the old head start answered by timing
-        // out rather than by asking.
-        val quick: SourceStream? = select {
-            lookup.onAwait { it }
-            // A fallback that finished without a URL has not won anything.
-            //
-            // This clause used to yield null unconditionally, which treats "the
-            // YouTube walk is over" as "YouTube has a URL" — true only while
-            // failing was the slow outcome. It no longer is: [StreamResolver]
-            // now answers a known-unplayable track immediately, so the losing
-            // leg crosses the line first and, before this, took the track down
-            // with it while a module lookup that was about to succeed was still
-            // running. Exactly the case in the report — an age-gated track that
-            // YouTube would never serve and a catalogue that had it all along.
-            fallback.onAwait { resolved -> if (resolved.isSuccess) null else lookup.await() }
+        val quick: SourceStream? = if (forceHighQuality || forceLossless) {
+            lookup.await()
+        } else {
+            // Live playback: give lookup a small 600ms grace window so fast high quality
+            // sources (like JioSaavn 320k) aren't prematurely killed by YouTube's fast resolve.
+            val earlyLookup = withTimeoutOrNull(600L) { lookup.await() }
+            if (earlyLookup != null) {
+                earlyLookup
+            } else {
+                select<SourceStream?> {
+                    lookup.onAwait { it }
+                    fallback.onAwait { resolved -> if (resolved.isSuccess) null else lookup.await() }
+                }
+            }
         }
 
         if (quick != null) {

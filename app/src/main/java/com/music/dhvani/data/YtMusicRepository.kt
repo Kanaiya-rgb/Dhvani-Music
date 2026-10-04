@@ -17,6 +17,7 @@ import com.music.dhvani.data.model.ShelfItem
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.SongMenu
 import com.music.dhvani.data.model.UserPlaylist
+import com.music.dhvani.data.model.SearchSuggestionItem
 import com.music.dhvani.data.history.PlaybackHistory
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.settings.SearchHistory
@@ -734,7 +735,7 @@ object YtMusicRepository {
      * field's typeahead. Unfiltered on purpose: a suggestion is a query, and
      * which tab it is then run against is the user's to pick afterwards.
      */
-    suspend fun searchSuggestions(input: String): Result<List<String>> =
+    suspend fun searchSuggestions(input: String): Result<List<SearchSuggestionItem>> =
         call("suggest") {
             InnertubeParser.parseSearchSuggestions(Innertube.searchSuggestions(input))
         }
