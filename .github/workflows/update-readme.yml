@@ -1,0 +1,70 @@
+name: Auto-Update README on Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release Tag (e.g. v2.6.0)'
+        required: true
+        default: 'v2.6.0'
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    name: Update README with Latest Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Extract Release Tag and Version
+        id: release_info
+        run: |
+          RAW_TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          if [[ -z "$RAW_TAG" ]]; then
+            echo "::error::Release tag could not be determined."
+            exit 1
+          fi
+          # Ensure tag starts with v
+          if [[ ! $RAW_TAG =~ ^v ]]; then
+            TAG="v$RAW_TAG"
+          else
+            TAG="$RAW_TAG"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected Tag: $TAG | Version: $VERSION"
+
+      - name: Update README.md with New APK Name
+        run: |
+          TAG="${{ steps.release_info.outputs.tag }}"
+          VERSION="${{ steps.release_info.outputs.version }}"
+          APK_NAME="DhvaniMusic-${TAG}.apk"
+          
+          # Replace any DhvaniMusic-v*.apk in README.md
+          sed -i -E "s/DhvaniMusic-v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?\.apk/${APK_NAME}/g" README.md
+          
+          echo "Updated README.md with ${APK_NAME}"
+
+      - name: Commit and Push Changes to main
+        run: |
+          TAG="${{ steps.release_info.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if git diff --quiet README.md; then
+            echo "README.md is already up to date. No commit needed."
+          else
+            git add README.md
+            git commit -m "docs: auto-update README for release ${TAG} [skip ci]"
+            git push origin main
+            echo "✅ Successfully updated and pushed README.md for ${TAG}!"
+          fi
