@@ -411,8 +411,12 @@ Dhvani Music is completely free, open-source, and ad-free. If you enjoy it, cons
 
 <div align="center">
 
-<a href="https://github.com/Kanaiya-rgb/Dhvani-Music/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Kanaiya-rgb/Dhvani-Music" alt="Dhvani Music Contributors" />
+<a href="https://github.com/Kanaiya-rgb">
+  <img src="https://avatars.githubusercontent.com/u/176733324?v=4" width="64" height="64" style="border-radius: 50%;" alt="Kanaiya-rgb" />
+</a>
+&nbsp;&nbsp;
+<a href="https://github.com/claude">
+  <img src="https://avatars.githubusercontent.com/u/81847?v=4" width="64" height="64" style="border-radius: 50%;" alt="Claude" />
 </a>
 
 <br/><br/>
