@@ -432,6 +432,7 @@ Dhvani Music is built with deep gratitude to these open-source projects:
 - **[NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor)** — Robust, lightweight YouTube stream extraction infrastructure.
 - **[AndroidX Jetpack Compose](https://developer.android.com/jetpack/compose)** & **[Media3](https://developer.android.com/media/media3)** — The modern foundation powering our entire audio engine and UI.
 - **[Haze](https://github.com/chrisbanes/haze)** by Chris Banes — Beautiful real-time glassmorphism blur effects.
+- **[Claude](https://claude.ai)** by Anthropic — AI pair programming assistance for architecture design and codebase refinements.
 
 ---
 
