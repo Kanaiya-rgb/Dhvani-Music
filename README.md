@@ -436,6 +436,9 @@ Dhvani Music is built with deep gratitude to these open-source projects:
 - **[NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor)** — Robust, lightweight YouTube stream extraction infrastructure.
 - **[AndroidX Jetpack Compose](https://developer.android.com/jetpack/compose)** & **[Media3](https://developer.android.com/media/media3)** — The modern foundation powering our entire audio engine and UI.
 - **[Haze](https://github.com/chrisbanes/haze)** by Chris Banes — Beautiful real-time glassmorphism blur effects.
+- **[binimum](https://github.com/binimum)** — Apple Music-style real-time synced lyrics animations and APIs.
+- **[LRCLIB](https://lrclib.net/)** — Open-source community synchronized lyrics database.
+- **[Discord-RPC / Kizzy](https://github.com/cptpieface/discord-rpc)** — Real-time Discord Rich Presence streaming status integration.
 - **[Claude](https://claude.ai)** by Anthropic — AI pair programming assistance for architecture design and codebase refinements.
 
 ---
