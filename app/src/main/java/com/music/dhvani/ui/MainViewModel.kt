@@ -233,6 +233,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _probedLyricsSources = MutableStateFlow<Map<LyricsSource, Boolean>>(emptyMap())
     val probedLyricsSources: StateFlow<Map<LyricsSource, Boolean>> = _probedLyricsSources.asStateFlow()
 
+    private val _songVersions = MutableStateFlow<List<Song>>(emptyList())
+    val songVersions: StateFlow<List<Song>> = _songVersions.asStateFlow()
+
+    private val _songVersionsLoading = MutableStateFlow(false)
+    val songVersionsLoading: StateFlow<Boolean> = _songVersionsLoading.asStateFlow()
+
+    private var songVersionsJob: Job? = null
+
+    fun loadSongVersions(song: Song) {
+        songVersionsJob?.cancel()
+        val cached = YtMusicRepository.getCachedSongVersions(song)
+        if (cached != null && cached.isNotEmpty()) {
+            _songVersions.value = cached
+            _songVersionsLoading.value = false
+            return
+        }
+        _songVersions.value = listOf(song)
+        _songVersionsLoading.value = true
+        songVersionsJob = viewModelScope.launch {
+            val res = YtMusicRepository.findSongVersions(song)
+            val list = res.getOrDefault(listOf(song))
+            _songVersions.value = if (list.isEmpty()) listOf(song) else list
+            _songVersionsLoading.value = false
+        }
+    }
+
+    fun clearSongVersions() {
+        songVersionsJob?.cancel()
+        _songVersions.value = emptyList()
+        _songVersionsLoading.value = false
+    }
+
     fun probeLyricsSources(
         title: String,
         artist: String,
@@ -1254,7 +1286,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         startSearchPipeline()
         startSuggestPipeline()
         loadHome()
-        loadExplore()
         if (_signedIn.value) {
             loadLibrary()
             loadAccount()
@@ -1265,10 +1296,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             PlaybackTracker.registeredPlays.drop(1).collect { homeStale = true }
         }
         viewModelScope.launch {
-            // A leftover APK only means "Install Now" for the session that
-            // downloaded it — see AppUpdateChecker.clearCache.
+            // Wait 8s after launch so cold start network & CPU are completely unhindered
+            delay(8000)
             AppUpdateChecker.clearCache(getApplication())
             AppUpdateChecker.check(getApplication())
+        }
+    }
+
+    /** Call when the explore tab becomes visible. */
+    fun onExploreShown() {
+        if (_explore.value is UiState.Loading) {
+            loadExplore()
         }
     }
 
@@ -1371,6 +1409,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             setHomeCategory(_selectedCategory.value)
             return
         }
+        cachedAllHome?.let {
+            val filtered = it.filterNot { YtMusicRepository.isExcludedHomeShelf(it) }
+            if (filtered.isNotEmpty()) {
+                _home.value = UiState.Success(filtered)
+                return
+            }
+        }
         _home.value = UiState.Loading
         viewModelScope.launch { fetchHome() }
     }
@@ -1379,7 +1424,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _selectedCategory.value = category
         if (category == "All" || category.startsWith("All")) {
             cachedAllHome?.let {
-                _home.value = UiState.Success(it)
+                val filtered = it.filterNot { YtMusicRepository.isExcludedHomeShelf(it) }
+                _home.value = UiState.Success(filtered)
                 return
             }
             loadHome()
@@ -1390,10 +1436,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             YtMusicRepository.categoryShelves(category).fold(
                 onSuccess = { shelves ->
-                    if (shelves.isEmpty()) {
+                    val filtered = shelves.filterNot { YtMusicRepository.isExcludedHomeShelf(it) }
+                    if (filtered.isEmpty()) {
                         _home.value = UiState.Error("No results found for $category")
                     } else {
-                        _home.value = UiState.Success(shelves)
+                        _home.value = UiState.Success(filtered)
                     }
                 },
                 onFailure = {
@@ -1410,7 +1457,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _home.value = YtMusicRepository.home().fold(
             onSuccess = { feed ->
                 homeContinuation = feed.continuation
-                val shelves = feed.shelves.filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
+                val shelves = feed.shelves
+                    .filterNot { YtMusicRepository.isExcludedHomeShelf(it) }
+                    .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
                 if (shelves.isEmpty()) UiState.Error("No results from YouTube Music")
                 else {
                     cachedAllHome = shelves
@@ -1434,7 +1483,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             if (token != null) {
                 YtMusicRepository.moreHome(token).onSuccess { feed ->
-                    val added = feed.shelves.filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
+                    val added = feed.shelves
+                        .filterNot { YtMusicRepository.isExcludedHomeShelf(it) }
+                        .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
                     homeContinuation = feed.continuation.takeIf { added.isNotEmpty() }
                     if (added.isNotEmpty()) {
                         val existing = (_home.value as? UiState.Success)?.data ?: emptyList()
@@ -1444,7 +1495,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } else if (homeFallbackPage < 3) {
                 homeFallbackPage++
                 val extraShelves = YtMusicRepository.fallbackHomeShelves(homeFallbackPage)
-                val added = extraShelves.filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
+                val added = extraShelves
+                    .filterNot { YtMusicRepository.isExcludedHomeShelf(it) }
+                    .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
                 if (added.isNotEmpty()) {
                     val existing = (_home.value as? UiState.Success)?.data ?: emptyList()
                     _home.value = UiState.Success(existing + added)

@@ -1823,10 +1823,11 @@ fun ImportPlaylistSheet(
                         imageVector = when (selectedSource) {
                             "SPOTIFY" -> DhvaniIcons.Spotify
                             "FILE" -> Icons.Rounded.FileDownload
-                            else -> DhvaniIcons.YouTube
+                            else -> Icons.Rounded.CloudDownload
                         },
                         contentDescription = null,
-                        tint = if (selectedSource == "FILE") Color.White else Color.Unspecified,
+                        tint = if (selectedSource == "SPOTIFY") Color.Unspecified
+                               else androidx.compose.material3.LocalContentColor.current,
                         modifier = Modifier.size(20.dp),
                     )
                     Spacer(Modifier.width(10.dp))

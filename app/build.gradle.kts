@@ -123,16 +123,11 @@ android {
     buildTypes {
         release {
             /*
-             * Off deliberately. Stream resolution runs YouTube's own player
-             * JavaScript through Rhino, and NewPipe, Ktor and
-             * kotlinx.serialization all reach for classes reflectively — none
-             * of which R8 can see. Shrinking that reliably is a set of keep
-             * rules to be written and then proven on a device, because the
-             * breakage it causes appears at runtime rather than at build time.
-             * Until then, a larger APK that works beats a smaller one that
-             * might not. The rules below stay wired up for when it's revisited.
+             * Enabled for speed, not size. Compose is designed to run through R8
+             * to inline composables, strip synthetic debug wrappers, and optimize
+             * recomposition trees. Nothing is renamed (-dontobfuscate in proguard-rules.pro).
              */
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

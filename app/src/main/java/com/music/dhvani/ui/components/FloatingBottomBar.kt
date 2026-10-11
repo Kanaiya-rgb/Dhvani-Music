@@ -2,6 +2,7 @@ package com.music.dhvani.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -46,8 +47,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.ui.haptics.Haptic
@@ -139,6 +142,23 @@ fun FloatingBottomBar(
     val container = MaterialTheme.colorScheme.surface
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val slimNavBar by AppSettings.slimNavBar.collectAsStateWithLifecycle()
+
+    val pillVerticalInset by animateDpAsState(
+        targetValue = if (slimNavBar) 3.dp else PILL_INSET,
+        animationSpec = if (reduceAnimation) snap() else tween(200),
+        label = "pillVerticalInset",
+    )
+    val tabVerticalPadding by animateDpAsState(
+        targetValue = if (slimNavBar) 4.dp else TAB_VERTICAL_PADDING,
+        animationSpec = if (reduceAnimation) snap() else tween(200),
+        label = "tabVerticalPadding",
+    )
+    val iconSize by animateDpAsState(
+        targetValue = if (slimNavBar) 20.dp else 25.dp,
+        animationSpec = if (reduceAnimation) snap() else tween(200),
+        label = "iconSize",
+    )
     // The liquid settle is exactly the motion "reduce animation" promises to
     // drop — snapping both the indicator's travel and the glyph's pop to
     // their target leaves the tap itself instant rather than eased.
@@ -256,7 +276,7 @@ fun FloatingBottomBar(
                 if (reduceDynamicBlur) {
                     Modifier.background(container)
                 } else {
-                    Modifier.hazeEffect(
+                    Modifier.optimizedHazeEffect(
                         state = hazeState,
                         style = HazeMaterials.regular(container),
                     )
@@ -267,7 +287,7 @@ fun FloatingBottomBar(
                 barBorderBrush,
                 pillShape,
             )
-            .padding(horizontal = PILL_INSET, vertical = PILL_INSET),
+            .padding(horizontal = PILL_INSET, vertical = pillVerticalInset),
     ) {
         if (tabWidthPx > 0f) {
             Box(
@@ -355,6 +375,9 @@ fun FloatingBottomBar(
                     tab = tab,
                     selected = index == selectedIndex,
                     glassSpec = glassSpec,
+                    verticalPadding = tabVerticalPadding,
+                    iconSize = iconSize,
+                    isSlim = slimNavBar,
                     onClick = { onTabSelected(index) },
                     modifier = Modifier.weight(1f),
                 )
@@ -368,6 +391,9 @@ private fun BottomBarItem(
     tab: BottomTab,
     selected: Boolean,
     glassSpec: AnimationSpec<Float>,
+    verticalPadding: Dp,
+    iconSize: Dp,
+    isSlim: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -400,23 +426,23 @@ private fun BottomBarItem(
                 if (!selected) haptics.play(Haptic.Select)
                 onClick()
             }
-            .padding(vertical = TAB_VERTICAL_PADDING),
+            .padding(vertical = verticalPadding),
     ) {
         Icon(
             imageVector = tab.icon,
             contentDescription = tab.label,
             tint = tint,
             modifier = Modifier
-                .size(25.dp)
+                .size(iconSize)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
                 },
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(if (isSlim) 1.dp else 2.dp))
         Text(
             text = tab.label,
-            style = MaterialTheme.typography.labelSmall,
+            style = if (isSlim) MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp) else MaterialTheme.typography.labelSmall,
             color = tint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

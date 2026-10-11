@@ -129,16 +129,6 @@ fun FrostedTopBar(
         animationSpec = tween(220),
         label = "topBarTitleAlpha",
     )
-    // Only the solid bar wants a hairline under it. A faded one has no edge for
-    // the line to mark, and drawing it there would be inventing the very seam
-    // the fade exists to remove.
-    val dividerColor by animateColorAsState(
-        targetValue = MaterialTheme.colorScheme.outline.copy(
-            alpha = if (scrolled && reduceDynamicBlur) 0.6f else 0f,
-        ),
-        animationSpec = tween(220),
-        label = "topBarDivider",
-    )
 
     Column(
         modifier = modifier
@@ -187,7 +177,9 @@ fun FrostedTopBar(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .padding(start = 16.dp)
-                        .graphicsLayer { alpha = (1f - titleAlpha).coerceIn(0f, 1f) },
+                        .graphicsLayer {
+                            alpha = if (title.isEmpty()) 1f else (1f - titleAlpha).coerceIn(0f, 1f)
+                        },
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
@@ -228,10 +220,9 @@ fun FrostedTopBar(
                 actions()
             }
         }
-        // The divider and the loader line share the bar's bottom edge; the box
+        // The loader line shares the bar's bottom edge; the box
         // only grows to the line's height while a refresh is actually showing.
         Box(Modifier.fillMaxWidth()) {
-            HorizontalDivider(thickness = 0.5.dp, color = dividerColor)
             RefreshLine(
                 refreshing = refreshing,
                 pullFraction = pullFraction,

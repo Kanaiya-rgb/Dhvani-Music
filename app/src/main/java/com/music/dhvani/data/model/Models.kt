@@ -148,8 +148,8 @@ private val SIZE_HINT = Regex("""w\d+-h\d+""")
  */
 const val ROW_ART_PX = 160
 
-/** Artwork for a shelf card: 166dp wide, so a little under 450px at 3x. */
-const val CARD_ART_PX = 480
+/** Artwork for a shelf card: ~150-166dp wide, 300px prevents heavy 1280x720 maxres decode */
+const val CARD_ART_PX = 300
 
 /** Artwork for a page header, drawn near enough full width. */
 const val HEADER_ART_PX = 720

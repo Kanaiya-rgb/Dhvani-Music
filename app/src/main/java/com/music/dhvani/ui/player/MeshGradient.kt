@@ -125,7 +125,7 @@ fun MeshGradientBackground(
     val phase = remember { Animatable(0f) }
     LaunchedEffect(trackKey, reduceAnimation, continuous, animated) {
         when {
-            !animated || reduceAnimation -> phase.snapTo(0f)
+            !animated || reduceAnimation || AppSettings.isLowEndDevice() -> phase.snapTo(0f)
             // A full turn at a time, restarted rather than looped with an
             // infinite spec: the blobs' speeds are irrational multiples of each
             // other, so the pattern never repeats, and a linear phase keeps the
@@ -166,7 +166,7 @@ fun MeshGradientBackground(
                 scaleY = 1.3f
             }
             .background(baseColor)
-            .let { if (!reduceDynamicBlur && blurRadius > 0.dp) it.blur(blurRadius) else it },
+            .let { if (!reduceDynamicBlur && !AppSettings.isLowEndDevice() && blurRadius > 0.dp) it.blur(blurRadius) else it },
     ) {
         val anchors = listOf(
             Offset(0.20f, 0.25f),

@@ -77,6 +77,7 @@ import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
+import com.music.dhvani.ui.components.optimizedHazeEffect
 import com.music.dhvani.data.model.BrowseType
 import com.music.dhvani.data.model.DetailPage
 import com.music.dhvani.data.model.CARD_ART_PX
@@ -922,7 +923,7 @@ private fun MergeBand(
                         ).roundToInt(),
                 )
             }
-            .hazeEffect(hazeState) {
+            .optimizedHazeEffect(hazeState) {
                 // Without this the band draws nothing at all.
                 //
                 // Haze defaults to only blurring sources *below* it, which it

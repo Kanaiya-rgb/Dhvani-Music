@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.SlowMotionVideo
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -250,6 +251,35 @@ fun CanvasSourceSheet(
                                         )
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    if (availableSources.isEmpty()) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White.copy(alpha = 0.04f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Info,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Text(
+                                    text = "No visual motion loop available for this track. Showing album cover artwork.",
+                                    fontSize = 12.5.sp,
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    lineHeight = 16.sp,
+                                )
                             }
                         }
                     }

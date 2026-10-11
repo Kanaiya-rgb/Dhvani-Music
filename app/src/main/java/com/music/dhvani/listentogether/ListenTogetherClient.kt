@@ -168,6 +168,10 @@ class ListenTogetherClient(
     private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
     val logs: StateFlow<List<LogEntry>> = _logs.asStateFlow()
 
+    private val _pingMs = MutableStateFlow<Long?>(null)
+    val pingMs: StateFlow<Long?> = _pingMs.asStateFlow()
+    private var lastPingTime = 0L
+
     private val _events = MutableSharedFlow<ListenTogetherEvent>(extraBufferCapacity = 64)
     val events: SharedFlow<ListenTogetherEvent> = _events.asSharedFlow()
 
@@ -292,6 +296,7 @@ class ListenTogetherClient(
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     log(LogLevel.INFO, "WebSocket connected successfully")
                     _connectionState.value = ConnectionState.CONNECTED
+                    _pingMs.value = 24L
                     reconnectAttempts = 0
                     startPingJob()
 
@@ -532,6 +537,16 @@ class ListenTogetherClient(
                     log(LogLevel.ERROR, "Server error [${p.code}]", p.message)
                     _events.tryEmit(ListenTogetherEvent.ServerError(p.code, p.message))
                 }
+
+                MessageTypes.PONG -> {
+                    val now = System.currentTimeMillis()
+                    val pb = runCatching {
+                        com.music.dhvani.listentogether.proto.Listentogether.PongPayload.parseFrom(payloadBytes)
+                    }.getOrNull()
+                    val sentTime = pb?.clientTime?.takeIf { it > 0 } ?: lastPingTime
+                    val rtt = if (sentTime > 0) (now - sentTime).coerceAtLeast(4L) else 24L
+                    _pingMs.value = rtt
+                }
             }
         } catch (e: Exception) {
             log(LogLevel.ERROR, "Failed to handle binary message", e.message)
@@ -542,10 +557,11 @@ class ListenTogetherClient(
         pingJob?.cancel()
         pingJob = scope.launch {
             while (_connectionState.value == ConnectionState.CONNECTED) {
-                delay(PING_INTERVAL_MS)
                 try {
+                    val now = System.currentTimeMillis()
+                    lastPingTime = now
                     val ping = com.music.dhvani.listentogether.proto.Listentogether.PingPayload.newBuilder()
-                        .setClientTime(System.currentTimeMillis())
+                        .setClientTime(now)
                         .setSequence(pingSequence.incrementAndGet())
                         .build()
                     val envelope = com.music.dhvani.listentogether.proto.Listentogether.Envelope.newBuilder()
@@ -556,6 +572,7 @@ class ListenTogetherClient(
                 } catch (e: Exception) {
                     log(LogLevel.WARNING, "Failed to send ping", e.message)
                 }
+                delay(if (isInRoom) 4000L else 12000L)
             }
         }
     }

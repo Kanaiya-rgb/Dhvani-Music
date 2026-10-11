@@ -24,7 +24,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.FileUpload
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Public
@@ -114,7 +114,7 @@ fun PlaylistPickerSheet(
         )
         onImport?.let {
             ActionRow(
-                icon = Icons.Rounded.FileUpload,
+                icon = Icons.Rounded.CloudDownload,
                 label = "Import playlist",
                 onClick = it,
             )

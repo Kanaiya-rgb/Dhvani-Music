@@ -45,6 +45,7 @@ import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.GridView
@@ -181,6 +182,8 @@ fun LibraryScreen(
     downloadedPlaylists: List<SavedCollection> = emptyList(),
 ) {
     val pinnedPlaylists by AppSettings.pinnedPlaylists.collectAsStateWithLifecycle()
+    val showLikedPlaylist by AppSettings.showLikedPlaylist.collectAsStateWithLifecycle()
+    val showDownloadedPlaylist by AppSettings.showDownloadedPlaylist.collectAsStateWithLifecycle()
     val localCustomPlaylists by AppSettings.localCustomPlaylists.collectAsStateWithLifecycle()
     val albumCustomPlaylists = remember(localCustomPlaylists) {
         localCustomPlaylists.filter { it.isAlbum }
@@ -331,32 +334,44 @@ fun LibraryScreen(
                         Downloads.localCoverUri(id)
                     }
                 }
-                val onDeviceShelf = HomeShelf(
-                    title = ON_DEVICE,
-                    items = listOf(
-                        ShelfItem(
-                            title = stringResource(R.string.downloads),
-                            subtitle = stringResource(R.string.downloaded_songs),
-                            thumbnailUrl = downloadsCover,
-                            videoId = null,
-                            browseId = "local:downloads",
-                        ),
+                val onDeviceItems = buildList {
+                    if (showDownloadedPlaylist) {
+                        add(
+                            ShelfItem(
+                                title = stringResource(R.string.downloads),
+                                subtitle = "",
+                                thumbnailUrl = downloadsCover,
+                                videoId = null,
+                                browseId = "local:downloads",
+                            )
+                        )
+                    }
+                    add(
                         ShelfItem(
                             title = stringResource(R.string.local_music),
-                            subtitle = stringResource(R.string.audio_files_on_device),
+                            subtitle = "",
                             thumbnailUrl = null,
                             videoId = null,
                             browseId = "local:all",
-                        ),
-                    ) + downloadedPlaylists.map { playlist ->
-                        ShelfItem(
-                            title = playlist.title,
-                            subtitle = playlist.subtitle.ifBlank { "Downloaded playlist" },
-                            thumbnailUrl = playlist.thumbnailUrl,
-                            videoId = null,
-                            browseId = Downloads.pageIdFor(playlist.id),
                         )
-                    },
+                    )
+                    if (showDownloadedPlaylist) {
+                        addAll(
+                            downloadedPlaylists.map { playlist ->
+                                ShelfItem(
+                                    title = playlist.title,
+                                    subtitle = "",
+                                    thumbnailUrl = playlist.thumbnailUrl,
+                                    videoId = null,
+                                    browseId = Downloads.pageIdFor(playlist.id),
+                                )
+                            }
+                        )
+                    }
+                }
+                val onDeviceShelf = HomeShelf(
+                    title = ON_DEVICE,
+                    items = onDeviceItems,
                 )
                 LibraryGridShelf(
                     shelf = onDeviceShelf,
@@ -367,7 +382,7 @@ fun LibraryScreen(
             }
             if (!signedIn) {
                 item(key = "shelf:$PLAYLISTS") {
-                    val guestPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem))
+                    val guestPlaylists = HomeShelf(PLAYLISTS, if (showLikedPlaylist) listOf(likedShelfItem) else emptyList())
                     PlaylistShelf(
                         shelf = guestPlaylists,
                         onItemClick = onShelfItemClick,
@@ -446,7 +461,7 @@ fun LibraryScreen(
                     val shelves = state.data.shelves
                     if (shelves.none { it.title == PLAYLISTS }) {
                         item(key = "shelf:$PLAYLISTS") {
-                            val defaultPlaylists = HomeShelf(PLAYLISTS, listOf(likedShelfItem))
+                            val defaultPlaylists = HomeShelf(PLAYLISTS, if (showLikedPlaylist) listOf(likedShelfItem) else emptyList())
                             PlaylistShelf(
                                 shelf = defaultPlaylists,
                                 onItemClick = onShelfItemClick,
@@ -523,7 +538,7 @@ fun LibraryScreen(
                                 val otherItems = shelf.items.filterNot {
                                     it.browseId == YtMusicRepository.LIKED_MUSIC || it.browseId == "local:liked"
                                 }
-                                val withLiked = shelf.copy(items = listOf(likedShelfItem) + otherItems)
+                                val withLiked = shelf.copy(items = (if (showLikedPlaylist) listOf(likedShelfItem) else emptyList()) + otherItems)
                                 val pinnedFirst = withLiked.pinnedFirst(pinnedPlaylists)
                                 PlaylistShelf(
                                     shelf = pinnedFirst,
@@ -735,7 +750,7 @@ private fun PlaylistShelf(
             NewShelfCard(
                 icon = DhvaniIcons.Plus,
                 label = "New playlist",
-                subtitle = stringResource(R.string.saved_to_youtube_music),
+                subtitle = "",
                 onClick = onNewPlaylist,
             )
         },
@@ -743,7 +758,7 @@ private fun PlaylistShelf(
             NewShelfCard(
                 icon = Icons.Rounded.FileDownload,
                 label = "Import",
-                subtitle = "Link, album or file",
+                subtitle = "",
                 onClick = onImportPlaylist,
             )
         },
@@ -751,7 +766,7 @@ private fun PlaylistShelf(
             NewShelfCard(
                 icon = Icons.Rounded.FileUpload,
                 label = "Export playlist",
-                subtitle = "Save as M3U or JSON",
+                subtitle = "",
                 onClick = onExportPlaylist,
             )
         },
@@ -1540,7 +1555,7 @@ fun LibraryGridPage(
                             NewShelfCard(
                                 icon = DhvaniIcons.Plus,
                                 label = "New playlist",
-                                subtitle = stringResource(R.string.saved_to_youtube_music),
+                                subtitle = "",
                                 onClick = onNewPlaylist,
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -1568,19 +1583,12 @@ fun LibraryGridPage(
                                     )
                                 }
                                 Spacer(Modifier.width(14.dp))
-                                Column {
-                                    Text(
-                                        text = "New playlist",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onBackground,
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.saved_to_youtube_music),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                                Text(
+                                    text = "New playlist",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                )
                             }
                         }
                     }
@@ -1589,9 +1597,9 @@ fun LibraryGridPage(
                     item(key = "leading_second") {
                         if (isGridView) {
                             NewShelfCard(
-                                icon = Icons.Rounded.FileDownload,
+                                icon = Icons.Rounded.CloudDownload,
                                 label = "Import playlist",
-                                subtitle = "M3U, JSON or link",
+                                subtitle = "",
                                 onClick = onImportPlaylist,
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -1612,26 +1620,19 @@ fun LibraryGridPage(
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Rounded.FileDownload,
+                                        imageVector = Icons.Rounded.CloudDownload,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(24.dp),
                                     )
                                 }
                                 Spacer(Modifier.width(14.dp))
-                                Column {
-                                    Text(
-                                        text = "Import playlist",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onBackground,
-                                    )
-                                    Text(
-                                        text = "M3U, JSON or link",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                                Text(
+                                    text = "Import playlist",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                )
                             }
                         }
                     }
@@ -1642,7 +1643,7 @@ fun LibraryGridPage(
                             NewShelfCard(
                                 icon = Icons.Rounded.FileUpload,
                                 label = "Export playlist",
-                                subtitle = "Save as M3U or JSON",
+                                subtitle = "",
                                 onClick = onExportPlaylist,
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -1670,19 +1671,12 @@ fun LibraryGridPage(
                                     )
                                 }
                                 Spacer(Modifier.width(14.dp))
-                                Column {
-                                    Text(
-                                        text = "Export playlist",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onBackground,
-                                    )
-                                    Text(
-                                        text = "Save as M3U or JSON",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                                Text(
+                                    text = "Export playlist",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                )
                             }
                         }
                     }
@@ -1875,14 +1869,16 @@ private fun PlaylistListRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = item.subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (item.subtitle.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = item.subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         IconButton(

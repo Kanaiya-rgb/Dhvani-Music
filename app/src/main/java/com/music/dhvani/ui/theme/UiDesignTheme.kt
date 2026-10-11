@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,16 +38,18 @@ fun Modifier.uiDesignCard(
 
     return when (style) {
         UiDesignStyle.DEFAULT -> {
-            val bg = Brush.verticalGradient(
-                listOf(
-                    backgroundColor,
-                    backgroundColor.copy(
-                        red = (backgroundColor.red * 0.82f).coerceAtLeast(0.04f),
-                        green = (backgroundColor.green * 0.82f).coerceAtLeast(0.04f),
-                        blue = (backgroundColor.blue * 0.82f).coerceAtLeast(0.04f),
+            val bg = remember(backgroundColor) {
+                Brush.verticalGradient(
+                    listOf(
+                        backgroundColor,
+                        backgroundColor.copy(
+                            red = (backgroundColor.red * 0.82f).coerceAtLeast(0.04f),
+                            green = (backgroundColor.green * 0.82f).coerceAtLeast(0.04f),
+                            blue = (backgroundColor.blue * 0.82f).coerceAtLeast(0.04f),
+                        ),
                     ),
-                ),
-            )
+                )
+            }
             this
                 .clip(shape)
                 .background(bg)

@@ -58,6 +58,9 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.ViewStream
 import androidx.compose.material.icons.rounded.SlowMotionVideo
 import androidx.compose.material.icons.rounded.Style
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -99,7 +102,6 @@ import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.settings.CanvasStyle
 import com.music.dhvani.data.settings.NowPlayingDefaultMode
 import com.music.dhvani.data.settings.DensityScale
-import com.music.dhvani.data.settings.GridItemSize
 import com.music.dhvani.data.settings.MiniPlayerBackgroundStyle
 import com.music.dhvani.data.settings.PlayerBackgroundStyle
 import com.music.dhvani.data.settings.PlayerButtonsStyle
@@ -112,6 +114,11 @@ import com.music.dhvani.ui.components.WavySlider
 import com.music.dhvani.ui.player.fullBleedArtworkAvailable
 import java.util.Locale
 import kotlin.math.roundToInt
+
+private data class AccentPreset(
+    val color: Int,
+    val name: String,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -126,9 +133,11 @@ fun AppearanceSettingsScreen(
 
     val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
     val dynamicTheme by AppSettings.dynamicTheme.collectAsStateWithLifecycle()
+    val accentColor by AppSettings.accentColor.collectAsStateWithLifecycle()
     val uiDesignStyle by AppSettings.uiDesignStyle.collectAsStateWithLifecycle()
     val enableHighRefreshRate by AppSettings.enableHighRefreshRate.collectAsStateWithLifecycle()
     val densityScale by AppSettings.densityScale.collectAsStateWithLifecycle()
+    var showCustomColorDialog by remember { mutableStateOf(false) }
 
     val sliderStyle by AppSettings.sliderStyle.collectAsStateWithLifecycle()
     val squigglySlider by AppSettings.squigglySlider.collectAsStateWithLifecycle()
@@ -147,23 +156,20 @@ fun AppearanceSettingsScreen(
     val playerDefaultViewMode by AppSettings.playerDefaultViewMode.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val performanceMode by AppSettings.performanceMode.collectAsStateWithLifecycle()
+    val animatedCanvas by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
 
     val swipeThumbnail by AppSettings.swipeThumbnail.collectAsStateWithLifecycle()
     val swipeSensitivity by AppSettings.swipeSensitivity.collectAsStateWithLifecycle()
 
     val defaultOpenTab by AppSettings.defaultOpenTab.collectAsStateWithLifecycle()
-    val gridItemSize by AppSettings.gridItemSize.collectAsStateWithLifecycle()
     val slimNavBar by AppSettings.slimNavBar.collectAsStateWithLifecycle()
     val dynamicIslandEnabled by AppSettings.dynamicIslandEnabled.collectAsStateWithLifecycle()
     val systemDynamicIslandEnabled by AppSettings.systemDynamicIslandEnabled.collectAsStateWithLifecycle()
-    val showRecognizeButton by AppSettings.showRecognizeButton.collectAsStateWithLifecycle()
     val showPlayRandomButton by AppSettings.showPlayRandomButton.collectAsStateWithLifecycle()
 
     val showLikedPlaylist by AppSettings.showLikedPlaylist.collectAsStateWithLifecycle()
     val showDownloadedPlaylist by AppSettings.showDownloadedPlaylist.collectAsStateWithLifecycle()
-    val showTopPlaylist by AppSettings.showTopPlaylist.collectAsStateWithLifecycle()
-    val showCachedPlaylist by AppSettings.showCachedPlaylist.collectAsStateWithLifecycle()
-    val showUploadedPlaylist by AppSettings.showUploadedPlaylist.collectAsStateWithLifecycle()
 
     // Dialog control states
     var showDensityDialog by remember { mutableStateOf(false) }
@@ -174,7 +180,6 @@ fun AppearanceSettingsScreen(
     var showPlayerButtonsDialog by remember { mutableStateOf(false) }
     var showSensitivityDialog by remember { mutableStateOf(false) }
     var showDefaultTabDialog by remember { mutableStateOf(false) }
-    var showGridSizeDialog by remember { mutableStateOf(false) }
     var showCoverStyleDialog by remember { mutableStateOf(false) }
     var showSpotifyCanvasStyleDialog by remember { mutableStateOf(false) }
     var showAppleCanvasStyleDialog by remember { mutableStateOf(false) }
@@ -220,6 +225,162 @@ fun AppearanceSettingsScreen(
                 onSelect = { AppSettings.setThemeMode(ThemeMode.entries[it]) },
                 modifier = Modifier.padding(start = ROW_INSET, end = ROW_INSET, bottom = 14.dp),
             )
+            RowDivider()
+
+            // Dynamic Accent Color Row
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = ROW_INSET, vertical = 8.dp),
+            ) {
+                Text(
+                    text = "Dynamic Accent Color",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Custom color theme applied across buttons, accents and app highlights",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val accentPresets = remember {
+                    listOf(
+                        AccentPreset(0xFF6366F1.toInt(), "Royal Iris"),
+                        AccentPreset(0xFF10B981.toInt(), "Spotify Mint"),
+                        AccentPreset(0xFF06B6D4.toInt(), "Glacier Cyan"),
+                        AccentPreset(0xFF8B5CF6.toInt(), "Neo Amethyst"),
+                        AccentPreset(0xFFE5A93C.toInt(), "Champagne Gold"),
+                        AccentPreset(0xFFFF8A3D.toInt(), "Sunset Saffron"),
+                        AccentPreset(0xFFF43F5E.toInt(), "Velvet Rosé"),
+                        AccentPreset(0xFF94A3B8.toInt(), "Titanium Slate"),
+                    )
+                }
+
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    items(accentPresets) { preset ->
+                        val isSelected = accentColor == preset.color || (accentColor == null && preset.color == 0xFFFF8A3D.toInt())
+                        val color = Color(preset.color)
+                        val isBright = (0.299f * color.red + 0.587f * color.green + 0.114f * color.blue) > 0.55f
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                                .clickable {
+                                    AppSettings.setAccentColor(preset.color)
+                                }
+                                .then(
+                                    if (isSelected) {
+                                        Modifier.border(2.5.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                    } else {
+                                        Modifier.border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                                    }
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Check,
+                                    contentDescription = preset.name,
+                                    tint = if (isBright) Color.Black else Color.White,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    // 9th circle: Custom Color Picker (+ / Palette)
+                    item {
+                        val isCustomSelected = accentColor != null && accentPresets.none { it.color == accentColor }
+                        val customColor = if (isCustomSelected) Color(accentColor!!) else Color(0xFF9C27B0)
+                        val isCustomBright = isCustomSelected && (0.299f * customColor.red + 0.587f * customColor.green + 0.114f * customColor.blue) > 0.55f
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isCustomSelected) androidx.compose.ui.graphics.SolidColor(customColor)
+                                    else Brush.sweepGradient(
+                                        listOf(
+                                            Color(0xFFFF5252),
+                                            Color(0xFFFFD740),
+                                            Color(0xFF69F0AE),
+                                            Color(0xFF40C4FF),
+                                            Color(0xFF7C4DFF),
+                                            Color(0xFFFF4081),
+                                            Color(0xFFFF5252),
+                                        ),
+                                    ),
+                                )
+                                .clickable { showCustomColorDialog = true }
+                                .then(
+                                    if (isCustomSelected) {
+                                        Modifier.border(2.5.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                    } else {
+                                        Modifier.border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                                    }
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (isCustomSelected) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Check,
+                                    contentDescription = "Custom Selected",
+                                    tint = if (isCustomBright) Color.Black else Color.White,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Rounded.Palette,
+                                    contentDescription = "Custom Color",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Active Preset / Color indicator badge
+                val currentAccent = accentColor
+                val currentPresetName = remember(currentAccent) {
+                    if (currentAccent == null) {
+                        "Sunset Saffron (Default)"
+                    } else {
+                        accentPresets.find { it.color == currentAccent }?.name
+                            ?: String.format("#%06X", 0xFFFFFF and currentAccent)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color(accentColor ?: 0xFFFF8A3D.toInt())),
+                    )
+                    Spacer(modifier = Modifier.width(7.dp))
+                    Text(
+                        text = "Active: $currentPresetName",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             RowDivider()
             SettingsRow(
                 icon = Icons.Rounded.Palette,
@@ -480,21 +641,25 @@ fun AppearanceSettingsScreen(
                 onClick = { AppSettings.setCanvasPauseWithAudio(!canvasPauseWithAudio) },
             )
 
-            RowDivider()
+        }
+
+        // ── Performance & Smoothness (Low-End Devices) ──────────────────
+        SettingsGroup(header = "Performance & Smoothness (Low-End Devices)") {
             SettingsRow(
-                icon = Icons.Rounded.MotionPhotosOff,
-                title = stringResource(R.string.reduce_animation),
+                icon = Icons.Rounded.Speed,
+                title = stringResource(R.string.performance_mode),
+                subtitle = stringResource(R.string.performance_mode_subtitle),
                 trailing = {
                     Switch(
-                        checked = reduceAnimation,
-                        onCheckedChange = AppSettings::setReduceAnimation,
+                        checked = performanceMode,
+                        onCheckedChange = AppSettings::setPerformanceMode,
                         colors = SwitchDefaults.colors(
                             checkedTrackColor = MaterialTheme.colorScheme.primary,
                             checkedBorderColor = MaterialTheme.colorScheme.primary,
                         ),
                     )
                 },
-                onClick = { AppSettings.setReduceAnimation(!reduceAnimation) },
+                onClick = { AppSettings.setPerformanceMode(!performanceMode) },
             )
             RowDivider()
             SettingsRow(
@@ -512,6 +677,40 @@ fun AppearanceSettingsScreen(
                     )
                 },
                 onClick = { AppSettings.setReduceDynamicBlur(!reduceDynamicBlur) },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.MotionPhotosOff,
+                title = stringResource(R.string.reduce_animation),
+                subtitle = stringResource(R.string.reduce_animation_subtitle),
+                trailing = {
+                    Switch(
+                        checked = reduceAnimation,
+                        onCheckedChange = AppSettings::setReduceAnimation,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = { AppSettings.setReduceAnimation(!reduceAnimation) },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.SlowMotionVideo,
+                title = "Animated video canvas",
+                subtitle = "Disable to prevent background video decoding lag on budget chipsets",
+                trailing = {
+                    Switch(
+                        checked = animatedCanvas,
+                        onCheckedChange = AppSettings::setAnimatedCanvas,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = { AppSettings.setAnimatedCanvas(!animatedCanvas) },
             )
         }
 
@@ -574,20 +773,13 @@ fun AppearanceSettingsScreen(
                 icon = Icons.Rounded.Dashboard,
                 title = stringResource(R.string.default_open_tab),
                 value = when (defaultOpenTab) {
-                    0 -> "Play"
+                    0 -> "Home"
                     1 -> "Explore"
-                    2 -> "Library"
-                    3 -> "Search"
-                    else -> "Play"
+                    2 -> "Search"
+                    3 -> "Library"
+                    else -> "Home"
                 },
                 onClick = { showDefaultTabDialog = true },
-            )
-            RowDivider()
-            SettingsRow(
-                icon = Icons.Rounded.GridView,
-                title = stringResource(R.string.grid_cell_size),
-                value = gridItemSize.label,
-                onClick = { showGridSizeDialog = true },
             )
             RowDivider()
             SettingsRow(
@@ -604,22 +796,6 @@ fun AppearanceSettingsScreen(
                     )
                 },
                 onClick = { AppSettings.setSlimNavBar(!slimNavBar) },
-            )
-            RowDivider()
-            SettingsRow(
-                icon = Icons.Rounded.MusicNote,
-                title = stringResource(R.string.show_recognize_music_button),
-                trailing = {
-                    Switch(
-                        checked = showRecognizeButton,
-                        onCheckedChange = AppSettings::setShowRecognizeButton,
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = MaterialTheme.colorScheme.primary,
-                            checkedBorderColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    )
-                },
-                onClick = { AppSettings.setShowRecognizeButton(!showRecognizeButton) },
             )
             RowDivider()
             SettingsRow(
@@ -672,60 +848,22 @@ fun AppearanceSettingsScreen(
                 },
                 onClick = { AppSettings.setShowDownloadedPlaylist(!showDownloadedPlaylist) },
             )
-            RowDivider()
-            SettingsRow(
-                icon = Icons.Rounded.Speed,
-                title = stringResource(R.string.show_top_playlist),
-                trailing = {
-                    Switch(
-                        checked = showTopPlaylist,
-                        onCheckedChange = AppSettings::setShowTopPlaylist,
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = MaterialTheme.colorScheme.primary,
-                            checkedBorderColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    )
-                },
-                onClick = { AppSettings.setShowTopPlaylist(!showTopPlaylist) },
-            )
-            RowDivider()
-            SettingsRow(
-                icon = Icons.Rounded.Tune,
-                title = stringResource(R.string.show_cached_playlist),
-                trailing = {
-                    Switch(
-                        checked = showCachedPlaylist,
-                        onCheckedChange = AppSettings::setShowCachedPlaylist,
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = MaterialTheme.colorScheme.primary,
-                            checkedBorderColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    )
-                },
-                onClick = { AppSettings.setShowCachedPlaylist(!showCachedPlaylist) },
-            )
-            RowDivider()
-            SettingsRow(
-                icon = Icons.Rounded.Dashboard,
-                title = stringResource(R.string.show_uploaded_playlist),
-                trailing = {
-                    Switch(
-                        checked = showUploadedPlaylist,
-                        onCheckedChange = AppSettings::setShowUploadedPlaylist,
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = MaterialTheme.colorScheme.primary,
-                            checkedBorderColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    )
-                },
-                onClick = { AppSettings.setShowUploadedPlaylist(!showUploadedPlaylist) },
-            )
         }
 
         Spacer(Modifier.height(32.dp))
     }
 
     // ── Dialogs ─────────────────────────────────────────────────────────
+
+    if (showCustomColorDialog) {
+        CustomColorPickerDialog(
+            currentColor = accentColor,
+            onDismiss = { showCustomColorDialog = false },
+            onApplyColor = { chosen ->
+                AppSettings.setAccentColor(chosen)
+            },
+        )
+    }
 
     // 1. Slider Style Selection Dialog
     if (showSliderStyleDialog) {
@@ -982,7 +1120,7 @@ fun AppearanceSettingsScreen(
 
     // 7. Default Open Tab Dialog
     if (showDefaultTabDialog) {
-        val tabNames = listOf("Play", "Explore", "Library", "Search")
+        val tabNames = listOf("Home", "Explore", "Search", "Library")
         AlertDialog(
             onDismissRequest = { showDefaultTabDialog = false },
             title = { Text(stringResource(R.string.default_open_tab)) },
@@ -1018,49 +1156,6 @@ fun AppearanceSettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showDefaultTabDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
-    }
-
-    // 8. Grid Size Dialog
-    if (showGridSizeDialog) {
-        AlertDialog(
-            onDismissRequest = { showGridSizeDialog = false },
-            title = { Text(stringResource(R.string.grid_cell_size)) },
-            text = {
-                Column {
-                    GridItemSize.entries.forEach { size ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    AppSettings.setGridItemSize(size)
-                                    showGridSizeDialog = false
-                                }
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = size.label,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = if (gridItemSize == size) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (gridItemSize == size) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showGridSizeDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             },
@@ -1383,5 +1478,242 @@ private fun UiDesignStyleCard(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+@Composable
+private fun CustomColorPickerDialog(
+    currentColor: Int?,
+    onDismiss: () -> Unit,
+    onApplyColor: (Int?) -> Unit,
+) {
+    val initialColor = remember(currentColor) {
+        currentColor ?: 0xFFFF8A3D.toInt()
+    }
+    var red by remember { mutableFloatStateOf(android.graphics.Color.red(initialColor).toFloat()) }
+    var green by remember { mutableFloatStateOf(android.graphics.Color.green(initialColor).toFloat()) }
+    var blue by remember { mutableFloatStateOf(android.graphics.Color.blue(initialColor).toFloat()) }
+
+    val selectedColorInt = remember(red, green, blue) {
+        android.graphics.Color.rgb(red.toInt(), green.toInt(), blue.toInt())
+    }
+    val previewColor = Color(selectedColorInt)
+
+    val popularSwatches = remember {
+        listOf(
+            0xFFF43F5E.toInt(), // Velvet Rosé
+            0xFFFF5722.toInt(), // Electric Coral
+            0xFFFF8A3D.toInt(), // Sunset Saffron
+            0xFFF59E0B.toInt(), // Warm Amber
+            0xFFE5A93C.toInt(), // Champagne Gold
+            0xFF84CC16.toInt(), // Modern Lime
+            0xFF10B981.toInt(), // Spotify Mint
+            0xFF14B8A6.toInt(), // Modern Teal
+            0xFF06B6D4.toInt(), // Glacier Cyan
+            0xFF0EA5E9.toInt(), // Sky Blue
+            0xFF3B82F6.toInt(), // Cobalt Blue
+            0xFF6366F1.toInt(), // Royal Iris
+            0xFF8B5CF6.toInt(), // Neo Amethyst
+            0xFFA855F7.toInt(), // Deep Orchid
+            0xFFEC4899.toInt(), // Modern Pink
+            0xFFE11D48.toInt(), // Parisian Crimson
+            0xFF94A3B8.toInt(), // Titanium Slate
+            0xFF64748B.toInt(), // Classic Steel
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.Palette,
+                    contentDescription = null,
+                    tint = previewColor,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Custom Accent Color",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                // Live Preview Card
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(previewColor),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "#" + String.format("%06X", 0xFFFFFF and selectedColorInt),
+                        color = if ((0.299f * previewColor.red + 0.587f * previewColor.green + 0.114f * previewColor.blue) > 0.65f) Color(0xFF1A1C20) else Color.White,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                    )
+                }
+
+                // Quick Palette Grid
+                Text(
+                    text = "Preset Shades",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (row in popularSwatches.chunked(6)) {
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            for (swatch in row) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(swatch))
+                                        .clickable {
+                                            red = android.graphics.Color.red(swatch).toFloat()
+                                            green = android.graphics.Color.green(swatch).toFloat()
+                                            blue = android.graphics.Color.blue(swatch).toFloat()
+                                        }
+                                        .border(
+                                            width = if (selectedColorInt == swatch) 2.5.dp else 1.dp,
+                                            color = if (selectedColorInt == swatch) MaterialTheme.colorScheme.onSurface else Color.White.copy(alpha = 0.2f),
+                                            shape = CircleShape,
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (selectedColorInt == swatch) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // RGB Sliders
+                Text(
+                    text = "RGB Sliders",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Red slider
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "R",
+                            color = Color(0xFFFF5252),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(20.dp),
+                        )
+                        Slider(
+                            value = red,
+                            onValueChange = { red = it },
+                            valueRange = 0f..255f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFFFF5252),
+                                activeTrackColor = Color(0xFFFF5252),
+                            ),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = "${red.toInt()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.width(30.dp),
+                        )
+                    }
+
+                    // Green slider
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "G",
+                            color = Color(0xFF69F0AE),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(20.dp),
+                        )
+                        Slider(
+                            value = green,
+                            onValueChange = { green = it },
+                            valueRange = 0f..255f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF69F0AE),
+                                activeTrackColor = Color(0xFF69F0AE),
+                            ),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = "${green.toInt()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.width(30.dp),
+                        )
+                    }
+
+                    // Blue slider
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "B",
+                            color = Color(0xFF40C4FF),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(20.dp),
+                        )
+                        Slider(
+                            value = blue,
+                            onValueChange = { blue = it },
+                            valueRange = 0f..255f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF40C4FF),
+                                activeTrackColor = Color(0xFF40C4FF),
+                            ),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = "${blue.toInt()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.width(30.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onApplyColor(selectedColorInt)
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = previewColor,
+                    contentColor = if ((0.299f * previewColor.red + 0.587f * previewColor.green + 0.114f * previewColor.blue) > 0.65f) Color(0xFF1A1C20) else Color.White,
+                ),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text("Apply Accent", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    onApplyColor(null) // Reset to default
+                    onDismiss()
+                },
+            ) {
+                Text("Reset Default")
+            }
+        },
+    )
 }
 

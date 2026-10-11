@@ -1,6 +1,8 @@
 package com.music.dhvani
 
+import android.app.ActivityManager
 import android.app.Application
+import android.content.Context
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import coil3.ImageLoader
@@ -34,64 +36,50 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
-        runCatching {
-            FirebaseMessaging.getInstance().subscribeToTopic("app_updates")
-        }
-        AppUpdateChecker.schedulePeriodicCheck(this)
-        AppUpdateChecker.startNetworkUpdateObserver(this)
-        // PlaybackService shares this process, so seeding the cookie here means
-        // stream resolution is authenticated from the first play onwards.
+        // Early setups needed immediately
+        AppSettings.init(this)
         authStore = AuthStore(this)
         Innertube.cookie = authStore.cookie
-        // Which account that cookie actually acts as. Read here rather than on
-        // demand so the answer is usually in hand before the first request needs
-        // it: a play registered under the wrong account is indistinguishable, to
-        // the listener, from one that was never registered at all. Fire and
-        // forget — every caller works without it, just less precisely.
-        if (authStore.cookie != null) {
-            CoroutineScope(Dispatchers.IO).launch { Innertube.ensureSessionScope() }
-        }
-        AppSettings.init(this)
-        // Before LastPlayed: a restored queue can contain source-backed tracks,
-        // and turning one of those back into a playable item needs the registry
-        // that knows which source it belongs to.
-        SourceRegistry.init(this)
-        SearchHistory.init(this)
-        PlaybackHistory.init(this)
-        LikeState.init(this)
-        LastPlayed.init(this)
-        // What's already saved to Downloads, so the song menu can say so
-        // without a media-store query per row.
-        Downloads.init(this)
-        com.music.dhvani.data.analytics.AppAnalytics.init(this)
-        com.music.dhvani.data.telemetry.TelemetryManager.init(this)
-        // The device's own listening record. Opened here rather than in
-        // PlaybackService because the Replay page reads it from the UI side and
-        // both live in this process — one owner, one directory.
-        ListeningStats.init(this)
-        // After AppSettings, whose switch decides whether half of it runs.
-        ArtistFacts.init(this)
-        // One cache directory can only be opened once per process, and
-        // PlaybackService shares this one — so it's opened here, not there.
-        AudioCache.init(this)
-        com.music.dhvani.playback.OriginalVersion.init(this)
-        com.music.dhvani.data.canvas.CanvasCache.init(this)
-        com.music.dhvani.data.canvas.CanvasRepository.init(this)
-        com.music.dhvani.listentogether.ListenTogetherManager.init(this)
-        // A sideloaded update is just a new APK over the old one, so app data —
-        // including whatever the old build left in these caches — survives it
-        // untouched. Wipe both on the first launch of a higher versionCode so a
-        // format or key change between builds can't serve stale or mismatched
-        // bytes from a cache the new code didn't write.
-        if (AppSettings.consumeVersionUpdate(BuildConfig.VERSION_CODE)) {
-            AudioCache.clear()
-            SingletonImageLoader.get(this).let { loader ->
-                loader.memoryCache?.clear()
-                loader.diskCache?.clear()
+
+        // Offload non-blocking disk stores, encrypted keystores, and network observers
+        // to a dedicated background startup thread so the main UI thread renders instantly at 120 FPS
+        kotlin.concurrent.thread(name = "dhvani-startup-init") {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            runCatching {
+                FirebaseMessaging.getInstance().subscribeToTopic("app_updates")
+            }
+            AppUpdateChecker.schedulePeriodicCheck(this@DhvaniApplication)
+            AppUpdateChecker.startNetworkUpdateObserver(this@DhvaniApplication)
+
+            if (authStore.cookie != null) {
+                CoroutineScope(Dispatchers.IO).launch { Innertube.ensureSessionScope() }
+            }
+
+            SourceRegistry.init(this@DhvaniApplication)
+            SearchHistory.init(this@DhvaniApplication)
+            PlaybackHistory.init(this@DhvaniApplication)
+            LikeState.init(this@DhvaniApplication)
+            LastPlayed.init(this@DhvaniApplication)
+            Downloads.init(this@DhvaniApplication)
+            com.music.dhvani.data.analytics.AppAnalytics.init(this@DhvaniApplication)
+            com.music.dhvani.data.telemetry.TelemetryManager.init(this@DhvaniApplication)
+            ListeningStats.init(this@DhvaniApplication)
+            ArtistFacts.init(this@DhvaniApplication)
+            AudioCache.init(this@DhvaniApplication)
+            com.music.dhvani.playback.OriginalVersion.init(this@DhvaniApplication)
+            com.music.dhvani.data.canvas.CanvasCache.init(this@DhvaniApplication)
+            com.music.dhvani.data.canvas.CanvasRepository.init(this@DhvaniApplication)
+            com.music.dhvani.listentogether.ListenTogetherManager.init(this@DhvaniApplication)
+            initLastfm()
+
+            if (AppSettings.consumeVersionUpdate(BuildConfig.VERSION_CODE)) {
+                AudioCache.clear()
+                SingletonImageLoader.get(this@DhvaniApplication).let { loader ->
+                    loader.memoryCache?.clear()
+                    loader.diskCache?.clear()
+                }
             }
         }
-        // Initialize LastFM with saved settings if available
-        initLastfm()
     }
 
     /**
@@ -103,22 +91,28 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
      * Naming a directory alongside it keeps that cache somewhere identifiable
      * rather than in the process's temp dir.
      */
-    override fun newImageLoader(context: PlatformContext): ImageLoader =
-        ImageLoader.Builder(context)
+    override fun newImageLoader(context: PlatformContext): ImageLoader {
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val isLowRam = am?.isLowRamDevice == true || Runtime.getRuntime().maxMemory() < 192L * 1024 * 1024
+        val memoryPercent = if (isLowRam) 0.12 else 0.25
+        val maxDiskBytes = if (isLowRam) 120L * 1024 * 1024 else 250L * 1024 * 1024
+
+        return ImageLoader.Builder(context)
             .memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, 0.25)
+                    .maxSizePercent(context, memoryPercent)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(250L * 1024 * 1024)
+                    .maxSizeBytes(maxDiskBytes)
                     .build()
             }
-            // Crisp 100ms transition so fast scrolling feels snappy and smooth
-            .crossfade(100)
+            // Instant image pop-in without triggering concurrent alpha animation loops on scroll
+            .crossfade(false)
             .build()
+    }
 
     private fun initLastfm() {
         val sessionKey = AppSettings.lastfmSessionKey.value

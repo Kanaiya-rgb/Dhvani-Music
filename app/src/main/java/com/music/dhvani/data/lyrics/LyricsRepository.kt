@@ -188,6 +188,7 @@ object LyricsRepository {
         hit: BiniLyrics.Hit?,
     ): List<LyricLine>? {
         val found = when (source) {
+            LyricsSource.LRC_RED -> LrcRed.lyrics(title, artist, durationMs, isrc)
             LyricsSource.BETTER_LYRICS -> BetterLyrics.lyrics(title, artist, durationMs, album)
             LyricsSource.BETTER_LYRICS_PORTATO -> BetterLyrics.portato(title, artist, durationMs, album)
             LyricsSource.LYRICS_PLUS -> LyricsPlus.lyrics(title, artist, durationMs, album, isrc)

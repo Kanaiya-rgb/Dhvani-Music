@@ -29,6 +29,11 @@ enum class LyricsSource(
     // reliable hosting — behind them rather than in front, so a track does not
     // wait on a mirror that is down to be told what three other hosts already
     // had.
+    LRC_RED(
+        label = "lrc.red",
+        detail = "Apple timings by recording, syllable by syllable",
+        wordSynced = true,
+    ),
     BINI_LYRICS(
         label = "BiniLyrics",
         detail = "The same Apple timings, matched on the recording itself",

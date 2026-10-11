@@ -39,6 +39,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -121,6 +122,8 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.SurroundSound
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.ThumbDownOffAlt
 import androidx.compose.material.icons.rounded.Tune
@@ -254,6 +257,8 @@ import kotlin.math.sin
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.settings.AudioQuality
 import com.music.dhvani.data.settings.SliderStyle
+import com.music.dhvani.data.settings.PlayerBackgroundStyle
+import com.music.dhvani.data.settings.PlayerButtonsStyle
 import com.music.dhvani.data.settings.LyricsPosition
 import com.music.dhvani.data.settings.LyricsAnimationStyle
 import com.music.dhvani.ui.components.PlayerSliderTrack
@@ -749,7 +754,12 @@ private fun CanvasTopPillToggle(
                 targetValue = if (videoActive) Color.White else Color.White.copy(alpha = 0.65f),
                 label = "videoTint",
             )
-            val videoLabel = if (videoActive && currentSource != null) currentSource.displayName else "Video"
+            val videoLabel = when {
+                videoActive && currentSource != null -> currentSource.displayName
+                isLoading -> "Checking..."
+                !hasVideo -> "No Canvas"
+                else -> "Video"
+            }
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
@@ -764,7 +774,7 @@ private fun CanvasTopPillToggle(
                                     onModeSelected(NowPlayingViewMode.VIDEO)
                                     onShowNotice("Finding motion video...")
                                 } else {
-                                    onShowNotice("No motion canvas video for this track")
+                                    onOpenSourcePicker()
                                 }
                             } else {
                                 onOpenSourcePicker()
@@ -794,14 +804,12 @@ private fun CanvasTopPillToggle(
                         fontWeight = if (videoActive) FontWeight.SemiBold else FontWeight.Normal,
                         color = videoTint,
                     )
-                    if (videoActive || hasVideo || availableSourcesCount > 0) {
-                        Icon(
-                            imageVector = Icons.Rounded.ArrowDropDown,
-                            contentDescription = "Change Source",
-                            tint = videoTint.copy(alpha = 0.85f),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Rounded.ArrowDropDown,
+                        contentDescription = "Change Source",
+                        tint = videoTint.copy(alpha = 0.85f),
+                        modifier = Modifier.size(16.dp),
+                    )
                 }
             }
 
@@ -1190,9 +1198,9 @@ fun NowPlayingScreen(
         ) { value, _ -> queueSlide.floatValue = value }
     }
 
-    // Horizontal fling anywhere on the player skips tracks; the artwork
-    // follows the finger so the gesture has something to hold on to.
-    val swipeThreshold = with(density) { 72.dp.toPx() }
+    val swipeThumbnail by AppSettings.swipeThumbnail.collectAsStateWithLifecycle()
+    val swipeSensitivity by AppSettings.swipeSensitivity.collectAsStateWithLifecycle()
+    val swipeThreshold = with(density) { (72.dp * (1.6f - swipeSensitivity)).toPx() }
     var swipeOffset by remember { mutableFloatStateOf(0f) }
     val swipeSettle by animateFloatAsState(
         targetValue = swipeOffset,
@@ -1339,6 +1347,7 @@ fun NowPlayingScreen(
         label = "sleeveCollapse",
     )
     val fullBleedArt by AppSettings.fullBleedArtwork.collectAsStateWithLifecycle()
+    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val spotifyCanvasStyle by AppSettings.spotifyCanvasStyle.collectAsStateWithLifecycle()
     val appleMusicCanvasStyle by AppSettings.appleMusicCanvasStyle.collectAsStateWithLifecycle()
     val tidalCanvasStyle by AppSettings.tidalCanvasStyle.collectAsStateWithLifecycle()
@@ -1506,23 +1515,55 @@ fun NowPlayingScreen(
             label = "ambientScrimAlpha",
         )
 
-        // Full-screen ambient blurred artwork backdrop (Apple Music style depth)
-        // Hidden when Spotify Canvas video is actively playing so the poster doesn't bleed through
-        if (ambientPosterAlpha > 0.001f) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(song.artworkAt(ART_PX))
-                    .size(ART_PX)
-                    .build(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .blur(50.dp)
-                    .graphicsLayer {
-                        alpha = ambientPosterAlpha
-                    },
-            )
+        val playerBackgroundStyle by AppSettings.playerBackgroundStyle.collectAsStateWithLifecycle()
+
+        // Background styling according to user setting (Blur, Gradient, or Default theme wash)
+        when (playerBackgroundStyle) {
+            PlayerBackgroundStyle.BLUR -> {
+                if (ambientPosterAlpha > 0.001f && !reduceDynamicBlur) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(song.artworkAt(ART_PX))
+                            .size(ART_PX)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .blur(50.dp)
+                            .graphicsLayer {
+                                alpha = ambientPosterAlpha
+                            },
+                    )
+                }
+            }
+            PlayerBackgroundStyle.GRADIENT -> {
+                if (ambientPosterAlpha > 0.001f) {
+                    val gradientColors = remember(meshColors) {
+                        if (meshColors.colors.isNotEmpty()) {
+                            listOf(
+                                meshColors.colors[0].copy(alpha = 0.85f),
+                                meshColors.colors.getOrElse(1) { meshColors.colors[0] }.copy(alpha = 0.5f),
+                                Color(0xFF0F1115),
+                            )
+                        } else {
+                            listOf(
+                                Color(0xFF3A1C71).copy(alpha = 0.85f),
+                                Color(0xFF2B5876).copy(alpha = 0.5f),
+                                Color(0xFF0F1115),
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Brush.verticalGradient(gradientColors)),
+                    )
+                }
+            }
+            PlayerBackgroundStyle.DEFAULT -> {
+                // Follows standard clean theme background
+            }
         }
 
         // Frosted dark overlay scrim to keep all lyrics, seekers and controls crystal clear
@@ -1675,34 +1716,34 @@ fun NowPlayingScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .pointerInput(Unit) {
-                    var total = 0f
-                    detectHorizontalDragGestures(
-                        onDragStart = { total = 0f },
-                        onDragCancel = { swipeOffset = 0f },
-                        onDragEnd = {
-                            // The same two buzzes the transport glyphs give, so
-                            // swiping the sleeve and tapping skip feel like one
-                            // gesture with two spellings.
-                            when {
-                                total <= -swipeThreshold && hasNext -> {
-                                    haptics.play(Haptic.SkipNext)
-                                    onNext()
-                                }
-                                total >= swipeThreshold && hasPrevious -> {
-                                    haptics.play(Haptic.SkipPrevious)
-                                    onPrevious()
-                                }
-                            }
-                            swipeOffset = 0f
-                        },
-                        onHorizontalDrag = { _, delta ->
-                            total += delta
-                            // Damped: it's a hint, not a drag-to-position.
-                            swipeOffset = total * 0.35f
-                        },
-                    )
-                },
+                .then(
+                    if (swipeThumbnail) {
+                        Modifier.pointerInput(swipeThumbnail, swipeThreshold) {
+                            var total = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = { total = 0f },
+                                onDragCancel = { swipeOffset = 0f },
+                                onDragEnd = {
+                                    when {
+                                        total <= -swipeThreshold && hasNext -> {
+                                            haptics.play(Haptic.SkipNext)
+                                            onNext()
+                                        }
+                                        total >= swipeThreshold && hasPrevious -> {
+                                            haptics.play(Haptic.SkipPrevious)
+                                            onPrevious()
+                                        }
+                                    }
+                                    swipeOffset = 0f
+                                },
+                                onHorizontalDrag = { _, delta ->
+                                    total += delta
+                                    swipeOffset = total * 0.35f
+                                },
+                            )
+                        }
+                    } else Modifier
+                ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // The only strip that passes drags through to the sheet, so the
@@ -1750,11 +1791,7 @@ fun NowPlayingScreen(
                         currentSource = canvasArtwork?.source,
                         availableSourcesCount = availableCanvases.size,
                         onOpenSourcePicker = {
-                            if (availableCanvases.isNotEmpty()) {
-                                showCanvasSourceSheet = true
-                            } else {
-                                canvasNoticeMessage = "Searching for video sources..."
-                            }
+                            showCanvasSourceSheet = true
                         },
                         isLoading = canvasLoading,
                         onShowNotice = { msg ->
@@ -2288,10 +2325,15 @@ fun NowPlayingScreen(
                             ),
                             color = Color.White,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            // Only the tracks YouTube hands us a browse id for
-                            // lead anywhere; the rest stay plain text.
-                            modifier = Modifier.opensPage(song.albumId, onOpenAlbum),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .basicMarquee(
+                                    iterations = Int.MAX_VALUE,
+                                    initialDelayMillis = 1800,
+                                    repeatDelayMillis = 1200,
+                                    velocity = 32.dp,
+                                )
+                                .opensPage(song.albumId, onOpenAlbum),
                         )
                         Text(
                             text = song.artist,
@@ -2301,8 +2343,15 @@ fun NowPlayingScreen(
                             ),
                             color = Color.White.copy(alpha = 0.55f),
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.opensPage(song.artistId, onOpenArtist),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .basicMarquee(
+                                    iterations = Int.MAX_VALUE,
+                                    initialDelayMillis = 1800,
+                                    repeatDelayMillis = 1200,
+                                    velocity = 30.dp,
+                                )
+                                .opensPage(song.artistId, onOpenArtist),
                         )
                     }
                     Spacer(Modifier.width(10.dp))
@@ -2386,9 +2435,8 @@ fun NowPlayingScreen(
                                 .fillMaxWidth()
                                 .fillMaxHeight(0.18f)
                                 .padding(horizontal = 24.dp, vertical = 20.dp),
-                            contentAlignment = Alignment.CenterEnd,
                         ) {
-                            // Premium Frosted Glass Cross [ ✕ ] button to exit fullscreen lyrics
+                            // Bottom Left: Premium Frosted Glass Lyrics Source button
                             Surface(
                                 shape = CircleShape,
                                 color = Color.White.copy(alpha = 0.14f),
@@ -2404,6 +2452,46 @@ fun NowPlayingScreen(
                                 shadowElevation = 16.dp,
                                 modifier = Modifier
                                     .size(50.dp)
+                                    .align(Alignment.CenterStart)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                    ) {
+                                        haptics.play(Haptic.Tap)
+                                        showLyricsPickerSheet = true
+                                        onLyricsInteraction()
+                                    },
+                            ) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Layers,
+                                        contentDescription = "Lyrics Source",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                            }
+
+                            // Bottom Right: Premium Frosted Glass Cross [ ✕ ] button to exit fullscreen lyrics
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.White.copy(alpha = 0.14f),
+                                border = BorderStroke(
+                                    1.2.dp,
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            Color.White.copy(alpha = 0.45f),
+                                            Color.White.copy(alpha = 0.15f),
+                                        )
+                                    ),
+                                ),
+                                shadowElevation = 16.dp,
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .align(Alignment.CenterEnd)
                                     .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null,
@@ -6862,6 +6950,12 @@ private fun TransportGlyph(
     haptic: Haptic = Haptic.Tap,
 ) {
     val haptics = rememberHaptics()
+    val playerButtonsStyle by AppSettings.playerButtonsStyle.collectAsStateWithLifecycle()
+    val baseColor = when (playerButtonsStyle) {
+        PlayerButtonsStyle.PRIMARY -> MaterialTheme.colorScheme.primary
+        PlayerButtonsStyle.TERTIARY -> MaterialTheme.colorScheme.tertiary
+        PlayerButtonsStyle.DEFAULT -> Color.White
+    }
     // Faded rather than hidden: the row keeps its shape at the ends of a queue.
     val alpha by animateFloatAsState(
         targetValue = if (enabled) 1f else 0.3f,
@@ -6884,7 +6978,7 @@ private fun TransportGlyph(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = Color.White.copy(alpha = alpha),
+            tint = baseColor.copy(alpha = alpha),
             modifier = Modifier.size(size),
         )
     }

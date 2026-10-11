@@ -54,6 +54,7 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -157,6 +158,9 @@ import com.music.dhvani.ui.components.ExportLibraryPlaylistSheet
 import com.music.dhvani.ui.components.ImportPlaylistSheet
 import com.music.dhvani.ui.components.PlaylistPickerSheet
 import com.music.dhvani.ui.components.SongActionsSheet
+import com.music.dhvani.ui.components.SongVersionsSheet
+import kotlinx.coroutines.delay
+import com.music.dhvani.playback.changeAudioTrack
 import com.music.dhvani.playback.rememberMediaController
 import com.music.dhvani.playback.rememberPlayerState
 import com.music.dhvani.playback.DynamicIslandOverlayManager
@@ -231,30 +235,56 @@ class MainActivity : AppCompatActivity() {
         MusicLink.consume(intent)
         setContent {
             val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
+            val enableHighRefreshRate by AppSettings.enableHighRefreshRate.collectAsStateWithLifecycle()
+            val densityScale by AppSettings.densityScale.collectAsStateWithLifecycle()
+
+            androidx.compose.runtime.LaunchedEffect(enableHighRefreshRate) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    val display = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                        window.context.display
+                    } else {
+                        @Suppress("DEPRECATION")
+                        window.windowManager.defaultDisplay
+                    }
+                    val modes = display?.supportedModes ?: emptyArray()
+                    val params = window.attributes
+                    if (enableHighRefreshRate && !AppSettings.isLowEndDevice()) {
+                        val maxMode = modes.maxByOrNull { it.refreshRate }
+                        if (maxMode != null && maxMode.refreshRate > 60f) {
+                            params.preferredDisplayModeId = maxMode.modeId
+                        }
+                    } else {
+                        params.preferredDisplayModeId = 0
+                    }
+                    window.attributes = params
+                }
+            }
+
             val darkTheme = when (theme) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
             }
             DhvaniTheme(darkTheme = darkTheme) {
-                // The window's width, measured rather than asked for.
-                //
-                // `Configuration.screenWidthDp` is the wrong question here: in a
-                // freeform or desktop window it can report the display rather
-                // than the window it is actually in, and it lands a beat late
-                // when that window is dragged. The layout downstream splits in
-                // two on the strength of this number and sizes both halves from
-                // it, so a stale one is a player pane sized for a window that no
-                // longer exists and a page squeezed to a sliver to pay for it.
-                // A measured constraint cannot be stale — it is the very width
-                // the split is about to be laid out in.
-                BoxWithConstraints(Modifier.fillMaxSize()) {
-                    DhvaniApp(darkTheme = darkTheme, windowWidth = maxWidth)
+                val currentDensity = androidx.compose.ui.platform.LocalDensity.current
+                val scaledDensity = androidx.compose.runtime.remember(currentDensity, densityScale) {
+                    androidx.compose.ui.unit.Density(
+                        density = currentDensity.density * densityScale,
+                        fontScale = currentDensity.fontScale,
+                    )
+                }
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalDensity provides scaledDensity,
+                ) {
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        DhvaniApp(darkTheme = darkTheme, windowWidth = maxWidth)
+                    }
                 }
             }
         }
         PlaylistSyncManager.init(this)
         lifecycleScope.launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(15_000)
             PlaylistSyncManager.checkAllAsync(this@MainActivity, force = false)
         }
         if (intent?.getBooleanExtra("open_update_dialog", false) == true) {
@@ -306,6 +336,7 @@ class MainActivity : AppCompatActivity() {
         DynamicIslandOverlayManager.setAppForeground(true)
         com.music.dhvani.data.telemetry.TelemetryManager.onAppForeground()
         lifecycleScope.launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(3000)
             Downloads.syncWithDisk(this@MainActivity)
         }
     }
@@ -340,6 +371,7 @@ private fun DhvaniApp(
     var showFloatingIslandPermissionDialog by rememberSaveable { mutableStateOf(false) }
     val hasPromptedUserName by AppSettings.hasPromptedUserName.collectAsStateWithLifecycle()
     val hasPromptedAutoDownloadNotice by AppSettings.hasPromptedAutoDownloadNotice.collectAsStateWithLifecycle()
+    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
 
     if (!hasPromptedUserName) {
         com.music.dhvani.ui.components.WelcomeNameDialog(
@@ -363,13 +395,16 @@ private fun DhvaniApp(
             }
         }
     }
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable {
+        mutableIntStateOf(AppSettings.defaultOpenTab.value.coerceIn(0, 3))
+    }
+    var showAmbientCinemaMode by rememberSaveable { mutableStateOf(false) }
     // Whether there is room to keep the player open beside the page rather than
-    // raising it over one. Read all over what follows, because most of what the
-    // page does about the player is really about which of the two it is: no mini
-    // player standing in for one that is already there, no sheet to raise, and
-    // the bottom inset the mini player was holding handed back to the page.
-    val playerDocked = dockedPlayerAvailable(windowWidth)
+    // raising it over one. Only docked on genuine tablet/desktop screens (sw600dp+),
+    // never on phones in landscape or during fullscreen cinema mode.
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isTablet = configuration.smallestScreenWidthDp >= 600
+    val playerDocked = isTablet && !showAmbientCinemaMode && dockedPlayerAvailable(windowWidth)
     /**
      * Whether the player's *sheet* is up.
      *
@@ -392,6 +427,18 @@ private fun DhvaniApp(
             PlayerDeepLink.handled()
         }
     }
+    val hideStatusBarOnFullscreen by AppSettings.hideStatusBarOnFullscreen.collectAsStateWithLifecycle()
+    LaunchedEffect(showNowPlaying, hideStatusBarOnFullscreen) {
+        val activity = context as? android.app.Activity
+        activity?.window?.let { win ->
+            val insetsController = androidx.core.view.WindowCompat.getInsetsController(win, win.decorView)
+            if (showNowPlaying && hideStatusBarOnFullscreen) {
+                insetsController.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+            } else {
+                insetsController.show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+            }
+        }
+    }
     var showSettings by remember { mutableStateOf(false) }
     // Replay: the page, the stories over it, and the share sheet over those.
     // Three states rather than one enum because they stack — the stories are
@@ -403,6 +450,7 @@ private fun DhvaniApp(
     /** Which story card the share sheet is for, or null for the whole Replay. */
     var replaySharePage by remember { mutableStateOf<ReplayStoryPage?>(null) }
     var showAccountScrobbling by remember { mutableStateOf(false) }
+    var accountScrobblingFromListenTogether by rememberSaveable { mutableStateOf(false) }
     var showSources by remember { mutableStateOf(false) }
     var showAppearanceSettings by remember { mutableStateOf(false) }
     var settingsSubScreenTitle by remember { mutableStateOf<String?>(null) }
@@ -432,10 +480,12 @@ private fun DhvaniApp(
     var showEqualizerSheet by remember { mutableStateOf(false) }
     var showAudioEffectsSheet by remember { mutableStateOf(false) }
     var showAudioQualitySheet by remember { mutableStateOf(false) }
-    var showAmbientCinemaMode by rememberSaveable { mutableStateOf(false) }
     var showSongDetails by remember { mutableStateOf(false) }
     /** The song whose details are currently being shown in [showSongDetails]. */
     var detailsSong by remember { mutableStateOf<Song?>(null) }
+    var ringtoneTarget by remember { mutableStateOf<Song?>(null) }
+    var ringtoneInitialPos by remember { mutableStateOf(0L) }
+    var wasPlayingBeforeRingtone by remember { mutableStateOf(false) }
     // Discord Rich Presence: its own page under Account & integrations, its own
     // full-screen sign-in, and one slot for whichever of its alerts is open.
     // The alerts live out here rather than on the page because their scrim has
@@ -445,6 +495,7 @@ private fun DhvaniApp(
     var discordDialog by remember { mutableStateOf<DiscordDialog?>(null) }
     var showListenTogether by remember { mutableStateOf(false) }
     var songActions by remember { mutableStateOf<Song?>(null) }
+    var versionTarget by remember { mutableStateOf<Song?>(null) }
     /**
      * Whether the track menu that is up was opened from the player.
      *
@@ -561,6 +612,8 @@ private fun DhvaniApp(
     val likeStatuses by viewModel.likeStatuses.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val playlistsLoading by viewModel.playlistsLoading.collectAsStateWithLifecycle()
+    val songVersions by viewModel.songVersions.collectAsStateWithLifecycle()
+    val songVersionsLoading by viewModel.songVersionsLoading.collectAsStateWithLifecycle()
 
     // Settings has no tab of its own — it sits on top of whatever tab was
     // selected. A pushed album/artist page (from the player, search, etc.)
@@ -681,6 +734,7 @@ private fun DhvaniApp(
     // something is exactly when it needs re-fetching.
     LaunchedEffect(currentFeed) {
         if (currentFeed == MainViewModel.Feed.HOME) viewModel.onHomeShown()
+        if (currentFeed == MainViewModel.Feed.EXPLORE) viewModel.onExploreShown()
         // Likewise for Library: a playlist created or a song liked since it
         // was last fetched is a change to exactly this page.
         if (currentFeed == MainViewModel.Feed.LIBRARY) viewModel.onLibraryShown()
@@ -765,9 +819,8 @@ private fun DhvaniApp(
                 scope.launch {
                     songs.forEachIndexed { i, song ->
                         if (!song.isVideo) return@forEachIndexed
-                        launch {
-                            val resolved = YtMusicRepository.resolveAudio(song)
-                            if (resolved.videoId == song.videoId) return@launch
+                        val resolved = YtMusicRepository.resolveAudio(song)
+                        if (resolved.videoId != song.videoId) {
                             val c = controller ?: return@launch
                             val at = (0 until c.mediaItemCount)
                                 .firstOrNull { c.getMediaItemAt(it).mediaId == song.videoId }
@@ -821,11 +874,16 @@ private fun DhvaniApp(
         }
     }
     val playNext: (Song) -> Unit = { song ->
-        controller?.let {
-            it.addMediaItem(
-                (it.currentMediaItemIndex + 1).coerceAtMost(it.mediaItemCount),
-                song.toMediaItem(),
-            )
+        controller?.let { c ->
+            if (c.mediaItemCount == 0 || c.currentMediaItem == null) {
+                c.playSongs(listOf(song), 0)
+                if (!playerDocked) showNowPlaying = true
+            } else {
+                c.addMediaItem(
+                    (c.currentMediaItemIndex + 1).coerceAtMost(c.mediaItemCount),
+                    song.toMediaItem(),
+                )
+            }
         }
         if (song.isVideo && AppSettings.convertVideoToAudio.value) {
             scope.launch {
@@ -931,27 +989,6 @@ private fun DhvaniApp(
                     val count = "${songs.size} song" + if (songs.size == 1) "" else "s"
                     val message = if (next) "$count will play next" else "Added $count to queue"
                     Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                    // Video uploads are swapped for their catalogue audio
-                    // release behind the queue rather than in front of it, for
-                    // the same reason [play] does it: a hundred rows' worth of
-                    // lookups is a wait, and none of them is the track playing
-                    // now. Found by id rather than by index — the queue can be
-                    // edited while these are in flight.
-                    songs.forEach { song ->
-                        if (!song.isVideo) return@forEach
-                        launch {
-                            val resolved = YtMusicRepository.resolveAudio(song)
-                            if (resolved.videoId == song.videoId) return@launch
-                            // The session can go away while a lookup is out —
-                            // the activity is recreated, the service is stopped —
-                            // and a released controller has no queue to patch.
-                            if (!c.isConnected) return@launch
-                            val index = (0 until c.mediaItemCount)
-                                .firstOrNull { c.getMediaItemAt(it).mediaId == song.videoId }
-                                ?: return@launch
-                            c.replaceMediaItem(index, resolved.toMediaItem())
-                        }
-                    }
                 }
             }
         }
@@ -1063,11 +1100,13 @@ private fun DhvaniApp(
      */
     val onBrowseLongPress: (ShelfItem) -> Unit = { item ->
         if (item.videoId != null && item.browseId == null) {
-            songActions = Song(
-                videoId = item.videoId,
-                title = item.title,
-                artist = InnertubeParser.artistFromSubtitle(item.subtitle),
-                thumbnailUrl = item.thumbnailUrl,
+            openSongMenu(
+                Song(
+                    videoId = item.videoId,
+                    title = item.title,
+                    artist = InnertubeParser.artistFromSubtitle(item.subtitle),
+                    thumbnailUrl = item.thumbnailUrl,
+                )
             )
         } else {
             val id = item.browseId
@@ -1561,6 +1600,7 @@ private fun DhvaniApp(
                 )
             },
             onListenTogether = {
+                showNowPlaying = false
                 showListenTogether = true
             },
             onOpenAudioEffects = {
@@ -1606,6 +1646,10 @@ private fun DhvaniApp(
         }
         BackHandler(enabled = showAccountScrobbling && !showDiscord) {
             showAccountScrobbling = false
+            if (accountScrobblingFromListenTogether) {
+                accountScrobblingFromListenTogether = false
+                showListenTogether = true
+            }
         }
         BackHandler(enabled = showSources) {
             showSources = false
@@ -1626,11 +1670,12 @@ private fun DhvaniApp(
         BackHandler(enabled = selectedMoodGenre != null && !showNowPlaying && !showSettings && detail == null) {
             viewModel.closeMoodGenre()
         }
+        val defaultHomeTab = AppSettings.defaultOpenTab.value.coerceIn(0, 3)
         BackHandler(
             enabled = selectedMoodGenre == null && detail == null && !showSettings && !showAccountScrobbling &&
-                !showSources && !showAppearanceSettings && settingsSubScreenTitle == null && !showReplay && selectedTab != TAB_HOME,
+                !showSources && !showAppearanceSettings && settingsSubScreenTitle == null && !showReplay && selectedTab != defaultHomeTab,
         ) {
-            selectedTab = TAB_HOME
+            selectedTab = defaultHomeTab
         }
         BackHandler(enabled = showUpdateDialog) { showUpdateDialog = false }
         BackHandler(enabled = showListenBrainzLogin) { showListenBrainzLogin = false }
@@ -1703,7 +1748,7 @@ private fun DhvaniApp(
                             fadeIn(tween(180)) togetherWith fadeOut(tween(180))
                         }
                     },
-                    modifier = Modifier.hazeSource(hazeState),
+                    modifier = if (!reduceDynamicBlur && !AppSettings.isLowEndDevice()) Modifier.hazeSource(hazeState) else Modifier,
                     label = "content",
                 ) { key ->
                     // Every branch below reads `key` rather than the state that
@@ -1731,7 +1776,7 @@ private fun DhvaniApp(
                             state = historyState,
                             listState = historyListState,
                             onSongClick = play,
-                            onSongLongPress = { songActions = it },
+                            onSongLongPress = openSongMenu,
                             onSongSwipe = onSongSwipe,
                             onRetry = viewModel::loadHistory,
                             contentPadding = listPadding,
@@ -1810,8 +1855,12 @@ private fun DhvaniApp(
                             onSignOut = { viewModel.signOut() },
                             onOpenListenBrainzLogin = { showListenBrainzLogin = true },
                             onOpenLastfmLogin = { showLastfmLogin = true },
-                            onOpenDiscord = { showDiscord = true },
+                            onOpenDiscord = {
+                                showNowPlaying = false
+                                showDiscord = true
+                            },
                             onOpenListenTogether = {
+                                accountScrobblingFromListenTogether = false
                                 showAccountScrobbling = false
                                 showListenTogether = true
                             },
@@ -1839,15 +1888,25 @@ private fun DhvaniApp(
                             account = account,
                             onSignIn = {},
                             onSignOut = { viewModel.signOut() },
-                            onAccountScrobbling = { showAccountScrobbling = true },
+                            onAccountScrobbling = {
+                                showNowPlaying = false
+                                showAccountScrobbling = true
+                            },
                             onOpenReplay = {
                                 showSettings = false
+                                showNowPlaying = false
                                 showReplay = true
                             },
                             onLyricsSources = { showLyricsSources = true },
                             onTranslationLanguage = { showTranslationLanguage = true },
-                            onSources = { showSources = true },
-                            onOpenAppearance = { showAppearanceSettings = true },
+                            onSources = {
+                                showNowPlaying = false
+                                showSources = true
+                            },
+                            onOpenAppearance = {
+                                showNowPlaying = false
+                                showAppearanceSettings = true
+                            },
                             onAppLanguage = { showAppLanguage = true },
                             onSubScreenChange = { title, onBackAction ->
                                 settingsSubScreenTitle = title
@@ -2191,26 +2250,31 @@ private fun DhvaniApp(
 
                 // Every top bar is a fade rather than a pane — see [TopFadeBlur].
                 // Drawn before the bar so the bar's own content sits on top of it.
+                val isSearchTab = selectedTab == TAB_SEARCH && detail == null && !showSettings &&
+                    !showAccountScrobbling && !showSources && !showAppearanceSettings &&
+                    settingsSubScreenTitle == null && !showDiscord && !showHistory &&
+                    libraryShowAll == null && !showReplay
                 val isDetailVisible = detail != null && !isLocalDetail && !showSettings &&
                     !showAccountScrobbling && !showSources && !showReplay
-                TopFadeBlur(
-                    hazeState = hazeState,
-                    // Replay paints its own full-bleed black backdrop up under the
-                    // status bar, exactly as a release page's artwork does.
-                    pageColor = when {
-                        showReplay -> Color.Black
-                        isDetailVisible -> detailPalette.wash
-                        else -> MaterialTheme.colorScheme.background
-                    },
-                    scrimColor = when {
-                        showReplay -> Color.Black
-                        isDetailVisible -> detailPalette.background
-                        else -> MaterialTheme.colorScheme.background
-                    },
-                    modifier = Modifier.align(Alignment.TopCenter),
-                )
+                if (!isSearchTab) {
+                    TopFadeBlur(
+                        hazeState = hazeState,
+                        // Replay paints its own full-bleed black backdrop up under the
+                        // status bar, exactly as a release page's artwork does.
+                        pageColor = when {
+                            showReplay -> Color.Black
+                            isDetailVisible -> detailPalette.wash
+                            else -> MaterialTheme.colorScheme.background
+                        },
+                        scrimColor = when {
+                            showReplay -> Color.Black
+                            isDetailVisible -> detailPalette.background
+                            else -> MaterialTheme.colorScheme.background
+                        },
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
 
-                FrostedTopBar(
+                    FrostedTopBar(
                     title = when {
                         showDiscord -> "Discord"
                         showHistory -> "History"
@@ -2222,12 +2286,11 @@ private fun DhvaniApp(
                         showSettings -> "Settings"
                         showReplay -> "Replay"
                         detail != null -> detail.title
+                        selectedTab == TAB_SEARCH || selectedTab == TAB_LIBRARY -> ""
                         else -> tabs[selectedTab].let {
                             if (it.label == "Play") "Listen Now" else it.label
                         }
                     },
-                    // Search has no large in-list header to hand the title back to —
-                    // the field takes that space — so its bar title is always up.
                     scrolled = when {
                         showSettings || showAccountScrobbling || showSources || showAppearanceSettings ||
                             settingsSubScreenTitle != null || showDiscord || showHistory ||
@@ -2236,7 +2299,8 @@ private fun DhvaniApp(
                         // stays out of the way until that has been scrolled off.
                         showReplay -> replayScrolled
                         detail != null -> detailScrolled
-                        else -> scrolled || selectedTab == TAB_SEARCH
+                        selectedTab == TAB_SEARCH -> false
+                        else -> scrolled
                     },
                     refreshing = currentFeed != null && currentFeed in refreshing,
                     pullFraction = { currentPull?.distanceFraction ?: 0f },
@@ -2244,7 +2308,13 @@ private fun DhvaniApp(
                         showDiscord -> ({ showDiscord = false })
                         showHistory -> ({ showHistory = false })
                         libraryShowAll != null && detail == null -> ({ libraryShowAll = null })
-                        showAccountScrobbling -> ({ showAccountScrobbling = false })
+                        showAccountScrobbling -> ({
+                            showAccountScrobbling = false
+                            if (accountScrobblingFromListenTogether) {
+                                accountScrobblingFromListenTogether = false
+                                showListenTogether = true
+                            }
+                        })
                         showSources -> ({ showSources = false })
                         showAppearanceSettings -> ({ showAppearanceSettings = false })
                         settingsSubScreenOnBack != null -> settingsSubScreenOnBack
@@ -2299,20 +2369,11 @@ private fun DhvaniApp(
                                         viewModel.loadHistory()
                                     },
                                 ) {
-                                    Box(contentAlignment = Alignment.TopEnd) {
-                                        Icon(
-                                            DhvaniIcons.Bell,
-                                            contentDescription = "Notifications",
-                                            tint = MaterialTheme.colorScheme.onSurface,
-                                        )
-                                        // Stitch Dhvani: orange notification indicator dot
-                                        Box(
-                                            modifier = Modifier
-                                                .size(7.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.primaryContainer),
-                                        )
-                                    }
+                                    Icon(
+                                        Icons.Rounded.History,
+                                        contentDescription = "History",
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                    )
                                 }
                             }
                             // Left of the account photo, and only there while
@@ -2327,6 +2388,7 @@ private fun DhvaniApp(
                         }
                     },
                 )
+            }
 
                 val hideBottomBar = showSettings || showAppearanceSettings || showSources || showAccountScrobbling || showDiscord
 
@@ -2392,13 +2454,16 @@ private fun DhvaniApp(
                             selectedIndex = selectedTab,
                             hazeState = hazeState,
                             onTabSelected = { index ->
-                                // Re-tapping the search tab while already on it focuses the
-                                // input field and opens the keyboard rather than resetting.
-                                if (index == TAB_SEARCH && selectedTab == TAB_SEARCH) {
-                                    searchFocusTrigger++
-                                    return@FloatingBottomBar
-                                }
-                                if (index != TAB_SEARCH) {
+                                // Only re-tapping the search tab while already on it focuses the input field or clears query
+                                if (index == TAB_SEARCH) {
+                                    if (selectedTab == TAB_SEARCH) {
+                                        searchFocusTrigger++
+                                        if (query.isNotEmpty()) {
+                                            viewModel.onQueryChange("")
+                                        }
+                                        return@FloatingBottomBar
+                                    }
+                                } else {
                                     searchFocusTrigger = 0
                                 }
                                 viewModel.clearDetail()
@@ -2406,6 +2471,7 @@ private fun DhvaniApp(
                                 showAppearanceSettings = false
                                 showSources = false
                                 showAccountScrobbling = false
+                                accountScrobblingFromListenTogether = false
                                 showDiscord = false
                                 showListenTogether = false
                                 showReplay = false
@@ -2461,19 +2527,23 @@ private fun DhvaniApp(
                             )
                             .size(52.dp)
                             .shadow(
-                                elevation = 10.dp,
+                                elevation = 12.dp,
                                 shape = CircleShape,
-                                ambientColor = Color.Black.copy(alpha = 0.5f),
-                                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                                ambientColor = Color.Black.copy(alpha = 0.6f),
+                                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
                             )
                             .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(
-                                        Color(0xFFE85A1D), // Warm Amber Saffron
-                                        Color(0xFFBA3E08),
+                            .background(Color(0xE614161C)) // Frosted Obsidian Glass
+                            .border(
+                                width = 1.8.dp,
+                                brush = Brush.sweepGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.40f),
+                                        MaterialTheme.colorScheme.primary,
                                     ),
                                 ),
+                                shape = CircleShape,
                             )
                             .clickable { onPlayRandom() },
                         contentAlignment = Alignment.Center,
@@ -2481,7 +2551,7 @@ private fun DhvaniApp(
                         Icon(
                             imageVector = DhvaniIcons.Shuffle,
                             contentDescription = "Quick Shuffle",
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp),
                         )
                     }
@@ -2502,7 +2572,7 @@ private fun DhvaniApp(
 
         // ---- Now Playing ----
         // Only raised where it isn't already open beside the page.
-        if (!playerDocked && showNowPlaying && playerSong != null && !showAmbientCinemaMode) {
+        if (!playerDocked && showNowPlaying && !showAmbientCinemaMode && playerSong != null) {
             ModalBottomSheet(
                 onDismissRequest = { showNowPlaying = false },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -2596,19 +2666,34 @@ private fun DhvaniApp(
             val editable = viewModel.editablePlaylist(detail?.browseId)
                 ?.takeIf { !fromPlayer && song.setVideoId != null }
 
-            val isPlayingOriginal = com.music.dhvani.playback.OriginalVersion.isPinned(song.videoId)
+            val currentNerdStatsSnapshot by com.music.dhvani.data.NerdStats.current.collectAsStateWithLifecycle()
+            val isPinnedToOriginal = com.music.dhvani.playback.OriginalVersion.isPinned(song.videoId)
+            val isPlayingHighQuality = !isPinnedToOriginal && (
+                currentNerdStatsSnapshot?.isHiQuality == true ||
+                currentNerdStatsSnapshot?.isLossless == true ||
+                currentNerdStatsSnapshot?.sourceName?.contains("saavn", ignoreCase = true) == true ||
+                currentNerdStatsSnapshot?.sourceName?.contains("tidal", ignoreCase = true) == true ||
+                (currentNerdStatsSnapshot == null && song.sourceQuality == "HIGH")
+            )
 
             val performQualitySwitch: (Boolean) -> Unit = { toHighQuality ->
                 val s = player.song ?: song
                 if (toHighQuality) {
                     com.music.dhvani.playback.OriginalVersion.unpin(s.videoId)
+                    com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource("JIOSAAVN")
                 } else {
                     com.music.dhvani.playback.OriginalVersion.pin(s.videoId)
+                    com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource("YOUTUBE")
                 }
                 controller?.swapQuality(toHighQuality)
             }
+            val isCurrentPlayingTrack = fromPlayer ||
+                (player.song?.videoId == song.videoId) ||
+                (controller?.currentMediaItem?.mediaId == song.videoId)
+
             ModalBottomSheet(
                 onDismissRequest = { songActions = null },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 // The sheet paints itself in the track's own colours, corners
                 // and drag handle included — see SongActionsSheet.
                 containerColor = Color.Transparent,
@@ -2618,8 +2703,20 @@ private fun DhvaniApp(
                     song = song,
                     signedIn = signedIn,
                     likeStatus = likeStatuses[song.videoId] ?: LikeStatus.INDIFFERENT,
-                    onPlayNext = { playNext(song); songActions = null },
-                    onAddToQueue = { addToQueue(song); songActions = null },
+                    onPlayNext = if (!isCurrentPlayingTrack) {
+                        {
+                            playNext(song)
+                            songActions = null
+                            Toast.makeText(context, "Playing next · ${song.title}", Toast.LENGTH_SHORT).show()
+                        }
+                    } else null,
+                    onAddToQueue = if (!isCurrentPlayingTrack) {
+                        {
+                            addToQueue(song)
+                            songActions = null
+                            Toast.makeText(context, "Added to queue · ${song.title}", Toast.LENGTH_SHORT).show()
+                        }
+                    } else null,
                     // Stays open: the row it replaces itself with is the
                     // progress, and closing the sheet would hide the only
                     // answer to "did that work?".
@@ -2662,16 +2759,24 @@ private fun DhvaniApp(
                     // whatever ids it's ever going to have.
                     resolvingLinks = fromPlayer && linksLoading,
                     showSleepTimer = fromPlayer,
-                    onRollbackToOriginal = if (fromPlayer && !isPlayingOriginal && song.localUri == null && controller?.currentMediaItem?.mediaId == song.videoId) {
+                    onRollbackToOriginal = if ((fromPlayer || isCurrentPlayingTrack) && isPlayingHighQuality && song.localUri == null && controller?.currentMediaItem?.mediaId == song.videoId) {
                         {
                             songActions = null
                             performQualitySwitch(false)
                         }
                     } else null,
-                    onUpgradeQuality = if (fromPlayer && isPlayingOriginal && song.localUri == null && controller?.currentMediaItem?.mediaId == song.videoId) {
+                    onUpgradeQuality = if ((fromPlayer || isCurrentPlayingTrack) && !isPlayingHighQuality && song.localUri == null && controller?.currentMediaItem?.mediaId == song.videoId) {
                         {
                             songActions = null
                             performQualitySwitch(true)
+                        }
+                    } else null,
+                    onOpenVersions = if (song.localUri == null) {
+                        {
+                            val target = song
+                            songActions = null
+                            versionTarget = target
+                            viewModel.loadSongVersions(target)
                         }
                     } else null,
                     onOpenEqualizer = {
@@ -2688,6 +2793,16 @@ private fun DhvaniApp(
                             showAmbientCinemaMode = true
                         }
                     } else null,
+                    onSetAsRingtone = {
+                        val target = song
+                        songActions = null
+                        ringtoneInitialPos = if (player.song?.videoId == target.videoId) {
+                            (controller?.currentPosition ?: 0L).coerceAtLeast(0L)
+                        } else 0L
+                        wasPlayingBeforeRingtone = controller?.isPlaying == true
+                        controller?.pause()
+                        ringtoneTarget = target
+                    },
                     // Hidden outright when there's no real YouTube id behind
                     // this row to build a link from — SongActionsSheet already
                     // drops it for a local file via `isOffline`, this catches
@@ -2726,6 +2841,53 @@ private fun DhvaniApp(
             }
         }
 
+        // ---- Other versions & languages ----
+        versionTarget?.let { targetSong ->
+            ModalBottomSheet(
+                onDismissRequest = {
+                    versionTarget = null
+                    viewModel.clearSongVersions()
+                },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = Color.Transparent,
+                dragHandle = null,
+            ) {
+                SongVersionsSheet(
+                    song = targetSong,
+                    versions = songVersions,
+                    isLoading = songVersionsLoading,
+                    onSelectVersion = { selectedSong ->
+                        versionTarget = null
+                        viewModel.clearSongVersions()
+                        if (selectedSong.videoId != targetSong.videoId) {
+                            val currentPlaying = player.song
+                            val c = controller
+                            if (c != null && (currentPlaying?.videoId == targetSong.videoId || currentPlaying?.title.equals(targetSong.title, ignoreCase = true))) {
+                                c.changeAudioTrack(selectedSong)
+                            } else {
+                                val currentPos = c?.currentPosition ?: 0L
+                                val wasPlaying = c?.isPlaying == true
+                                val idx = c?.currentMediaItemIndex ?: -1
+                                if (c != null && idx in 0 until c.mediaItemCount) {
+                                    c.replaceMediaItem(idx, selectedSong.toMediaItem())
+                                    if (currentPos > 0L) {
+                                        c.seekTo(idx, currentPos)
+                                    }
+                                    if (wasPlaying) c.play()
+                                } else {
+                                    playRadio(selectedSong)
+                                }
+                            }
+                        }
+                    },
+                    onDismiss = {
+                        versionTarget = null
+                        viewModel.clearSongVersions()
+                    },
+                )
+            }
+        }
+
         // ---- Download manager ----
         // The batch view of what the top-bar indicator is counting. Dismissing
         // it is what marks the batch seen, and marking it on the way *out*
@@ -2751,6 +2913,22 @@ private fun DhvaniApp(
 
         if (showAudioEffectsSheet) {
             com.music.dhvani.ui.player.AudioEffectsSheet(onDismiss = { showAudioEffectsSheet = false })
+        }
+
+        ringtoneTarget?.let { s ->
+            com.music.dhvani.ui.components.RingtoneTrimmerSheet(
+                song = s,
+                initialPositionMs = ringtoneInitialPos,
+                onPauseMainPlayer = { controller?.pause() },
+                onDismiss = {
+                    ringtoneTarget = null
+                    ringtoneInitialPos = 0L
+                    if (wasPlayingBeforeRingtone) {
+                        controller?.play()
+                        wasPlayingBeforeRingtone = false
+                    }
+                },
+            )
         }
 
 
@@ -2802,6 +2980,7 @@ private fun DhvaniApp(
             BackHandler { showSongDetails = false }
             ModalBottomSheet(
                 onDismissRequest = { showSongDetails = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 containerColor = Color.Transparent,
                 dragHandle = null,
             ) {
@@ -3189,9 +3368,14 @@ private fun DhvaniApp(
                 ),
             ) {
                 ListenTogetherScreen(
-                    onBack = { showListenTogether = false },
-                    onOpenSettings = {
+                    onBack = {
                         showListenTogether = false
+                        accountScrobblingFromListenTogether = false
+                    },
+                    onOpenSettings = {
+                        accountScrobblingFromListenTogether = true
+                        showListenTogether = false
+                        showNowPlaying = false
                         showAccountScrobbling = true
                     },
                 )

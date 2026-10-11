@@ -198,6 +198,8 @@
     <string name="show_nerd_stats">Show stats for nerds</string>
     <string name="show_nerd_stats_subtitle">Codec, bitrate and sample rate on the player</string>
     <string name="theme">Theme</string>
+    <string name="performance_mode">Performance Mode</string>
+    <string name="performance_mode_subtitle">Optimizes app for low-end devices by disabling heavy blurs and freezing background gradients</string>
     <string name="reduce_animation">Reduce animation</string>
     <string name="reduce_animation_subtitle">Freezes the main player\'s gradient instead of drifting</string>
     <string name="reduce_dynamic_blur">Reduce dynamic blur</string>

@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Label
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.RadioButtonChecked
 import androidx.compose.material.icons.rounded.SmartButton
@@ -137,6 +138,7 @@ fun DiscordScreen(
 
     val connected = token.isNotEmpty()
     val discordIcon = ImageVector.vectorResource(R.drawable.ic_discord)
+    val context = LocalContext.current
 
     // Refreshes the cached profile whenever the connected account changes. A
     // failure is left to stand rather than clearing the cache: the usual reason
@@ -180,6 +182,31 @@ fun DiscordScreen(
             icon = discordIcon,
             onConnect = onOpenLogin,
         )
+
+        SettingsGroup(
+            header = "Community",
+            footer = "Join our official community for feature updates, music chats, and bug reports.",
+        ) {
+            SettingsRow(
+                icon = discordIcon,
+                title = "Join Discord Community",
+                subtitle = "discord.gg/cQkNcqCwkA",
+                trailing = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                        contentDescription = "Open Discord",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+                onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, "https://discord.gg/cQkNcqCwkA".toUri()).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    runCatching { context.startActivity(intent) }
+                },
+            )
+        }
 
         if (!connected) {
             SettingsGroup(

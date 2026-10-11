@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -60,6 +61,19 @@ private val SubtitleWidths = listOf(0.34f, 0.44f, 0.27f, 0.38f, 0.31f)
 @Composable
 fun ShimmerBox(modifier: Modifier = Modifier, shape: Shape = BlockShape) {
     val base = MaterialTheme.colorScheme.surfaceVariant
+    val isReduced = com.music.dhvani.data.settings.AppSettings.reduceAnimation.value ||
+        com.music.dhvani.data.settings.AppSettings.performanceMode.value ||
+        com.music.dhvani.data.settings.AppSettings.isLowEndDevice()
+
+    if (isReduced) {
+        Box(
+            modifier = modifier
+                .clip(shape)
+                .background(base),
+        )
+        return
+    }
+
     val highlight = MaterialTheme.colorScheme.onSurfaceVariant
         .copy(alpha = 0.16f)
         .compositeOver(base)
@@ -73,11 +87,9 @@ fun ShimmerBox(modifier: Modifier = Modifier, shape: Shape = BlockShape) {
         modifier
             .clip(shape)
             .drawWithCache {
-                // The band travels from fully off one edge to fully off the
-                // other, which leaves a beat of flat grey between passes rather
-                // than a highlight permanently parked somewhere on the block.
                 val band = size.width * 0.5f
-                val startX = -band + sweep.value * (size.width + band * 2)
+                val sweepFraction = sweep.value
+                val startX = -band + sweepFraction * (size.width + band * 2)
                 val brush = Brush.horizontalGradient(
                     colors = listOf(base, highlight, base),
                     startX = startX,

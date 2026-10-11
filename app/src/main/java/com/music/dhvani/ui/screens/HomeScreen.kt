@@ -62,7 +62,6 @@ import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.ui.unit.sp
 import com.music.dhvani.data.history.PlaybackHistory
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,7 +69,6 @@ import com.music.dhvani.ui.icons.DhvaniIcons
 import com.music.dhvani.R
 import coil3.compose.AsyncImage
 import com.music.dhvani.data.model.CARD_ART_PX
-import com.music.dhvani.data.model.HEADER_ART_PX
 import com.music.dhvani.data.model.ROW_ART_PX
 import com.music.dhvani.data.model.HomeShelf
 import com.music.dhvani.data.model.ShelfItem
@@ -121,6 +119,10 @@ fun HomeScreen(
     onOpenReplay: (() -> Unit)? = null,
     onPlayRandom: (() -> Unit)? = null,
 ) {
+    val visibleShelves = remember(state) {
+        (state as? UiState.Success)?.data?.filterNot { YtMusicRepository.isExcludedHomeShelf(it) }.orEmpty()
+    }
+
     PullToRefresh(
         refreshing = refreshing,
         onRefresh = onRefresh,
@@ -160,7 +162,7 @@ fun HomeScreen(
                     MessageState(state.message, actionLabel = "Retry", onAction = onRetry)
                 }
                 is UiState.Success -> {
-                    itemsIndexedShelves(state.data, onItemClick, onItemLongPress)
+                    itemsIndexedShelves(visibleShelves, onItemClick, onItemLongPress)
                     if (loadingMore) feedMoreSkeleton()
                 }
             }
@@ -168,12 +170,12 @@ fun HomeScreen(
     }
 
     if (onLoadMore != null && state is UiState.Success) {
-        // Use snapshotFlow to observe scroll position without causing HomeScreen to recompose
-        LaunchedEffect(listState, loadingMore) {
+        // Only load more when user has scrolled all the way to the last shelf (prevents network thrashing on launch)
+        LaunchedEffect(listState) {
             snapshotFlow {
                 val layout = listState.layoutInfo
                 val last = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
-                layout.totalItemsCount > 0 && last >= layout.totalItemsCount - 4
+                layout.totalItemsCount >= 5 && last >= layout.totalItemsCount - 1
             }.distinctUntilChanged()
                 .collect { nearEnd ->
                     if (nearEnd && !loadingMore) onLoadMore()
@@ -213,42 +215,6 @@ private fun DhvaniHomeHeader(
         else      -> "🌙"
     }
 
-    val timeLabel = remember(currentHour, isHindi) {
-        if (isHindi) {
-            when (currentHour) {
-                in 5..11  -> "सुबह की धुनें"
-                in 12..16 -> "दोपहर की धुन"
-                in 17..20 -> "शाम की महफ़िल"
-                else      -> "रात का सुकून"
-            }
-        } else {
-            when (currentHour) {
-                in 5..11  -> "MORNING VIBES"
-                in 12..16 -> "AFTERNOON ACOUSTIC"
-                in 17..20 -> "EVENING MELODIES"
-                else      -> "NIGHT CHILL"
-            }
-        }
-    }
-
-    val timeSubtitle = remember(currentHour, isHindi, listenerName) {
-        if (isHindi) {
-            when (currentHour) {
-                in 5..11  -> if (listenerName.isNotBlank()) "दिन की शुरुआत कीजिए मधुर और ताज़ा धुनों के साथ" else "आज क्या सुनेंगे? सुबह के राग या शांत लो-फ़ाई धुनें?"
-                in 12..16 -> "दोपहर की ताज़गी — बॉलीवुड और इंडी संगीत"
-                in 17..20 -> "शाम का सुकून — ग़ज़ल, सूफ़ी या मधुर धुनें"
-                else      -> "रात की शांति — एकांत संगीत और सुकून"
-            }
-        } else {
-            when (currentHour) {
-                in 5..11  -> if (listenerName.isNotBlank()) "Start your morning with fresh acoustic rhythms" else "Start your day with morning acoustic and calming tunes"
-                in 12..16 -> "Energize your afternoon with fresh popular hits"
-                in 17..20 -> "Unwind with cozy evening melodies and warmth"
-                else      -> "Relax into the night with soothing lo-fi and ambient sounds"
-            }
-        }
-    }
-
     val greetingTitle = remember(currentHour, isHindi) {
         if (isHindi) {
             when (currentHour) {
@@ -271,36 +237,8 @@ private fun DhvaniHomeHeader(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = PAGE_GUTTER)
-            .padding(top = 10.dp, bottom = 8.dp),
+            .padding(top = 4.dp, bottom = 8.dp),
     ) {
-        // Top Pill Badge
-        Row(
-            modifier = Modifier
-                .clip(CircleShape)
-                .background(Color(0xFF2A1C14)) // Warm dark amber/saffron tint
-                .border(0.5.dp, MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f), CircleShape)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.WbSunny,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(13.dp),
-            )
-            Text(
-                text = timeLabel.uppercase(),
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp,
-                ),
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-
-        Spacer(Modifier.height(14.dp))
-
         // Personalized greeting headline: Good Morning, Rahul ☀️ / शुभ प्रभात, Rahul ☀️
         Text(
             text = "$greetingTitle, $displayName $timeEmoji",
@@ -311,17 +249,6 @@ private fun DhvaniHomeHeader(
             ),
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(Modifier.height(4.dp))
-
-        Text(
-            text = timeSubtitle,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-            ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -376,7 +303,11 @@ private fun MoodGenreChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
     ) {
-        items(chips) { chip ->
+        items(
+            items = chips,
+            key = { it },
+            contentType = { "chip" },
+        ) { chip ->
             val isSelected = chip == selectedChip
             val haptics = rememberHaptics()
             Box(
@@ -455,18 +386,27 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     onItemClick: (ShelfItem) -> Unit,
     onItemLongPress: ((ShelfItem) -> Unit)?,
 ) {
-    shelves.forEachIndexed { index, shelf ->
-        item(key = shelf.title + index) {
+    items(
+        count = shelves.size,
+        key = { index -> "shelf_${shelves[index].title}" },
+        contentType = { index ->
             when {
-                shelf.isSongShelf() -> {
-                    SongShelf(shelf = shelf, onItemClick = onItemClick, onItemLongPress = onItemLongPress)
-                }
-                index == 0 -> {
-                    HeroShelf(shelf = shelf, onItemClick = onItemClick, onItemLongPress = onItemLongPress)
-                }
-                else -> {
-                    Shelf(shelf = shelf, onItemClick = onItemClick, onItemLongPress = onItemLongPress)
-                }
+                shelves[index].isSongShelf() -> "song_shelf"
+                index == 0 -> "hero_shelf"
+                else -> "shelf"
+            }
+        },
+    ) { index ->
+        val shelf = shelves[index]
+        when {
+            shelf.isSongShelf() -> {
+                SongShelf(shelf = shelf, onItemClick = onItemClick, onItemLongPress = onItemLongPress)
+            }
+            index == 0 -> {
+                HeroShelf(shelf = shelf, onItemClick = onItemClick, onItemLongPress = onItemLongPress)
+            }
+            else -> {
+                Shelf(shelf = shelf, onItemClick = onItemClick, onItemLongPress = onItemLongPress)
             }
         }
     }
@@ -483,7 +423,7 @@ private fun SongShelf(
     onItemLongPress: ((ShelfItem) -> Unit)? = null,
 ) {
     Column(Modifier.padding(bottom = 24.dp)) {
-        SectionHeader(shelf.title, shelf.subtitle)
+        SectionHeader(shelf.title)
         val rowsPerColumn = 4
         val columns = remember(shelf.items) { shelf.items.chunked(rowsPerColumn) }
         val screenWidth = LocalConfiguration.current.screenWidthDp.dp
@@ -492,7 +432,11 @@ private fun SongShelf(
             contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            items(columns) { columnItems ->
+            items(
+                items = columns,
+                key = { it.firstOrNull()?.videoId ?: it.hashCode() },
+                contentType = { "song_column" },
+            ) { columnItems ->
                 Column(
                     modifier = Modifier.width(columnWidth),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -676,14 +620,18 @@ private fun HeroShelf(
     onItemLongPress: ((ShelfItem) -> Unit)? = null,
 ) {
     Column(Modifier.padding(bottom = 26.dp)) {
-        SectionHeader(shelf.title, shelf.subtitle)
+        SectionHeader(shelf.title)
         val screenWidth = LocalConfiguration.current.screenWidthDp.dp
         val cardWidth = heroCardWidth(screenWidth)
         LazyRow(
             contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            items(shelf.items) { item ->
+            items(
+                items = shelf.items,
+                key = { it.videoId ?: (it.browseId ?: "${it.title}_${it.subtitle}") },
+                contentType = { "hero_card" },
+            ) { item ->
                 HeroCard(
                     item = item,
                     onClick = { onItemClick(item) },
@@ -717,7 +665,7 @@ private fun HeroCard(
             .combinedClickable(onClick = onClick, onLongClick = onLongPress),
     ) {
         AsyncImage(
-            model = item.thumbnailUrl.artworkAt(HEADER_ART_PX),
+            model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
@@ -730,6 +678,14 @@ private fun HeroCard(
                     Color.Black.copy(alpha = 0.55f),
                     Color(0xFF0F1115).copy(alpha = 0.95f),
                 ),
+            )
+        }
+
+        val primaryContainerColor = MaterialTheme.colorScheme.primaryContainer
+        val primaryColor = MaterialTheme.colorScheme.primary
+        val buttonGradient = remember(primaryContainerColor, primaryColor) {
+            Brush.horizontalGradient(
+                listOf(primaryContainerColor, primaryColor),
             )
         }
 
@@ -852,14 +808,7 @@ private fun HeroCard(
                     modifier = Modifier
                         .weight(1f)
                         .clip(CircleShape)
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.primaryContainer,
-                                    MaterialTheme.colorScheme.primary,
-                                ),
-                            ),
-                        )
+                        .background(buttonGradient)
                         .clickable {
                             haptics.play(Haptic.Resume)
                             onClick()
@@ -944,13 +893,17 @@ internal fun Shelf(
     leadingCard: (@Composable () -> Unit)? = null,
 ) {
     Column(Modifier.padding(bottom = 26.dp)) {
-        SectionHeader(shelf.title, shelf.subtitle)
+        SectionHeader(shelf.title)
         LazyRow(
             contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            leadingCard?.let { card -> item(key = "leading") { card() } }
-            items(shelf.items) { item ->
+            leadingCard?.let { card -> item(key = "leading", contentType = "leading_card") { card() } }
+            items(
+                items = shelf.items,
+                key = { it.videoId ?: (it.browseId ?: "${it.title}_${it.subtitle}") },
+                contentType = { "shelf_card" },
+            ) { item ->
                 ShelfCard(
                     item = item,
                     onClick = { onItemClick(item) },
@@ -1000,13 +953,15 @@ internal fun NewShelfCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (subtitle.isNotBlank()) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -1071,6 +1026,7 @@ internal fun ShelfCard(
                             trackKey = "liked_music_card",
                             continuous = false,
                             blurRadius = 24.dp,
+                            animated = false,
                         )
                         Icon(
                             imageVector = DhvaniIcons.HeartFilled,
@@ -1096,6 +1052,7 @@ internal fun ShelfCard(
                         trackKey = "local:downloads",
                         continuous = false,
                         blurRadius = 24.dp,
+                        animated = false,
                     )
                     Icon(
                         imageVector = DhvaniIcons.Download,
@@ -1120,6 +1077,7 @@ internal fun ShelfCard(
                         trackKey = "local:all",
                         continuous = false,
                         blurRadius = 24.dp,
+                        animated = false,
                     )
                     Icon(
                         imageVector = Icons.Rounded.LibraryMusic,
@@ -1134,15 +1092,14 @@ internal fun ShelfCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .uiDesignCard(shape = RoundedCornerShape(16.dp)),
+                        .clip(RoundedCornerShape(16.dp))
+                        .thumbnailBorder(RoundedCornerShape(16.dp)),
                 ) {
                     if (item.mosaicUrls.size >= 4) {
                         // 2×2 mosaic collage (Spotify-style playlist cover)
                         val mosaic = item.mosaicUrls.take(4)
                         Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .thumbnailBorder(RoundedCornerShape(16.dp)),
+                            modifier = Modifier.fillMaxSize(),
                         ) {
                             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                                 Box(modifier = Modifier.weight(1f).fillMaxSize()) {
@@ -1189,10 +1146,7 @@ internal fun ShelfCard(
                             model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
                             contentDescription = null,
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(16.dp))
-                                .thumbnailBorder(RoundedCornerShape(16.dp)),
+                            modifier = Modifier.fillMaxSize(),
                         )
                     } else {
                         Box(
@@ -1239,13 +1193,15 @@ internal fun ShelfCard(
                 modifier = Modifier.weight(1f, fill = false),
             )
         }
-        Text(
-            text = item.subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (item.subtitle.isNotBlank()) {
+            Text(
+                text = item.subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -1278,13 +1234,14 @@ private fun HomeReplayBanner(
             )
             .clickable(onClick = onClick),
     ) {
-        // Vibrant mesh background
+        // Vibrant mesh background (settles to save battery & GPU frames)
         Box(Modifier.matchParentSize()) {
             com.music.dhvani.ui.player.MeshGradientBackground(
                 palette = palette,
                 trackKey = card.artworkUrl ?: "home_replay",
-                continuous = true,
-                blurRadius = 32.dp,
+                continuous = false,
+                blurRadius = 24.dp,
+                animated = false,
             )
         }
         // Sophisticated frosted glass overlay

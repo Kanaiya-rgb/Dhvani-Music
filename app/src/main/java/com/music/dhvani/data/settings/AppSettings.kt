@@ -1,5 +1,6 @@
 package com.music.dhvani.data.settings
 
+import android.app.ActivityManager
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
@@ -383,7 +384,8 @@ object AppSettings {
     // [SourceResolver.requestForNow][com.music.dhvani.data.sources.SourceResolver.requestForNow],
     // which now reads [effectiveAudioQuality] and nothing else.
 
-    val crossfadeSeconds = MutableStateFlow(0)
+    val crossfadeSeconds = MutableStateFlow(4)
+    val gaplessPlayback = MutableStateFlow(true)
     val preferredPlaybackSource = MutableStateFlow("JIOSAAVN")
 
     /**
@@ -434,6 +436,7 @@ object AppSettings {
 
     // ── Appearance & Theming (Meld features) ───────────────────────────
     val dynamicTheme = MutableStateFlow(true)
+    val accentColor = MutableStateFlow<Int?>(null)
     val uiDesignStyle = MutableStateFlow(UiDesignStyle.DEFAULT)
     val enableHighRefreshRate = MutableStateFlow(true)
     val densityScale = MutableStateFlow(1.0f)
@@ -510,15 +513,20 @@ object AppSettings {
     val dontRepeatSuggestions = MutableStateFlow(false)
 
     /**
-     * Leaves a music-video upload as itself instead of swapping it for its
-     * catalogue audio release. See
+     * Replaces video items on the fly with their official audio counterparts.
+     *
+     * Off by default in early versions, now on: the catalogue contains many
+     * videos that have a cleaner, louder studio master behind them, and playing
+     * the video is usually the worse experience. Carried through to
      * [YtMusicRepository.resolveAudio][com.music.dhvani.data.YtMusicRepository.resolveAudio],
      * which checks this before ever running the swap.
      */
     val convertVideoToAudio = MutableStateFlow(true)
-
     /** Drops haze blur (status bar, mini player, bottom fade, lyrics focus) for a solid-fill look. */
     val reduceDynamicBlur = MutableStateFlow(false)
+
+    /** Performance Mode for budget / low-end devices: drops blur, freezes mesh gradient, reduces heavy animations */
+    val performanceMode = MutableStateFlow(false)
 
 
 
@@ -895,6 +903,35 @@ object AppSettings {
         readAll()
     }
 
+    @Volatile
+    private var cachedIsLowEnd: Boolean? = null
+
+    /**
+     * Determines whether the current device is resource-constrained / budget hardware
+     * that should prioritize battery, thermals, and smooth 60 FPS over heavy GPU shaders.
+     *
+     * Classifies as low-end / budget:
+     * - Android OS marked low-RAM device (Android Go / isLowRamDevice)
+     * - Total RAM <= 6.0 GB (captures budget devices like 3GB, 4GB, and 6GB variants)
+     * - CPU cores <= 6
+     * - Device currently in low-memory state
+     */
+    fun isLowEndDevice(): Boolean {
+        cachedIsLowEnd?.let { return it }
+        val context = appContext ?: return false
+        val result = runCatching {
+            val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            val isLowRam = activityManager?.isLowRamDevice == true
+            val memInfo = ActivityManager.MemoryInfo().also { activityManager?.getMemoryInfo(it) }
+            val totalRamGb = memInfo.totalMem / (1024.0 * 1024.0 * 1024.0)
+            val cores = Runtime.getRuntime().availableProcessors()
+            val isLowMem = memInfo.lowMemory
+            isLowRam || totalRamGb <= 6.0 || cores <= 6 || isLowMem
+        }.getOrDefault(false)
+        cachedIsLowEnd = result
+        return result
+    }
+
     private fun readAll() {
         migrateSingleQuality()
         audioQualityWifi.value = readQuality(KEY_QUALITY_WIFI)
@@ -915,9 +952,10 @@ object AppSettings {
         autoDownloadOnPlay.value = prefs.getBoolean(KEY_AUTO_DOWNLOAD_ON_PLAY, false)
         autoDownloadLiked.value = prefs.getBoolean(KEY_AUTO_DOWNLOAD_LIKED, true)
         hasPromptedAutoDownloadNotice.value = prefs.getBoolean(KEY_HAS_PROMPTED_AUTO_DOWNLOAD_NOTICE, false)
-        crossfadeSeconds.value = prefs.getInt(KEY_CROSSFADE, 0)
+        crossfadeSeconds.value = prefs.getInt(KEY_CROSSFADE, 4)
         smartFadeEnabled.value = prefs.getBoolean(KEY_SMART_FADE, false)
         skipSilence.value = prefs.getBoolean(KEY_SKIP_SILENCE, false)
+        gaplessPlayback.value = prefs.getBoolean(KEY_GAPLESS_PLAYBACK, true)
         spatialAudio.value = prefs.getBoolean(KEY_SPATIAL_AUDIO, false)
         val hasHardwareDolby = appContext?.let { DolbyUtils.isDolbyAtmosAvailable(it) } ?: false
         val rawDolby = if (hasHardwareDolby) prefs.getBoolean(KEY_DOLBY_ATMOS_ENABLED, false) else false
@@ -954,17 +992,25 @@ object AppSettings {
         autoplay.value = prefs.getBoolean(KEY_AUTOPLAY, true)
         preferredPlaybackSource.value = prefs.getString(KEY_PREFERRED_PLAYBACK_SOURCE, "JIOSAAVN") ?: "JIOSAAVN"
         showNerdStats.value = prefs.getBoolean(KEY_NERD_STATS, false)
-        reduceAnimation.value = prefs.getBoolean(KEY_REDUCE_ANIMATION, false)
+
+        val isLowEnd = isLowEndDevice()
+        val isPerfMode = prefs.getBoolean(KEY_PERFORMANCE_MODE, isLowEnd)
+        performanceMode.value = isPerfMode
+        reduceAnimation.value = prefs.getBoolean(KEY_REDUCE_ANIMATION, if (isPerfMode) true else isLowEnd)
         stopOnTaskRemoved.value = prefs.getBoolean(KEY_STOP_ON_TASK_REMOVED, false)
         hideVolumeBar.value = prefs.getBoolean(KEY_HIDE_VOLUME_BAR, false)
         swipeToPlayNext.value = prefs.getBoolean(KEY_SWIPE_TO_PLAY_NEXT, false)
         resumeOnBluetooth.value = prefs.getBoolean(KEY_RESUME_ON_BLUETOOTH, false)
         dontRepeatSuggestions.value = prefs.getBoolean(KEY_DONT_REPEAT_SUGGESTIONS, false)
         convertVideoToAudio.value = prefs.getBoolean(KEY_CONVERT_VIDEO_TO_AUDIO, true)
-        reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, false)
+        reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, if (isPerfMode) true else isLowEnd)
         dynamicTheme.value = prefs.getBoolean(KEY_DYNAMIC_THEME, true)
+        accentColor.value = if (prefs.contains(KEY_ACCENT_COLOR)) {
+            val c = prefs.getInt(KEY_ACCENT_COLOR, 0)
+            if (c != 0) c else null
+        } else null
         uiDesignStyle.value = UiDesignStyle.fromId(prefs.getString(KEY_UI_DESIGN_STYLE, null))
-        enableHighRefreshRate.value = prefs.getBoolean(KEY_ENABLE_HIGH_REFRESH_RATE, true)
+        enableHighRefreshRate.value = prefs.getBoolean(KEY_ENABLE_HIGH_REFRESH_RATE, !isLowEnd)
         densityScale.value = prefs.getFloat(KEY_DENSITY_SCALE, 1.0f)
         sliderStyle.value = runCatching {
             SliderStyle.valueOf(prefs.getString(KEY_SLIDER_STYLE, null) ?: "DEFAULT")
@@ -1013,7 +1059,6 @@ object AppSettings {
         showDownloadedPlaylist.value = prefs.getBoolean(KEY_SHOW_DOWNLOADED_PLAYLIST, true)
         showTopPlaylist.value = prefs.getBoolean(KEY_SHOW_TOP_PLAYLIST, true)
         showCachedPlaylist.value = prefs.getBoolean(KEY_SHOW_CACHED_PLAYLIST, true)
-        showUploadedPlaylist.value = prefs.getBoolean(KEY_SHOW_UPLOADED_PLAYLIST, true)
         animatedCanvas.value = prefs.getBoolean(KEY_ANIMATED_CANVAS, true)
         canvasOverCellular.value = prefs.getBoolean(KEY_CANVAS_OVER_CELLULAR, true)
         canvasPauseWithAudio.value = prefs.getBoolean(KEY_CANVAS_PAUSE_WITH_AUDIO, false)
@@ -1082,7 +1127,16 @@ object AppSettings {
         discordButton2Text.value = prefs.getString(KEY_DISCORD_BUTTON_2_TEXT, "").orEmpty()
         discordButton2Visible.value = prefs.getBoolean(KEY_DISCORD_BUTTON_2_VISIBLE, true)
         discordInfoDismissed.value = prefs.getBoolean(KEY_DISCORD_INFO_DISMISSED, false)
-        listenTogetherUsername.value = prefs.getString(KEY_LISTEN_TOGETHER_USERNAME, null) ?: "Listener"
+        val savedUName = prefs.getString(KEY_USER_NAME, "") ?: ""
+        userName.value = savedUName
+        hasPromptedUserName.value = prefs.getBoolean(KEY_HAS_PROMPTED_USER_NAME, false)
+        val savedLtUser = prefs.getString(KEY_LISTEN_TOGETHER_USERNAME, null)
+        listenTogetherUsername.value = when {
+            !savedLtUser.isNullOrBlank() && savedLtUser != "Listener" -> savedLtUser
+            savedUName.isNotBlank() -> savedUName
+            !savedLtUser.isNullOrBlank() -> savedLtUser
+            else -> "Listener"
+        }
         listenTogetherServerUrl.value = prefs.getString(KEY_LISTEN_TOGETHER_SERVER_URL, null) ?: "wss://metroserverx.meowery.eu/ws"
         listenTogetherAutoApproval.value = prefs.getBoolean(KEY_LISTEN_TOGETHER_AUTO_APPROVAL, false)
         listenTogetherAutoApproveSuggestions.value = prefs.getBoolean(KEY_LISTEN_TOGETHER_AUTO_APPROVE_SUGGESTIONS, false)
@@ -1092,10 +1146,6 @@ object AppSettings {
         listenTogetherUserId.value = prefs.getString(KEY_LISTEN_TOGETHER_USER_ID, null) ?: ""
         listenTogetherIsHost.value = prefs.getBoolean(KEY_LISTEN_TOGETHER_IS_HOST, false)
         listenTogetherSessionTimestamp.value = prefs.getLong(KEY_LISTEN_TOGETHER_SESSION_TIMESTAMP, 0L)
-        animatedCanvas.value = prefs.getBoolean(KEY_ANIMATED_CANVAS, true)
-        canvasOverCellular.value = prefs.getBoolean(KEY_CANVAS_OVER_CELLULAR, true)
-        userName.value = prefs.getString(KEY_USER_NAME, "") ?: ""
-        hasPromptedUserName.value = prefs.getBoolean(KEY_HAS_PROMPTED_USER_NAME, false)
         userAvatarType.value = prefs.getString(KEY_USER_AVATAR_TYPE, "PRESET") ?: "PRESET"
         userPresetAvatarId.value = prefs.getInt(KEY_USER_PRESET_AVATAR_ID, 1)
         userCustomAvatarPath.value = prefs.getString(KEY_USER_CUSTOM_AVATAR_PATH, "") ?: ""
@@ -1277,6 +1327,14 @@ object AppSettings {
         prefs.edit().putInt(KEY_CROSSFADE, value).apply()
     }
 
+    fun setGaplessPlayback(value: Boolean) {
+        gaplessPlayback.value = value
+        prefs.edit().putBoolean(KEY_GAPLESS_PLAYBACK, value).apply()
+        if (value && !skipSilence.value) {
+            setSkipSilence(true)
+        }
+    }
+
     fun setSmartFadeEnabled(value: Boolean) {
         smartFadeEnabled.value = value
         prefs.edit().putBoolean(KEY_SMART_FADE, value).apply()
@@ -1406,9 +1464,36 @@ object AppSettings {
         prefs.edit().putString(KEY_THEME, value.name).apply()
     }
 
+    fun setAccentColor(value: Int?) {
+        accentColor.value = value
+        if (value == null) {
+            prefs.edit().remove(KEY_ACCENT_COLOR).apply()
+        } else {
+            prefs.edit().putInt(KEY_ACCENT_COLOR, value).apply()
+        }
+        backupUserData()
+    }
+
+    fun setPerformanceMode(value: Boolean) {
+        performanceMode.value = value
+        prefs.edit().putBoolean(KEY_PERFORMANCE_MODE, value).apply()
+        if (value) {
+            setReduceDynamicBlur(true)
+            setReduceAnimation(true)
+            setLyricsGlowEffect(false)
+        } else {
+            setReduceDynamicBlur(false)
+            setReduceAnimation(false)
+        }
+    }
+
     fun setReduceAnimation(value: Boolean) {
         reduceAnimation.value = value
         prefs.edit().putBoolean(KEY_REDUCE_ANIMATION, value).apply()
+        if (!value && performanceMode.value) {
+            performanceMode.value = false
+            prefs.edit().putBoolean(KEY_PERFORMANCE_MODE, false).apply()
+        }
     }
 
     fun setStopOnTaskRemoved(value: Boolean) {
@@ -1440,10 +1525,13 @@ object AppSettings {
         convertVideoToAudio.value = value
         prefs.edit().putBoolean(KEY_CONVERT_VIDEO_TO_AUDIO, value).apply()
     }
-
     fun setReduceDynamicBlur(value: Boolean) {
         reduceDynamicBlur.value = value
         prefs.edit().putBoolean(KEY_REDUCE_BLUR, value).apply()
+        if (!value && performanceMode.value) {
+            performanceMode.value = false
+            prefs.edit().putBoolean(KEY_PERFORMANCE_MODE, false).apply()
+        }
     }
 
     fun setDynamicTheme(value: Boolean) {
@@ -1884,6 +1972,7 @@ object AppSettings {
             .putString(KEY_USER_NAME, trimmed)
             .putBoolean(KEY_HAS_PROMPTED_USER_NAME, true)
             .apply()
+        setListenTogetherUsername(trimmed, syncProfile = false)
         runCatching {
             com.music.dhvani.data.telemetry.TelemetryManager.updateUserName(trimmed)
         }
@@ -2525,9 +2614,15 @@ object AppSettings {
         return prefs.all.filterKeys { it !in SECRETS && it !in DEVICE_LOCAL }
     }
 
-    fun setListenTogetherUsername(value: String) {
+    fun setListenTogetherUsername(value: String, syncProfile: Boolean = false) {
         listenTogetherUsername.value = value
         prefs.edit().putString(KEY_LISTEN_TOGETHER_USERNAME, value).apply()
+        if (syncProfile) {
+            val trimmed = value.trim()
+            if (trimmed.isNotBlank() && trimmed != userName.value) {
+                setUserName(trimmed)
+            }
+        }
     }
 
     fun setListenTogetherServerUrl(value: String) {
@@ -2642,6 +2737,7 @@ object AppSettings {
     private const val KEY_LOSSLESS = "lossless_audio"
     private const val KEY_CROSSFADE = "crossfade_seconds"
     private const val KEY_SMART_FADE = "smart_fade_enabled"
+    private const val KEY_GAPLESS_PLAYBACK = "gapless_playback"
     private const val KEY_SKIP_SILENCE = "skip_silence"
     private const val KEY_SPATIAL_AUDIO = "spatial_audio"
     private const val KEY_DOLBY_ATMOS_ENABLED = "dolby_atmos_enabled"
@@ -2656,6 +2752,7 @@ object AppSettings {
     private const val KEY_AUTOPLAY = "autoplay"
     private const val KEY_NERD_STATS = "show_nerd_stats"
     private const val KEY_CACHE_LIMIT = "audio_cache_limit_bytes"
+    private const val KEY_PERFORMANCE_MODE = "performance_mode"
     private const val KEY_REDUCE_ANIMATION = "reduce_animation"
     private const val KEY_STOP_ON_TASK_REMOVED = "stop_on_task_removed"
     private const val KEY_HIDE_VOLUME_BAR = "hide_volume_bar"
@@ -2682,6 +2779,7 @@ object AppSettings {
     private const val KEY_PINNED_PLAYLISTS = "pinned_playlists"
 
     private const val KEY_DYNAMIC_THEME = "dynamic_theme"
+    private const val KEY_ACCENT_COLOR = "custom_accent_color"
     private const val KEY_ENABLE_HIGH_REFRESH_RATE = "enable_high_refresh_rate"
     private const val KEY_DENSITY_SCALE = "density_scale_factor"
     private const val KEY_SLIDER_STYLE = "slider_style"

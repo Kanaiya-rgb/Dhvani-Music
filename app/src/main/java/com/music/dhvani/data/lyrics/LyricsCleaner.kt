@@ -261,11 +261,17 @@ object LyricsCleaner {
         return abs(candidateSec - targetSec) <= toleranceSec
     }
 
-    private fun isRecordLabelOrChannel(text: String): Boolean {
+    fun isRecordLabelOrChannel(text: String): Boolean {
+        if (text.isBlank()) return false
         val lower = text.lowercase(Locale.ROOT)
         return lower.contains("records") || lower.contains("music") || lower.contains("series") ||
             lower.contains("company") || lower.contains("entertainment") || lower.contains("films") ||
             lower.contains("studios") || lower.contains("vevo") || lower.contains("channel") ||
-            lower.contains("topic") || lower.contains("media") || lower == "ncs"
+            lower.contains("topic") || lower.contains("media") || lower == "ncs" ||
+            lower.contains("production") || lower.contains("official") || lower.contains("label") ||
+            lower.contains("saregama") || lower.contains("yrf") || lower.contains("tips") ||
+            lower.contains("t-series") || lower.contains("sony") || lower.contains("zee") ||
+            lower.contains("speed records") || lower.contains("geet mp3") || lower.contains("desi music factory") ||
+            lower.contains("vyrl") || lower.contains("times music")
     }
 }

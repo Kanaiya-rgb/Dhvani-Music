@@ -228,6 +228,7 @@ fun SettingsScreen(
     val metered by AppSettings.meteredConnection.collectAsStateWithLifecycle()
     val crossfade by AppSettings.crossfadeSeconds.collectAsStateWithLifecycle()
     val smartFade by AppSettings.smartFadeEnabled.collectAsStateWithLifecycle()
+    val gaplessPlayback by AppSettings.gaplessPlayback.collectAsStateWithLifecycle()
     val skipSilence by AppSettings.skipSilence.collectAsStateWithLifecycle()
     val spatialAudio by AppSettings.spatialAudio.collectAsStateWithLifecycle()
     val dolbyAtmosEnabled by AppSettings.dolbyAtmosEnabled.collectAsStateWithLifecycle()
@@ -236,6 +237,7 @@ fun SettingsScreen(
     val nerdStats by AppSettings.showNerdStats.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val performanceMode by AppSettings.performanceMode.collectAsStateWithLifecycle()
     val fullBleedArtwork by AppSettings.fullBleedArtwork.collectAsStateWithLifecycle()
     val syncedLyrics by AppSettings.syncedLyrics.collectAsStateWithLifecycle()
     val lyricsSources by AppSettings.lyricsSources.collectAsStateWithLifecycle()
@@ -442,6 +444,7 @@ fun SettingsScreen(
         version,
         autoDownloadLiked,
         autoDownloadOnPlay,
+        performanceMode,
     ) {
         listOf(
             // Appearance & Theming
@@ -450,6 +453,13 @@ fun SettingsScreen(
                 subtitle = "Theme mode, dynamic colors, dark/light, AMOLED black",
                 category = "Appearance",
                 icon = Icons.Rounded.Palette,
+                onClick = onOpenAppearance,
+            ),
+            SearchableSettingItem(
+                title = "Performance Mode (Low-End Devices)",
+                subtitle = "Fix lag, disable real-time GPU blurs and heavy animations",
+                category = "Appearance",
+                icon = Icons.Rounded.Speed,
                 onClick = onOpenAppearance,
             ),
             SearchableSettingItem(
@@ -1005,7 +1015,6 @@ fun SettingsScreen(
                         MeldSettingsItemData(
                             icon = Icons.Rounded.Palette,
                             title = stringResource(R.string.appearance),
-                            subtitle = "Theme mode, dynamic colors, player UI, artwork",
                             onClick = onOpenAppearance,
                         ),
                     ),
@@ -1020,7 +1029,6 @@ fun SettingsScreen(
                         MeldSettingsItemData(
                             icon = Icons.Rounded.PlayArrow,
                             title = "Playback and audio",
-                            subtitle = "Streaming quality, automix, crossfade, equalizer",
                             onClick = { currentSubScreen = SettingsSubScreen.PLAYBACK_AUDIO },
                         ),
                     ),
@@ -1035,7 +1043,6 @@ fun SettingsScreen(
                         MeldSettingsItemData(
                             icon = Icons.AutoMirrored.Rounded.Notes,
                             title = "Lyrics and subtitles",
-                            subtitle = "Synced lyrics, kinetic text animations, providers, translation",
                             onClick = { currentSubScreen = SettingsSubScreen.LYRICS_CONTENT },
                         ),
                     ),
@@ -1050,7 +1057,6 @@ fun SettingsScreen(
                         MeldSettingsItemData(
                             icon = Icons.Rounded.Download,
                             title = "Downloads and storage",
-                            subtitle = "Auto-download played/liked tracks, quality, storage & cache",
                             onClick = { currentSubScreen = SettingsSubScreen.DOWNLOADS_STORAGE },
                         ),
                     ),
@@ -1065,7 +1071,7 @@ fun SettingsScreen(
                         MeldSettingsItemData(
                             icon = Icons.Rounded.Person,
                             title = "Accounts and integrations",
-                            subtitle = if (signedIn) "YouTube Music (${account?.name ?: "Connected"}) • Scrobbling & Discord" else "Sign in to YouTube Music • Scrobbling & Discord",
+                            badge = if (signedIn) account?.name ?: "Connected" else null,
                             onClick = { currentSubScreen = SettingsSubScreen.ACCOUNTS_INTEGRATIONS },
                         ),
                     ),
@@ -1080,7 +1086,6 @@ fun SettingsScreen(
                         MeldSettingsItemData(
                             icon = Icons.Rounded.DirectionsCar,
                             title = "Android Auto & Bluetooth",
-                            subtitle = "In-car playback, auto-resume on connect",
                             onClick = { currentSubScreen = SettingsSubScreen.CAR_DEVICES },
                         ),
                     ),
@@ -1095,7 +1100,7 @@ fun SettingsScreen(
                         MeldSettingsItemData(
                             icon = Icons.Rounded.Language,
                             title = stringResource(R.string.app_language),
-                            subtitle = stringResource(languageDisplayNameRes(selectedLanguage)),
+                            badge = stringResource(languageDisplayNameRes(selectedLanguage)),
                             onClick = onAppLanguage,
                         ),
                     ),
@@ -1110,23 +1115,21 @@ fun SettingsScreen(
                         MeldSettingsItemData(
                             icon = Icons.Rounded.Cloud,
                             title = "Backup and restore",
-                            subtitle = "Export or restore settings and listening history",
                             onClick = { currentSubScreen = SettingsSubScreen.BACKUP_RESTORE },
                         ),
-
                     ),
                 )
 
                 Spacer(Modifier.height(12.dp))
 
-                // 8. About & Updates
+                // 9. About & Updates
                 MeldSettingsGroup(
                     title = "About & Updates",
                     items = listOf(
                         MeldSettingsItemData(
                             icon = Icons.Rounded.SystemUpdate,
                             title = "Check for updates",
-                            subtitle = "Installed version v$version",
+                            badge = "v$version",
                             onClick = onCheckForUpdates,
                         ),
                         MeldSettingsItemData(
@@ -1154,6 +1157,10 @@ fun SettingsScreen(
                         )
                         withLink(LinkAnnotation.Url("https://github.com/Kanaiya-rgb/Dhvani-Music", linkStyles)) {
                             append("GitHub")
+                        }
+                        append("   •   ")
+                        withLink(LinkAnnotation.Url("https://discord.gg/cQkNcqCwkA", linkStyles)) {
+                            append("Discord")
                         }
                         append("   •   ")
                         withLink(LinkAnnotation.Url("https://t.me/DhvaniMusicApp", linkStyles)) {
@@ -1209,6 +1216,23 @@ fun SettingsScreen(
 
                     SettingsGroup(header = "Transitions & Automix") {
                         SettingsRow(
+                            icon = Icons.Rounded.GraphicEq,
+                            title = "Gapless playback",
+                            subtitle = "Continuous playback with zero silence gap between tracks",
+                            trailing = {
+                                Switch(
+                                    checked = gaplessPlayback,
+                                    onCheckedChange = AppSettings::setGaplessPlayback,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setGaplessPlayback(!gaplessPlayback) },
+                        )
+                        RowDivider()
+                        SettingsRow(
                             icon = Icons.Rounded.AutoAwesome,
                             title = "Smart fade (Automix)",
                             subtitle = "AI beat-matched smooth transitions between songs",
@@ -1234,6 +1258,35 @@ fun SettingsScreen(
                             valueRange = 0f..12f,
                             steps = 11,
                         )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            listOf(0 to "Off", 3 to "3s", 5 to "5s", 8 to "8s", 12 to "12s").forEach { (sec, label) ->
+                                val isSelected = crossfade == sec
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (isSelected) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.surfaceVariant,
+                                        )
+                                        .clickable { AppSettings.setCrossfadeSeconds(sec) }
+                                        .padding(vertical = 6.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     SettingsGroup(header = "Audio processing") {
@@ -1363,23 +1416,6 @@ fun SettingsScreen(
                         )
                         RowDivider()
                         SettingsRow(
-                            icon = Icons.Rounded.FileDownload,
-                            title = "Convert video to audio",
-                            subtitle = "Extract and prioritize audio-only streams when playing YouTube music videos",
-                            trailing = {
-                                Switch(
-                                    checked = convertVideoToAudio,
-                                    onCheckedChange = AppSettings::setConvertVideoToAudio,
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                    ),
-                                )
-                            },
-                            onClick = { AppSettings.setConvertVideoToAudio(!convertVideoToAudio) },
-                        )
-                        RowDivider()
-                        SettingsRow(
                             icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
                             title = stringResource(R.string.play_next_on_swipe),
                             subtitle = if (swipeToPlayNext) "Swiping a song plays it next" else "Swiping a song adds it to the end of the queue when disabled",
@@ -1394,6 +1430,23 @@ fun SettingsScreen(
                                 )
                             },
                             onClick = { AppSettings.setSwipeToPlayNext(!swipeToPlayNext) },
+                        )
+                        RowDivider()
+                        SettingsRow(
+                            icon = Icons.Rounded.FileDownload,
+                            title = "Convert video to audio",
+                            subtitle = "Extract and prioritize audio-only streams when playing YouTube music videos",
+                            trailing = {
+                                Switch(
+                                    checked = convertVideoToAudio,
+                                    onCheckedChange = AppSettings::setConvertVideoToAudio,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setConvertVideoToAudio(!convertVideoToAudio) },
                         )
                         RowDivider()
                         SettingsRow(
@@ -2284,6 +2337,46 @@ fun SettingsScreen(
                                     }
                                 }
 
+                                // Discord Community Chip Button
+                                Surface(
+                                    onClick = {
+                                        val intent = Intent(Intent.ACTION_VIEW, "https://discord.gg/cQkNcqCwkA".toUri()).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        runCatching { context.startActivity(intent) }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_discord),
+                                            contentDescription = "Discord",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            text = "Discord",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                        )
+                                        Spacer(Modifier.width(3.dp))
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(12.dp),
+                                        )
+                                    }
+                                }
+
                                 // Telegram Channel Chip Button
                                 Surface(
                                     onClick = {
@@ -2297,7 +2390,7 @@ fun SettingsScreen(
                                     modifier = Modifier.weight(1f),
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.Center,
                                     ) {
@@ -2307,14 +2400,14 @@ fun SettingsScreen(
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(16.dp),
                                         )
-                                        Spacer(Modifier.width(6.dp))
+                                        Spacer(Modifier.width(4.dp))
                                         Text(
                                             text = "Telegram",
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.SemiBold,
                                             color = MaterialTheme.colorScheme.onSurface,
                                         )
-                                        Spacer(Modifier.width(4.dp))
+                                        Spacer(Modifier.width(3.dp))
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
                                             contentDescription = null,
@@ -3505,6 +3598,9 @@ private fun MeldSettingsGroup(
                         Spacer(Modifier.width(8.dp))
                         Badge(item.badge)
                     }
+
+                    Spacer(Modifier.width(6.dp))
+                    Chevron()
                 }
             }
         }

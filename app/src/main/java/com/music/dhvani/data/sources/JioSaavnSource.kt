@@ -33,11 +33,21 @@ class JioSaavnSource(
                 .replace(Regex("150x150|50x50"), "500x500")
                 .replace(Regex("^http://"), "https://")
 
+            val rawLang = raw.language.ifBlank { raw.moreInfo.language }.trim()
+            val rawAlbum = raw.moreInfo.album.trim()
+            val albumName = when {
+                rawLang.isNotBlank() && rawAlbum.isNotBlank() -> "$rawAlbum ($rawLang)"
+                rawLang.isNotBlank() -> "($rawLang)"
+                rawAlbum.isNotBlank() -> rawAlbum
+                else -> null
+            }
+
             Song(
                 videoId = SourceRegistry.trackKey(config.id, raw.id),
                 title = raw.title,
                 artist = artistName,
                 thumbnailUrl = thumbnail,
+                albumName = albumName,
                 // JioSaavn provides duration in seconds, but Song expects durationText ("M:SS")
                 // Alternatively, Song.durationMillis() will parse durationText. Let's just 
                 // format it since Dhvani uses string duration.

@@ -1,5 +1,6 @@
 package com.music.dhvani.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -7,7 +8,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
-import com.music.dhvani.ui.theme.uiDesignCard
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.graphics.Brush
@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,8 +40,30 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.NorthWest
+import androidx.compose.material.icons.rounded.Audiotrack
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Celebration
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.TrendingUp
+import androidx.compose.material.icons.rounded.SelfImprovement
+import androidx.compose.material.icons.rounded.Spa
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.TrendingUp
+import androidx.compose.material.icons.rounded.WaterDrop
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +84,7 @@ import android.app.Activity
 import android.content.Intent
 import android.speech.RecognizerIntent
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.rounded.Mic
@@ -85,7 +109,11 @@ import com.music.dhvani.R
 import com.music.dhvani.ui.components.MessageState
 import com.music.dhvani.ui.components.PAGE_GUTTER
 import com.music.dhvani.ui.components.ROW_DIVIDER_INSET
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.font.FontWeight
 import com.music.dhvani.ui.components.SongRow
+import com.music.dhvani.data.model.detectSongLanguage
+import com.music.dhvani.ui.components.LanguageBadgePill
 import com.music.dhvani.ui.components.thumbnailBorder
 import com.music.dhvani.ui.components.songListSkeleton
 import com.music.dhvani.ui.haptics.Haptic
@@ -126,6 +154,13 @@ fun SearchScreen(
     val context = LocalContext.current
     var isSearchFocused by remember { mutableStateOf(false) }
 
+    BackHandler(enabled = isSearchFocused || query.isNotEmpty()) {
+        if (query.isNotEmpty()) {
+            onQueryChange("")
+        }
+        focusManager.clearFocus()
+    }
+
     // Speech-to-text Voice Search Launcher
     val voiceSearchLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
@@ -158,16 +193,60 @@ fun SearchScreen(
     LaunchedEffect(focusTrigger) {
         if (focusTrigger > 0) focusRequester.requestFocus()
     }
+
+    // When search is focused or mid-query, Back clears input/focus and smoothly returns to the clean discovery landing page
+    BackHandler(enabled = isSearchFocused || query.isNotEmpty()) {
+        if (query.isNotEmpty()) {
+            onQueryChange("")
+        }
+        focusManager.clearFocus()
+    }
     // A non-empty suggestion list means the field is mid-edit — see
     // MainViewModel.suggestions. Nothing below it is worth showing while it is
     // up: the results are for whatever was searched before this edit began,
     // and so are the filter tabs above them.
     val suggesting = suggestions.isNotEmpty()
+    var selectedLangFilter by rememberSaveable(query) { mutableStateOf<String?>(null) }
+    val detectedLanguages = remember(results, filter) {
+        if (results is UiState.Success && filter == SearchFilter.SONGS) {
+            results.data
+                .filterIsInstance<SearchResult.Track>()
+                .mapNotNull { detectSongLanguage(it.song.title, it.song.artist, it.song.albumName) }
+                .distinct()
+        } else {
+            emptyList()
+        }
+    }
+
+    val displayData = remember(results, selectedLangFilter, filter) {
+        val successData = (results as? UiState.Success)?.data ?: return@remember emptyList()
+        if (selectedLangFilter == null || filter != SearchFilter.SONGS) {
+            successData
+        } else {
+            val filtered = successData.filter { row ->
+                when (row) {
+                    is SearchResult.Track -> {
+                        val l = detectSongLanguage(row.song.title, row.song.artist, row.song.albumName)
+                        l.equals(selectedLangFilter, ignoreCase = true)
+                    }
+                    else -> true
+                }
+            }
+            if (filtered.isNotEmpty()) filtered else successData
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         // Search field and filter tabs stay fixed at the top, outside the
         // scrolling list, so they're always reachable rather than scrolling
         // away with the results or recent searches beneath them.
-        Column(modifier = Modifier.padding(top = contentPadding.calculateTopPadding())) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding()
+                .padding(top = 8.dp),
+        ) {
             SearchField(
                 query = query,
                 onQueryChange = onQueryChange,
@@ -182,6 +261,13 @@ fun SearchScreen(
             // that finds nothing would take away the control needed to leave it.
             if (results != null && !suggesting && (!isSearchFocused || query.isNotEmpty())) {
                 SearchFilterTabs(filter = filter, onFilterChange = onFilterChange)
+                if (detectedLanguages.size >= 2) {
+                    SearchLanguageTabs(
+                        languages = detectedLanguages,
+                        selected = selectedLangFilter,
+                        onSelect = { selectedLangFilter = it },
+                    )
+                }
             }
         }
 
@@ -209,47 +295,69 @@ fun SearchScreen(
                     },
                     onFill = onQueryChange,
                 )
-                // When search bar is clicked/focused and query is blank, show recent searches + quick explore
-                isSearchFocused && query.isBlank() -> {
-                    if (history.isNotEmpty()) {
-                        recentSearches(
-                            history = history,
-                            onClick = { term ->
-                                onHistoryClick(term)
+                query.isBlank() -> {
+                    if (isSearchFocused) {
+                        // User clicked the top search bar: show recent searches history
+                        if (history.isNotEmpty()) {
+                            recentSearches(
+                                history = history,
+                                onClick = { term ->
+                                    onHistoryClick(term)
+                                    focusManager.clearFocus()
+                                },
+                                onRemove = onHistoryRemove,
+                                onClear = onHistoryClear,
+                            )
+                        } else {
+                            item(key = "empty_history") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 48.dp, bottom = 24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            Icons.Rounded.Search,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                            modifier = Modifier.size(46.dp),
+                                        )
+                                        Spacer(Modifier.height(12.dp))
+                                        Text(
+                                            text = "Search for artists, songs, lyrics, or albums",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Clean landing page when not focused: discovery content without search history clutter
+                        searchLandingContent(
+                            onTagClick = { tag ->
+                                onQueryChange(tag)
+                                onSuggestionClick(tag)
                                 focusManager.clearFocus()
                             },
-                            onRemove = onHistoryRemove,
-                            onClear = onHistoryClear,
+                            onArtistClick = { artist ->
+                                onQueryChange(artist)
+                                onSuggestionClick(artist)
+                                focusManager.clearFocus()
+                            },
                         )
                     }
-                    quickExploreSuggestions(
-                        onTagClick = { tag ->
-                            onQueryChange(tag)
-                            onSuggestionClick(tag)
-                            focusManager.clearFocus()
-                        },
-                    )
-                }
-                // When normal search page is open (search bar not focused, query is blank):
-                // Do NOT show search history! Only show quick explore recommendations.
-                results == null && query.isBlank() -> {
-                    quickExploreSuggestions(
-                        onTagClick = { tag ->
-                            onQueryChange(tag)
-                            onSuggestionClick(tag)
-                            focusManager.clearFocus()
-                        },
-                    )
                 }
                 results is UiState.Loading -> songListSkeleton(circular = filter == SearchFilter.ARTISTS)
                 results is UiState.Error -> item { MessageState(results.message) }
                 results is UiState.Success -> {
                     // Tapping a track plays the tracks around it, not the browse rows.
-                    val tracks = results.data
+                    val tracks = displayData
                         .filterIsInstance<SearchResult.Track>()
                         .map { it.song }
                     itemsIndexed(
-                        items = results.data,
+                        items = displayData,
                         key = { _, row ->
                             when (row) {
                                 is SearchResult.Track -> "track:${row.song.videoId}"
@@ -278,7 +386,7 @@ fun SearchScreen(
                                 onLongPress = onBrowseLongPress?.let { { it(row.item) } },
                             )
                         }
-                        if (index < results.data.lastIndex) {
+                        if (index < displayData.lastIndex) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = ROW_DIVIDER_INSET),
                                 thickness = 0.5.dp,
@@ -383,16 +491,37 @@ private fun TrackSuggestionRow(
         )
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val detectedLang = remember(song.title, song.artist, song.albumName) {
+                detectSongLanguage(song.title, song.artist, song.albumName)
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = song.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (detectedLang != null) {
+                    LanguageBadgePill(detectedLang)
+                }
+            }
             Spacer(Modifier.height(2.dp))
+            val subtitle = remember(song.artist, song.albumName, song.isVideo) {
+                val type = if (song.isVideo) "Video" else "Song"
+                val album = song.albumName?.trim()
+                if (!album.isNullOrBlank() && !album.equals(song.title.trim(), ignoreCase = true)) {
+                    "$type • ${song.artist} • $album"
+                } else {
+                    "$type • ${song.artist}"
+                }
+            }
             Text(
-                text = "${if (song.isVideo) "Video" else "Song"} • ${song.artist}",
+                text = subtitle,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -484,23 +613,31 @@ private fun LazyListScope.recentSearches(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = PAGE_GUTTER, vertical = 10.dp),
+                .padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 8.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Icon(
+                Icons.Rounded.History,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
             Text(
                 text = stringResource(R.string.recent_searches),
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.weight(1f),
             )
             Text(
                 text = stringResource(R.string.clear),
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(percent = 50))
+                    .clip(CircleShape)
                     .clickable(onClick = onClear)
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
     }
@@ -573,73 +710,237 @@ private val QuickTags = listOf(
     QuickSearchTag("✨", "90s Hits", listOf(Color(0xFF8A2387), Color(0xFFE94057))),
 )
 
-@OptIn(ExperimentalLayoutApi::class)
-private fun LazyListScope.quickExploreSuggestions(onTagClick: (String) -> Unit) {
-    item(key = "quick:header") {
+private data class QuickArtist(
+    val name: String,
+    val initial: String,
+    val imageUrl: String,
+    val gradient: List<Color>,
+)
+
+private val PopularArtists = listOf(
+    QuickArtist(
+        name = "Arijit Singh",
+        initial = "AS",
+        imageUrl = "https://c.saavncdn.com/artists/Arijit_Singh_004_20241118063717_500x500.jpg",
+        gradient = listOf(Color(0xFFE52D27), Color(0xFFB31217)),
+    ),
+    QuickArtist(
+        name = "Sidhu Moose Wala",
+        initial = "SM",
+        imageUrl = "https://c.saavncdn.com/artists/Sidhu_Moose_Wala_004_20250617183705_500x500.jpg",
+        gradient = listOf(Color(0xFFFF8008), Color(0xFFFFC837)),
+    ),
+    QuickArtist(
+        name = "Shreya Ghoshal",
+        initial = "SG",
+        imageUrl = "https://c.saavncdn.com/artists/Shreya_Ghoshal_007_20241101074144_500x500.jpg",
+        gradient = listOf(Color(0xFFE91E63), Color(0xFFFF4081)),
+    ),
+    QuickArtist(
+        name = "Karan Aujla",
+        initial = "KA",
+        imageUrl = "https://c.saavncdn.com/artists/Karan_Aujla_005_20260925061936_500x500.jpg",
+        gradient = listOf(Color(0xFF3A1C71), Color(0xFFD76D77)),
+    ),
+    QuickArtist(
+        name = "Diljit Dosanjh",
+        initial = "DD",
+        imageUrl = "https://c.saavncdn.com/artists/Diljit_Dosanjh_005_20231025073054_500x500.jpg",
+        gradient = listOf(Color(0xFFF7971E), Color(0xFFFFD200)),
+    ),
+    QuickArtist(
+        name = "Anuv Jain",
+        initial = "AJ",
+        imageUrl = "https://c.saavncdn.com/artists/Anuv_Jain_001_20231206073013_500x500.jpg",
+        gradient = listOf(Color(0xFF134E5E), Color(0xFF71B280)),
+    ),
+    QuickArtist(
+        name = "Atif Aslam",
+        initial = "AA",
+        imageUrl = "https://yt3.googleusercontent.com/ykJkyILKum4B2oudDxjnf5WNenWWZAp-WEz0_CHp4cu0VnqB2-uaNDylItqC68WLXV62rdHDun-ahbg=w500-h500-p-l90-rj",
+        gradient = listOf(Color(0xFF0052D4), Color(0xFF4364F7)),
+    ),
+    QuickArtist(
+        name = "AP Dhillon",
+        initial = "AP",
+        imageUrl = "https://c.saavncdn.com/artists/AP_Dhillon_004_20251023102150_500x500.jpg",
+        gradient = listOf(Color(0xFF8A2387), Color(0xFFE94057)),
+    ),
+    QuickArtist(
+        name = "Badshah",
+        initial = "B",
+        imageUrl = "https://c.saavncdn.com/artists/Badshah_006_20241118064015_500x500.jpg",
+        gradient = listOf(Color(0xFFEB3349), Color(0xFFF45C43)),
+    ),
+    QuickArtist(
+        name = "Kishore Kumar",
+        initial = "KK",
+        imageUrl = "https://c.saavncdn.com/artists/Kishore_Kumar_500x500.jpg",
+        gradient = listOf(Color(0xFF614385), Color(0xFF516395)),
+    ),
+)
+
+private fun LazyListScope.searchLandingContent(
+    onTagClick: (String) -> Unit,
+    onArtistClick: (String) -> Unit,
+) {
+    // Top Artists (with real artist photo thumbnails)
+    item(key = "landing:artists:header") {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 20.dp, bottom = 12.dp),
+                .padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 10.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                Icons.Rounded.TrendingUp,
+                Icons.Rounded.Person,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                text = stringResource(R.string.quick_explore),
+                text = "Top Artists",
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
             )
         }
     }
-    item(key = "quick:tags") {
-        FlowRow(
+    item(key = "landing:artists:row") {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = PAGE_GUTTER),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            QuickTags.forEach { tag ->
-                Row(
+            PopularArtists.forEach { artist ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .clip(CircleShape)
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(
-                                    tag.gradient[0].copy(alpha = 0.22f),
-                                    tag.gradient[1].copy(alpha = 0.12f),
-                                ),
-                            ),
-                        )
-                        .border(
-                            1.dp,
-                            Brush.horizontalGradient(
-                                colors = listOf(
-                                    tag.gradient[0].copy(alpha = 0.5f),
-                                    tag.gradient[1].copy(alpha = 0.25f),
-                                ),
-                            ),
-                            CircleShape,
-                        )
-                        .clickable { onTagClick(tag.title) }
-                        .padding(horizontal = 14.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .width(72.dp)
+                        .clickable { onArtistClick(artist.name) },
                 ) {
-                    Text(text = tag.emoji, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(Brush.linearGradient(artist.gradient))
+                            .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = artist.initial,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White,
+                        )
+                        AsyncImage(
+                            model = artist.imageUrl,
+                            contentDescription = artist.name,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape),
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
                     Text(
-                        text = tag.title,
-                        style = MaterialTheme.typography.labelLarge,
+                        text = artist.name,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
         }
+    }
+
+    // 3. Trending & Moods (Vertical 2-column cards layout)
+    item(key = "landing:trending:header") {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 22.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Rounded.TrendingUp,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "Trending & Moods",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
+    }
+    val chunkedTags = QuickTags.chunked(2)
+    chunkedTags.forEachIndexed { rowIndex, rowTags ->
+        item(key = "landing:trending:row:$rowIndex") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PAGE_GUTTER, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                rowTags.forEach { tag ->
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        tag.gradient[0].copy(alpha = 0.18f),
+                                        tag.gradient[1].copy(alpha = 0.08f),
+                                    ),
+                                ),
+                            )
+                            .border(
+                                1.dp,
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        tag.gradient[0].copy(alpha = 0.40f),
+                                        tag.gradient[1].copy(alpha = 0.20f),
+                                    ),
+                                ),
+                                RoundedCornerShape(14.dp),
+                            )
+                            .clickable { onTagClick(tag.title) }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(text = tag.emoji, style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = tag.title,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                if (rowTags.size == 1) {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+
+    item(key = "landing:bottom:space") {
+        Spacer(Modifier.height(28.dp))
     }
 }
 
@@ -740,6 +1041,89 @@ private fun SearchFilterTabs(filter: SearchFilter, onFilterChange: (SearchFilter
     }
 }
 
+@Composable
+private fun SearchLanguageTabs(
+    languages: List<String>,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+) {
+    val haptics = rememberHaptics()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = PAGE_GUTTER, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val isAllSelected = selected == null
+        Box(
+            modifier = Modifier
+                .clip(FILTER_PILL_SHAPE)
+                .background(
+                    if (isAllSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                )
+                .border(
+                    1.dp,
+                    if (isAllSelected) MaterialTheme.colorScheme.primary
+                    else Color.White.copy(alpha = 0.08f),
+                    FILTER_PILL_SHAPE,
+                )
+                .clickable {
+                    if (!isAllSelected) {
+                        haptics.play(Haptic.Select)
+                        onSelect(null)
+                    }
+                }
+                .padding(horizontal = 12.dp, vertical = 5.dp),
+        ) {
+            Text(
+                text = "All",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Normal,
+                ),
+                color = if (isAllSelected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+
+        languages.forEach { lang ->
+            val isSelected = selected.equals(lang, ignoreCase = true)
+            Box(
+                modifier = Modifier
+                    .clip(FILTER_PILL_SHAPE)
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    )
+                    .border(
+                        1.dp,
+                        if (isSelected) MaterialTheme.colorScheme.primary
+                        else Color.White.copy(alpha = 0.08f),
+                        FILTER_PILL_SHAPE,
+                    )
+                    .clickable {
+                        haptics.play(Haptic.Select)
+                        onSelect(if (isSelected) null else lang)
+                    }
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text = lang,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    ),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
 /** Stitch Dhvani: Pill shaped genre/search filter tokens */
 private val FILTER_PILL_SHAPE = CircleShape
 
@@ -759,41 +1143,59 @@ private fun SearchField(
         onSubmit()
         focusManager.clearFocus()
     }
+    val borderColor by animateColorAsState(
+        targetValue = if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                      else MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
+        label = "searchBorder",
+    )
+    val cardShape = CircleShape
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp)
-            .uiDesignCard(shape = CircleShape, backgroundColor = MaterialTheme.colorScheme.surfaceVariant)
+            .clip(cardShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(if (isFocused) 1.5.dp else 1.dp, borderColor, cardShape)
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
             ) {
                 focusRequester.requestFocus()
             }
-            .padding(start = 12.dp, end = 12.dp),
+            .padding(start = 10.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The search button. It reads as one — a magnifier at the head of a
-        // text field is the search affordance on every platform — and now that
-        // pressing it is the only thing that runs a search, leaving it
-        // decorative would mean the keyboard's own key was the single way in.
-        Icon(
-            Icons.Rounded.Search,
-            contentDescription = stringResource(R.string.search),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .clickable(enabled = query.isNotBlank(), onClick = submit)
-                .padding(6.dp),
-        )
-        Spacer(Modifier.width(4.dp))
+        if (isFocused) {
+            Icon(
+                Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "Back",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .clickable { focusManager.clearFocus() }
+                    .padding(6.dp),
+            )
+        } else {
+            Icon(
+                Icons.Rounded.Search,
+                contentDescription = stringResource(R.string.search),
+                tint = if (query.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .clickable(enabled = query.isNotBlank(), onClick = submit)
+                    .padding(6.dp),
+            )
+        }
+        Spacer(Modifier.width(6.dp))
         Box(Modifier.weight(1f)) {
             if (query.isEmpty()) {
                 Text(
                     text = stringResource(R.string.search_hint),
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                 )
             }
             BasicTextField(
@@ -815,8 +1217,6 @@ private fun SearchField(
                     },
             )
         }
-        // Emptying the field is also how the recent searches are got back to,
-        // so it needs to be one tap rather than a held backspace.
         if (query.isNotEmpty()) {
             Box(
                 modifier = Modifier
@@ -835,13 +1235,14 @@ private fun SearchField(
                     modifier = Modifier.size(18.dp),
                 )
             }
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(6.dp))
         }
         // Voice Search Mic Button
         Box(
             modifier = Modifier
-                .size(32.dp)
+                .size(34.dp)
                 .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
                 .clickable(onClick = onVoiceClick),
             contentAlignment = Alignment.Center,
         ) {

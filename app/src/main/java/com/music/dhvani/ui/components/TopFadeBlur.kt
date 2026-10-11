@@ -109,7 +109,7 @@ fun TopFadeBlur(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
-            .hazeEffect(
+            .optimizedHazeEffect(
                 state = hazeState,
                 // Keyed to the colour of the page underneath, not the theme's.
                 //

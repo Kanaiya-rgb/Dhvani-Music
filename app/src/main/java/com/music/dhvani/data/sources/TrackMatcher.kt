@@ -1,6 +1,7 @@
 package com.music.dhvani.data.sources
 
 import com.music.dhvani.data.model.Song
+import com.music.dhvani.data.model.detectSongLanguage
 import kotlin.math.abs
 import java.util.Locale
 
@@ -69,8 +70,15 @@ object TrackMatcher {
         val title = searchableTitle(target.title, target.artist)
         if (title.isBlank()) return emptyList()
         val artist = primaryArtist(target.artist)
-        if (artist.isBlank()) return listOf(title)
-        return listOf("$title $artist", title)
+        val lang = detectSongLanguage(target.title, target.artist)
+        val queries = mutableListOf<String>()
+        if (artist.isNotBlank()) queries.add("$title $artist")
+        if (lang != null && !title.contains(lang, ignoreCase = true)) {
+            queries.add("$title $lang")
+            if (artist.isNotBlank()) queries.add("$title $artist $lang")
+        }
+        queries.add(title)
+        return queries.distinct()
     }
 
     /** The title with the packaging taken off, version markers kept. */
@@ -127,11 +135,18 @@ object TrackMatcher {
         // the album cut.
         if (wanted.versions != got.versions) return null
 
+        // Strict language check: prevents swapping Hindi audio for Telugu audio or vice-versa
+        val wantedLang = detectSongLanguage(target.title, target.artist)
+        val gotLang = detectSongLanguage(candidate.title, candidate.artist, candidate.albumName)
+        if (wantedLang != null && gotLang != null && !wantedLang.equals(gotLang, ignoreCase = true)) {
+            return null
+        }
+
         val duration = durationScore(target.durationSec, secondsOf(candidate.durationText))
             ?: return null
         val artist = artistScore(target.artist, candidate.artist)
             // The credits don't merely differ in spelling, they name different
-            // people  and sometimes that is because they are describing the
+            // people — and sometimes that is because they are describing the
             // same recording from different ends of it. Film catalogues are
             // full of this: YouTube Music files "Jhak Maar Ke" under Pritam,
             // who *wrote* it, while every store files it under Neeraj
@@ -142,14 +157,17 @@ object TrackMatcher {
             // What breaks the tie is length. Two recordings that share an
             // exact title and agree on their runtime to the second are the
             // same master; a cover, a remix or a re-recording essentially
-            // never lands there  of the four candidates for that track, the
+            // never lands there — of the four candidates for that track, the
             // remix ran 241s and the acoustic cover 66s against the 233s being
             // played. So an exact runtime is allowed to stand in for a shared
             // credit, and *only* an exact one: with no runtime on either side
             // there is nothing corroborating anything, and the strict refusal
             // stands. The match still scores below a genuine credit match, so
             // it never wins where a properly-credited copy exists.
-            ?: CREDITS_DISAGREE.takeIf { withinSeconds(candidate, target, CREDIT_OVERRIDE_SEC) }
+            ?: CREDITS_DISAGREE.takeIf {
+                withinSeconds(candidate, target, CREDIT_OVERRIDE_SEC) &&
+                    (wantedLang == null || gotLang == null || wantedLang.equals(gotLang, ignoreCase = true))
+            }
             ?: return null
         return BASE + artist + duration + contextScore(wanted, got)
     }
@@ -445,6 +463,9 @@ object TrackMatcher {
         "version", "mix", "dub", "vip", "session", "sessions",
         "sped", "slowed", "reverb", "nightcore", "lofi", "orchestral", "symphonic",
         "part", "pt", "chapter",
+        // Language markers — prevents matching a Hindi version with a Telugu/Tamil/Kannada dub
+        "hindi", "telugu", "tamil", "kannada", "malayalam", "punjabi", "bhojpuri",
+        "bengali", "marathi", "gujarati", "odia", "urdu", "english", "spanish", "korean", "japanese",
     )
 
     /**

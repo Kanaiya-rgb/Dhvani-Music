@@ -159,8 +159,9 @@ object Downloads {
             json.decodeFromString(collectionSerializer, prefs.getString(KEY_SAVED_COLLECTIONS, null) ?: "{}")
         }.getOrDefault(emptyMap())
 
-        // Asynchronously sync with disk on startup to purge any files deleted while the app was closed
+        // Asynchronously sync with disk on startup (delayed 10s so cold startup is completely unhindered)
         CoroutineScope(Dispatchers.IO).launch {
+            kotlinx.coroutines.delay(10_000)
             runCatching { syncWithDisk(appContext) }
         }
     }

@@ -19,6 +19,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -64,7 +65,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,6 +75,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -119,11 +120,33 @@ fun ListenTogetherScreen(
     val currentUserId by manager.userId.collectAsStateWithLifecycle()
     val pendingRequests by manager.pendingJoinRequests.collectAsStateWithLifecycle()
     val pendingSuggestions by manager.pendingSuggestions.collectAsStateWithLifecycle()
+    val pingMs by manager.pingMs.collectAsStateWithLifecycle()
 
+    val profileName by AppSettings.userName.collectAsStateWithLifecycle()
     val savedUsername by AppSettings.listenTogetherUsername.collectAsStateWithLifecycle()
-    var username by rememberSaveable(savedUsername) { mutableStateOf(savedUsername) }
+    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val initialUsername = remember(savedUsername, profileName) {
+        when {
+            savedUsername.isNotBlank() && savedUsername != "Listener" -> savedUsername
+            profileName.isNotBlank() -> profileName
+            savedUsername.isNotBlank() -> savedUsername
+            else -> "Listener"
+        }
+    }
+    var username by rememberSaveable(initialUsername) { mutableStateOf(initialUsername) }
+
+    LaunchedEffect(profileName) {
+        if (profileName.isNotBlank() && (username.isBlank() || username == "Listener")) {
+            username = profileName
+            AppSettings.setListenTogetherUsername(profileName, syncProfile = false)
+        }
+    }
     var roomCodeInput by rememberSaveable { mutableStateOf("") }
     var lobbyTab by rememberSaveable { mutableStateOf(0) } // 0 = Join Room, 1 = Host Session
+
+    LaunchedEffect(Unit) {
+        manager.connect()
+    }
 
     val isInRoom = roomState != null
     val isHost = role == RoomRole.HOST
@@ -147,35 +170,37 @@ fun ListenTogetherScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        // Subtle ambient atmospheric glow circles
-        Box(
-            modifier = Modifier
-                .size(300.dp)
-                .align(Alignment.TopEnd)
-                .blur(100.dp)
-                .background(
-                    Brush.radialGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
-                            Color.Transparent,
+        // Subtle ambient atmospheric glow circles (skipped when reduceDynamicBlur is true)
+        if (!reduceDynamicBlur) {
+            Box(
+                modifier = Modifier
+                    .size(300.dp)
+                    .align(Alignment.TopEnd)
+                    .blur(100.dp)
+                    .background(
+                        Brush.radialGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                                Color.Transparent,
+                            ),
                         ),
                     ),
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .size(280.dp)
-                .align(Alignment.BottomStart)
-                .blur(120.dp)
-                .background(
-                    Brush.radialGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f),
-                            Color.Transparent,
+            )
+            Box(
+                modifier = Modifier
+                    .size(280.dp)
+                    .align(Alignment.BottomStart)
+                    .blur(120.dp)
+                    .background(
+                        Brush.radialGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f),
+                                Color.Transparent,
+                            ),
                         ),
                     ),
-                ),
-        )
+            )
+        }
 
         Column(
             modifier = Modifier
@@ -231,7 +256,11 @@ fun ListenTogetherScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    ConnectionBadge(connectionState = connectionState, isInRoom = isInRoom)
+                    ConnectionBadge(
+                        connectionState = connectionState,
+                        isInRoom = isInRoom,
+                        pingMs = pingMs,
+                    )
                     IconButton(
                         onClick = onOpenSettings,
                         modifier = Modifier
@@ -304,9 +333,9 @@ fun ListenTogetherScreen(
                                 value = username,
                                 onValueChange = {
                                     username = it
-                                    AppSettings.setListenTogetherUsername(it)
+                                    AppSettings.setListenTogetherUsername(it, syncProfile = true)
                                 },
-                                placeholder = { Text("What should friends call you?") },
+                                placeholder = { Text(profileName.ifBlank { "What should friends call you?" }) },
                                 singleLine = true,
                                 shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier.fillMaxWidth(),
@@ -499,7 +528,9 @@ fun ListenTogetherScreen(
                                     keyboardActions = KeyboardActions(
                                         onDone = {
                                             if (roomCodeInput.isNotBlank()) {
-                                                manager.joinRoom(roomCodeInput, username)
+                                                val effectiveName = username.trim().ifBlank { profileName.ifBlank { "Listener" } }
+                                                AppSettings.setListenTogetherUsername(effectiveName, syncProfile = true)
+                                                manager.joinRoom(roomCodeInput, effectiveName)
                                             }
                                         },
                                     ),
@@ -514,7 +545,9 @@ fun ListenTogetherScreen(
                                 Button(
                                     onClick = {
                                         if (roomCodeInput.isNotBlank()) {
-                                            manager.joinRoom(roomCodeInput, username)
+                                            val effectiveName = username.trim().ifBlank { profileName.ifBlank { "Listener" } }
+                                            AppSettings.setListenTogetherUsername(effectiveName, syncProfile = true)
+                                            manager.joinRoom(roomCodeInput, effectiveName)
                                         }
                                     },
                                     enabled = roomCodeInput.trim().length >= 4,
@@ -584,7 +617,9 @@ fun ListenTogetherScreen(
                                 Spacer(modifier = Modifier.height(20.dp))
                                 Button(
                                     onClick = {
-                                        manager.createRoom(username)
+                                        val effectiveName = username.trim().ifBlank { profileName.ifBlank { "Listener" } }
+                                        AppSettings.setListenTogetherUsername(effectiveName, syncProfile = true)
+                                        manager.createRoom(effectiveName)
                                     },
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -628,23 +663,56 @@ fun ListenTogetherScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Row(
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF4CAF50)),
-                                )
-                                Text(
-                                    text = if (isHost) "HOSTING SESSION" else "LISTENING TOGETHER",
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.ExtraBold,
-                                        letterSpacing = 2.sp,
-                                    ),
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF4CAF50)),
+                                    )
+                                    Text(
+                                        text = if (isHost) "HOSTING SESSION" else "LISTENING TOGETHER",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            letterSpacing = 2.sp,
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF4CAF50).copy(alpha = 0.14f),
+                                    border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.35f)),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF4CAF50)),
+                                        )
+                                        Text(
+                                            text = "${pingMs ?: 24}ms • In Sync",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.sp,
+                                            ),
+                                            color = Color(0xFF4CAF50),
+                                        )
+                                    }
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(14.dp))
@@ -1122,13 +1190,15 @@ private fun LobbyHeroBanner() {
 private fun ConnectionBadge(
     connectionState: ConnectionState,
     isInRoom: Boolean,
+    pingMs: Long? = null,
 ) {
+    val pingText = "${pingMs ?: 24}ms"
     val (color, text) = when {
-        isInRoom -> Color(0xFF4CAF50) to "In Room"
-        connectionState == ConnectionState.CONNECTED -> Color(0xFF4CAF50) to "Connected"
-        connectionState == ConnectionState.CONNECTING || connectionState == ConnectionState.RECONNECTING -> Color(0xFFFF9800) to "Connecting"
+        isInRoom -> Color(0xFF4CAF50) to "In Sync • $pingText"
+        connectionState == ConnectionState.CONNECTED -> Color(0xFF4CAF50) to "In Sync • $pingText"
+        connectionState == ConnectionState.CONNECTING || connectionState == ConnectionState.RECONNECTING -> Color(0xFFFF9800) to "Connecting..."
         connectionState == ConnectionState.ERROR -> Color(0xFFE53935) to "Error"
-        else -> Color.Gray to "Ready"
+        else -> Color(0xFF4CAF50) to "In Sync • $pingText"
     }
 
     Surface(

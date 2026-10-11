@@ -311,6 +311,7 @@ private fun resolvePlaybackUri(uriString: String, localPath: String?): String {
  */
 const val DIRECT_YOUTUBE_PARAMETER = "direct_youtube"
 const val ACTION_SWAP_QUALITY = "com.music.dhvani.action.SWAP_QUALITY"
+const val ACTION_CHANGE_AUDIO_TRACK = "com.music.dhvani.action.CHANGE_AUDIO_TRACK"
 
 fun MediaController.swapQuality(toHighQuality: Boolean) {
     swapQuality(if (toHighQuality) "HIGH_QUALITY" else "ORIGINAL_YT")
@@ -321,6 +322,23 @@ fun MediaController.swapQuality(mode: String) {
     sendCustomCommand(
         SessionCommand(ACTION_SWAP_QUALITY, android.os.Bundle.EMPTY),
         bundleOf("mode" to mode, "toHighQuality" to toHighQuality),
+    )
+}
+
+fun MediaController.changeAudioTrack(song: Song) {
+    sendCustomCommand(
+        SessionCommand(ACTION_CHANGE_AUDIO_TRACK, android.os.Bundle.EMPTY),
+        bundleOf(
+            "videoId" to song.videoId,
+            "title" to song.title,
+            "artist" to song.artist,
+            "thumbnailUrl" to song.thumbnailUrl,
+            "durationText" to song.durationText,
+            "artistId" to song.artistId,
+            "albumId" to song.albumId,
+            "albumName" to song.albumName,
+            "sourceQuality" to song.sourceQuality,
+        ),
     )
 }
 

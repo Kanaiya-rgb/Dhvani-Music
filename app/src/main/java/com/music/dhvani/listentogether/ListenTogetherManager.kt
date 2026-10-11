@@ -71,6 +71,7 @@ class ListenTogetherManager private constructor(
     val bufferingUsers: StateFlow<List<String>> = client.bufferingUsers
     val pendingSuggestions: StateFlow<List<SuggestionReceivedPayload>> = client.pendingSuggestions
     val logs: StateFlow<List<LogEntry>> = client.logs
+    val pingMs: StateFlow<Long?> = client.pingMs
 
     val isInRoom: Boolean get() = client.isInRoom
     val isHost: Boolean get() = client.isHost
@@ -532,6 +533,10 @@ class ListenTogetherManager private constructor(
     }
 
     // UI actions
+    fun connect(serverUrl: String? = null) {
+        client.connect(serverUrl)
+    }
+
     fun createRoom(username: String) {
         client.createRoom(username)
     }

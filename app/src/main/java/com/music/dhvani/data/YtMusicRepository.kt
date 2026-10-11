@@ -23,6 +23,10 @@ import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.settings.SearchHistory
 import com.music.dhvani.data.LikeState
 import com.music.dhvani.data.sources.TrackMatcher
+import com.music.dhvani.data.model.SongLanguage
+import com.music.dhvani.data.model.detectSongLanguage
+import com.music.dhvani.data.sources.SourceRegistry
+import com.music.dhvani.data.sources.SourceKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -33,11 +37,25 @@ import kotlinx.serialization.json.JsonObject
 import com.music.dhvani.data.model.MoodGenreSection
 import java.util.concurrent.ConcurrentHashMap
 import java.util.Locale
+import android.util.LruCache
 
 /** Suspend API over Innertube. Every call returns a Result so the UI can show a real error. */
 object YtMusicRepository {
 
     private const val TAG = "DhvaniMusic"
+    private val songVersionsCache = LruCache<String, List<Song>>(100)
+    private val titleVersionsCache = LruCache<String, List<Song>>(100)
+
+    fun getCachedSongVersions(song: Song): List<Song>? {
+        songVersionsCache.get(song.videoId)?.let { return it }
+        val cleanTitle = TrackMatcher.searchableTitle(song.title, "").lowercase(Locale.ROOT)
+        if (cleanTitle.isNotBlank()) {
+            titleVersionsCache.get(cleanTitle)?.let { return it }
+        }
+        val family = SongLanguage.getCrossLanguageFamily(song.title)
+        family?.firstOrNull()?.let { titleVersionsCache.get(it) }?.let { return it }
+        return null
+    }
 
     /**
      * The personalised feed, led by what was actually just played and padded
@@ -65,196 +83,214 @@ object YtMusicRepository {
         browseId = null,
     )
 
+    fun isExcludedHomeShelf(shelf: HomeShelf): Boolean {
+        val title = shelf.title.lowercase(Locale.ROOT).trim()
+        val subtitle = shelf.subtitle.lowercase(Locale.ROOT).trim()
+
+        // Explicitly preserve desired dynamic shelves
+        if (title.contains("chartbuster") ||
+            title.contains("bollywood") ||
+            title.contains("hindi hit") ||
+            title.contains("quick pick") ||
+            title.contains("daily discover") ||
+            title.contains("similar to") ||
+            title.contains("listen again")
+        ) {
+            return false
+        }
+
+        // 1. YouTube Charts / Video charts (bottom sections)
+        if (title == "charts" || title == "top charts" || title == "music charts" ||
+            title == "video charts" || title == "top music video charts" ||
+            title.contains("video chart") || title == "चार्ट" ||
+            (title.startsWith("chart") && !title.contains("chartbuster"))
+        ) return true
+
+        // 2. YouTube Trending (bottom section)
+        if (title == "trending" || title.startsWith("trending ") || title.contains("trending now") ||
+            title.contains("trending videos") || title.contains("trending songs") ||
+            title == "ट्रेंडिंग"
+        ) return true
+
+        // 3. YouTube Community Playlists (bottom section)
+        if (title.contains("community playlist") || subtitle.contains("community playlist") || title.contains("कम्युनिटी")) return true
+
+        // 4. YouTube Albums & singles (bottom section)
+        if (title.contains("album and single") ||
+            title.contains("albums and singles") ||
+            title.contains("album & single") ||
+            title.contains("albums & singles") ||
+            title.contains("singles & albums") ||
+            title.contains("singles and albums") ||
+            title.contains("new albums") ||
+            title == "albums" ||
+            (title.contains("album") && title.contains("single"))
+        ) return true
+
+        return false
+    }
+
     suspend fun home(): Result<HomeFeed> = call("home") {
         coroutineScope {
             val dynamicShelvesAsync = async { runCatching { buildMeldStyleDynamicShelves() }.getOrDefault(emptyList()) }
             val homeRaw = async { Innertube.browse("FEmusic_home") }
-            val chartsRaw = async { runCatching { Innertube.browse("FEmusic_charts") }.getOrNull() }
-            val newReleases = async { runCatching { shelvesOf("FEmusic_new_releases") }.getOrDefault(emptyList()) }
 
             val dynamicShelves = dynamicShelvesAsync.await()
             val home = homeRaw.await()
-            val charts = chartsRaw.await()
             val homeShelves = InnertubeParser.parseHome(home)
-            val chartShelves = charts?.let { InnertubeParser.parseHome(it) }.orEmpty()
 
-            val shelves = dynamicShelves +
-                homeShelves +
-                chartShelves +
-                newReleases.await()
+            val shelves = (dynamicShelves + homeShelves)
+                .filterNot { isExcludedHomeShelf(it) }
 
             val token = InnertubeParser.continuationToken(home)
-                ?: charts?.let { InnertubeParser.continuationToken(it) }
             HomeFeed(shelves, token)
         }
     }
 
+    private var cachedDynamicShelves: List<HomeShelf>? = null
+    private var lastDynamicFetchTime: Long = 0L
+
     /**
-     * Builds dynamic, continuously changing home shelves inspired by Meld:
-     * - Shuffled Quick Picks with seed expansion
-     * - Shuffled Daily Discover from random liked/history seeds
-     * - Random "Similar to" recommendations (different artists/songs each refresh)
-     * - Rotated Indian genres & trending hits
-     * - Dynamic shelf ordering so content feels fresh on every refresh
+     * Builds rich dynamic home shelves concurrently without blocking:
+     * - Listen Again (from local history - 0ms)
+     * - Quick Picks (taste mix from history/likes or top Bollywood hits)
+     * - Daily Discover (seed-based discovery or new Hindi tracks)
+     * - Similar to "..." (based on recent history artist or soulful Hindi)
+     * - Bollywood Chartbusters
+     * - Hindi Hits
+     * Caches generated recommendations for 10 minutes for instant zero-latency loads.
      */
     private suspend fun buildMeldStyleDynamicShelves(): List<HomeShelf> = coroutineScope {
         val shelves = mutableListOf<HomeShelf>()
         val history = PlaybackHistory.recent.value
         val likedIds = LikeState.getLikedVideoIds()
+        val now = System.currentTimeMillis()
 
-        // 1. Quick Picks (Meld style: history + related + shuffled)
-        val quickPicksAsync = async {
-            val historySongs = history.shuffled().take(8).map { it.toSong() }
-            val seed = history.shuffled().firstOrNull()?.videoId
-            val relatedSongs = if (seed != null) {
-                radio(seed).getOrNull().orEmpty().shuffled().take(10)
-            } else emptyList()
-            val fallback = if (historySongs.isEmpty() && relatedSongs.isEmpty()) {
-                search("Top Hits India $currentYear", SearchFilter.SONGS).getOrNull()
-                    ?.filterIsInstance<SearchResult.Track>()?.map { it.song }.orEmpty().shuffled().take(16)
-            } else emptyList()
-
-            val combined = (historySongs + relatedSongs + fallback)
-                .distinctBy { it.videoId }
-                .shuffled()
-                .take(16)
-
-            if (combined.isNotEmpty()) {
-                HomeShelf(
-                    title = "Quick Picks",
-                    subtitle = "Fresh mix based on your taste",
-                    items = combined.map { it.toShelfItem() },
-                )
-            } else null
-        }
-
-        // 2. Daily Discover (Meld style: 3 random seeds -> related recommendations)
-        val dailyDiscoverAsync = async {
-            val candidateSeeds = (likedIds + history.map { it.videoId })
-                .distinct()
-                .shuffled()
-                .take(3)
-            val discoverSongs = mutableListOf<Song>()
-            candidateSeeds.forEach { seedId ->
-                val related = radio(seedId).getOrNull().orEmpty()
-                    .filterNot { it.videoId == seedId }
-                    .shuffled()
-                    .take(5)
-                discoverSongs.addAll(related)
-            }
-            if (discoverSongs.isEmpty()) {
-                val fresh = search("New Hindi Songs $currentYear", SearchFilter.SONGS).getOrNull()
-                    ?.filterIsInstance<SearchResult.Track>()?.map { it.song }.orEmpty().shuffled().take(12)
-                discoverSongs.addAll(fresh)
-            }
-            val deduped = discoverSongs.distinctBy { it.videoId }.shuffled().take(12)
-            if (deduped.isNotEmpty()) {
-                HomeShelf(
-                    title = "Daily Discover",
-                    subtitle = "New sounds you haven't heard yet",
-                    items = deduped.map { it.toShelfItem() },
-                )
-            } else null
-        }
-
-        // 3. Dynamic "Similar to" & "Because you listen to" shelves (Random seeds each refresh)
-        val similarShelvesAsync = async {
-            val result = mutableListOf<HomeShelf>()
-            val randomHistorySeeds = history.shuffled().distinctBy { it.artist }.take(2)
-            randomHistorySeeds.forEach { item ->
-                val related = radio(item.videoId).getOrNull().orEmpty()
-                    .filterNot { it.videoId == item.videoId }
-                    .shuffled()
-                    .take(12)
-                if (related.isNotEmpty()) {
-                    result.add(
-                        HomeShelf(
-                            title = "Similar to ${item.title}",
-                            subtitle = "Because you listened to ${item.artist}",
-                            items = related.map { it.toShelfItem() },
-                        )
-                    )
-                }
-            }
-            result
-        }
-
-        // 4. Rotating Indian Trending & Regional Hits (Pick 2 random categories every refresh!)
-        val indianTrendingAsync = async {
-            val categories = listOf(
-                "Trending India Songs" to "Trending in India",
-                "Latest Hindi Hits $currentYear" to "Bollywood Chartbusters",
-                "Hot Punjabi Hits $currentYear" to "Punjabi Wave",
-                "Indian Indie Songs" to "Indie & Chill India",
-                "Romantic Hindi Songs" to "Desi Romance",
-                "Desi Hip Hop Hits" to "Desi Hip Hop",
-                "South Indian Hindi Hits" to "South Indian Blockbusters",
-                "Arijit Singh Best Songs" to "Melodies & Soul",
-            ).shuffled().take(2)
-
-            categories.mapNotNull { (query, shelfTitle) ->
-                val tracks = search(query, SearchFilter.SONGS).getOrNull()
-                    ?.filterIsInstance<SearchResult.Track>()
-                    ?.map { it.song }
-                    ?.shuffled()
-                    ?.take(12)
-                if (!tracks.isNullOrEmpty()) {
-                    HomeShelf(
-                        title = shelfTitle,
-                        subtitle = "Updated for today",
-                        items = tracks.map { it.toShelfItem() },
-                    )
-                } else null
-            }
-        }
-
-        // 5. Search-based shelf if user recently searched
-        val searchShelfAsync = async {
-            val lastSearch = SearchHistory.recent.value.shuffled().firstOrNull()
-            if (!lastSearch.isNullOrBlank()) {
-                val tracks = search(lastSearch, SearchFilter.SONGS).getOrNull()
-                    ?.filterIsInstance<SearchResult.Track>()
-                    ?.map { it.song }
-                    ?.shuffled()
-                    ?.take(10)
-                if (!tracks.isNullOrEmpty()) {
-                    HomeShelf(
-                        title = "More like \"$lastSearch\"",
-                        subtitle = "From your recent search",
-                        items = tracks.map { it.toShelfItem() },
-                    )
-                } else null
-            } else null
-        }
-
-        // 6. Listen Again shelf (from local history)
-        val listenAgainAsync = async {
-            if (history.isNotEmpty()) {
+        // 1. Listen Again shelf (from local history - instant 0ms)
+        if (history.isNotEmpty()) {
+            shelves.add(
                 HomeShelf(
                     title = "Listen Again",
                     subtitle = "Jump back in",
                     items = history.take(15).map { it.toSong().toShelfItem() },
+                )
+            )
+        }
+
+        // Return cached discovery shelves if fetched in the last 10 minutes (0ms instant)
+        val cached = cachedDynamicShelves
+        if (cached != null && now - lastDynamicFetchTime < 10 * 60 * 1000L) {
+            shelves.addAll(cached)
+            return@coroutineScope shelves
+        }
+
+        // 2. Quick Picks (Taste-based from history/likes or top hits)
+        val quickPicksAsync = async(Dispatchers.IO) {
+            val historySongs = history.shuffled().take(8).map { it.toSong() }
+            val candidateSeed = (history.map { it.videoId } + likedIds).shuffled().firstOrNull()
+            val relatedSongs = if (candidateSeed != null) {
+                radio(candidateSeed).getOrNull().orEmpty().shuffled().take(8)
+            } else emptyList()
+
+            val combined = (historySongs + relatedSongs).distinctBy { it.videoId }.shuffled().take(16)
+            val finalSongs = if (combined.isNotEmpty()) combined else {
+                search("Top Bollywood Songs $currentYear", SearchFilter.SONGS).getOrNull()
+                    ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(16).orEmpty()
+            }
+            if (finalSongs.isNotEmpty()) {
+                HomeShelf(
+                    title = "Quick Picks",
+                    subtitle = "Fresh mix based on your taste",
+                    items = finalSongs.map { it.toShelfItem() },
+                )
+            } else null
+        }
+
+        // 3. Daily Discover
+        val dailyDiscoverAsync = async(Dispatchers.IO) {
+            val seedId = (likedIds + history.map { it.videoId }).shuffled().firstOrNull()
+            val related = if (seedId != null) {
+                radio(seedId).getOrNull().orEmpty().filterNot { it.videoId == seedId }.shuffled().take(12)
+            } else emptyList()
+
+            val discoverSongs = if (related.isNotEmpty()) related else {
+                search("New Hindi Songs $currentYear", SearchFilter.SONGS).getOrNull()
+                    ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(12).orEmpty()
+            }
+            if (discoverSongs.isNotEmpty()) {
+                HomeShelf(
+                    title = "Daily Discover",
+                    subtitle = "New sounds you haven't heard yet",
+                    items = discoverSongs.map { it.toShelfItem() },
+                )
+            } else null
+        }
+
+        // 4. Dynamic "Similar to"
+        val similarAsync = async(Dispatchers.IO) {
+            val seedItem = history.shuffled().firstOrNull()
+            if (seedItem != null) {
+                val related = radio(seedItem.videoId).getOrNull().orEmpty()
+                    .filterNot { it.videoId == seedItem.videoId }
+                    .shuffled()
+                    .take(12)
+                if (related.isNotEmpty()) {
+                    HomeShelf(
+                        title = "Similar to ${seedItem.title}",
+                        subtitle = "Because you listened to ${seedItem.artist}",
+                        items = related.map { it.toShelfItem() },
+                    )
+                } else null
+            } else {
+                val tracks = search("Arijit Singh Best Songs", SearchFilter.SONGS).getOrNull()
+                    ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(12).orEmpty()
+                if (tracks.isNotEmpty()) {
+                    HomeShelf(
+                        title = "Similar to Arijit Singh",
+                        subtitle = "Because you love soulful melodies",
+                        items = tracks.map { it.toShelfItem() },
+                    )
+                } else null
+            }
+        }
+
+        // 5. Bollywood Chartbusters
+        val chartbustersAsync = async(Dispatchers.IO) {
+            val tracks = search("Bollywood Chartbusters $currentYear", SearchFilter.SONGS).getOrNull()
+                ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(12).orEmpty()
+            if (tracks.isNotEmpty()) {
+                HomeShelf(
+                    title = "Bollywood Chartbusters",
+                    subtitle = "Top Bollywood hits today",
+                    items = tracks.map { it.toShelfItem() },
+                )
+            } else null
+        }
+
+        // 6. Hindi Hits
+        val hindiHitsAsync = async(Dispatchers.IO) {
+            val tracks = search("Latest Hindi Hits $currentYear", SearchFilter.SONGS).getOrNull()
+                ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(12).orEmpty()
+            if (tracks.isNotEmpty()) {
+                HomeShelf(
+                    title = "Hindi Hits",
+                    subtitle = "Trending melodies & fresh drops",
+                    items = tracks.map { it.toShelfItem() },
                 )
             } else null
         }
 
         val qp = quickPicksAsync.await()
         val dd = dailyDiscoverAsync.await()
-        val sim = similarShelvesAsync.await()
-        val trend = indianTrendingAsync.await()
-        val sSearch = searchShelfAsync.await()
-        val la = listenAgainAsync.await()
+        val sim = similarAsync.await()
+        val cb = chartbustersAsync.await()
+        val hh = hindiHitsAsync.await()
 
-        // Listen Again (Recent play content) placed at the very top:
-        val top = listOfNotNull(la)
-        // Lead dynamic discovery: Quick Picks & Daily Discover (shuffled)
-        val lead = listOfNotNull(qp, dd).shuffled()
-        // Mid sections: Similar to, Indian Trending, Searches (shuffled dynamically)
-        val mid = (sim + trend + listOfNotNull(sSearch)).shuffled()
+        val generated = listOfNotNull(qp, dd, sim, cb, hh)
+        cachedDynamicShelves = generated
+        lastDynamicFetchTime = System.currentTimeMillis()
 
-        shelves.addAll(top)
-        shelves.addAll(lead)
-        shelves.addAll(mid)
+        shelves.addAll(generated)
         shelves
     }
 
@@ -266,7 +302,7 @@ object YtMusicRepository {
     suspend fun moreHome(token: String): Result<HomeFeed> = call("home:more") {
         val response = Innertube.browseContinuation(token)
         HomeFeed(
-            shelves = InnertubeParser.parseHomeContinuation(response),
+            shelves = InnertubeParser.parseHomeContinuation(response).filterNot { isExcludedHomeShelf(it) },
             continuation = InnertubeParser.continuationToken(response),
         )
     }
@@ -278,9 +314,8 @@ object YtMusicRepository {
     suspend fun fallbackHomeShelves(page: Int): List<HomeShelf> = withContext(Dispatchers.IO) {
         runCatching {
             when (page) {
-                1 -> shelvesOf("FEmusic_explore")
-                2 -> shelvesOf("FEmusic_moods_and_genres")
-                3 -> shelvesOf("FEmusic_new_releases_albums")
+                1 -> shelvesOf("FEmusic_explore").filterNot { isExcludedHomeShelf(it) }
+                2 -> shelvesOf("FEmusic_moods_and_genres").filterNot { isExcludedHomeShelf(it) }
                 else -> emptyList()
             }
         }.getOrDefault(emptyList())
@@ -757,16 +792,7 @@ object YtMusicRepository {
      * [TrackMatcher.best] returning null is a normal answer, not a failure to
      * work around.
      *
-     * Returns [song] unchanged when it isn't a video, or when nothing better
-     * turns up — playing the video's own audio track beats guessing at a
-     * substitute, and [song] is what a queue restore or offline retry falls
-     * back to as well. Also unchanged when
-     * [AppSettings.convertVideoToAudio][com.music.dhvani.data.settings.AppSettings.convertVideoToAudio]
-     * is off — the listener has asked to keep video uploads as themselves.
-     *
-     * [search] already drops video rows from its results (see
-     * [InnertubeParser.parseSearch]), so every candidate here is audio-only
-     * without a second check.
+     * Resolves canonical song audio metadata (title, artist, album) for a video.
      */
     suspend fun resolveAudio(song: Song): Song {
         if (!song.isVideo || !AppSettings.convertVideoToAudio.value) return song
@@ -780,6 +806,135 @@ object YtMusicRepository {
             TrackMatcher.best(candidates, target)?.let { return it }
         }
         return song
+    }
+
+    /**
+     * Finds other versions of [song] — including alternate language releases
+     * (e.g. Hindi, Telugu, Tamil dubs for Pan-Indian soundtracks), remixes,
+     * acoustic renditions, and high-quality source counterparts.
+     *
+     * The original [song] is always first in the returned list.
+     */
+    suspend fun findSongVersions(song: Song): Result<List<Song>> = call("findSongVersions") {
+        getCachedSongVersions(song)?.let { return@call it }
+        val cleanTitle = TrackMatcher.searchableTitle(song.title, song.artist)
+        val family = SongLanguage.getCrossLanguageFamily(song.title)
+        val currentLang = detectSongLanguage(song.title, song.artist, song.albumName)
+
+        val queries = mutableListOf<String>()
+        if (family != null) {
+            family.forEach { alias -> queries.add(alias) }
+        } else {
+            queries.add(cleanTitle)
+            if (!song.albumName.isNullOrBlank()) {
+                val cleanAlbum = TrackMatcher.searchableTitle(song.albumName, "")
+                if (cleanAlbum.isNotBlank() && !cleanAlbum.equals(cleanTitle, ignoreCase = true)) {
+                    queries.add("$cleanTitle $cleanAlbum")
+                }
+            }
+            // Target alternate languages: if international track, query major global dub languages; otherwise major Indian languages
+            val isInternational = currentLang in listOf("English", "Spanish", "French", "Portuguese", "German", "Italian", "Japanese", "Korean")
+            val targetLanguages = if (isInternational) {
+                listOf("Spanish", "English", "French", "Portuguese", "Japanese")
+            } else {
+                listOf("Hindi", "Telugu", "Tamil", "Kannada", "Malayalam", "Odia", "Bengali", "Punjabi")
+            }
+            for (lang in targetLanguages) {
+                if (!lang.equals(currentLang, ignoreCase = true) && queries.size < 6) {
+                    queries.add("$cleanTitle $lang")
+                }
+            }
+        }
+
+        val results = mutableListOf<Song>()
+        results.add(song)
+        val seenIds = mutableSetOf(song.videoId)
+
+        coroutineScope {
+            val jobs = queries.distinct().take(6).map { q ->
+                async {
+                    runCatching {
+                        search(q, SearchFilter.SONGS).getOrNull()
+                            ?.filterIsInstance<SearchResult.Track>()
+                            ?.map { it.song }
+                            .orEmpty()
+                    }.getOrDefault(emptyList())
+                }
+            }
+            val ytTracks = jobs.flatMap { it.await() }
+
+            val origClean = cleanTitle.lowercase(Locale.ROOT)
+            val origSec = TrackMatcher.secondsOf(song.durationText)
+            for (candidate in ytTracks) {
+                if (candidate.videoId in seenIds) continue
+
+                // Must have a recognized language!
+                val candLang = detectSongLanguage(candidate.title, candidate.artist, candidate.albumName) ?: continue
+
+                val candClean = TrackMatcher.searchableTitle(candidate.title, candidate.artist).lowercase(Locale.ROOT)
+                val isFamilyMatch = family?.any { candClean.contains(it) } == true
+                val isDirectMatch = if (origClean.length >= 4) {
+                    candClean.startsWith(origClean) || candClean.contains(origClean)
+                } else {
+                    candClean == origClean
+                }
+
+                val candSec = TrackMatcher.secondsOf(candidate.durationText)
+                val isDurationClose = origSec == null || candSec == null || Math.abs(origSec - candSec) <= 45
+
+                if ((isFamilyMatch || isDirectMatch) && isDurationClose) {
+                    seenIds.add(candidate.videoId)
+                    results.add(candidate)
+                }
+            }
+        }
+
+        // Also query JioSaavn source for counterpart language versions (even if not on YouTube!)
+        runCatching {
+            val jioSource = SourceRegistry.active().firstOrNull { it.kind == SourceKind.JIOSAAVN }
+            if (jioSource != null) {
+                val jioQueries = if (family != null) {
+                    family.take(4)
+                } else {
+                    val list = mutableListOf<String>()
+                    val majorLanguages = listOf("Telugu", "Tamil", "Kannada", "Malayalam", "Odia", "Bengali", "Punjabi", "Hindi")
+                    for (lang in majorLanguages) {
+                        if (!lang.equals(currentLang, ignoreCase = true) && list.size < 5) {
+                            list.add("$cleanTitle $lang")
+                        }
+                    }
+                    list
+                }
+                val origClean = cleanTitle.lowercase(Locale.ROOT)
+                val origSec = TrackMatcher.secondsOf(song.durationText)
+                for (jq in jioQueries) {
+                    val jioTracks = jioSource.search(jq, limit = 4, waitForAll = false)
+                    for (jt in jioTracks) {
+                        if (jt.videoId in seenIds) continue
+                        val candLang = detectSongLanguage(jt.title, jt.artist, jt.albumName) ?: continue
+                        val candClean = TrackMatcher.searchableTitle(jt.title, jt.artist).lowercase(Locale.ROOT)
+                        val isFamilyMatch = family?.any { candClean.contains(it) } == true
+                        val isDirectMatch = candClean.startsWith(origClean) || candClean.contains(origClean)
+                        val candSec = TrackMatcher.secondsOf(jt.durationText)
+                        val isDurationClose = origSec == null || candSec == null || Math.abs(origSec - candSec) <= 45
+                        if ((isFamilyMatch || isDirectMatch) && isDurationClose) {
+                            seenIds.add(jt.videoId)
+                            results.add(jt)
+                        }
+                    }
+                }
+            }
+        }
+
+        val cleanKey = cleanTitle.lowercase(Locale.ROOT)
+        if (cleanKey.isNotBlank()) titleVersionsCache.put(cleanKey, results)
+        family?.forEach { titleVersionsCache.put(it, results) }
+        for (r in results) {
+            songVersionsCache.put(r.videoId, results)
+            val rClean = TrackMatcher.searchableTitle(r.title, "").lowercase(Locale.ROOT)
+            if (rClean.isNotBlank()) titleVersionsCache.put(rClean, results)
+        }
+        results
     }
 
     /** Signed-in profile for the settings header. Null when signed out. */

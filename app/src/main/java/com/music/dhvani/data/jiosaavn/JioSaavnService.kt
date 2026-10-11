@@ -36,6 +36,7 @@ data class RawArtistMap(
 data class RawMoreInfo(
     val album_id: String = "",
     val album: String = "",
+    val language: String = "",
     @SerialName("encrypted_media_url") val encryptedMediaUrl: String = "",
     val duration: String = "",
     /**
@@ -58,6 +59,7 @@ data class RawSongItem(
     val id: String = "",
     val title: String = "",
     val image: String = "",
+    val language: String = "",
     @SerialName("more_info") val moreInfo: RawMoreInfo = RawMoreInfo()
 )
 

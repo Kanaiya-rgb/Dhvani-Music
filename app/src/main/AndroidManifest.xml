@@ -22,6 +22,11 @@
     <!-- Audio effects routing and hardware LoudnessEnhancer overdrive -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
+    <!-- Setting custom trimmed ringtones -->
+    <uses-permission
+        android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+
     <!--
       In-app updates: handing a downloaded APK to the system installer. The
       per-app "install unknown apps" switch is still the user's to flip; this

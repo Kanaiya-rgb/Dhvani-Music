@@ -285,11 +285,43 @@ fun DhvaniTheme(
     content: @Composable () -> Unit,
 ) {
     val uiStyle = AppSettings.uiDesignStyle.collectAsStateWithLifecycle().value
+    val accentInt = AppSettings.accentColor.collectAsStateWithLifecycle().value
+    val dynamicTheme = AppSettings.dynamicTheme.collectAsStateWithLifecycle().value
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val colorScheme = androidx.compose.runtime.remember(darkTheme, accentInt, dynamicTheme) {
+        val base = when {
+            accentInt == null && dynamicTheme && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S -> {
+                if (darkTheme) androidx.compose.material3.dynamicDarkColorScheme(context)
+                else androidx.compose.material3.dynamicLightColorScheme(context)
+            }
+            darkTheme -> DarkColors
+            else -> LightColors
+        }
+        if (accentInt != null) {
+            val accent = Color(accentInt)
+            val isBright = (0.299f * accent.red + 0.587f * accent.green + 0.114f * accent.blue) > 0.65f
+            val onPrimary = if (isBright) Color(0xFF121418) else Color.White
+            val containerAlpha = if (darkTheme) 0.28f else 0.18f
+            val primaryContainer = accent.copy(alpha = containerAlpha)
+            base.copy(
+                primary = accent,
+                onPrimary = onPrimary,
+                primaryContainer = primaryContainer,
+                onPrimaryContainer = accent,
+                inversePrimary = accent.copy(alpha = 0.85f),
+                surfaceTint = accent,
+            )
+        } else {
+            base
+        }
+    }
+
     androidx.compose.runtime.CompositionLocalProvider(
         LocalUiDesignStyle provides uiStyle,
     ) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkColors else LightColors,
+            colorScheme = colorScheme,
             typography  = DhvaniTypography,
             content     = content,
         )

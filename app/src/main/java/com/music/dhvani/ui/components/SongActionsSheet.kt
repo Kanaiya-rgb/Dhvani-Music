@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import com.music.dhvani.data.settings.AppSettings
@@ -37,12 +40,15 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.Redo
+import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Language
 import com.music.dhvani.playback.eq.EqualizerManager
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Check
@@ -54,6 +60,7 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistRemove
 import androidx.compose.material.icons.rounded.Share
@@ -88,6 +95,7 @@ import com.music.dhvani.data.model.LikeStatus
 import com.music.dhvani.data.model.ROW_ART_PX
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.artworkAt
+import com.music.dhvani.data.model.detectSongLanguage
 import com.music.dhvani.download.DownloadState
 import com.music.dhvani.download.Downloads
 import com.music.dhvani.playback.SleepTimer
@@ -131,8 +139,8 @@ fun SongActionsSheet(
     song: Song,
     signedIn: Boolean,
     likeStatus: LikeStatus,
-    onPlayNext: () -> Unit,
-    onAddToQueue: () -> Unit,
+    onPlayNext: (() -> Unit)? = null,
+    onAddToQueue: (() -> Unit)? = null,
     onDownload: () -> Unit,
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
@@ -154,10 +162,13 @@ fun SongActionsSheet(
     onUpgradeQuality: (() -> Unit)? = null,
     /** Keeps the upgrade row visible but untappable while its lookup is running. */
     upgradeQualityInProgress: Boolean = false,
+    /** Opens the bottom sheet to select alternate versions or languages for this track. */
+    onOpenVersions: (() -> Unit)? = null,
     onOpenAudioQuality: (() -> Unit)? = null,
     onOpenEqualizer: (() -> Unit)? = null,
     onOpenAudioEffects: (() -> Unit)? = null,
     onEnterAmbientCinemaMode: (() -> Unit)? = null,
+    onSetAsRingtone: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     /**
      * Copies what the app logged while starting this track. Null everywhere
@@ -201,152 +212,189 @@ fun SongActionsSheet(
         SheetTrackHeader(song, subtitleColor = palette.onBackgroundVariant)
         HorizontalDivider(thickness = 0.5.dp, color = palette.divider)
 
-        // Leads the list whenever it's available (like BitChord):
-        // Which recording/quality is playing is the one question that has to be answered
-        // before any of the rows below mean anything.
-        if (onRollbackToOriginal != null || onUpgradeQuality != null) {
-            (onRollbackToOriginal ?: onUpgradeQuality)?.let { action ->
-                ActionRow(
-                    icon = if (onRollbackToOriginal != null) {
-                        Icons.AutoMirrored.Rounded.Undo
-                    } else {
-                        Icons.Rounded.HighQuality
-                    },
-                    label = stringResource(
-                        if (onRollbackToOriginal != null) {
-                            R.string.revert_to_original
-                        } else {
-                            R.string.upgrade_quality
-                        },
-                    ),
-                    accent = palette.accent,
-                    enabled = onRollbackToOriginal != null || !upgradeQualityInProgress,
-                    onClick = action,
-                )
-            }
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 6.dp),
-                thickness = 0.5.dp,
-                color = palette.divider,
-            )
-        }
-
-        if (!isOffline) {
-            ActionRow(
-                icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                label = if (liked) "Remove from Liked Music" else "Like",
-                tint = if (liked) palette.accent else null,
-                accent = palette.accent,
-                onClick = onToggleLike,
-            )
-            ActionRow(
-                icon = if (disliked) Icons.Rounded.ThumbDown else Icons.Rounded.ThumbDownOffAlt,
-                label = if (disliked) "Undo dislike" else "Dislike & skip",
-                tint = if (disliked) palette.accent else null,
-                accent = palette.accent,
-                onClick = {
-                    if (!disliked && onDislikeAndSkip != null) {
-                        onDislikeAndSkip()
-                    } else {
-                        onToggleDislike()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            // Leads the list whenever it's available (like BitChord):
+            // Which recording/quality is playing is the one question that has to be answered
+            // before any of the rows below mean anything.
+            if (onRollbackToOriginal != null || onUpgradeQuality != null || onOpenVersions != null) {
+                if (onRollbackToOriginal != null || onUpgradeQuality != null) {
+                    (onRollbackToOriginal ?: onUpgradeQuality)?.let { action ->
+                        ActionRow(
+                            icon = if (onRollbackToOriginal != null) {
+                                Icons.AutoMirrored.Rounded.Undo
+                            } else {
+                                Icons.AutoMirrored.Rounded.Redo
+                            },
+                            label = stringResource(
+                                if (onRollbackToOriginal != null) {
+                                    R.string.revert_to_original
+                                } else {
+                                    R.string.upgrade_quality
+                                },
+                            ),
+                            value = if (onRollbackToOriginal != null) "YouTube" else "320 kbps",
+                            accent = palette.accent,
+                            enabled = onRollbackToOriginal != null || !upgradeQualityInProgress,
+                            onClick = action,
+                        )
                     }
-                },
-            )
-            ActionRow(
-                icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
-                label = "Add to playlist",
-                accent = palette.accent,
-                onClick = onAddToPlaylist,
-            )
-            onEnterAmbientCinemaMode?.let { enterCinema ->
-                ActionRow(
-                    icon = Icons.Rounded.Fullscreen,
-                    label = "Cinema Full Screen",
-                    accent = palette.accent,
-                    onClick = enterCinema,
+                }
+                if (onOpenVersions != null && !isOffline) {
+                    val currentLang = remember(song.title, song.artist, song.albumName) {
+                        detectSongLanguage(song.title, song.artist, song.albumName) ?: "Original"
+                    }
+                    ActionRow(
+                        icon = Icons.Rounded.Language,
+                        label = "Audio track",
+                        value = currentLang,
+                        accent = palette.accent,
+                        onClick = onOpenVersions,
+                    )
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 6.dp),
+                    thickness = 0.5.dp,
+                    color = palette.divider,
                 )
             }
-            onRemoveFromPlaylist?.let {
+
+            onSetAsRingtone?.let { setRingtone ->
                 ActionRow(
-                    icon = Icons.Rounded.PlaylistRemove,
-                    label = "Remove from this playlist",
+                    icon = Icons.Rounded.NotificationsActive,
+                    label = "Set as Ringtone",
+                    tint = palette.accent,
+                    accent = palette.accent,
+                    onClick = setRingtone,
+                )
+            }
+
+            if (!isOffline) {
+                ActionRow(
+                    icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                    label = if (liked) "Remove from Liked Music" else "Like",
+                    tint = if (liked) palette.accent else null,
+                    accent = palette.accent,
+                    onClick = onToggleLike,
+                )
+                ActionRow(
+                    icon = if (disliked) Icons.Rounded.ThumbDown else Icons.Rounded.ThumbDownOffAlt,
+                    label = if (disliked) "Undo dislike" else "Dislike & skip",
+                    tint = if (disliked) palette.accent else null,
+                    accent = palette.accent,
+                    onClick = {
+                        if (!disliked && onDislikeAndSkip != null) {
+                            onDislikeAndSkip()
+                        } else {
+                            onToggleDislike()
+                        }
+                    },
+                )
+                ActionRow(
+                    icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                    label = "Add to playlist",
+                    accent = palette.accent,
+                    onClick = onAddToPlaylist,
+                )
+                onEnterAmbientCinemaMode?.let { enterCinema ->
+                    ActionRow(
+                        icon = Icons.Rounded.Fullscreen,
+                        label = "Cinema Mode",
+                        accent = palette.accent,
+                        onClick = enterCinema,
+                    )
+                }
+                onRemoveFromPlaylist?.let {
+                    ActionRow(
+                        icon = Icons.Rounded.PlaylistRemove,
+                        label = "Remove from this playlist",
+                        accent = palette.accent,
+                        onClick = it,
+                    )
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 6.dp),
+                    thickness = 0.5.dp,
+                    color = palette.divider,
+                )
+            }
+
+            DownloadRow(song, palette, isOffline, onDownload)
+            if (onPlayNext != null) {
+                ActionRow(
+                    icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
+                    label = "Play next",
+                    accent = palette.accent,
+                    onClick = onPlayNext,
+                )
+            }
+            if (onAddToQueue != null) {
+                ActionRow(
+                    icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                    label = "Add to queue",
+                    accent = palette.accent,
+                    onClick = onAddToQueue,
+                )
+            }
+            when (val id = song.albumId) {
+                null -> if (resolvingLinks) LoadingActionRow(Icons.Rounded.Album, "Open album", palette)
+                else -> ActionRow(Icons.Rounded.Album, "Open album", accent = palette.accent) { onOpenAlbum(id) }
+            }
+            when (val id = song.artistId) {
+                null -> if (resolvingLinks) LoadingActionRow(Icons.Rounded.Person, "Open artist", palette)
+                else -> ActionRow(Icons.Rounded.Person, "Open artist", accent = palette.accent) { onOpenArtist(id) }
+            }
+            if (showSleepTimer) {
+                ActionRow(
+                    icon = Icons.Rounded.Bedtime,
+                    label = "Sleep timer",
+                    accent = palette.accent,
+                ) { pickingSleepTimer = true }
+            }
+
+            onOpenEqualizer?.let { openEq ->
+                ActionRow(
+                    icon = Icons.Rounded.Tune,
+                    label = "Equalizer",
+                    accent = palette.accent,
+                    onClick = openEq,
+                )
+            }
+            onOpenAudioEffects?.let { openEffects ->
+                ActionRow(
+                    icon = Icons.Rounded.AutoAwesome,
+                    label = "Slowed / Nightcore Mode",
+                    accent = palette.accent,
+                    onClick = openEffects,
+                )
+            }
+
+            if (!isOffline) {
+                onShare?.let {
+                    ActionRow(Icons.Rounded.Share, "Share", accent = palette.accent, onClick = it)
+                }
+            }
+            // Last, and only from the player: it is about the track playing right
+            // now rather than about the song as a thing in a library, and it is
+            // the one row here nobody reaches for by accident.
+            onOpenDetails?.let {
+                ActionRow(
+                    icon = Icons.Rounded.Info,
+                    label = "Song details",
                     accent = palette.accent,
                     onClick = it,
                 )
             }
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 6.dp),
-                thickness = 0.5.dp,
-                color = palette.divider,
-            )
-        }
-
-        DownloadRow(song, palette, isOffline, onDownload)
-        ActionRow(
-            icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
-            label = "Play next",
-            accent = palette.accent,
-            onClick = onPlayNext,
-        )
-        ActionRow(
-            icon = Icons.AutoMirrored.Rounded.QueueMusic,
-            label = "Add to queue",
-            accent = palette.accent,
-            onClick = onAddToQueue,
-        )
-        when (val id = song.albumId) {
-            null -> if (resolvingLinks) LoadingActionRow(Icons.Rounded.Album, "Open album", palette)
-            else -> ActionRow(Icons.Rounded.Album, "Open album", accent = palette.accent) { onOpenAlbum(id) }
-        }
-        when (val id = song.artistId) {
-            null -> if (resolvingLinks) LoadingActionRow(Icons.Rounded.Person, "Open artist", palette)
-            else -> ActionRow(Icons.Rounded.Person, "Open artist", accent = palette.accent) { onOpenArtist(id) }
-        }
-        if (showSleepTimer) {
-            ActionRow(
-                icon = Icons.Rounded.Bedtime,
-                label = "Sleep timer",
-                accent = palette.accent,
-            ) { pickingSleepTimer = true }
-        }
-
-        onOpenEqualizer?.let { openEq ->
-            ActionRow(
-                icon = Icons.Rounded.Tune,
-                label = "Equalizer",
-                accent = palette.accent,
-                onClick = openEq,
-            )
-        }
-        onOpenAudioEffects?.let { openEffects ->
-            ActionRow(
-                icon = Icons.Rounded.AutoAwesome,
-                label = "Slowed / Nightcore Mode",
-                accent = palette.accent,
-                onClick = openEffects,
-            )
-        }
-
-        if (!isOffline) {
-            onShare?.let {
-                ActionRow(Icons.Rounded.Share, "Share", accent = palette.accent, onClick = it)
+            onCopyLog?.let {
+                ActionRow(Icons.Rounded.BugReport, "Copy Log", accent = palette.accent, onClick = it)
             }
+            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.navigationBarsPadding())
         }
-        // Last, and only from the player: it is about the track playing right
-        // now rather than about the song as a thing in a library, and it is
-        // the one row here nobody reaches for by accident.
-        onOpenDetails?.let {
-            ActionRow(
-                icon = Icons.Rounded.Info,
-                label = "Details",
-                accent = palette.accent,
-                onClick = it,
-            )
-        }
-        onCopyLog?.let {
-            ActionRow(Icons.Rounded.BugReport, "Copy Log", accent = palette.accent, onClick = it)
-        }
-        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -366,9 +414,13 @@ private fun TintedSheet(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val maxSheetHeight = (configuration.screenHeightDp * 0.68f).dp
+
     Box(
-        modifier
+        modifier = modifier
             .fillMaxWidth()
+            .heightIn(max = maxSheetHeight)
             .clip(SHEET_SHAPE)
             .border(
                 1.dp,
@@ -649,12 +701,17 @@ private fun DownloadRow(song: Song, palette: ArtworkPalette, isOffline: Boolean,
 
 /** End of track or a duration, plus a way out once one is running. */
 @Composable
-private fun SleepTimerPicker(palette: ArtworkPalette, onBack: () -> Unit) {
+private fun ColumnScope.SleepTimerPicker(palette: ArtworkPalette, onBack: () -> Unit) {
     val chosen by SleepTimer.minutes.collectAsStateWithLifecycle()
     val afterTrack by SleepTimer.afterTrack.collectAsStateWithLifecycle()
     val countdown = sleepTimerCountdown()
 
-    Column(Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f, fill = false)
+            .verticalScroll(rememberScrollState()),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -709,7 +766,8 @@ private fun SleepTimerPicker(palette: ArtworkPalette, onBack: () -> Unit) {
                 onBack()
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.navigationBarsPadding())
     }
 }
 

@@ -68,7 +68,8 @@ object TrackLog {
     // record(), which is what Copy Log actually depends on.
 
     fun d(tag: String, message: String, about: String? = working.get()) {
-        if (BuildConfig.DEBUG) Log.d(tag, message)
+        if (!BuildConfig.DEBUG) return
+        Log.d(tag, message)
         record('D', message, about)
     }
 

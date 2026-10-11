@@ -563,6 +563,15 @@ object AudioCache {
                     }
                     // Also preload next 2nd song initial buffer so user skipping ahead plays instantly
                     videoIds.getOrNull(1)?.let { next2 ->
+                        val target2 = upcoming.firstOrNull { it.mediaId == next2 }?.target
+                        if (substitutable && target2 != null && StreamChoice.of(next2) == null) {
+                            launch(TrackLog.about(next2)) {
+                                runCatching { SourceResolver.prefetchSubstitute(target2) }
+                                    .onFailure { TrackLog.d(TAG, "warm-up substitute failed for $next2: ${it.message}", about = next2) }
+                                    .getOrNull()
+                                    ?.also { StreamChoice.remember(next2, it, substituted = true) }
+                            }
+                        }
                         launch(TrackLog.about(next2)) {
                             delay(PREFETCH_DELAY_MS + 200L)
                             fetch(next2, 0, PRELOAD_BYTES)

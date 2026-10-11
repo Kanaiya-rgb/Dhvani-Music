@@ -25,6 +25,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.dhvani.data.settings.AppSettings
+import com.music.dhvani.data.model.detectSongLanguage
 import com.music.dhvani.download.Downloads
 import com.music.dhvani.ui.haptics.Haptic
 import com.music.dhvani.ui.haptics.rememberHaptics
@@ -64,17 +65,69 @@ import com.music.dhvani.R
 import com.music.dhvani.data.model.ROW_ART_PX
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.artworkAt
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import java.util.Locale
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.border
 
-fun Modifier.thumbnailBorder(shape: Shape): Modifier = composed {
+fun Modifier.thumbnailBorder(shape: Shape): Modifier =
     this.border(
         width = 1.dp,
-        color = if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.15f),
-        shape = shape
+        color = Color.White.copy(alpha = 0.12f),
+        shape = shape,
     )
+
+@Composable
+fun LanguageBadgePill(
+    language: String,
+    modifier: Modifier = Modifier,
+) {
+    val (bgColor, textColor, borderColor) = when (language.lowercase(Locale.ROOT)) {
+        "hindi" -> Triple(Color(0xFFFF9800).copy(alpha = 0.18f), Color(0xFFFFB74D), Color(0xFFFF9800).copy(alpha = 0.45f))
+        "telugu" -> Triple(Color(0xFF10B981).copy(alpha = 0.18f), Color(0xFF34D399), Color(0xFF10B981).copy(alpha = 0.45f))
+        "tamil" -> Triple(Color(0xFF3B82F6).copy(alpha = 0.18f), Color(0xFF60A5FA), Color(0xFF3B82F6).copy(alpha = 0.45f))
+        "kannada" -> Triple(Color(0xFF8B5CF6).copy(alpha = 0.18f), Color(0xFFA78BFA), Color(0xFF8B5CF6).copy(alpha = 0.45f))
+        "malayalam" -> Triple(Color(0xFF06B6D4).copy(alpha = 0.18f), Color(0xFF22D3EE), Color(0xFF06B6D4).copy(alpha = 0.45f))
+        "punjabi" -> Triple(Color(0xFFEC4899).copy(alpha = 0.18f), Color(0xFFF472B6), Color(0xFFEC4899).copy(alpha = 0.45f))
+        "bhojpuri" -> Triple(Color(0xFFEAB308).copy(alpha = 0.18f), Color(0xFFFACC15), Color(0xFFEAB308).copy(alpha = 0.45f))
+        "bengali" -> Triple(Color(0xFF14B8A6).copy(alpha = 0.18f), Color(0xFF2DD4BF), Color(0xFF14B8A6).copy(alpha = 0.45f))
+        "gujarati" -> Triple(Color(0xFFF97316).copy(alpha = 0.18f), Color(0xFFFB923C), Color(0xFFF97316).copy(alpha = 0.45f))
+        "marathi" -> Triple(Color(0xFFEF4444).copy(alpha = 0.18f), Color(0xFFF87171), Color(0xFFEF4444).copy(alpha = 0.45f))
+        "odia" -> Triple(Color(0xFF0284C7).copy(alpha = 0.18f), Color(0xFF38BDF8), Color(0xFF0284C7).copy(alpha = 0.45f))
+        "japanese", "korean" -> Triple(Color(0xFFA855F7).copy(alpha = 0.18f), Color(0xFFC084FC), Color(0xFFA855F7).copy(alpha = 0.45f))
+        else -> Triple(
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.38f),
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(bgColor)
+            .border(
+                0.6.dp,
+                borderColor,
+                RoundedCornerShape(4.dp),
+            )
+            .padding(horizontal = 5.dp, vertical = 1.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = language.uppercase(Locale.ROOT),
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.3.sp,
+            ),
+            color = textColor,
+            maxLines = 1,
+        )
+    }
 }
 
 /**
@@ -390,16 +443,36 @@ private fun SongRowContent(
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val detectedLang = remember(song.title, song.artist, song.albumName) {
+                detectSongLanguage(song.title, song.artist, song.albumName)
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = song.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (detectedLang != null) {
+                    LanguageBadgePill(detectedLang)
+                }
+            }
             Spacer(Modifier.height(2.dp))
+            val subtitleText = remember(song.artist, song.albumName) {
+                val album = song.albumName?.trim()
+                if (!album.isNullOrBlank() && !album.equals(song.title.trim(), ignoreCase = true)) {
+                    "${song.artist} • $album"
+                } else {
+                    song.artist
+                }
+            }
             Text(
-                text = song.artist,
+                text = subtitleText,
                 style = MaterialTheme.typography.bodyMedium,
                 color = subtitleColor,
                 maxLines = 1,

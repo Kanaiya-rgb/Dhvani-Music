@@ -187,6 +187,8 @@
     <string name="show_nerd_stats">टेक्निकल आंकड़े दिखाएं</string>
     <string name="show_nerd_stats_subtitle">प्लेयर पर कोडेक, बिटरेट और सैंपल रेट</string>
     <string name="theme">थीम</string>
+    <string name="performance_mode">पर्फ़ॉर्मेंस मोड (हल्का मोड)</string>
+    <string name="performance_mode_subtitle">धीमे फ़ोनों के लिए ब्लर और भारी एनिमेशन बंद करके ऐप को सुपर स्मूथ बनाता है</string>
     <string name="reduce_animation">एनिमेशन कम करें</string>
     <string name="reduce_animation_subtitle">मुख्य प्लेयर के ग्रेडिएंट को बहने के बजाय स्थिर रखता है</string>
     <string name="reduce_dynamic_blur">डायनामिक ब्लर कम करें</string>

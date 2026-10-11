@@ -6,10 +6,7 @@ import com.music.dhvani.data.model.SearchResult
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.sources.SourceRegistry
 import com.music.dhvani.data.sources.TrackMatcher
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+
 
 /** Most AutoPlay-suggested tracks kept queued ahead of the current one at once. */
 const val MAX_QUEUED_AUTOPLAY = 10
@@ -43,16 +40,5 @@ suspend fun loadAutoplayTracks(
     val seed = youtubeSeedFor(seedSong) ?: return Result.success(emptyList())
     val related = YtMusicRepository.radio(seed).getOrElse { return Result.failure(it) }
     val extra = QueueBuilder.extend(existing, related, limit)
-    if (extra.isEmpty()) return Result.success(emptyList())
-
-    val resolved = try {
-        coroutineScope {
-            extra.map { async { YtMusicRepository.resolveAudio(it) } }.awaitAll()
-        }
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (failure: Throwable) {
-        return Result.failure(failure)
-    }
-    return Result.success(resolved.map { it.copy(fromAutoplay = true) })
+    return Result.success(extra.map { it.copy(fromAutoplay = true) })
 }

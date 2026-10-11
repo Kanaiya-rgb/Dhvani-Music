@@ -528,6 +528,14 @@ object InnertubeParser {
         val artist = parts.firstOrNull {
             !it.matches(DURATION) && it.lowercase(Locale.ROOT) !in TYPE_WORDS && !it.matches(TALLY)
         }
+        val albumPart = parts.firstOrNull {
+            it != artist &&
+                it != duration &&
+                it.lowercase(Locale.ROOT) !in TYPE_WORDS &&
+                !it.matches(DURATION) &&
+                !it.matches(TALLY) &&
+                !it.matches(Regex("""^\d{4}$"""))
+        }
 
         // The artist/album names in the subtitle carry browse endpoints; pull
         // them out so the long-press menu can open those pages.
@@ -555,7 +563,7 @@ object InnertubeParser {
             durationText = duration,
             artistId = credits.artistId ?: fallback.artistId,
             albumId = credits.albumId ?: fallback.albumId,
-            albumName = credits.albumName ?: fallback.albumName,
+            albumName = credits.albumName ?: fallback.albumName ?: albumPart,
             // Only playlist rows carry one; on an album or a search hit this
             // is simply absent, which is what makes "remove from playlist"
             // offer itself exactly where it means something.
