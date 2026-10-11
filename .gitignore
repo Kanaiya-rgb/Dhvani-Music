@@ -55,6 +55,7 @@ spotify_spdc.txt
 *.env
 
 # Project scratch / debug artifacts
+/Banner.png
 .shots/
 .tmp_verify/
 .debug/
