@@ -57,105 +57,119 @@ Built from the ground up in modern Kotlin with Jetpack Compose and AndroidX Medi
 
 ## ✨ Features
 
-### 🎧 Playback & Audio Engine
+### 🎧 Playback & Dual-Source Audio Engine
 
 | Feature | Details |
 |:---|:---|
-| **Ad-Free YouTube Music** | Full YouTube Music catalog — search, browse, queue — zero ads, zero interruptions. |
-| **Hi-Res Lossless Audio** | FLAC/ALAC streams up to 24-bit/192kHz via pluggable module sources with intelligent fallback. |
+| **Dual-Source Streaming Engine** | Unified simultaneous streaming pipeline querying both **YouTube Music** (160kbps Opus) and **JioSaavn** (up to 320kbps Lossless) with zero-latency switching. |
+| **Seamless Hi-Res Quality Switcher** | Dynamic quality sheet allowing instant switching between standard and studio high-fidelity streams during live playback. |
+| **Ad-Free YouTube Music** | Complete YouTube Music catalog — search, browse, queue, and stream with zero ads and zero interruptions. |
+| **Hi-Res Lossless Audio** | FLAC/ALAC lossless audio streams up to 24-bit/192kHz via pluggable module sources with intelligent fallback. |
 | **Gapless Crossfade** | Smooth, configurable 0–12 second crossfades between tracks so your music never stops. |
-| **Automix (Beat-Match DSP)** | Native C++ `dhvani_analysis` engine with tempo alignment and DJ-style automated beat-matched transitions. |
-| **3D Spatial Audio** | Binaural DSP surround soundstage with dedicated per-mode equalizer curve presets. |
+| **Automix (Beat-Match DSP)** | Native C++ `dhvani_analysis` engine with tempo alignment and automated beat-matched transitions. |
+| **3D Spatial Audio & Surround** | Binaural DSP surround soundstage with dedicated per-mode equalizer curve presets. |
+| **10-Band Graphic Equalizer** | Studio frequency sculpting with custom preset profiles (Bass Boost, Acoustic, Vocal Enhancer, Treble Booster, etc.). |
 | **Dolby Atmos / System DSP** | Direct integration with device hardware Dolby Atmos panel when supported. |
-| **10-Band Graphic Equalizer** | Fine-tune any frequency with custom preset profiles (Bass Boost, Acoustic, Vocal Enhancer, etc.). |
-| **Per-Network Quality Control** | Independent audio quality ceilings for Wi-Fi and mobile data to save bandwidth. |
-| **Skip Silence** | Automatically bypass dead air in podcasts and track intros without missing a beat. |
-| **Playback Speed** | 0.5× to 2.0× fine-grained speed control. |
-| **Live Audio Pipeline Inspector** | Real-time DSP sheet showing active bitrate, codec, bit depth, sample rate, and network buffer health. |
+| **Live Audio Pipeline Inspector** | Real-time DSP sheet displaying active bitrate, codec, bit depth, sample rate, and network buffer telemetry. |
+| **Per-Network Quality Control** | Independent audio quality ceilings for Wi-Fi and mobile data to conserve bandwidth. |
+| **Skip Silence & Speed Control** | Automatically bypass dead air in intros, plus 0.5× to 2.0× fine-grained playback speed control. |
 
 ---
 
-### 🎬 Ambient Cinema & Visual Player *(New in v2.5.0)*
+### ✂️ Studio Ringtone Trimmer & Audio Tools *(New in v2.7.0)*
+
+| Tool | Capabilities |
+|:---|:---|
+| **Interactive Waveform Visualizer** | Zoomable waveform editor with millisecond-precision draggable crop handles. |
+| **Live Preview Playback** | Instant loop previewing of your trimmed section before saving or applying. |
+| **Fade In & Fade Out** | Smooth acoustic transitions to avoid abrupt starts or clicks. |
+| **1-Tap System Setup** | Directly apply custom trimmed audio as **Phone Ringtone**, **Notification Tone**, or **Alarm Sound** with native Android permission handling. |
+
+---
+
+### 🔀 Alternative Song Versions Sheet *(New in v2.7.0)*
+
+Explore every version of your favorite tracks in a single tap:
+- **Acoustic & Unplugged**: Raw, stripped-down vocal and guitar/piano renditions.
+- **Slowed & Reverb**: Atmospheric, ethereal nocturnal vibes.
+- **Speed Up / Nightcore**: High-tempo, energetic dance edits.
+- **Live & Concert**: Electrifying live festival and tour recordings.
+- **8D & Spatial Audio**: Immersive rotating binaural headphone experiences.
+- **Instrumental & Karaoke**: Clean backing tracks with isolated vocals removed.
+
+---
+
+### 🎬 Ambient Cinema & Visual Player
 
 | Feature | Details |
 |:---|:---|
 | **Ambient Cinema Landscape Mode** | Auto-rotate to a fullscreen cinematic landscape player when tilting your phone. Immersive ambient glow, vinyl turntable, and live playback controls. |
-| **Custom Seekbar Sync** | Unique seekbar style (Capsule, Wavy, Squiggle, Retro, Vinyl, etc.) stays perfectly synchronized across Portrait and Landscape Cinema views. |
-| **Spotify Canvas Video Loops** | Hypnotic vertical looping videos on the fullscreen Now Playing screen. Supports Spotify Canvas & Apple Music motion loops. |
+| **Zero-Login Spotify Canvas Loops** | Hypnotic vertical video loops powered by cloud key resolvers — no personal Spotify SP_DC login required. Supports Apple Music motion art. |
+| **Custom Seekbar Sync** | Unique seekbar styles (Capsule, Wavy, Squiggle, Retro Vinyl, Geometric, etc.) stay synchronized across Portrait and Landscape views. |
 | **Multi-Point Mesh Gradient** | Fluid, multi-color mesh gradient backgrounds that adapt dynamically to every album cover's palette. |
-| **Frosted Glassmorphism UI** | Silky translucent navigation bars, bottom sheets, and player overlays with real-time blur. |
-| **12+ Kinetic Lyrics Text Effects** | Physics-based synced lyrics with Neon, Glitch, Ocean Wave, Aurora, Ember, Chrome, CRT, Sine Wave, Smoke, Kinetic Equalizer, Ghostwrite, and Typewriter effects. |
+| **Frosted Glassmorphism UI** | Silky translucent navigation bars, bottom sheets, and player overlays with real-time hardware blur. |
 | **Dynamic Artwork Color Theming** | Album cover palette extracted and applied across the entire player UI on every track change. |
 
 ---
 
-### 🖼️ Lyrics Share Card Generator *(New in v2.5.0)*
+### 🎤 Synchronized Lyrics & Lyric Focus
 
-- Select up to **7 synced lyric lines** to create a beautiful shareable quote card.
-- **5 themes**: Vibrant, Midnight, Sunset, Aurora, and Pure OLED.
-- **Flexible format**: Story mode (9:16) or Compact Card (4:5 / Square).
-- Optimized for **WhatsApp Status, Instagram Stories**, and general sharing.
+| Feature | Details |
+|:---|:---|
+| **Lyric Focus Mode *(New in v2.7.0)*** | Full-screen distraction-free lyric view with buttery-smooth line tracking and active line glow. |
+| **Multi-Source Engine & LrcRed** | Redundant fallback chain spanning **LrcRed**, **LRCLIB**, **Musixmatch**, **Kugou**, **Genius**, and **YouTube** for deep Indian and global lyric coverage. |
+| **12+ Kinetic Lyrics Text Effects** | Physics-based animations: Neon, Glitch, Ocean Wave, Aurora, Ember, Chrome, CRT, Sine Wave, Smoke, Kinetic Equalizer, Ghostwrite, and Typewriter. |
+| **Word-by-Word Syllable Sync** | Syllable-level highlighting for supported tracks with real-time position seeking. |
+| **Lyrics Share Card Generator** | Select up to 7 lyric lines and export an aesthetic quote card for WhatsApp, Instagram, or Twitter (Story 9:16 or Square 1:1). |
+| **Inline Translation** | Real-time lyric translation across 100+ languages. |
 
 ---
 
-### 📱 Home-Screen Widgets *(New in v2.4.0)*
+### 💬 In-App Discord Community & Social *(New in v2.7.0)*
+
+- **In-App Community Hub**: Dedicated Discord screen inside the app with direct join link (`discord.gg/cQkNcqCwkA`), release channels, and bug tracker access.
+- **Discord Rich Presence (RPC)**: Live track, artist, album artwork, and real-time playback elapsed bar displayed on your Discord profile.
+- **Listen Together**: Synchronized group listening rooms with host controls and guest room codes.
+- **Last.fm & ListenBrainz Scrobbling**: Native scrobbling with configurable timing thresholds.
+- **YouTube Music Sync**: Optional Google account sign-in to sync liked songs, playlists, and history.
+
+---
+
+### 📱 Home-Screen Widgets
 
 | Widget | Style | Details |
 |:---|:---|:---|
-| **Pill Widget** | 4×1 compact | Sleek modern pill with album art, track name, and playback controls. |
-| **Turntable Widget** | 3×3 premium | Retro rotating vinyl disc with real-time state sync and media controls. |
+| **Pill Widget** | 4×1 compact | Sleek modern pill with album art, track title, and responsive playback controls. |
+| **Turntable Widget** | 3×3 vinyl | Retro spinning turntable disc with live spinning state and media controls. |
 
 ---
 
-### 🌐 Connectivity, Accounts & Social
+### 🎨 Customization & Appearance
 
-- **YouTube Music Sync** — Optional Google account login to sync playlists, liked songs, and history.
-- **Listen Together** — Real-time synchronized group listening rooms with room codes (host & guest roles).
-- **Discord Rich Presence** — Live track, album art, and playback progress shown on your Discord profile.
-- **Last.fm & ListenBrainz Scrobbling** — Native scrobbling with configurable timing and delay thresholds.
-- **Firebase Push Notifications** *(New in v2.5.0)* — Instant in-app update alerts when a new version is released.
-
----
-
-### 📜 Lyrics Engine
-
-- **Multi-source support**: LrcLib, Kugou, Musixmatch, Genius, YouTube, PaxSenix.
-- **Word-by-word synced highlighting** with syllable-level precision.
-- **Live source picker**: Switch between lyrics providers on-the-fly without interrupting playback.
-- **Translation**: Inline lyric translation to 100+ languages.
-- **Lyrics Share Card**: Export any lines as a beautiful aesthetic image.
+- **12+ Player Seekbar Styles**: Capsule, Wavy, Squiggle, Retro Vinyl, Equalizer Bar, Minimalist Line, Geometric.
+- **Pure AMOLED Black, Dynamic HSL Accent, and Dark/Light Modes.**
+- **High Refresh Rate**: Silky smooth 90Hz/120Hz scrolling support.
+- **Dynamic Island Notch Player**: Floating mini-player with live frequency equalizer animation on compatible devices.
+- **Granular UI Control**: Configurable grid cell density, mini player background styles, and bottom navigation bar aesthetics.
 
 ---
 
-### 🎨 Appearance & Customization
-
-- **12+ Player Seekbar Styles**: Capsule, Wavy, Squiggle, Retro Vinyl, Equalizer Bar, Geometric, and more.
-- **Player Background Styles**: Glassmorphism, Gradient, Animated Blur, Solid, and Mesh.
-- **Pure AMOLED Black, Dynamic HSL Accent, and Light/Dark modes.**
-- **High Refresh Rate**: 90Hz/120Hz smooth scrolling support.
-- **Dynamic Island Notch Player**: Floating mini-player with live equalizer animation (on compatible devices).
-- **Mini Player Backgrounds**, grid cell size, display density, and navigation bar style — all fully configurable.
-
----
-
-### 🧭 Explore: 50+ Moods, Genres & Charts
+### 🧭 Explore: 50+ Moods, Genres & 15+ Languages
 
 | Section | Highlights |
 |:---|:---|
+| **Multi-Language Exploration *(New in v2.7.0)*** | Dedicated language filters for Hindi, Punjabi, Tamil, Telugu, Bhojpuri, Gujarati, Bengali, Malayalam, Kannada, Marathi, English, Spanish, Korean, and more. |
 | **Moods & Moments** | Chill ☕ · Focus 📚 · Workout 🏋️ · Party 🎉 · Romance 💖 · Sleep 🌙 · Sad 💔 · Commute 🚗 |
-| **Indian Regional** | Bhojpuri · Haryanvi · Punjabi · Bengali · Gujarati · Marathi · Tamil · Telugu · Kannada · Malayalam · Ghazal/Sufi · Hindustani & Carnatic Classical |
-| **Global** | K-Pop 💜 · J-Pop 🌸 · Latin 💃 · Metal ⚡ · Jazz 🎷 · Arabic · African · Dance & Electronic |
-| **Charts** | Top 20 trending, New Releases, Podcasts & Long Listens |
+| **Charts & Curated Mixes** | Top 20 Global, Trending Regional, New Releases, Viral Hits, and Podcasts. |
 
 ---
 
-### 💾 Offline & Local Music
+### 💾 Offline, Downloads & Local Music
 
-- **Full Metadata Embedding** — Downloaded files auto-embed hi-res cover art, artist, album, and lyrics tags.
-- **Local Device Music Player** — Scan and play music from internal storage or SD card.
-- **Auto-Download**: Liked songs and recently played tracks can be auto-downloaded in the background.
-- **Playlist Import/Export** — Spotify, YouTube Music, and JSON/M3U formats supported.
-- **6× Faster Playlist Import**: Parallel coroutine-based Spotify track resolver engine.
+- **Full Metadata Embedding**: Downloaded tracks auto-embed 3000×3000 album covers, artist, title, album, and ID3 lyrics tags.
+- **Local Storage Scanner**: Scan and play local audio files from internal storage or SD cards with gapless support.
+- **Smart Auto-Download**: Auto-cache or download liked songs and repeat favorites in the background.
+- **Fast Playlist Import/Export**: Parallel coroutine engine importing Spotify playlists **6× faster** (Spotify, YouTube Music, M3U/JSON).
 
 ---
 
@@ -254,17 +268,21 @@ Dhvani-Music/
 │       │   │   ├── AppearanceSettingsScreen.kt # Theme, seekbars, canvas styles
 │       │   │   ├── AccountAndScrobblingScreen.kt # Last.fm, ListenBrainz, Discord
 │       │   │   ├── ListenTogetherScreen.kt    # Real-time group listening rooms
+│       │   │   ├── DiscordScreen.kt           # 🆕 In-app Discord community hub
 │       │   │   └── SourcesScreen.kt           # Audio source & quality config
 │       │   │
 │       │   ├── player/
 │       │   │   ├── NowPlayingScreen.kt        # Fullscreen portrait player
-│       │   │   ├── AmbientCinemaLandscapeOverlay.kt # 🆕 Landscape cinema mode
-│       │   │   ├── AudioPipelineSheet.kt      # 🆕 Live DSP telemetry inspector
-│       │   │   ├── LyricsShareCardSheet.kt    # 🆕 7-line lyrics image generator
-│       │   │   ├── LyricsSourcePickerSheet.kt # 🆕 On-the-fly lyrics source picker
+│       │   │   ├── AmbientCinemaLandscapeOverlay.kt # Landscape cinema mode
+│       │   │   ├── LyricFocus.kt              # 🆕 Distraction-free synced lyric view
+│       │   │   ├── AudioPipelineSheet.kt      # Live DSP telemetry inspector
+│       │   │   ├── LyricsShareCardSheet.kt    # 7-line lyrics image generator
+│       │   │   ├── LyricsSourcePickerSheet.kt # On-the-fly lyrics source picker
 │       │   │   └── CanvasArtworkPlayer.kt     # Spotify/Apple Motion canvas loops
 │       │   │
 │       │   ├── components/
+│       │   │   ├── RingtoneTrimmerSheet.kt    # 🆕 Studio waveform ringtone trimmer
+│       │   │   ├── SongVersionsSheet.kt       # 🆕 Alternative versions discoverer
 │       │   │   ├── PlayerSliders.kt           # 12+ custom kinetic seekbar styles
 │       │   │   ├── AudioPipelineDialog.kt     # Quick stream info overlay
 │       │   │   ├── SongActionsSheet.kt        # Track long-press context menu
@@ -275,21 +293,23 @@ Dhvani-Music/
 │       │
 │       ├── 🔊 playback/
 │       │   ├── PlaybackService.kt             # Foreground MediaSession service
-│       │   ├── AudioEngine.kt                 # 🆕 Decoupled audio pipeline
-│       │   ├── PlaybackEngine.kt              # 🆕 Crossfade & gapless engine
+│       │   ├── AudioEngine.kt                 # Decoupled audio pipeline
+│       │   ├── PlaybackEngine.kt              # Crossfade & gapless engine
 │       │   ├── ChunkedDataSource.kt           # Progressive HTTP streaming cache
 │       │   └── eq/EqualizerManager.kt         # 10-band EQ + Dolby DSP manager
 │       │
 │       ├── 🌐 data/
 │       │   ├── innertube/                     # YouTube Music stream resolver
-│       │   ├── lyrics/LyricsRepository.kt    # Multi-source lyrics engine
-│       │   ├── playlist/
-│       │   │   ├── PlaylistManager.kt         # Core playlist CRUD
-│       │   │   ├── PlaylistImportManager.kt   # 🆕 Fast parallel Spotify importer
-│       │   │   └── PlaylistSyncManager.kt     # 🆕 Auto background sync engine
-│       │   ├── canvas/CommunityCanvas.kt      # Community canvas resolver
-│       │   ├── DhvaniFirebaseMessagingService.kt # 🆕 FCM push update alerts
+│       │   ├── jiosaavn/                      # 🆕 JioSaavn 320kbps lossless provider
+│       │   ├── lyrics/                        # Multi-source lyrics (LrcRed, LRCLIB)
+│       │   ├── playlist/                      # CRUD, import & sync managers
+│       │   ├── canvas/CommunityCanvas.kt      # Community & cloud canvas resolver
+│       │   ├── model/SongLanguage.kt          # 🆕 15+ language regional catalog
+│       │   ├── DhvaniFirebaseMessagingService.kt # FCM push update alerts
 │       │   └── settings/AppSettings.kt        # Reactive DataStore preferences
+│       │
+│       ├── ✂️ ringtone/
+│       │   └── RingtoneHelper.kt              # 🆕 Native ringtone/alarm export engine
 │       │
 │       └── 📱 widget/
 │           ├── MediaWidgetPill.kt             # 4×1 compact pill widget
