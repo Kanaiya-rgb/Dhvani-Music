@@ -427,7 +427,7 @@ Want to contribute? Read **[CONTRIBUTING.md](CONTRIBUTING.md)** to get started!
 
 Dhvani Music is built with deep gratitude to these open-source projects:
 
-- **[Dhvani](https://github.com/kushagrasinghx/Dhvani)** by [Kushagra Singh](https://github.com/kushagrasinghx) — Pioneering architecture, YouTube Music stream integration, and aesthetic UI foundations.
+- **[BitChord](https://github.com/kushagrasinghx/BitChord)** by [Kushagra Singh](https://github.com/kushagrasinghx) — Pioneering architecture, YouTube Music stream integration, and aesthetic UI foundations.
 - **[Meld](https://github.com/FrancescoGrazioso/Meld)** by [Francesco Grazioso](https://github.com/FrancescoGrazioso) — Material 3 design, playlist management, and open-source Android music ecosystem contributions.
 - **[NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor)** — Robust, lightweight YouTube stream extraction infrastructure.
 - **[AndroidX Jetpack Compose](https://developer.android.com/jetpack/compose)** & **[Media3](https://developer.android.com/media/media3)** — The modern foundation powering our entire audio engine and UI.
