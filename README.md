@@ -21,7 +21,7 @@
 
 <br/>
 
-[📥 Download](#-download--installation) · [✨ Features](#-features) · [🏛️ Architecture](#-architecture--tech-stack) · [🛠️ Build](#-build-from-source) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements)
+[📥 Download](#-download--installation) · [📐 Showcases](#-technical-showcases) · [✨ Features](#-features) · [🏛️ Architecture](#-architecture--tech-stack) · [🛠️ Build](#-build-from-source) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements)
 
 </div>
 
@@ -37,6 +37,20 @@
 **Dhvani Music** is a feature-rich, open-source Android music client built for those who refuse to compromise. It fuses **YouTube Music's massive catalogue** with **Hi-Res lossless audio**, **real-time synced lyrics**, **Ambient Cinema landscape mode**, and an expressive **Material 3 / Frosted-Glass UI** — all completely ad-free and privacy-first.
 
 Built from the ground up in modern Kotlin with Jetpack Compose and AndroidX Media3, Dhvani is a next-generation music player designed to look premium, feel snappy, and sound incredible.
+
+---
+
+## 📐 Technical Showcases
+
+<div align="center">
+  <img src="assets/Showcase.png" alt="Dhvani Music Technical Showcases" width="100%" />
+</div>
+
+<br/>
+
+| 🎛️ 32-bit DSP & Spatial Sound | 🔄 Dual-Source Stream Resolver | 🌐 360° Surround Sound & Polar Pan |
+|:---|:---|:---|
+| Hardware `LoudnessEnhancer` overdrive, 10-band graphic equalizer, and real-time Slowed/Nightcore pitch & tempo DSP. | Intelligent YouTube Music + JioSaavn 320kbps fallback matching with parallel chunked caching pipeline. | Binaural spatial audio engine calculating real-time polar coordinate sound pan and ambient stage acoustic depth. |
 
 ---
 
