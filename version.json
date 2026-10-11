@@ -1,8 +1,7 @@
 {
-  "version": "2.6.0",
-  "versionCode": 39,
-  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.6.0",
-  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.6.0/DhvaniMusic-v2.6.0.apk",
-  "notes": "v2.6.0: Cloud Key support for zero-login Spotify Canvas, Audio Quality Picker Sheet, Original Version streaming, decoupled full-screen Canvas from 1:1 album art, performance & caching improvements, and Tidal audio stream streamlining."
+  "version": "2.7.0",
+  "versionCode": 40,
+  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.7.0",
+  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.7.0/DhvaniMusic-v2.7.0.apk",
+  "notes": "v2.7.0: Ringtone Trimmer & Audio Tools, Alternative Song Versions Sheet, In-App Discord Community Integration, Lyric Focus & LrcRed improvements, high-resolution Technical Showcases architecture banner."
 }
-

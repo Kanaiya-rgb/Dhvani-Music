@@ -165,7 +165,7 @@ Built from the ground up in modern Kotlin with Jetpack Compose and AndroidX Medi
 
 | Platform | Link |
 |:---|:---|
-| **Latest APK** | [📥 Download DhvaniMusic-v2.6.0.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest) |
+| **Latest APK** | [📥 Download DhvaniMusic-v2.7.0.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest) |
 | **All Releases** | [📋 View Release History](https://github.com/Kanaiya-rgb/Dhvani-Music/releases) |
 
 ### 📲 Installation Steps
