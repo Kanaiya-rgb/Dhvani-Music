@@ -16,12 +16,13 @@
 
 <br/>
 
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=0d1117)](https://discord.gg/cQkNcqCwkA)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Dev-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white&labelColor=0d1117)](https://ko-fi.com/kanaiya_rgb)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black&labelColor=0d1117)](https://buymeacoffee.com/kanaiya_rgb)
 
 <br/>
 
-[📥 Download](#-download--installation) · [📐 Showcases](#-technical-showcases) · [✨ Features](#-features) · [🏛️ Architecture](#-architecture--tech-stack) · [🛠️ Build](#-build-from-source) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements)
+[📥 Download](#-download--installation) · [💬 Discord](https://discord.gg/cQkNcqCwkA) · [📐 Showcases](#-technical-showcases) · [✨ Features](#-features) · [🏛️ Architecture](#-architecture--tech-stack) · [🛠️ Build](#-build-from-source) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements)
 
 </div>
 
@@ -441,6 +442,18 @@ Want to contribute? Read **[CONTRIBUTING.md](CONTRIBUTING.md)** to get started!
 
 ---
 
+## 💬 Community & Discussion
+
+Have questions, feature suggestions, or bug reports? Join our vibrant community of music lovers and testers on Discord:
+
+<div align="center">
+
+[![Join Discord](https://img.shields.io/badge/Discord-Join%20Dhvani%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=0d1117)](https://discord.gg/cQkNcqCwkA)
+
+</div>
+
+---
+
 ## 🙏 Credits & Acknowledgements
 
 Dhvani Music is built with deep gratitude to these open-source projects:
@@ -478,6 +491,6 @@ See the [LICENSE](LICENSE) file for full details.
 
 Made with ❤️ by [Kanaiya-rgb](https://github.com/Kanaiya-rgb)
 
-**Dhvani Music** • [Releases](https://github.com/Kanaiya-rgb/Dhvani-Music/releases) • [Issues](https://github.com/Kanaiya-rgb/Dhvani-Music/issues) • [CONTRIBUTING.md](CONTRIBUTING.md)
+**Dhvani Music** • [Discord](https://discord.gg/cQkNcqCwkA) • [Releases](https://github.com/Kanaiya-rgb/Dhvani-Music/releases) • [Issues](https://github.com/Kanaiya-rgb/Dhvani-Music/issues) • [CONTRIBUTING.md](CONTRIBUTING.md)
 
 </div>
