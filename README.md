@@ -418,14 +418,6 @@ Dhvani Music is completely free, open-source, and ad-free. If you enjoy it, cons
 <a href="https://github.com/claude">
   <img src="https://avatars.githubusercontent.com/u/81847?v=4" width="64" height="64" style="border-radius: 50%;" alt="Claude" />
 </a>
-&nbsp;&nbsp;
-<a href="https://github.com/google">
-  <img src="https://avatars.githubusercontent.com/u/1342004?v=4" width="64" height="64" style="border-radius: 50%;" alt="Google" />
-</a>
-&nbsp;&nbsp;
-<a href="https://github.com/google-gemini">
-  <img src="https://avatars.githubusercontent.com/u/161781182?v=4" width="64" height="64" style="border-radius: 50%;" alt="Google Gemini" />
-</a>
 
 <br/><br/>
 
@@ -445,8 +437,6 @@ Dhvani Music is built with deep gratitude to these open-source projects:
 - **[AndroidX Jetpack Compose](https://developer.android.com/jetpack/compose)** & **[Media3](https://developer.android.com/media/media3)** — The modern foundation powering our entire audio engine and UI.
 - **[Haze](https://github.com/chrisbanes/haze)** by Chris Banes — Beautiful real-time glassmorphism blur effects.
 - **[Claude](https://claude.ai)** by Anthropic — AI pair programming assistance for architecture design and codebase refinements.
-- **[Google](https://github.com/google)** — Android Jetpack Compose, Media3 (ExoPlayer), and Material 3 design foundation.
-- **[Google Gemini](https://gemini.google.com)** — AI code reasoning, architecture assistance, and intelligent logic optimization.
 
 ---
 
