@@ -44,7 +44,7 @@ Built from the ground up in modern Kotlin with Jetpack Compose and AndroidX Medi
 ## 📐 Technical Showcases
 
 <div align="center">
-  <img src="assets/Showcase.png" alt="Dhvani Music Technical Showcases" width="100%" />
+  <img src="assets/Showcase.png" alt="Dhvani Music Technical Showcases" width="100%" style="border-radius: 16px; max-width: 960px;" />
 </div>
 
 <br/>
