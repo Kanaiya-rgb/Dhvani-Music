@@ -49,9 +49,9 @@ Built from the ground up in modern Kotlin with Jetpack Compose and AndroidX Medi
 
 <br/>
 
-| 🎛️ 32-bit DSP & Spatial Sound | 🔄 Dual-Source Stream Resolver | 🌐 360° Surround Sound & Polar Pan |
+| 🔍 1. Dual-Source Instant Search | ⚡ 2. Seamless Hi-Res Quality Switcher | 🎛️ 3. 32-Bit DSP & 10-Band Pro Equalizer |
 |:---|:---|:---|
-| Hardware `LoudnessEnhancer` overdrive, 10-band graphic equalizer, and real-time Slowed/Nightcore pitch & tempo DSP. | Intelligent YouTube Music + JioSaavn 320kbps fallback matching with parallel chunked caching pipeline. | Binaural spatial audio engine calculating real-time polar coordinate sound pan and ambient stage acoustic depth. |
+| Unified search engine indexing **YouTube Music's global catalogue** and **JioSaavn's regional database** simultaneously with accurate matching. | Intelligent dynamic bitrate auto-switching from **160kbps Opus** to **320kbps Lossless** with zero latency and uninterrupted playback. | Studio sound engineering with hardware **10-band graphic equalizer**, dynamic **Bass Boost (+6dB)**, and **32-bit floating-point DSP**. |
 
 ---
 
