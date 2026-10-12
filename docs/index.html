@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dhvani Music — Next-Gen Open-Source Android Music Client</title>
+  
+  <!-- SEO & Social Meta Tags -->
+  <meta name="description" content="Dhvani Music is a modern, ad-free Android music client fusing YouTube Music with JioSaavn 320kbps Lossless audio, 32-bit studio DSP, synced kinetic lyrics, studio ringtone trimmer, and Material 3 design." />
+  <meta name="keywords" content="Dhvani Music, Android Music Player, YouTube Music Client, Lossless Audio, JioSaavn 320kbps, Equalizer, Ringtone Trimmer, Open Source Music, FOSS Android" />
+  <meta name="author" content="Kanaiya-rgb" />
+  <link rel="canonical" href="https://kanaiya-rgb.github.io/Dhvani-Music/" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://kanaiya-rgb.github.io/Dhvani-Music/" />
+  <meta property="og:title" content="Dhvani Music — Next-Gen Open-Source Android Music Client" />
+  <meta property="og:description" content="Ad-Free YouTube Music + 320kbps Lossless Streaming, 32-Bit Studio DSP, Synced Lyrics, and Waveform Ringtone Trimmer. 100% Free & Open Source." />
+  <meta property="og:image" content="https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/assets/Showcase_Banner.png" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:url" content="https://kanaiya-rgb.github.io/Dhvani-Music/" />
+  <meta name="twitter:title" content="Dhvani Music — Premium Android Music Client" />
+  <meta name="twitter:description" content="Stream YouTube Music & JioSaavn Lossless audio with 32-bit DSP, synced lyrics, and studio audio tools. Ad-free & open source." />
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/assets/Showcase_Banner.png" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="assets/Logo.png" />
+  <link rel="apple-touch-icon" href="assets/Logo.png" />
+
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              saffron: '#ff7849',
+              purple: '#9333ea',
+              violet: '#7c3aed',
+              dark: '#08090d',
+              surface: '#11121a',
+              card: '#161824',
+              border: 'rgba(255, 255, 255, 0.08)',
+            }
+          },
+          animation: {
+            'glow-pulse': 'glow 4s ease-in-out infinite',
+            'float': 'float 6s ease-in-out infinite',
+          },
+          keyframes: {
+            glow: {
+              '0%, 100%': { opacity: '0.4' },
+              '50%': { opacity: '0.8' },
+            },
+            float: {
+              '0%, 100%': { transform: 'translateY(0px)' },
+              '50%': { transform: 'translateY(-10px)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #08090d;
+      color: #f1f5f9;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      overflow-x: hidden;
+    }
+    .glass-nav {
+      background: rgba(11, 12, 18, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-card {
+      background: rgba(22, 24, 36, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .glass-card:hover {
+      background: rgba(28, 31, 46, 0.85);
+      border-color: rgba(168, 85, 247, 0.4);
+      transform: translateY(-4px);
+      box-shadow: 0 16px 36px -10px rgba(147, 51, 234, 0.2);
+    }
+    .text-gradient {
+      background: linear-gradient(135deg, #ffffff 20%, #c084fc 60%, #ff7849 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .glow-bg {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      filter: blur(140px);
+      pointer-events: none;
+      z-index: 0;
+    }
+  </style>
+
+  <!-- Schema.org Application Markup -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Dhvani Music",
+    "operatingSystem": "Android 8.0+",
+    "applicationCategory": "MultimediaApplication",
+    "downloadUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.7.0/DhvaniMusic-v2.7.0.apk",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "description": "Ad-free open-source Android music client with YouTube Music & Lossless Audio streaming, 32-bit DSP equalizer, and studio audio tools."
+  }
+  </script>
+</head>
+<body class="selection:bg-purple-600 selection:text-white">
+
+  <!-- Ambient Glow Elements -->
+  <div class="glow-bg bg-purple-600/20 top-[-100px] left-1/2 -translate-x-1/2"></div>
+  <div class="glow-bg bg-orange-600/10 top-[600px] left-[-200px]"></div>
+  <div class="glow-bg bg-indigo-600/15 top-[1200px] right-[-200px]"></div>
+
+  <!-- Header / Navbar -->
+  <header class="fixed top-0 left-0 right-0 z-50 glass-nav">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+      <a href="#" class="flex items-center gap-3 group">
+        <div class="relative w-11 h-11 rounded-2xl overflow-hidden p-0.5 bg-gradient-to-tr from-purple-500 to-orange-400 shadow-lg shadow-purple-500/20">
+          <img src="assets/Logo.png" alt="Dhvani Logo" class="w-full h-full object-cover rounded-[14px]" />
+        </div>
+        <div>
+          <span class="text-xl font-extrabold tracking-tight text-white group-hover:text-purple-300 transition-colors">Dhvani Music</span>
+          <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">v2.7.0</span>
+        </div>
+      </a>
+
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
+        <a href="#showcases" class="hover:text-white transition-colors">Showcases</a>
+        <a href="#features" class="hover:text-white transition-colors">Features</a>
+        <a href="#tools" class="hover:text-white transition-colors">Audio Tools</a>
+        <a href="https://discord.gg/cQkNcqCwkA" target="_blank" class="hover:text-purple-400 transition-colors flex items-center gap-1.5">
+          <i data-lucide="message-square" class="w-4 h-4 text-[#5865F2]"></i> Community
+        </a>
+        <a href="https://github.com/Kanaiya-rgb/Dhvani-Music" target="_blank" class="hover:text-white transition-colors flex items-center gap-1.5">
+          <i data-lucide="github" class="w-4 h-4"></i> GitHub
+        </a>
+      </nav>
+
+      <div class="flex items-center gap-3">
+        <a href="https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.7.0/DhvaniMusic-v2.7.0.apk" 
+           class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-purple-600 to-orange-500 hover:from-purple-500 hover:to-orange-400 text-white shadow-lg shadow-purple-600/30 hover:shadow-purple-600/50 hover:scale-[1.02] active:scale-[0.98] transition-all">
+          <i data-lucide="download" class="w-4 h-4"></i>
+          <span>Download APK</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="relative z-10 pt-32 pb-24">
+    <!-- Hero Section -->
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center pt-8 pb-16">
+      
+      <!-- Release Announcement Badge -->
+      <a href="https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.7.0" target="_blank"
+         class="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold bg-purple-950/60 text-purple-300 border border-purple-500/30 hover:border-purple-400/60 transition-all shadow-inner mb-8">
+        <span class="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
+        <span class="text-slate-200">v2.7.0 Live:</span>
+        <span class="text-purple-400 font-bold">Studio Ringtone Trimmer & Alternative Versions</span>
+        <i data-lucide="arrow-right" class="w-4 h-4 text-purple-400"></i>
+      </a>
+
+      <h1 class="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight max-w-5xl mx-auto leading-[1.1] mb-6">
+        Listen Without Limits.<br />
+        <span class="text-gradient">Pure Sound, Studio Power.</span>
+      </h1>
+
+      <p class="text-lg sm:text-xl text-slate-400 max-w-3xl mx-auto mb-10 leading-relaxed font-normal">
+        The ultimate open-source Android music client. Unifies <strong class="text-slate-200">YouTube Music</strong> with <strong class="text-slate-200">JioSaavn 320kbps Lossless audio</strong>, 32-bit hardware DSP, synced kinetic lyrics, and built-in studio audio tools.
+      </p>
+
+      <!-- Main Action Buttons -->
+      <div class="flex flex-wrap items-center justify-center gap-4 mb-16">
+        <a href="https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.7.0/DhvaniMusic-v2.7.0.apk"
+           class="inline-flex items-center gap-3 px-8 py-4 rounded-2xl text-base font-bold bg-gradient-to-r from-purple-600 via-purple-500 to-orange-500 hover:opacity-95 text-white shadow-2xl shadow-purple-600/40 hover:scale-[1.03] active:scale-[0.98] transition-all">
+          <i data-lucide="download" class="w-5 h-5"></i>
+          <span>Download DhvaniMusic-v2.7.0.apk</span>
+          <span class="text-xs bg-black/25 px-2.5 py-1 rounded-lg text-slate-200 font-mono">20.6 MB</span>
+        </a>
+
+        <a href="https://github.com/Kanaiya-rgb/Dhvani-Music" target="_blank"
+           class="inline-flex items-center gap-2.5 px-6 py-4 rounded-2xl text-base font-semibold bg-slate-900/80 hover:bg-slate-800 text-slate-200 border border-slate-700/60 hover:border-purple-500/50 hover:scale-[1.02] transition-all">
+          <i data-lucide="github" class="w-5 h-5 text-slate-300"></i>
+          <span>Star on GitHub</span>
+        </a>
+
+        <a href="https://discord.gg/cQkNcqCwkA" target="_blank"
+           class="inline-flex items-center gap-2.5 px-6 py-4 rounded-2xl text-base font-semibold bg-[#5865F2]/20 hover:bg-[#5865F2]/30 text-[#8ea1e1] hover:text-white border border-[#5865F2]/40 hover:scale-[1.02] transition-all">
+          <i data-lucide="message-square" class="w-5 h-5 text-[#5865F2]"></i>
+          <span>Join Discord</span>
+        </a>
+      </div>
+
+      <!-- Feature Badges Pill -->
+      <div class="inline-flex flex-wrap items-center justify-center gap-3 text-xs sm:text-sm text-slate-400 py-2 px-4 rounded-2xl bg-slate-900/40 border border-slate-800/80 mb-16">
+        <span class="flex items-center gap-1.5"><i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i> 100% Ad-Free</span>
+        <span class="text-slate-600">•</span>
+        <span class="flex items-center gap-1.5"><i data-lucide="code" class="w-4 h-4 text-purple-400"></i> GNU GPL v3 FOSS</span>
+        <span class="text-slate-600">•</span>
+        <span class="flex items-center gap-1.5"><i data-lucide="cpu" class="w-4 h-4 text-amber-400"></i> 32-Bit Hardware DSP</span>
+        <span class="text-slate-600">•</span>
+        <span class="flex items-center gap-1.5"><i data-lucide="smartphone" class="w-4 h-4 text-blue-400"></i> Android 8.0 to 16 Ready</span>
+      </div>
+
+      <!-- Hero Banner Image (Showcase) -->
+      <div id="showcases" class="relative max-w-5xl mx-auto rounded-3xl overflow-hidden p-1.5 bg-gradient-to-b from-purple-500/40 via-purple-500/10 to-transparent shadow-2xl shadow-purple-950/60 group">
+        <div class="relative rounded-[22px] overflow-hidden bg-slate-950">
+          <img src="assets/Showcase_Banner.png" alt="Dhvani Music Technical Showcases" class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-[1.01]" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Technical 3-Pillars Section -->
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <div class="text-center mb-12">
+        <h2 class="text-xs uppercase tracking-widest text-purple-400 font-mono font-bold mb-3">Core Architecture</h2>
+        <p class="text-3xl sm:text-4xl font-extrabold text-white">Engineered for Audiophiles</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="glass-card p-8 rounded-3xl">
+          <div class="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center mb-6">
+            <i data-lucide="search" class="w-6 h-6"></i>
+          </div>
+          <h3 class="text-xl font-bold text-white mb-3">1. Dual-Source Search</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Simultaneous real-time index querying both <strong>YouTube Music's global catalog</strong> and <strong>JioSaavn's regional database</strong> with zero-conflict intelligent match resolution.
+          </p>
+        </div>
+
+        <div class="glass-card p-8 rounded-3xl">
+          <div class="w-12 h-12 rounded-2xl bg-orange-500/20 text-orange-400 flex items-center justify-center mb-6">
+            <i data-lucide="zap" class="w-6 h-6"></i>
+          </div>
+          <h3 class="text-xl font-bold text-white mb-3">2. Hi-Res Quality Switcher</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Dynamic live audio switcher. Jump seamlessly from <strong>160kbps Opus</strong> to <strong>320kbps Lossless streams</strong> mid-song with zero latency and uninterrupted playback.
+          </p>
+        </div>
+
+        <div class="glass-card p-8 rounded-3xl">
+          <div class="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mb-6">
+            <i data-lucide="sliders" class="w-6 h-6"></i>
+          </div>
+          <h3 class="text-xl font-bold text-white mb-3">3. 32-Bit Studio DSP</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Hardware <strong>10-band graphic equalizer</strong>, dynamic <strong>Bass Boost (+6dB)</strong>, Dolby Atmos system panel integration, and native C++ beat-detection automix transitions.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Detailed Features Grid -->
+    <section id="features" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <div class="text-center mb-16">
+        <h2 class="text-xs uppercase tracking-widest text-purple-400 font-mono font-bold mb-3">Comprehensive Capabilities</h2>
+        <p class="text-3xl sm:text-5xl font-extrabold text-white">Everything You Expect, Plus More.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        
+        <!-- Feature 1: Ringtone Trimmer -->
+        <div id="tools" class="glass-card p-7 rounded-3xl border-purple-500/30 bg-purple-950/20">
+          <div class="flex items-center justify-between mb-5">
+            <div class="w-11 h-11 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center">
+              <i data-lucide="scissors" class="w-5 h-5"></i>
+            </div>
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono">NEW IN v2.7.0</span>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Studio Ringtone Trimmer</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            Interactive visual waveform editor with zoomable crop handles, fade in/out transitions, and 1-tap setup as Phone Ringtone, Notification Tone, or Alarm Sound.
+          </p>
+        </div>
+
+        <!-- Feature 2: Alternative Versions -->
+        <div class="glass-card p-7 rounded-3xl border-purple-500/30 bg-purple-950/20">
+          <div class="flex items-center justify-between mb-5">
+            <div class="w-11 h-11 rounded-xl bg-orange-500/20 text-orange-300 flex items-center justify-center">
+              <i data-lucide="shuffle" class="w-5 h-5"></i>
+            </div>
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 font-mono">NEW IN v2.7.0</span>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Alternative Song Versions</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            Discover Acoustic, Slowed & Reverb, Nightcore, Live Concert, 8D Spatial Audio, and Instrumental renditions directly from any playing track.
+          </p>
+        </div>
+
+        <!-- Feature 3: Lyric Focus & Sync -->
+        <div class="glass-card p-7 rounded-3xl">
+          <div class="flex items-center justify-between mb-5">
+            <div class="w-11 h-11 rounded-xl bg-pink-500/20 text-pink-300 flex items-center justify-center">
+              <i data-lucide="mic" class="w-5 h-5"></i>
+            </div>
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-mono">ENHANCED</span>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Lyric Focus & Multi-Source</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            Distraction-free full-screen lyric focus mode with syllable-level sync, 12+ kinetic text physics animations, and aesthetic quote card generator.
+          </p>
+        </div>
+
+        <!-- Feature 4: Ambient Cinema Landscape -->
+        <div class="glass-card p-7 rounded-3xl">
+          <div class="w-11 h-11 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center mb-5">
+            <i data-lucide="tv" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Ambient Cinema Landscape</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            Tilt your phone to landscape for an immersive cinema player with dynamic ambient edge lighting, spinning vinyl turntable, and live seekbar sync.
+          </p>
+        </div>
+
+        <!-- Feature 5: Spotify Canvas Video Loops -->
+        <div class="glass-card p-7 rounded-3xl">
+          <div class="w-11 h-11 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center mb-5">
+            <i data-lucide="film" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Zero-Login Spotify Canvas</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            Hypnotic vertical looping videos on Now Playing powered by cloud key resolvers — zero personal Spotify SP_DC login required.
+          </p>
+        </div>
+
+        <!-- Feature 6: 15+ Indian & Global Languages -->
+        <div class="glass-card p-7 rounded-3xl">
+          <div class="w-11 h-11 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center mb-5">
+            <i data-lucide="globe" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">15+ Regional Languages</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            Dedicated curated feeds for Hindi, Punjabi, Bhojpuri, Gujarati, Tamil, Telugu, Malayalam, Bengali, Marathi, Spanish, Korean, and Global Hits.
+          </p>
+        </div>
+
+        <!-- Feature 7: Discord Rich Presence & Community -->
+        <div class="glass-card p-7 rounded-3xl">
+          <div class="w-11 h-11 rounded-xl bg-[#5865F2]/20 text-[#8ea1e1] flex items-center justify-center mb-5">
+            <i data-lucide="message-square" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Discord Rich Presence (RPC)</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            Live song, album artwork, and playback progress shown on your Discord profile in real time. Plus in-app community gateway and Listen Together rooms.
+          </p>
+        </div>
+
+        <!-- Feature 8: Offline Storage & Metadata -->
+        <div class="glass-card p-7 rounded-3xl">
+          <div class="w-11 h-11 rounded-xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center mb-5">
+            <i data-lucide="hard-drive" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Lossless Offline Engine</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            Download songs with automatic 3000×3000 album art embedding, synchronized ID3 lyric tags, and scan local storage audio files with gapless playback.
+          </p>
+        </div>
+
+        <!-- Feature 9: Home Screen Widgets -->
+        <div class="glass-card p-7 rounded-3xl">
+          <div class="w-11 h-11 rounded-xl bg-rose-500/20 text-rose-300 flex items-center justify-center mb-5">
+            <i data-lucide="layout-grid" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Custom Home Widgets</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            4×1 modern pill widget with quick controls and 3×3 retro rotating vinyl turntable widget with real-time state synchronization.
+          </p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Download Call to Action Section -->
+    <section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
+      <div class="glass-card p-12 sm:p-16 rounded-[32px] border-purple-500/40 relative overflow-hidden">
+        <div class="glow-bg bg-purple-600/30 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
+        
+        <div class="relative z-10">
+          <h2 class="text-3xl sm:text-5xl font-extrabold text-white mb-4">Ready to upgrade your music experience?</h2>
+          <p class="text-slate-300 max-w-xl mx-auto mb-8 text-base sm:text-lg">
+            Download Dhvani Music v2.7.0 APK for Android. Ad-free, open source, and forever free.
+          </p>
+          
+          <div class="flex flex-wrap items-center justify-center gap-4">
+            <a href="https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.7.0/DhvaniMusic-v2.7.0.apk"
+               class="inline-flex items-center gap-3 px-8 py-4 rounded-2xl text-base font-bold bg-gradient-to-r from-purple-600 to-orange-500 text-white shadow-xl shadow-purple-600/30 hover:scale-[1.03] transition-all">
+              <i data-lucide="download" class="w-5 h-5"></i>
+              <span>Download DhvaniMusic-v2.7.0.apk</span>
+            </a>
+
+            <a href="https://github.com/Kanaiya-rgb/Dhvani-Music/releases" target="_blank"
+               class="inline-flex items-center gap-2 px-6 py-4 rounded-2xl text-base font-semibold bg-slate-900/80 hover:bg-slate-800 text-slate-200 border border-slate-700/60 transition-all">
+              <i data-lucide="history" class="w-4 h-4"></i>
+              <span>All Releases</span>
+            </a>
+          </div>
+
+          <p class="text-xs text-slate-500 mt-6 font-mono">
+            Requires Android 8.0 (API 26) or higher • Universal APK (~20.6 MB)
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800/80 bg-slate-950/80 py-12 relative z-10 text-sm text-slate-400">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
+      <div class="flex items-center gap-3">
+        <img src="assets/Logo.png" alt="Logo" class="w-8 h-8 rounded-lg" />
+        <span class="font-bold text-white">Dhvani Music</span>
+        <span class="text-slate-600">|</span>
+        <span>Made with ❤️ by <a href="https://github.com/Kanaiya-rgb" target="_blank" class="text-purple-400 hover:underline">Kanaiya-rgb</a></span>
+      </div>
+
+      <div class="flex items-center gap-6">
+        <a href="https://github.com/Kanaiya-rgb/Dhvani-Music" target="_blank" class="hover:text-white transition-colors">GitHub</a>
+        <a href="https://github.com/Kanaiya-rgb/Dhvani-Music/releases" target="_blank" class="hover:text-white transition-colors">Releases</a>
+        <a href="https://discord.gg/cQkNcqCwkA" target="_blank" class="text-[#8ea1e1] hover:text-white transition-colors">Discord</a>
+        <a href="https://ko-fi.com/kanaiya_rgb" target="_blank" class="text-[#FF5E5B] hover:text-white transition-colors">Ko-fi</a>
+        <a href="https://buymeacoffee.com/kanaiya_rgb" target="_blank" class="text-[#FFDD00] hover:text-white transition-colors">Buy Me a Coffee</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+  </script>
+</body>
+</html>
