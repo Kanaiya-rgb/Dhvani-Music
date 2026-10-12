@@ -23,16 +23,20 @@
   <meta name="twitter:image" content="https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/assets/Showcase_Banner.png" />
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="assets/Logo.png" />
-  <link rel="apple-touch-icon" href="assets/Logo.png" />
+  <link rel="icon" type="image/webp" href="assets/Logo-sm.webp" />
+  <link rel="apple-touch-icon" href="assets/Logo.webp" />
 
-  <!-- Inter & JetBrains Mono Fonts -->
+  <!-- Inter & JetBrains Mono Fonts (Optimized Non-Blocking) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  </noscript>
 
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Lucide Icons (Deferred) -->
+  <script src="https://unpkg.com/lucide@latest" defer></script>
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -96,14 +100,42 @@
       transition: opacity 0.3s ease;
     }
 
-    /* Custom Range Sliders */
-    input[type=range].eq-slider {
-      -webkit-appearance: slider-vertical;
-      writing-mode: bt-lr;
-      width: 8px;
+    /* Custom Range Sliders (Modern Standard CSS) */
+    .eq-slider-container {
       height: 120px;
-      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    input[type=range].eq-slider {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 100px;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 9999px;
+      outline: none;
       cursor: pointer;
+      transform: rotate(-90deg);
+    }
+    input[type=range].eq-slider::-webkit-slider-thumb {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fbbf24;
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+    }
+    input[type=range].eq-slider::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fbbf24;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
     }
   </style>
 </head>
@@ -117,9 +149,9 @@
     <div class="max-w-[1100px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
       
       <a href="#" class="flex items-center gap-2.5 group">
-        <img src="assets/Logo.png" alt="Dhvani Logo" class="w-8 h-8 rounded-xl object-cover transition-transform group-hover:scale-105" />
+        <img src="assets/Logo-sm.webp" alt="Dhvani Logo" width="32" height="32" class="w-8 h-8 rounded-xl object-cover transition-transform group-hover:scale-105" />
         <span class="text-[17px] font-bold tracking-tight text-white">Dhvani</span>
-        <span class="ml-1 text-[11px] font-semibold text-white/50 px-2 py-0.5 rounded-full bg-white/[0.08] font-mono">v2.7.0</span>
+        <span class="ml-1 text-[11px] font-semibold text-zinc-300 px-2 py-0.5 rounded-full bg-white/[0.08] font-mono">v2.7.0</span>
       </a>
 
       <nav class="hidden md:flex items-center gap-7 text-[13px] font-medium text-white/60">
@@ -199,7 +231,7 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <div class="w-12 h-12 rounded-xl bg-purple-950/80 border border-purple-500/30 flex items-center justify-center relative overflow-hidden group">
-              <img src="assets/Logo.png" alt="Album" class="w-full h-full object-cover" />
+              <img src="assets/Logo-sm.webp" alt="Dhvani Album Artwork" width="48" height="48" class="w-full h-full object-cover" />
               <div id="disc-spin" class="absolute inset-0 bg-black/40 hidden items-center justify-center">
                 <i data-lucide="disc" class="w-6 h-6 text-purple-400 animate-spin"></i>
               </div>
@@ -208,29 +240,29 @@
               <div class="flex items-center gap-2">
                 <span id="player-title" class="text-[14px] font-bold text-white">Chaleya (Jawan)</span>
                 <!-- Interactive Quality Toggle -->
-                <button id="quality-toggle-btn" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30 transition-all font-mono" title="Click to switch source!">
+                <button id="quality-toggle-btn" aria-label="Toggle streaming audio bitrate quality" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30 transition-all font-mono" title="Click to switch source!">
                   320kbps Lossless
                 </button>
               </div>
-              <span id="player-artist" class="text-[12px] text-white/50">Arijit Singh, Anirudh Ravichander</span>
+              <span id="player-artist" class="text-[12px] text-zinc-300">Arijit Singh, Anirudh Ravichander</span>
             </div>
           </div>
 
           <!-- Controls -->
           <div class="flex items-center gap-3">
-            <button id="live-play-btn" class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg">
+            <button id="live-play-btn" aria-label="Play or pause audio preview" title="Play or pause preview" class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg">
               <i id="play-icon" data-lucide="play" class="w-4 h-4 ml-0.5 fill-black"></i>
             </button>
           </div>
         </div>
 
         <!-- Waveform Visualizer Canvas -->
-        <canvas id="visualizer-canvas" class="w-full h-10 rounded-lg bg-black/50"></canvas>
+        <canvas id="visualizer-canvas" width="640" height="40" class="w-full h-10 rounded-lg bg-black/50"></canvas>
 
         <!-- Scrub Seekbar -->
-        <div class="flex items-center gap-3 text-[11px] font-mono text-white/40">
+        <div class="flex items-center gap-3 text-[11px] font-mono text-zinc-300">
           <span id="time-current">0:00</span>
-          <div class="relative flex-1 h-1.5 bg-white/[0.1] rounded-full overflow-hidden cursor-pointer" id="seek-container">
+          <div class="relative flex-1 h-1.5 bg-white/[0.1] rounded-full overflow-hidden cursor-pointer" id="seek-container" role="progressbar" aria-label="Audio playback progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="200">
             <div id="seek-progress" class="h-full bg-white rounded-full w-0 transition-all duration-100"></div>
           </div>
           <span id="time-total">3:20</span>
@@ -239,7 +271,11 @@
 
       <!-- Hero Showcase Banner -->
       <div id="showcases" class="relative max-w-[1000px] mx-auto overflow-hidden rounded-3xl bg-[#060504] p-1 sm:p-2 shadow-[inset_0_0_0_0.8px_rgb(255_255_255/0.1)] group">
-        <img src="assets/Showcase_Banner.png" alt="Dhvani Music Technical Showcases" class="w-full h-auto rounded-[20px] object-cover transition-transform duration-500 group-hover:scale-[1.008]" />
+        <picture>
+          <source media="(max-width: 640px)" srcset="assets/Showcase_Banner-sm.webp" type="image/webp" />
+          <source srcset="assets/Showcase_Banner.webp" type="image/webp" />
+          <img src="assets/Showcase_Banner.webp" alt="Dhvani Music Technical Showcases" width="1672" height="941" fetchpriority="high" decoding="async" class="w-full h-auto rounded-[20px] object-cover transition-transform duration-500 group-hover:scale-[1.008]" />
+        </picture>
       </div>
     </section>
 
@@ -301,18 +337,18 @@
         <!-- Interactive Handles -->
         <div class="grid grid-cols-2 gap-4 mb-6">
           <div>
-            <label class="text-[12px] text-white/60 mb-1.5 block">Start Offset (seconds)</label>
-            <input type="range" min="0" max="120" value="24" id="trim-start-range" class="w-full accent-purple-500 cursor-pointer" />
-            <div class="flex justify-between text-[11px] font-mono text-white/40 mt-1">
+            <label for="trim-start-range" class="text-[12px] text-zinc-300 mb-1.5 block">Start Offset (seconds)</label>
+            <input type="range" min="0" max="120" value="24" id="trim-start-range" aria-label="Trim start position in seconds" class="w-full accent-purple-500 cursor-pointer" />
+            <div class="flex justify-between text-[11px] font-mono text-zinc-300 mt-1">
               <span>0:00</span>
               <span id="start-val-text" class="text-purple-300 font-bold">0:24</span>
               <span>2:00</span>
             </div>
           </div>
           <div>
-            <label class="text-[12px] text-white/60 mb-1.5 block">End Offset (seconds)</label>
-            <input type="range" min="0" max="180" value="54" id="trim-end-range" class="w-full accent-purple-500 cursor-pointer" />
-            <div class="flex justify-between text-[11px] font-mono text-white/40 mt-1">
+            <label for="trim-end-range" class="text-[12px] text-zinc-300 mb-1.5 block">End Offset (seconds)</label>
+            <input type="range" min="0" max="180" value="54" id="trim-end-range" aria-label="Trim end position in seconds" class="w-full accent-purple-500 cursor-pointer" />
+            <div class="flex justify-between text-[11px] font-mono text-zinc-300 mt-1">
               <span>0:00</span>
               <span id="end-val-text" class="text-purple-300 font-bold">0:54</span>
               <span>3:00</span>
@@ -322,18 +358,19 @@
 
         <!-- Fade Toggles & Setup Button -->
         <div class="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-white/10">
-          <div class="flex items-center gap-4 text-[13px] text-white/70">
+          <div class="flex items-center gap-4 text-[13px] text-zinc-300">
             <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked class="accent-purple-500 rounded" />
+              <input type="checkbox" checked aria-label="Enable fade in audio effect" class="accent-purple-500 rounded" />
               <span>Fade In (1.5s)</span>
             </label>
             <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked class="accent-purple-500 rounded" />
+              <input type="checkbox" checked aria-label="Enable fade out audio effect" class="accent-purple-500 rounded" />
               <span>Fade Out (2.0s)</span>
             </label>
           </div>
 
           <button onclick="triggerSimulatedToast('Ringtone set successfully as Phone Ringtone! 🔔')" 
+                  aria-label="Apply trimmed ringtone to phone"
                   class="px-5 py-2.5 rounded-full bg-white text-black font-semibold text-[13px] hover:bg-white/90 active:scale-95 transition-all flex items-center gap-2">
             <i data-lucide="check" class="w-4 h-4"></i> Apply as Ringtone
           </button>
@@ -364,19 +401,19 @@
 
         <!-- 10 Interactive Sliders -->
         <div class="grid grid-cols-5 sm:grid-cols-10 gap-2 items-center text-center p-4 rounded-2xl bg-black/60 border border-white/10 mb-6">
-          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+6</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="6" id="eq-0"><span class="text-[10px] font-mono text-white/60 mt-1">32Hz</span></div>
-          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+6</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="6" id="eq-1"><span class="text-[10px] font-mono text-white/60 mt-1">64Hz</span></div>
-          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+4</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="4" id="eq-2"><span class="text-[10px] font-mono text-white/60 mt-1">125Hz</span></div>
-          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+2</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="2" id="eq-3"><span class="text-[10px] font-mono text-white/60 mt-1">250Hz</span></div>
-          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">0</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="0" id="eq-4"><span class="text-[10px] font-mono text-white/60 mt-1">500Hz</span></div>
-          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">0</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="0" id="eq-5"><span class="text-[10px] font-mono text-white/60 mt-1">1kHz</span></div>
-          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+1</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="1" id="eq-6"><span class="text-[10px] font-mono text-white/60 mt-1">2kHz</span></div>
-          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+2</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="2" id="eq-7"><span class="text-[10px] font-mono text-white/60 mt-1">4kHz</span></div>
-          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+3</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="3" id="eq-8"><span class="text-[10px] font-mono text-white/60 mt-1">8kHz</span></div>
-          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+4</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="4" id="eq-9"><span class="text-[10px] font-mono text-white/60 mt-1">16kHz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-zinc-300 mb-1">+6</span><div class="eq-slider-container"><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="6" id="eq-0" aria-label="32 Hertz equalizer band gain"></div><span class="text-[10px] font-mono text-zinc-300 mt-1">32Hz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-zinc-300 mb-1">+6</span><div class="eq-slider-container"><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="6" id="eq-1" aria-label="64 Hertz equalizer band gain"></div><span class="text-[10px] font-mono text-zinc-300 mt-1">64Hz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-zinc-300 mb-1">+4</span><div class="eq-slider-container"><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="4" id="eq-2" aria-label="125 Hertz equalizer band gain"></div><span class="text-[10px] font-mono text-zinc-300 mt-1">125Hz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-zinc-300 mb-1">+2</span><div class="eq-slider-container"><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="2" id="eq-3" aria-label="250 Hertz equalizer band gain"></div><span class="text-[10px] font-mono text-zinc-300 mt-1">250Hz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-zinc-300 mb-1">0</span><div class="eq-slider-container"><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="0" id="eq-4" aria-label="500 Hertz equalizer band gain"></div><span class="text-[10px] font-mono text-zinc-300 mt-1">500Hz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-zinc-300 mb-1">0</span><div class="eq-slider-container"><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="0" id="eq-5" aria-label="1 kiloHertz equalizer band gain"></div><span class="text-[10px] font-mono text-zinc-300 mt-1">1kHz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-zinc-300 mb-1">+1</span><div class="eq-slider-container"><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="1" id="eq-6" aria-label="2 kiloHertz equalizer band gain"></div><span class="text-[10px] font-mono text-zinc-300 mt-1">2kHz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-zinc-300 mb-1">+2</span><div class="eq-slider-container"><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="2" id="eq-7" aria-label="4 kiloHertz equalizer band gain"></div><span class="text-[10px] font-mono text-zinc-300 mt-1">4kHz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-zinc-300 mb-1">+3</span><div class="eq-slider-container"><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="3" id="eq-8" aria-label="8 kiloHertz equalizer band gain"></div><span class="text-[10px] font-mono text-zinc-300 mt-1">8kHz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-zinc-300 mb-1">+4</span><div class="eq-slider-container"><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="4" id="eq-9" aria-label="16 kiloHertz equalizer band gain"></div><span class="text-[10px] font-mono text-zinc-300 mt-1">16kHz</span></div>
         </div>
 
-        <p class="text-[12px] text-white/50 text-center font-mono">
+        <p class="text-[12px] text-zinc-300 text-center font-mono">
           ✓ Integrated with Android Hardware AudioEffects API &amp; Dolby Atmos
         </p>
       </div>
@@ -481,37 +518,37 @@
         <div class="bento-card p-4 text-center">
           <div class="text-[20px] mb-2">🚗</div>
           <div class="text-[13px] font-medium text-white">Android Auto</div>
-          <div class="text-[11px] text-white/40 mt-0.5">Media dashboard</div>
+          <div class="text-[11px] text-zinc-300 mt-0.5">Media dashboard</div>
         </div>
 
         <div class="bento-card p-4 text-center">
           <div class="text-[20px] mb-2">💬</div>
           <div class="text-[13px] font-medium text-white">Discord RPC</div>
-          <div class="text-[11px] text-white/40 mt-0.5">Live rich presence</div>
+          <div class="text-[11px] text-zinc-300 mt-0.5">Live rich presence</div>
         </div>
 
         <div class="bento-card p-4 text-center">
           <div class="text-[20px] mb-2">🎧</div>
           <div class="text-[13px] font-medium text-white">Listen Together</div>
-          <div class="text-[11px] text-white/40 mt-0.5">Synchronized rooms</div>
+          <div class="text-[11px] text-zinc-300 mt-0.5">Synchronized rooms</div>
         </div>
 
         <div class="bento-card p-4 text-center">
           <div class="text-[20px] mb-2">📊</div>
           <div class="text-[13px] font-medium text-white">Last.fm</div>
-          <div class="text-[11px] text-white/40 mt-0.5">Native scrobbler</div>
+          <div class="text-[11px] text-zinc-300 mt-0.5">Native scrobbler</div>
         </div>
 
         <div class="bento-card p-4 text-center">
           <div class="text-[20px] mb-2">🧠</div>
           <div class="text-[13px] font-medium text-white">ListenBrainz</div>
-          <div class="text-[11px] text-white/40 mt-0.5">FOSS scrobbling</div>
+          <div class="text-[11px] text-zinc-300 mt-0.5">FOSS scrobbling</div>
         </div>
 
         <div class="bento-card p-4 text-center">
           <div class="text-[20px] mb-2">🔔</div>
           <div class="text-[13px] font-medium text-white">OTA Alerts</div>
-          <div class="text-[11px] text-white/40 mt-0.5">Firebase FCM update</div>
+          <div class="text-[11px] text-zinc-300 mt-0.5">Firebase FCM update</div>
         </div>
       </div>
     </section>
@@ -542,7 +579,7 @@
           </a>
         </div>
 
-        <p class="text-[12px] text-white/40 mt-5 font-mono">
+        <p class="text-[12px] text-zinc-300 mt-5 font-mono">
           Requires Android 8.0 (API 26)+ • Universal Release APK (~20.6 MB)
         </p>
       </div>
@@ -555,7 +592,7 @@
     <div class="max-w-[1100px] mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
       
       <div class="flex items-center gap-3">
-        <img src="assets/Logo.png" alt="Dhvani Music" class="w-6 h-6 rounded-lg object-cover" />
+        <img src="assets/Logo-sm.webp" alt="Dhvani Music Logo" width="24" height="24" class="w-6 h-6 rounded-lg object-cover" />
         <span class="font-semibold text-white">Dhvani Music</span>
         <span class="text-white/30">•</span>
         <span>Built by <a href="https://github.com/Kanaiya-rgb" target="_blank" class="text-white hover:underline">Kanaiya-rgb</a></span>
@@ -577,8 +614,18 @@
 
   <!-- Interactive JavaScript Engine -->
   <script>
-    // Lucide Icons init
-    lucide.createIcons();
+    // Lucide Icons safe init helper
+    function refreshIcons() {
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        refreshIcons();
+      }
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', refreshIcons);
+    } else {
+      refreshIcons();
+    }
+    window.addEventListener('load', refreshIcons);
 
     // 1. Cursor Spot Follower
     const glow = document.getElementById('cursor-glow');
@@ -596,11 +643,14 @@
     const totalSec = 200;
 
     function resizeCanvas() {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width && rect.height) {
+        canvas.width = Math.floor(rect.width);
+        canvas.height = Math.floor(rect.height);
+      }
     }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
+    window.addEventListener('resize', () => requestAnimationFrame(resizeCanvas));
+    requestAnimationFrame(resizeCanvas);
 
     function drawVisualizer() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -654,7 +704,7 @@
         cancelAnimationFrame(animId);
         drawVisualizer();
       }
-      lucide.createIcons();
+      refreshIcons();
     });
     drawVisualizer();
 
@@ -686,7 +736,7 @@
       document.getElementById(`tab-panel-${tab}`).classList.remove('hidden');
       const activeBtn = document.getElementById(`tab-btn-${tab}`);
       activeBtn.className = 'tab-btn px-4 py-2 rounded-full text-[13px] font-semibold bg-white text-black transition-all flex items-center gap-2';
-      lucide.createIcons();
+      refreshIcons();
     }
 
     // 4. Trimmer Interactive Generator
