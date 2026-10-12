@@ -7,31 +7,26 @@
   
   <!-- SEO & Social Meta Tags -->
   <meta name="description" content="The open-source YouTube Music & JioSaavn Lossless client for Android. 32-bit Studio DSP, 10-band equalizer, waveform ringtone trimmer, synced kinetic lyrics, and clean aesthetics inspired by Apple Music. Free, GPLv3, no ads." />
-  <meta name="keywords" content="Dhvani Music, BitChord, YouTube Music client, Android music player, open source music player, lossless audio, JioSaavn 320kbps, ringtone trimmer, synced lyrics, APK download" />
+  <meta name="keywords" content="Dhvani Music, Android music player, YouTube Music client, Lossless audio, JioSaavn 320kbps, Equalizer, Ringtone Trimmer, Open source music player, FOSS Android" />
   <meta name="author" content="Kanaiya-rgb" />
   <meta name="theme-color" content="#000000" />
   <meta name="color-scheme" content="dark" />
   <link rel="canonical" href="https://kanaiya-rgb.github.io/Dhvani-Music/" />
 
-  <!-- Open Graph / Facebook -->
+  <!-- Open Graph / Twitter -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://kanaiya-rgb.github.io/Dhvani-Music/" />
   <meta property="og:title" content="Dhvani Music — Instant Stream. No Compromise." />
-  <meta property="og:description" content="The open-source YouTube Music & Lossless audio client for Android. 32-bit DSP, waveform ringtone trimmer, synced lyrics, and clean Apple-inspired aesthetics." />
+  <meta property="og:description" content="Ad-Free YouTube Music + 320kbps Lossless Audio, 32-Bit Studio DSP, Ringtone Trimmer & Synced Lyrics. Free & Open Source." />
   <meta property="og:image" content="https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/assets/Showcase_Banner.png" />
-
-  <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:url" content="https://kanaiya-rgb.github.io/Dhvani-Music/" />
-  <meta name="twitter:title" content="Dhvani Music — Instant Stream. No Compromise." />
-  <meta name="twitter:description" content="The open-source Android music client with YouTube Music + JioSaavn 320kbps lossless streaming, 32-bit DSP, and studio tools." />
   <meta name="twitter:image" content="https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/assets/Showcase_Banner.png" />
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="assets/Logo.png" />
   <link rel="apple-touch-icon" href="assets/Logo.png" />
 
-  <!-- Inter & JetBrains Mono Fonts (Apple-style typography) -->
+  <!-- Inter & JetBrains Mono Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -53,7 +48,7 @@
           colors: {
             background: '#000000',
             card: '#080808',
-            cardHover: '#0d0d0d',
+            surface: '#0d0d0f',
           }
         }
       }
@@ -67,10 +62,9 @@
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
     }
 
-    /* BitChord & Apple-style subtle inset border */
+    /* BitChord & Apple Inset Glass */
     .bento-card {
       background-color: #080808;
       box-shadow: inset 0 0 0 0.8px rgba(255, 255, 255, 0.1);
@@ -79,72 +73,66 @@
     }
     .bento-card:hover {
       box-shadow: inset 0 0 0 0.8px rgba(255, 255, 255, 0.22);
-      background-color: #0c0c0c;
-    }
-
-    .mesh-ambient {
-      position: absolute;
-      border-radius: 9999px;
-      filter: blur(120px);
-      pointer-events: none;
-      z-index: -1;
+      background-color: #0c0c0e;
     }
 
     .header-blur {
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.75);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
-  </style>
 
-  <!-- Schema.org Application Markup -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "Dhvani Music",
-    "operatingSystem": "Android 8.0+",
-    "applicationCategory": "MultimediaApplication",
-    "applicationSubCategory": "Music Player",
-    "downloadUrl": "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.7.0/DhvaniMusic-v2.7.0.apk",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    },
-    "description": "The open-source YouTube Music & JioSaavn Lossless audio client for Android with 32-bit DSP, synced lyrics, and clean aesthetics inspired by Apple Music."
-  }
-  </script>
+    /* Interactive Cursor Glow Spot */
+    #cursor-glow {
+      position: fixed;
+      width: 500px;
+      height: 500px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(147, 51, 234, 0.09) 0%, rgba(255, 120, 73, 0.04) 40%, transparent 70%);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      z-index: 1;
+      transition: opacity 0.3s ease;
+    }
+
+    /* Custom Range Sliders */
+    input[type=range].eq-slider {
+      -webkit-appearance: slider-vertical;
+      writing-mode: bt-lr;
+      width: 8px;
+      height: 120px;
+      background: transparent;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body class="selection:bg-white selection:text-black">
 
-  <!-- Ambient Minimalist Lighting -->
-  <div class="mesh-ambient w-[500px] h-[350px] bg-purple-900/15 top-[-100px] left-1/2 -translate-x-1/2"></div>
-  <div class="mesh-ambient w-[400px] h-[300px] bg-orange-950/10 top-[400px] left-[-100px]"></div>
+  <!-- Interactive Cursor Ambient Glow -->
+  <div id="cursor-glow"></div>
 
-  <!-- Header / Navbar (BitChord Style) -->
+  <!-- Header / Navbar -->
   <header class="fixed top-0 left-0 right-0 z-50 header-blur">
     <div class="max-w-[1100px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
       
-      <!-- Brand Logo & Name -->
       <a href="#" class="flex items-center gap-2.5 group">
-        <img src="assets/Logo.png" alt="Dhvani Music" class="w-8 h-8 rounded-xl object-cover transition-transform group-hover:scale-105" />
+        <img src="assets/Logo.png" alt="Dhvani Logo" class="w-8 h-8 rounded-xl object-cover transition-transform group-hover:scale-105" />
         <span class="text-[17px] font-bold tracking-tight text-white">Dhvani</span>
         <span class="ml-1 text-[11px] font-semibold text-white/50 px-2 py-0.5 rounded-full bg-white/[0.08] font-mono">v2.7.0</span>
       </a>
 
-      <!-- Center Links -->
       <nav class="hidden md:flex items-center gap-7 text-[13px] font-medium text-white/60">
+        <a href="#demo-lab" class="hover:text-white transition-colors flex items-center gap-1.5 text-purple-300">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5 text-purple-400"></i> Interactive Lab
+        </a>
         <a href="#showcases" class="hover:text-white transition-colors">Showcases</a>
         <a href="#features" class="hover:text-white transition-colors">Features</a>
-        <a href="#integrations" class="hover:text-white transition-colors">Integrations</a>
         <a href="https://discord.gg/cQkNcqCwkA" target="_blank" class="hover:text-white transition-colors flex items-center gap-1.5">
           <i data-lucide="message-square" class="w-3.5 h-3.5 text-[#5865F2]"></i> Community
         </a>
       </nav>
 
-      <!-- Right Action Pills -->
       <div class="flex items-center gap-2.5">
         <a href="https://github.com/Kanaiya-rgb/Dhvani-Music" target="_blank"
            class="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.14] px-3.5 py-1.5 text-[13px] font-medium text-white transition-all">
@@ -162,21 +150,21 @@
   </header>
 
   <!-- Main Content -->
-  <main class="pt-24 pb-20">
+  <main class="relative z-10 pt-24 pb-20">
 
-    <!-- Hero Section (BitChord Layout) -->
+    <!-- Hero Section -->
     <section class="max-w-[1100px] mx-auto px-4 sm:px-6 pt-10 pb-14 text-center">
       
       <!-- Top Pill Tag -->
       <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.06] text-white/80 text-[12px] font-medium border border-white/[0.08] mb-8">
-        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
         <span>Version 2.7.0 is now available</span>
         <span class="text-white/30">•</span>
-        <a href="https://github.com/Kanaiya-rgb/Dhvani-Music/releases/tag/v2.7.0" class="text-white hover:underline flex items-center gap-1">Changelog <i data-lucide="chevron-right" class="w-3 h-3"></i></a>
+        <a href="#demo-lab" class="text-purple-300 hover:underline flex items-center gap-1">Try Interactive Studio <i data-lucide="arrow-down" class="w-3 h-3"></i></a>
       </div>
 
       <!-- Split Tone Headline -->
-      <h1 class="text-balance text-[36px] sm:text-[54px] lg:text-[62px] font-extrabold leading-[1.05] tracking-[-0.035em] max-w-4xl mx-auto mb-5">
+      <h1 class="text-balance text-[36px] sm:text-[54px] lg:text-[64px] font-extrabold leading-[1.05] tracking-[-0.035em] max-w-4xl mx-auto mb-5">
         <span class="text-white">Instant Stream.</span> <span class="text-white/45">No Compromise.</span>
       </h1>
 
@@ -185,12 +173,12 @@
       </p>
 
       <!-- Action Buttons -->
-      <div class="flex flex-wrap items-center justify-center gap-3 mb-14">
+      <div class="flex flex-wrap items-center justify-center gap-3 mb-12">
         <a href="https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v2.7.0/DhvaniMusic-v2.7.0.apk"
            class="inline-flex items-center gap-2.5 rounded-full bg-white hover:bg-white/90 text-black px-6 py-3 text-[14px] font-bold transition-all shadow-md active:scale-95">
           <i data-lucide="download" class="w-4 h-4"></i>
-          <span>Download APK</span>
-          <span class="text-[12px] opacity-60 font-mono font-medium">v2.7.0 (20.6 MB)</span>
+          <span>Download DhvaniMusic-v2.7.0.apk</span>
+          <span class="text-[12px] opacity-60 font-mono font-medium">20.6 MB</span>
         </a>
 
         <a href="https://github.com/Kanaiya-rgb/Dhvani-Music" target="_blank"
@@ -206,58 +194,281 @@
         </a>
       </div>
 
-      <!-- Feature Pill Checklist -->
-      <div class="flex flex-wrap items-center justify-center gap-5 text-[12px] sm:text-[13px] text-white/50 mb-12">
-        <span class="flex items-center gap-1.5"><i data-lucide="check" class="w-3.5 h-3.5 text-white/70"></i> Free &amp; Open Source</span>
-        <span class="flex items-center gap-1.5"><i data-lucide="check" class="w-3.5 h-3.5 text-white/70"></i> Zero Ads &amp; No Tracking</span>
-        <span class="flex items-center gap-1.5"><i data-lucide="check" class="w-3.5 h-3.5 text-white/70"></i> Dual-Source 320k Lossless</span>
-        <span class="flex items-center gap-1.5"><i data-lucide="check" class="w-3.5 h-3.5 text-white/70"></i> Android 8.0+ Ready</span>
+      <!-- Live Interactive Web Audio Player Bar -->
+      <div class="max-w-[680px] mx-auto mb-14 bento-card p-4 sm:p-5 flex flex-col gap-3 text-left border border-white/10 relative overflow-hidden">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-xl bg-purple-950/80 border border-purple-500/30 flex items-center justify-center relative overflow-hidden group">
+              <img src="assets/Logo.png" alt="Album" class="w-full h-full object-cover" />
+              <div id="disc-spin" class="absolute inset-0 bg-black/40 hidden items-center justify-center">
+                <i data-lucide="disc" class="w-6 h-6 text-purple-400 animate-spin"></i>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span id="player-title" class="text-[14px] font-bold text-white">Chaleya (Jawan)</span>
+                <!-- Interactive Quality Toggle -->
+                <button id="quality-toggle-btn" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30 transition-all font-mono" title="Click to switch source!">
+                  320kbps Lossless
+                </button>
+              </div>
+              <span id="player-artist" class="text-[12px] text-white/50">Arijit Singh, Anirudh Ravichander</span>
+            </div>
+          </div>
+
+          <!-- Controls -->
+          <div class="flex items-center gap-3">
+            <button id="live-play-btn" class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg">
+              <i id="play-icon" data-lucide="play" class="w-4 h-4 ml-0.5 fill-black"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Waveform Visualizer Canvas -->
+        <canvas id="visualizer-canvas" class="w-full h-10 rounded-lg bg-black/50"></canvas>
+
+        <!-- Scrub Seekbar -->
+        <div class="flex items-center gap-3 text-[11px] font-mono text-white/40">
+          <span id="time-current">0:00</span>
+          <div class="relative flex-1 h-1.5 bg-white/[0.1] rounded-full overflow-hidden cursor-pointer" id="seek-container">
+            <div id="seek-progress" class="h-full bg-white rounded-full w-0 transition-all duration-100"></div>
+          </div>
+          <span id="time-total">3:20</span>
+        </div>
       </div>
 
-      <!-- Hero Showcase Banner (Apple Mockup Frame) -->
+      <!-- Hero Showcase Banner -->
       <div id="showcases" class="relative max-w-[1000px] mx-auto overflow-hidden rounded-3xl bg-[#060504] p-1 sm:p-2 shadow-[inset_0_0_0_0.8px_rgb(255_255_255/0.1)] group">
         <img src="assets/Showcase_Banner.png" alt="Dhvani Music Technical Showcases" class="w-full h-auto rounded-[20px] object-cover transition-transform duration-500 group-hover:scale-[1.008]" />
       </div>
     </section>
 
-    <!-- 3 Core Pillars Section -->
-    <section class="max-w-[1100px] mx-auto px-4 sm:px-6 pt-12 pb-16">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        
-        <div class="bento-card p-6 sm:p-8">
-          <div class="w-10 h-10 rounded-xl bg-white/[0.06] text-white flex items-center justify-center mb-5">
-            <i data-lucide="search" class="w-5 h-5"></i>
-          </div>
-          <h2 class="text-[17px] font-semibold text-white mb-2">Dual-Source Instant Search</h2>
-          <p class="text-[13px] leading-[20px] text-white/50">
-            Unified search querying <strong>YouTube Music's global catalogue</strong> and <strong>JioSaavn's regional database</strong> simultaneously with intelligent matching.
-          </p>
+    <!-- ⚡ INTERACTIVE STUDIO LAB (The Star Feature of the Website) -->
+    <section id="demo-lab" class="max-w-[1100px] mx-auto px-4 sm:px-6 pt-14 pb-16">
+      
+      <div class="text-center mb-10">
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 text-purple-300 text-[12px] font-semibold border border-purple-500/20 mb-3">
+          <i data-lucide="sliders" class="w-3.5 h-3.5 text-purple-400"></i> Interactive Feature Sandbox
         </div>
-
-        <div class="bento-card p-6 sm:p-8">
-          <div class="w-10 h-10 rounded-xl bg-white/[0.06] text-white flex items-center justify-center mb-5">
-            <i data-lucide="zap" class="w-5 h-5"></i>
-          </div>
-          <h2 class="text-[17px] font-semibold text-white mb-2">Seamless Quality Switcher</h2>
-          <p class="text-[13px] leading-[20px] text-white/50">
-            Dynamic bitrate switching from <strong>160kbps Opus</strong> to <strong>320kbps Lossless</strong> with zero latency and uninterrupted playback.
-          </p>
-        </div>
-
-        <div class="bento-card p-6 sm:p-8">
-          <div class="w-10 h-10 rounded-xl bg-white/[0.06] text-white flex items-center justify-center mb-5">
-            <i data-lucide="sliders" class="w-5 h-5"></i>
-          </div>
-          <h2 class="text-[17px] font-semibold text-white mb-2">32-Bit DSP &amp; 10-Band EQ</h2>
-          <p class="text-[13px] leading-[20px] text-white/50">
-            Hardware <strong>10-band graphic equalizer</strong>, dynamic <strong>Bass Boost (+6dB)</strong>, and 32-bit floating-point audio processing pipeline.
-          </p>
-        </div>
-
+        <h2 class="text-[30px] sm:text-[42px] font-extrabold tracking-[-0.03em] text-white">
+          <span>Experience Dhvani Tools.</span> <span class="text-white/45">Right In Your Browser.</span>
+        </h2>
+        <p class="mx-auto mt-2 max-w-[560px] text-[14px] text-white/50">
+          Click the tabs below to test drive the studio ringtone trimmer, 10-band graphic EQ, and alternative versions.
+        </p>
       </div>
+
+      <!-- Studio Tabs Navigation -->
+      <div class="flex justify-center gap-2 mb-8 overflow-x-auto pb-2">
+        <button onclick="switchTab('trimmer')" id="tab-btn-trimmer" class="tab-btn px-4 py-2 rounded-full text-[13px] font-semibold bg-white text-black transition-all flex items-center gap-2">
+          <i data-lucide="scissors" class="w-3.5 h-3.5"></i> Ringtone Trimmer
+        </button>
+        <button onclick="switchTab('eq')" id="tab-btn-eq" class="tab-btn px-4 py-2 rounded-full text-[13px] font-semibold bg-white/[0.08] text-white/70 hover:text-white transition-all flex items-center gap-2">
+          <i data-lucide="sliders" class="w-3.5 h-3.5"></i> 10-Band EQ
+        </button>
+        <button onclick="switchTab('versions')" id="tab-btn-versions" class="tab-btn px-4 py-2 rounded-full text-[13px] font-semibold bg-white/[0.08] text-white/70 hover:text-white transition-all flex items-center gap-2">
+          <i data-lucide="shuffle" class="w-3.5 h-3.5"></i> Song Versions
+        </button>
+        <button onclick="switchTab('lyrics')" id="tab-btn-lyrics" class="tab-btn px-4 py-2 rounded-full text-[13px] font-semibold bg-white/[0.08] text-white/70 hover:text-white transition-all flex items-center gap-2">
+          <i data-lucide="mic" class="w-3.5 h-3.5"></i> Synced Lyrics
+        </button>
+      </div>
+
+      <!-- TAB 1: STUDIO RINGTONE TRIMMER (INTERACTIVE) -->
+      <div id="tab-panel-trimmer" class="bento-card p-6 sm:p-10 max-w-3xl mx-auto">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <span class="text-[11px] font-mono text-purple-400 font-bold tracking-wider uppercase">Audio Editing Suite</span>
+            <h3 class="text-[20px] font-bold text-white">Waveform Ringtone Trimmer</h3>
+          </div>
+          <span id="trim-duration-badge" class="px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 font-mono text-xs font-bold border border-purple-500/30">
+            Duration: 30.0s
+          </span>
+        </div>
+
+        <!-- Draggable Interactive Waveform -->
+        <div class="relative bg-black/60 rounded-2xl p-6 border border-white/10 mb-6">
+          <div class="h-20 flex items-center justify-between gap-1 px-2" id="waveform-bars">
+            <!-- Dynamically generated bars -->
+          </div>
+          <!-- Overlay Crop Window -->
+          <div id="trim-window" class="absolute top-0 bottom-0 left-[20%] right-[30%] bg-purple-500/20 border-x-2 border-purple-400 rounded-lg pointer-events-none flex items-center justify-between px-2">
+            <span class="text-[10px] font-mono text-purple-300 bg-black/80 px-1 rounded">START</span>
+            <span class="text-[10px] font-mono text-purple-300 bg-black/80 px-1 rounded">END</span>
+          </div>
+        </div>
+
+        <!-- Interactive Handles -->
+        <div class="grid grid-cols-2 gap-4 mb-6">
+          <div>
+            <label class="text-[12px] text-white/60 mb-1.5 block">Start Offset (seconds)</label>
+            <input type="range" min="0" max="120" value="24" id="trim-start-range" class="w-full accent-purple-500 cursor-pointer" />
+            <div class="flex justify-between text-[11px] font-mono text-white/40 mt-1">
+              <span>0:00</span>
+              <span id="start-val-text" class="text-purple-300 font-bold">0:24</span>
+              <span>2:00</span>
+            </div>
+          </div>
+          <div>
+            <label class="text-[12px] text-white/60 mb-1.5 block">End Offset (seconds)</label>
+            <input type="range" min="0" max="180" value="54" id="trim-end-range" class="w-full accent-purple-500 cursor-pointer" />
+            <div class="flex justify-between text-[11px] font-mono text-white/40 mt-1">
+              <span>0:00</span>
+              <span id="end-val-text" class="text-purple-300 font-bold">0:54</span>
+              <span>3:00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fade Toggles & Setup Button -->
+        <div class="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-white/10">
+          <div class="flex items-center gap-4 text-[13px] text-white/70">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked class="accent-purple-500 rounded" />
+              <span>Fade In (1.5s)</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked class="accent-purple-500 rounded" />
+              <span>Fade Out (2.0s)</span>
+            </label>
+          </div>
+
+          <button onclick="triggerSimulatedToast('Ringtone set successfully as Phone Ringtone! 🔔')" 
+                  class="px-5 py-2.5 rounded-full bg-white text-black font-semibold text-[13px] hover:bg-white/90 active:scale-95 transition-all flex items-center gap-2">
+            <i data-lucide="check" class="w-4 h-4"></i> Apply as Ringtone
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB 2: 10-BAND GRAPHIC EQUALIZER (INTERACTIVE) -->
+      <div id="tab-panel-eq" class="bento-card p-6 sm:p-10 max-w-3xl mx-auto hidden">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <span class="text-[11px] font-mono text-amber-400 font-bold tracking-wider uppercase">32-Bit Studio DSP</span>
+            <h3 class="text-[20px] font-bold text-white">10-Band Graphic Equalizer</h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] font-mono text-white/50">PRESET:</span>
+            <span id="eq-current-preset" class="text-[12px] font-bold text-amber-400 font-mono">BASS BOOST</span>
+          </div>
+        </div>
+
+        <!-- Presets Buttons Row -->
+        <div class="flex flex-wrap gap-2 mb-8">
+          <button onclick="applyEqPreset('bass')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-all">Bass Boost (+6dB)</button>
+          <button onclick="applyEqPreset('vocal')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-all">Vocal Enhancer</button>
+          <button onclick="applyEqPreset('acoustic')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-all">Acoustic Warmth</button>
+          <button onclick="applyEqPreset('club')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-all">Electronic Club</button>
+          <button onclick="applyEqPreset('flat')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-all">Flat Reference</button>
+        </div>
+
+        <!-- 10 Interactive Sliders -->
+        <div class="grid grid-cols-5 sm:grid-cols-10 gap-2 items-center text-center p-4 rounded-2xl bg-black/60 border border-white/10 mb-6">
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+6</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="6" id="eq-0"><span class="text-[10px] font-mono text-white/60 mt-1">32Hz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+6</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="6" id="eq-1"><span class="text-[10px] font-mono text-white/60 mt-1">64Hz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+4</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="4" id="eq-2"><span class="text-[10px] font-mono text-white/60 mt-1">125Hz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+2</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="2" id="eq-3"><span class="text-[10px] font-mono text-white/60 mt-1">250Hz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">0</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="0" id="eq-4"><span class="text-[10px] font-mono text-white/60 mt-1">500Hz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">0</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="0" id="eq-5"><span class="text-[10px] font-mono text-white/60 mt-1">1kHz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+1</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="1" id="eq-6"><span class="text-[10px] font-mono text-white/60 mt-1">2kHz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+2</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="2" id="eq-7"><span class="text-[10px] font-mono text-white/60 mt-1">4kHz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+3</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="3" id="eq-8"><span class="text-[10px] font-mono text-white/60 mt-1">8kHz</span></div>
+          <div class="flex flex-col items-center"><span class="text-[10px] font-mono text-white/40 mb-1">+4</span><input type="range" class="eq-slider accent-amber-400" min="-12" max="12" value="4" id="eq-9"><span class="text-[10px] font-mono text-white/60 mt-1">16kHz</span></div>
+        </div>
+
+        <p class="text-[12px] text-white/50 text-center font-mono">
+          ✓ Integrated with Android Hardware AudioEffects API &amp; Dolby Atmos
+        </p>
+      </div>
+
+      <!-- TAB 3: ALTERNATIVE SONG VERSIONS (INTERACTIVE) -->
+      <div id="tab-panel-versions" class="bento-card p-6 sm:p-10 max-w-3xl mx-auto hidden">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <span class="text-[11px] font-mono text-orange-400 font-bold tracking-wider uppercase">Discovery Engine</span>
+            <h3 class="text-[20px] font-bold text-white">Alternative Renditions Matrix</h3>
+          </div>
+          <span class="px-2.5 py-0.5 rounded-full bg-orange-500/20 text-orange-300 font-mono text-xs font-bold">1-Tap Switch</span>
+        </div>
+
+        <!-- Rendition Buttons -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+          <button onclick="selectVersion('Acoustic & Unplugged', 'Raw acoustic guitar & close mic vocal', '0.95x', 'Studio Live')" class="ver-btn p-3 rounded-xl bg-white/10 hover:bg-white/15 text-left border border-white/10 transition-all">
+            <div class="text-[13px] font-bold text-white flex items-center gap-1.5">🎸 Acoustic</div>
+            <div class="text-[11px] text-white/50 mt-0.5">Stripped down piano/guitar</div>
+          </button>
+          <button onclick="selectVersion('Slowed & Reverb', 'Ethereal nighttime vibe with deep hall reverb', '0.85x', 'Atmospheric')" class="ver-btn p-3 rounded-xl bg-white/5 hover:bg-white/15 text-left border border-white/10 transition-all">
+            <div class="text-[13px] font-bold text-white flex items-center gap-1.5">🌙 Slowed & Reverb</div>
+            <div class="text-[11px] text-white/50 mt-0.5">Atmospheric night vibes</div>
+          </button>
+          <button onclick="selectVersion('Speed Up (Nightcore)', 'High tempo dance edit with pitch adjustment', '1.25x', 'Fast Energy')" class="ver-btn p-3 rounded-xl bg-white/5 hover:bg-white/15 text-left border border-white/10 transition-all">
+            <div class="text-[13px] font-bold text-white flex items-center gap-1.5">⚡ Nightcore</div>
+            <div class="text-[11px] text-white/50 mt-0.5">High energy speed-up</div>
+          </button>
+          <button onclick="selectVersion('Live Tour Concert', 'Stadium ambience with crowd energy', '1.0x', 'Crowd Immersion')" class="ver-btn p-3 rounded-xl bg-white/5 hover:bg-white/15 text-left border border-white/10 transition-all">
+            <div class="text-[13px] font-bold text-white flex items-center gap-1.5">🏟️ Live Concert</div>
+            <div class="text-[11px] text-white/50 mt-0.5">Live stadium recordings</div>
+          </button>
+          <button onclick="selectVersion('8D Spatial Audio', 'Binaural rotating headphone surround', '1.0x', '3D Orbit')" class="ver-btn p-3 rounded-xl bg-white/5 hover:bg-white/15 text-left border border-white/10 transition-all">
+            <div class="text-[13px] font-bold text-white flex items-center gap-1.5">🎧 8D Spatial Audio</div>
+            <div class="text-[11px] text-white/50 mt-0.5">Rotating 360° surround</div>
+          </button>
+          <button onclick="selectVersion('Instrumental / Karaoke', 'Clean backing track with isolated vocals removed', '1.0x', 'Vocal Cut')" class="ver-btn p-3 rounded-xl bg-white/5 hover:bg-white/15 text-left border border-white/10 transition-all">
+            <div class="text-[13px] font-bold text-white flex items-center gap-1.5">🎤 Instrumental</div>
+            <div class="text-[11px] text-white/50 mt-0.5">Sing-along backing track</div>
+          </button>
+        </div>
+
+        <!-- Result Preview Card -->
+        <div class="p-4 rounded-xl bg-black/60 border border-white/10 flex items-center justify-between">
+          <div>
+            <div class="text-[11px] font-mono text-white/40">SELECTED RENDITION:</div>
+            <div id="selected-ver-title" class="text-[14px] font-bold text-orange-300">Acoustic & Unplugged</div>
+            <div id="selected-ver-desc" class="text-[12px] text-white/60">Raw acoustic guitar & close mic vocal</div>
+          </div>
+          <div class="text-right font-mono text-xs">
+            <div class="text-white/40">TEMPO: <span id="selected-ver-tempo" class="text-white">0.95x</span></div>
+            <div class="text-white/40">DSP: <span id="selected-ver-dsp" class="text-emerald-400">Studio Live</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: SYNCED KINETIC LYRICS (INTERACTIVE) -->
+      <div id="tab-panel-lyrics" class="bento-card p-6 sm:p-10 max-w-3xl mx-auto hidden">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <span class="text-[11px] font-mono text-pink-400 font-bold tracking-wider uppercase">Real-Time Syllable Sync</span>
+            <h3 class="text-[20px] font-bold text-white">Lyric Focus Reader</h3>
+          </div>
+          <span class="px-2.5 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-mono text-xs font-bold">Auto-Scroll</span>
+        </div>
+
+        <div class="p-6 rounded-2xl bg-black/60 border border-white/10 space-y-4 text-center" id="lyrics-container">
+          <p class="lyric-line text-white/30 text-[15px] transition-all">Ishq jaisa hai koi, na koi dooja</p>
+          <p class="lyric-line text-white font-extrabold text-[22px] scale-105 text-pink-400 shadow-sm transition-all drop-shadow-[0_0_12px_rgba(236,72,153,0.4)]">
+            Haye dil se dil ki ye baat chali
+          </p>
+          <p class="lyric-line text-white/50 text-[17px] transition-all">Kaisa ye jaadu hua, chaleya teri ore</p>
+          <p class="lyric-line text-white/30 text-[15px] transition-all">Rang de re mora manwa apne hi rang</p>
+        </div>
+
+        <div class="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+          <span class="text-[12px] text-white/50">Provider: <strong class="text-white">LrcRed + LRCLIB</strong> (Hindi Syllable-Sync)</span>
+          <button onclick="triggerSimulatedToast('Lyrics Share Card exported to Gallery! 🖼️')" class="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition-all">
+            <i data-lucide="share" class="w-3.5 h-3.5"></i> Export Quote Card
+          </button>
+        </div>
+      </div>
+
     </section>
 
-    <!-- Integrations Section (BitChord Style) -->
+    <!-- Simulated System Toast -->
+    <div id="system-toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full bg-slate-900 border border-white/20 text-white text-[13px] font-medium shadow-2xl transition-all duration-300 opacity-0 translate-y-4 pointer-events-none flex items-center gap-2">
+      <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+      <span id="toast-msg">Success</span>
+    </div>
+
+    <!-- Integrations Section -->
     <section id="integrations" class="max-w-[1100px] mx-auto px-4 sm:px-6 pt-10 pb-16">
       <div class="text-center mb-10">
         <h2 class="text-[15px] font-medium text-white">Plays nicely with everything you already use.</h2>
@@ -305,107 +516,16 @@
       </div>
     </section>
 
-    <!-- Comprehensive Features Grid (BitChord Bento Grid) -->
-    <section id="features" class="max-w-[1100px] mx-auto px-4 sm:px-6 pt-10 pb-16">
-      <div class="text-center mb-12">
-        <h2 class="text-balance text-[28px] sm:text-[36px] font-extrabold tracking-[-0.03em] text-white">
-          <span>Studio Tools.</span> <span class="text-white/45">Visual Immersion.</span>
-        </h2>
-        <p class="mx-auto mt-2 max-w-[560px] text-[14px] text-white/50">
-          Built for those who refuse to compromise on sound quality or user interface.
-        </p>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-
-        <!-- 1. Ringtone Trimmer -->
-        <div class="bento-card p-6 sm:p-7">
-          <div class="flex items-center justify-between mb-4">
-            <div class="w-9 h-9 rounded-xl bg-white/[0.08] text-white flex items-center justify-center">
-              <i data-lucide="scissors" class="w-4 h-4"></i>
-            </div>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/[0.1] text-white font-mono">NEW IN v2.7.0</span>
-          </div>
-          <h3 class="text-[16px] font-bold text-white mb-1.5">Studio Ringtone Trimmer</h3>
-          <p class="text-[13px] leading-[19px] text-white/50">
-            Interactive visual waveform editor with zoomable crop handles, fade transitions, and 1-tap setup as Phone Ringtone, Notification, or Alarm.
-          </p>
-        </div>
-
-        <!-- 2. Alternative Versions -->
-        <div class="bento-card p-6 sm:p-7">
-          <div class="flex items-center justify-between mb-4">
-            <div class="w-9 h-9 rounded-xl bg-white/[0.08] text-white flex items-center justify-center">
-              <i data-lucide="shuffle" class="w-4 h-4"></i>
-            </div>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/[0.1] text-white font-mono">NEW IN v2.7.0</span>
-          </div>
-          <h3 class="text-[16px] font-bold text-white mb-1.5">Alternative Song Versions</h3>
-          <p class="text-[13px] leading-[19px] text-white/50">
-            Discover Acoustic, Slowed &amp; Reverb, Nightcore, Live Concert, 8D Spatial Audio, and Instrumental renditions directly in 1-tap.
-          </p>
-        </div>
-
-        <!-- 3. Synced Lyrics & Focus -->
-        <div class="bento-card p-6 sm:p-7">
-          <div class="flex items-center justify-between mb-4">
-            <div class="w-9 h-9 rounded-xl bg-white/[0.08] text-white flex items-center justify-center">
-              <i data-lucide="mic" class="w-4 h-4"></i>
-            </div>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/[0.1] text-white font-mono">ENHANCED</span>
-          </div>
-          <h3 class="text-[16px] font-bold text-white mb-1.5">Lyric Focus &amp; Kinetic Effects</h3>
-          <p class="text-[13px] leading-[19px] text-white/50">
-            Distraction-free full-screen lyric focus mode with syllable-level sync, 12+ kinetic text physics animations, and lyrics quote share card generator.
-          </p>
-        </div>
-
-        <!-- 4. Ambient Cinema Landscape -->
-        <div class="bento-card p-6 sm:p-7">
-          <div class="w-9 h-9 rounded-xl bg-white/[0.08] text-white flex items-center justify-center mb-4">
-            <i data-lucide="tv" class="w-4 h-4"></i>
-          </div>
-          <h3 class="text-[16px] font-bold text-white mb-1.5">Ambient Cinema Landscape</h3>
-          <p class="text-[13px] leading-[19px] text-white/50">
-            Auto-rotates to fullscreen landscape with dynamic ambient edge lighting, spinning vinyl turntable, and live seekbar sync.
-          </p>
-        </div>
-
-        <!-- 5. Spotify Canvas Video Loops -->
-        <div class="bento-card p-6 sm:p-7">
-          <div class="w-9 h-9 rounded-xl bg-white/[0.08] text-white flex items-center justify-center mb-4">
-            <i data-lucide="film" class="w-4 h-4"></i>
-          </div>
-          <h3 class="text-[16px] font-bold text-white mb-1.5">Zero-Login Spotify Canvas</h3>
-          <p class="text-[13px] leading-[19px] text-white/50">
-            Hypnotic vertical looping videos on Now Playing powered by cloud key resolvers — zero personal Spotify SP_DC login required.
-          </p>
-        </div>
-
-        <!-- 6. 15+ Regional Languages -->
-        <div class="bento-card p-6 sm:p-7">
-          <div class="w-9 h-9 rounded-xl bg-white/[0.08] text-white flex items-center justify-center mb-4">
-            <i data-lucide="globe" class="w-4 h-4"></i>
-          </div>
-          <h3 class="text-[16px] font-bold text-white mb-1.5">15+ Regional Languages</h3>
-          <p class="text-[13px] leading-[19px] text-white/50">
-            Dedicated curated feeds for Hindi, Punjabi, Bhojpuri, Gujarati, Tamil, Telugu, Malayalam, Bengali, Marathi, Spanish, Korean, and Global Hits.
-          </p>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- Closing Call-to-Action (BitChord Style) -->
-    <section aria-labelledby="closing-title" class="max-w-[1100px] mx-auto px-4 sm:px-6 pt-10 pb-16">
+    <!-- Closing Call-to-Action -->
+    <section class="max-w-[1100px] mx-auto px-4 sm:px-6 pt-10 pb-16">
       <div class="flex flex-col items-center rounded-3xl bg-[#0a0a0a] px-6 py-16 text-center shadow-[inset_0_0_0_0.8px_rgb(255_255_255/0.1)] sm:py-20">
         
-        <h2 id="closing-title" class="max-w-[760px] text-balance text-[28px] font-extrabold leading-[1.1] tracking-[-0.03em] sm:text-[42px] mb-4">
+        <h2 class="max-w-[760px] text-balance text-[28px] font-extrabold leading-[1.1] tracking-[-0.03em] sm:text-[42px] mb-4">
           <span class="text-white">A modern YouTube Music client</span> <span class="text-white/45">with clean aesthetics inspired by Apple Music.</span>
         </h2>
 
         <p class="mx-auto max-w-[500px] text-balance text-[14px] leading-[20px] text-white/60 mb-8 font-normal">
-          Free, GPLv3, no ads, no tracking. Available for all Android devices.
+          Free, GPLv3, no ads, no tracking. Universal APK ready for all Android devices.
         </p>
 
         <div class="flex flex-wrap items-center justify-center gap-3">
@@ -430,7 +550,7 @@
 
   </main>
 
-  <!-- Minimalist Footer (BitChord Style) -->
+  <!-- Minimalist Footer -->
   <footer class="border-t border-white/[0.08] bg-black py-10 text-[13px] text-white/50">
     <div class="max-w-[1100px] mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
       
@@ -455,9 +575,198 @@
     </div>
   </footer>
 
+  <!-- Interactive JavaScript Engine -->
   <script>
-    // Initialize Lucide Icons
+    // Lucide Icons init
     lucide.createIcons();
+
+    // 1. Cursor Spot Follower
+    const glow = document.getElementById('cursor-glow');
+    window.addEventListener('mousemove', (e) => {
+      glow.style.left = e.clientX + 'px';
+      glow.style.top = e.clientY + 'px';
+    });
+
+    // 2. Interactive Waveform Visualizer
+    const canvas = document.getElementById('visualizer-canvas');
+    const ctx = canvas.getContext('2d');
+    let isPlaying = false;
+    let animId = null;
+    let progressSec = 0;
+    const totalSec = 200;
+
+    function resizeCanvas() {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function drawVisualizer() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const bars = 48;
+      const barWidth = canvas.width / bars - 2;
+
+      for (let i = 0; i < bars; i++) {
+        const height = isPlaying 
+          ? Math.sin(Date.now() * 0.005 + i * 0.25) * 15 + Math.random() * 12 + 10 
+          : 4;
+        
+        const gradient = ctx.createLinearGradient(0, canvas.height - height, 0, canvas.height);
+        gradient.addColorStop(0, '#c084fc');
+        gradient.addColorStop(1, '#ff7849');
+
+        ctx.fillStyle = isPlaying ? gradient : 'rgba(255, 255, 255, 0.15)';
+        ctx.fillRect(i * (barWidth + 2), canvas.height - height, barWidth, height);
+      }
+
+      if (isPlaying) {
+        progressSec += 0.05;
+        if (progressSec > totalSec) progressSec = 0;
+        updateTime();
+        animId = requestAnimationFrame(drawVisualizer);
+      }
+    }
+
+    function updateTime() {
+      const curM = Math.floor(progressSec / 60);
+      const curS = Math.floor(progressSec % 60).toString().padStart(2, '0');
+      document.getElementById('time-current').innerText = `${curM}:${curS}`;
+      const pct = (progressSec / totalSec) * 100;
+      document.getElementById('seek-progress').style.width = pct + '%';
+    }
+
+    const playBtn = document.getElementById('live-play-btn');
+    const playIcon = document.getElementById('play-icon');
+    const discSpin = document.getElementById('disc-spin');
+
+    playBtn.addEventListener('click', () => {
+      isPlaying = !isPlaying;
+      if (isPlaying) {
+        playIcon.setAttribute('data-lucide', 'pause');
+        discSpin.classList.remove('hidden');
+        discSpin.classList.add('flex');
+        drawVisualizer();
+      } else {
+        playIcon.setAttribute('data-lucide', 'play');
+        discSpin.classList.add('hidden');
+        discSpin.classList.remove('flex');
+        cancelAnimationFrame(animId);
+        drawVisualizer();
+      }
+      lucide.createIcons();
+    });
+    drawVisualizer();
+
+    // Quality Switcher Interactive Click
+    const qualityBtn = document.getElementById('quality-toggle-btn');
+    let isLossless = true;
+    qualityBtn.addEventListener('click', () => {
+      isLossless = !isLossless;
+      if (isLossless) {
+        qualityBtn.innerText = '320kbps Lossless';
+        qualityBtn.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30 transition-all font-mono';
+        triggerSimulatedToast('Switched to JioSaavn 320kbps Lossless Audio ✨');
+      } else {
+        qualityBtn.innerText = '160kbps Opus';
+        qualityBtn.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-all font-mono';
+        triggerSimulatedToast('Switched to YouTube Music 160kbps Opus Stream ⚡');
+      }
+    });
+
+    // 3. Studio Sandbox Tabs Switcher
+    function switchTab(tab) {
+      const tabs = ['trimmer', 'eq', 'versions', 'lyrics'];
+      tabs.forEach(t => {
+        document.getElementById(`tab-panel-${t}`).classList.add('hidden');
+        const b = document.getElementById(`tab-btn-${t}`);
+        b.className = 'tab-btn px-4 py-2 rounded-full text-[13px] font-semibold bg-white/[0.08] text-white/70 hover:text-white transition-all flex items-center gap-2';
+      });
+
+      document.getElementById(`tab-panel-${tab}`).classList.remove('hidden');
+      const activeBtn = document.getElementById(`tab-btn-${tab}`);
+      activeBtn.className = 'tab-btn px-4 py-2 rounded-full text-[13px] font-semibold bg-white text-black transition-all flex items-center gap-2';
+      lucide.createIcons();
+    }
+
+    // 4. Trimmer Interactive Generator
+    const waveformBars = document.getElementById('waveform-bars');
+    for (let i = 0; i < 60; i++) {
+      const h = Math.floor(Math.sin(i * 0.2) * 25 + Math.cos(i * 0.4) * 20 + 35);
+      const b = document.createElement('div');
+      b.className = 'flex-1 bg-white/20 rounded-full transition-all';
+      b.style.height = `${h}%`;
+      waveformBars.appendChild(b);
+    }
+
+    const startRange = document.getElementById('trim-start-range');
+    const endRange = document.getElementById('trim-end-range');
+    const trimWindow = document.getElementById('trim-window');
+    const durationBadge = document.getElementById('trim-duration-badge');
+
+    function updateTrimmer() {
+      let s = parseInt(startRange.value);
+      let e = parseInt(endRange.value);
+      if (s >= e) {
+        e = s + 5;
+        endRange.value = e;
+      }
+      const diff = e - s;
+      durationBadge.innerText = `Duration: ${diff.toFixed(1)}s`;
+      document.getElementById('start-val-text').innerText = `0:${s.toString().padStart(2, '0')}`;
+      document.getElementById('end-val-text').innerText = `0:${e.toString().padStart(2, '0')}`;
+      
+      const leftPct = (s / 180) * 100;
+      const rightPct = 100 - (e / 180) * 100;
+      trimWindow.style.left = `${leftPct}%`;
+      trimWindow.style.right = `${rightPct}%`;
+    }
+    startRange.addEventListener('input', updateTrimmer);
+    endRange.addEventListener('input', updateTrimmer);
+    updateTrimmer();
+
+    // 5. Equalizer Presets
+    const presets = {
+      bass: [6, 6, 4, 2, 0, 0, 1, 2, 3, 4],
+      vocal: [-2, -1, 0, 2, 5, 5, 4, 2, 1, 0],
+      acoustic: [3, 2, 1, 2, 3, 2, 3, 4, 3, 2],
+      club: [5, 4, 2, 0, 0, 1, 3, 4, 5, 5],
+      flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    };
+
+    function applyEqPreset(name) {
+      const vals = presets[name];
+      vals.forEach((v, idx) => {
+        const input = document.getElementById(`eq-${idx}`);
+        input.value = v;
+      });
+      document.getElementById('eq-current-preset').innerText = name.toUpperCase();
+      triggerSimulatedToast(`Applied ${name.toUpperCase()} preset to 10-band DSP! 🎛️`);
+    }
+
+    // 6. Versions Selector
+    function selectVersion(name, desc, tempo, dsp) {
+      document.getElementById('selected-ver-title').innerText = name;
+      document.getElementById('selected-ver-desc').innerText = desc;
+      document.getElementById('selected-ver-tempo').innerText = tempo;
+      document.getElementById('selected-ver-dsp').innerText = dsp;
+      triggerSimulatedToast(`Loaded rendition: ${name} 🔀`);
+    }
+
+    // 7. Toast Notifier
+    let toastTimeout = null;
+    function triggerSimulatedToast(msg) {
+      const toast = document.getElementById('system-toast');
+      document.getElementById('toast-msg').innerText = msg;
+      toast.classList.remove('opacity-0', 'translate-y-4');
+      toast.classList.add('opacity-100', 'translate-y-0');
+
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-4');
+      }, 3000);
+    }
   </script>
 </body>
 </html>
