@@ -4,7 +4,7 @@
 
 <img src="https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/assets/Logo.png" width="130" height="130" alt="Dhvani Music Logo"/>
 
-### *Premium Indian & Global Music — Ad-Free, Open Source, Beautiful*
+### *Premium Indian & Global Music — Private, Open Source, Beautiful*
 
 [![Latest Release](https://img.shields.io/github/v/release/Kanaiya-rgb/Dhvani-Music?style=for-the-badge&label=Latest%20Release&color=22c55e&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Kanaiya-rgb/Dhvani-Music/total?style=for-the-badge&label=Total%20Downloads&color=3b82f6&labelColor=0d1117)](https://github.com/Kanaiya-rgb/Dhvani-Music/releases)
@@ -16,26 +16,23 @@
 
 <br/>
 
-[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=0d1117)](https://discord.gg/cQkNcqCwkA)
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Dev-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white&labelColor=0d1117)](https://ko-fi.com/kanaiya_rgb)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black&labelColor=0d1117)](https://buymeacoffee.com/kanaiya_rgb)
 
 <br/>
 
-[📥 Download](#-download--installation) · [💬 Discord](https://discord.gg/cQkNcqCwkA) · [📐 Showcases](#-technical-showcases) · [✨ Features](#-features) · [🏛️ Architecture](#-architecture--tech-stack) · [🛠️ Build](#-build-from-source) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements)
+[📥 Download](#-download--installation) · [📐 Showcases](#-technical-showcases) · [✨ Features](#-features) · [🏛️ Architecture](#-architecture--tech-stack) · [🛠️ Build](#-build-from-source) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements)
 
 </div>
 
 ---
 
 > [!WARNING]
-> **Dhvani Music is not affiliated with, endorsed by, or connected to YouTube, Google, Spotify, or any of their subsidiaries in any way. Use at your own discretion.**
+> **Dhvani Music is an independent, community-driven open-source player. It is not affiliated with, endorsed by, or connected to YouTube, Google, Spotify, or any of their subsidiaries in any way. Use at your own discretion.**
 
 ---
 
 ## 📖 What is Dhvani Music?
 
-**Dhvani Music** is a feature-rich, open-source Android music client built for those who refuse to compromise. It fuses **YouTube Music's massive catalogue** with **Hi-Res lossless audio**, **real-time synced lyrics**, **Ambient Cinema landscape mode**, a **studio ringtone trimmer & audio editor**, and an expressive **Material 3 / Frosted-Glass UI** — all completely ad-free and privacy-first.
+**Dhvani Music** is a feature-rich, open-source Android music client built for those who refuse to compromise. It unites **diverse catalog streaming** with **Hi-Res lossless audio**, **real-time synced lyrics**, **Ambient Cinema landscape mode**, a **studio ringtone trimmer & audio editor**, and an expressive **Material 3 / Frosted-Glass UI** — all completely open-source, bloat-free, and privacy-first.
 
 Built from the ground up in modern Kotlin with Jetpack Compose and AndroidX Media3, Dhvani is a next-generation music player designed to look premium, feel snappy, and sound incredible.
 
@@ -51,7 +48,7 @@ Built from the ground up in modern Kotlin with Jetpack Compose and AndroidX Medi
 
 | 🔍 1. Dual-Source Instant Search | ⚡ 2. Seamless Hi-Res Quality Switcher | 🎛️ 3. 32-Bit DSP & 10-Band Pro Equalizer |
 |:---|:---|:---|
-| Unified search engine indexing **YouTube Music's global catalogue** and **JioSaavn's regional database** simultaneously with accurate matching. | Intelligent dynamic bitrate auto-switching from **160kbps Opus** to **320kbps Lossless** with zero latency and uninterrupted playback. | Studio sound engineering with hardware **10-band graphic equalizer**, dynamic **Bass Boost (+6dB)**, and **32-bit floating-point DSP**. |
+| Unified search engine indexing **global catalogue** and **regional databases** simultaneously with accurate matching. | Intelligent dynamic bitrate auto-switching from **160kbps Opus** to **320kbps Lossless** with zero latency and uninterrupted playback. | Studio sound engineering with hardware **10-band graphic equalizer**, dynamic **Bass Boost (+6dB)**, and **32-bit floating-point DSP**. |
 
 ---
 
@@ -61,9 +58,9 @@ Built from the ground up in modern Kotlin with Jetpack Compose and AndroidX Medi
 
 | Feature | Details |
 |:---|:---|
-| **Dual-Source Streaming Engine** | Unified simultaneous streaming pipeline querying both **YouTube Music** (160kbps Opus) and **JioSaavn** (up to 320kbps Lossless) with zero-latency switching. |
+| **Dual-Source Streaming Engine** | Unified simultaneous streaming pipeline querying both **standard** (160kbps Opus) and **lossless** (up to 320kbps) streams with zero-latency switching. |
 | **Seamless Hi-Res Quality Switcher** | Dynamic quality sheet allowing instant switching between standard and studio high-fidelity streams during live playback. |
-| **Ad-Free YouTube Music** | Complete YouTube Music catalog — search, browse, queue, and stream with zero ads and zero interruptions. |
+| **Distraction-Free Streaming** | Complete streaming catalog — search, browse, queue, and stream with a clean, uninterrupted playback interface. |
 | **Hi-Res Lossless Audio** | FLAC/ALAC lossless audio streams up to 24-bit/192kHz via pluggable module sources with intelligent fallback. |
 | **Gapless Crossfade** | Smooth, configurable 0–12 second crossfades between tracks so your music never stops. |
 | **Automix (Beat-Match DSP)** | Native C++ `dhvani_analysis` engine with tempo alignment and automated beat-matched transitions. |
@@ -117,7 +114,7 @@ Explore every version of your favorite tracks in a single tap:
 | Feature | Details |
 |:---|:---|
 | **Lyric Focus Mode *(New in v2.7.0)*** | Full-screen distraction-free lyric view with buttery-smooth line tracking and active line glow. |
-| **Multi-Source Engine & LrcRed** | Redundant fallback chain spanning **LrcRed**, **LRCLIB**, **Musixmatch**, **Kugou**, **Genius**, and **YouTube** for deep Indian and global lyric coverage. |
+| **Multi-Source Engine & LrcRed** | Redundant fallback chain spanning **LrcRed**, **LRCLIB**, **Musixmatch**, **Kugou**, **Genius**, and web providers for deep regional and global lyric coverage. |
 | **12+ Kinetic Lyrics Text Effects** | Physics-based animations: Neon, Glitch, Ocean Wave, Aurora, Ember, Chrome, CRT, Sine Wave, Smoke, Kinetic Equalizer, Ghostwrite, and Typewriter. |
 | **Word-by-Word Syllable Sync** | Syllable-level highlighting for supported tracks with real-time position seeking. |
 | **Lyrics Share Card Generator** | Select up to 7 lyric lines and export an aesthetic quote card for WhatsApp, Instagram, or Twitter (Story 9:16 or Square 1:1). |
@@ -125,13 +122,12 @@ Explore every version of your favorite tracks in a single tap:
 
 ---
 
-### 💬 In-App Discord Community & Social *(New in v2.7.0)*
+### 💬 Social & Audio Integrations *(New in v2.7.0)*
 
-- **In-App Community Hub**: Dedicated Discord screen inside the app with direct join link (`discord.gg/cQkNcqCwkA`), release channels, and bug tracker access.
 - **Discord Rich Presence (RPC)**: Live track, artist, album artwork, and real-time playback elapsed bar displayed on your Discord profile.
 - **Listen Together**: Synchronized group listening rooms with host controls and guest room codes.
 - **Last.fm & ListenBrainz Scrobbling**: Native scrobbling with configurable timing thresholds.
-- **YouTube Music Sync**: Optional Google account sign-in to sync liked songs, playlists, and history.
+- **Cloud Account Sync**: Optional account sign-in to sync liked songs, playlists, and personal library history.
 
 ---
 
@@ -169,7 +165,7 @@ Explore every version of your favorite tracks in a single tap:
 - **Full Metadata Embedding**: Downloaded tracks auto-embed 3000×3000 album covers, artist, title, album, and ID3 lyrics tags.
 - **Local Storage Scanner**: Scan and play local audio files from internal storage or SD cards with gapless support.
 - **Smart Auto-Download**: Auto-cache or download liked songs and repeat favorites in the background.
-- **Fast Playlist Import/Export**: Parallel coroutine engine importing Spotify playlists **6× faster** (Spotify, YouTube Music, M3U/JSON).
+- **Fast Playlist Import/Export**: Parallel coroutine engine importing playlists **6× faster** (M3U, JSON, and supported services).
 
 ---
 
@@ -215,7 +211,7 @@ Single Activity (MainActivity.kt)
 │   └── dhvani_analysis   → Native C++ beat-tempo detector & DSP analyzer
 │
 ├── 🌐 Data & API Layer (Ktor + KotlinX Serialization + Room DB)
-│   ├── innertube/         → YouTube Music stream resolver & InnerTube parser
+│   ├── innertube/         → Core stream resolver & parser engine
 │   ├── lyrics/            → Multi-source synced lyrics engine
 │   ├── playlist/          → Import, export, sync & playlist manager
 │   ├── canvas/            → Spotify & community canvas video resolver
@@ -268,7 +264,7 @@ Dhvani-Music/
 │       │   │   ├── AppearanceSettingsScreen.kt # Theme, seekbars, canvas styles
 │       │   │   ├── AccountAndScrobblingScreen.kt # Last.fm, ListenBrainz, Discord
 │       │   │   ├── ListenTogetherScreen.kt    # Real-time group listening rooms
-│       │   │   ├── DiscordScreen.kt           # 🆕 In-app Discord community hub
+│       │   │   ├── DiscordScreen.kt           # Discord Rich Presence status manager
 │       │   │   └── SourcesScreen.kt           # Audio source & quality config
 │       │   │
 │       │   ├── player/
@@ -299,8 +295,8 @@ Dhvani-Music/
 │       │   └── eq/EqualizerManager.kt         # 10-band EQ + Dolby DSP manager
 │       │
 │       ├── 🌐 data/
-│       │   ├── innertube/                     # YouTube Music stream resolver
-│       │   ├── jiosaavn/                      # 🆕 JioSaavn 320kbps lossless provider
+│       │   ├── innertube/                     # Core audio stream resolver
+│       │   ├── sources/                       # 🆕 High-fidelity 320kbps audio provider
 │       │   ├── lyrics/                        # Multi-source lyrics (LrcRed, LRCLIB)
 │       │   ├── playlist/                      # CRUD, import & sync managers
 │       │   ├── canvas/CommunityCanvas.kt      # Community & cloud canvas resolver
@@ -387,15 +383,15 @@ cd Dhvani-Music
 ## ❓ Frequently Asked Questions
 
 <details>
-<summary><b>Q: Do I need YouTube Music Premium?</b></summary>
+<summary><b>Q: Do I need an account to use Dhvani?</b></summary>
 <br/>
-No. Dhvani streams freely using public and authenticated YouTube Music InnerTube APIs. All features — background playback, ad-blocking, high quality — work without any paid subscription.
+No. Dhvani functions directly as an independent client using public media endpoints. All playback, background listening, equalizer DSP, and lossless features work without requiring an account or subscription.
 </details>
 
 <details>
 <summary><b>Q: How does Lossless Audio work?</b></summary>
 <br/>
-Dhvani supports pluggable module resolvers (FLAC/ALAC up to 24-bit/192kHz). When enabled in Settings → Sources, it queries the lossless catalog and falls back seamlessly to YouTube Music's AAC stream if unavailable.
+Dhvani supports pluggable module resolvers (FLAC/ALAC up to 24-bit/192kHz). When enabled in Settings → Sources, it queries the lossless catalog and falls back seamlessly to standard high-fidelity audio if unavailable.
 </details>
 
 <details>
@@ -418,29 +414,6 @@ Simply tilt your phone to landscape while the Now Playing fullscreen player is o
 
 ---
 
-## ☕ Support the Project
-
-Dhvani Music is completely free, open-source, and ad-free. If you enjoy it, consider supporting active development:
-
-<div align="center">
-
-<a href='https://ko-fi.com/kanaiya_rgb' target='_blank'>
-  <img height='40' src='https://storage.ko-fi.com/cdn/kofi3.png?v=3' alt='Buy Me a Coffee at ko-fi.com' />
-</a>
-&nbsp;&nbsp;
-<a href='https://buymeacoffee.com/kanaiya_rgb' target='_blank'>
-  <img height='40' src='https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png' alt='Buy Me A Coffee' />
-</a>
-
-<br/><br/>
-
-[![Support on Ko-fi](https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/kanaiya_rgb)
-&nbsp;
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/kanaiya_rgb)
-
-</div>
-
----
 
 ## 🤝 Contributors
 
@@ -462,25 +435,14 @@ Want to contribute? Read **[CONTRIBUTING.md](CONTRIBUTING.md)** to get started!
 
 ---
 
-## 💬 Community & Discussion
-
-Have questions, feature suggestions, or bug reports? Join our vibrant community of music lovers and testers on Discord:
-
-<div align="center">
-
-[![Join Discord](https://img.shields.io/badge/Discord-Join%20Dhvani%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=0d1117)](https://discord.gg/cQkNcqCwkA)
-
-</div>
-
----
 
 ## 🙏 Credits & Acknowledgements
 
 Dhvani Music is built with deep gratitude to these open-source projects:
 
-- **[BitChord](https://github.com/kushagrasinghx/BitChord)** by [Kushagra Singh](https://github.com/kushagrasinghx) — Pioneering architecture, YouTube Music stream integration, and aesthetic UI foundations.
+- **[BitChord](https://github.com/kushagrasinghx/BitChord)** by [Kushagra Singh](https://github.com/kushagrasinghx) — Pioneering architecture, streaming pipeline, and aesthetic UI foundations.
 - **[Meld](https://github.com/FrancescoGrazioso/Meld)** by [Francesco Grazioso](https://github.com/FrancescoGrazioso) — Material 3 design, playlist management, and open-source Android music ecosystem contributions.
-- **[NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor)** — Robust, lightweight YouTube stream extraction infrastructure.
+- **[NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor)** — Robust, lightweight stream extraction infrastructure.
 - **[AndroidX Jetpack Compose](https://developer.android.com/jetpack/compose)** & **[Media3](https://developer.android.com/media/media3)** — The modern foundation powering our entire audio engine and UI.
 - **[Haze](https://github.com/chrisbanes/haze)** by Chris Banes — Beautiful real-time glassmorphism blur effects.
 - **[binimum](https://github.com/binimum)** — Apple Music-style real-time synced lyrics animations and APIs.
@@ -511,6 +473,6 @@ See the [LICENSE](LICENSE) file for full details.
 
 Made with ❤️ by [Kanaiya-rgb](https://github.com/Kanaiya-rgb)
 
-**Dhvani Music** • [Discord](https://discord.gg/cQkNcqCwkA) • [Releases](https://github.com/Kanaiya-rgb/Dhvani-Music/releases) • [Issues](https://github.com/Kanaiya-rgb/Dhvani-Music/issues) • [CONTRIBUTING.md](CONTRIBUTING.md)
+**Dhvani Music** • [Releases](https://github.com/Kanaiya-rgb/Dhvani-Music/releases) • [Issues](https://github.com/Kanaiya-rgb/Dhvani-Music/issues) • [CONTRIBUTING.md](CONTRIBUTING.md)
 
 </div>
