@@ -19,7 +19,7 @@
 
 <br/>
 
-[📥 Download](#-download--installation) · [📐 Showcases](#-technical-showcases) · [✨ Features](#-features) · [🏛️ Architecture](#-architecture--tech-stack) · [🛠️ Build](#-build-from-source) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements)
+[📥 Download](#-download--installation) · [✨ Features](#-features) · [🏛️ Architecture](#-architecture--tech-stack) · [🛠️ Build](#-build-from-source) · [❓ FAQ](#-frequently-asked-questions) · [🙏 Credits](#-credits--acknowledgements)
 
 </div>
 
@@ -35,20 +35,6 @@
 **Dhvani Music** is a feature-rich, open-source Android music client built for those who refuse to compromise. It unites **diverse catalog streaming** with **Hi-Res lossless audio**, **real-time synced lyrics**, **Ambient Cinema landscape mode**, a **studio ringtone trimmer & audio editor**, and an expressive **Material 3 / Frosted-Glass UI** — all completely open-source, bloat-free, and privacy-first.
 
 Built from the ground up in modern Kotlin with Jetpack Compose and AndroidX Media3, Dhvani is a next-generation music player designed to look premium, feel snappy, and sound incredible.
-
----
-
-## 📐 Technical Showcases
-
-<div align="center">
-  <img src="assets/Showcase_Banner.png" alt="Dhvani Music Technical Showcases" width="100%" style="border-radius: 16px; max-width: 960px;" />
-</div>
-
-<br/>
-
-| 🔍 1. Dual-Source Instant Search | ⚡ 2. Seamless Hi-Res Quality Switcher | 🎛️ 3. 32-Bit DSP & 10-Band Pro Equalizer |
-|:---|:---|:---|
-| Unified search engine indexing **global catalogue** and **regional databases** simultaneously with accurate matching. | Intelligent dynamic bitrate auto-switching from **160kbps Opus** to **320kbps Lossless** with zero latency and uninterrupted playback. | Studio sound engineering with hardware **10-band graphic equalizer**, dynamic **Bass Boost (+6dB)**, and **32-bit floating-point DSP**. |
 
 ---
 
