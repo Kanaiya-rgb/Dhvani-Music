@@ -35,21 +35,61 @@ object NerdStats {
         val claimed: StreamFormat? = null,
         /** Authoritative source/provider that supplied this stream. */
         val sourceName: String? = null,
+        /** Actual Android audio decoder name from player callback (e.g. c2.android.flac.decoder). */
+        val decoderName: String? = null,
+        /** Whether an active lookup or race is in flight for a better stream. */
+        val isSearchingBetterQuality: Boolean = false,
     ) {
         /**
          * Whether what arrived is measurably worse than what was promised.
          *
-         * Only ever true when both figures are known — an absent measurement is
-         * not evidence of a downgrade, and reporting one on that basis would
-         * make the warning worthless the moment it fired on a container that
-         * simply doesn't state its rate.
+         * Only ever true when both figures are known, or when a source promised
+         * 24-bit Hi-Res and the player actually reports 16-bit.
          */
         val downgraded: Boolean
             get() {
                 val wantedRate = claimed?.sampleRateHz
                 val wantedDepth = claimed?.bitDepth
+                val wantedHiRes = claimed?.isHiRes == true
                 return (wantedRate != null && sampleRateHz != null && sampleRateHz < wantedRate) ||
-                    (wantedDepth != null && bitDepth != null && bitDepth < wantedDepth)
+                    (wantedDepth != null && bitDepth != null && bitDepth < wantedDepth) ||
+                    (wantedHiRes && !isHiRes && isLossless) ||
+                    ((wantedDepth ?: 0) >= 24 && (bitDepth ?: 16) < 24 && isLossless)
+            }
+
+        val downgradeReason: String?
+            get() {
+                if (!downgraded) return null
+                val wantedDepth = claimed?.bitDepth
+                val wantedHiRes = claimed?.isHiRes == true
+                if ((wantedDepth != null && wantedDepth >= 24 && (bitDepth ?: 16) < 24) || (wantedHiRes && !isHiRes)) {
+                    return "Source claimed 24-bit Hi-Res, playing ${bitDepth ?: 16}-bit"
+                }
+                if (claimed?.sampleRateHz != null && sampleRateHz != null && sampleRateHz < claimed.sampleRateHz) {
+                    return "Source claimed ${claimed.sampleRateHz} Hz, playing $sampleRateHz Hz"
+                }
+                return "Source claimed ${claimed?.summary ?: "higher quality"}, playing ${bitDepth ?: 16}-bit"
+            }
+
+        val qualityNotice: String?
+            get() {
+                if (downgraded) {
+                    return downgradeReason ?: "Source stream lower than declared"
+                }
+                val wantsHiRes = AppSettings.effectiveAudioQuality == com.music.dhvani.data.settings.AudioQuality.LOSSLESS &&
+                    (AppSettings.preferredPlaybackSource.value == "LOSSLESS" || claimed?.isLossless == true || claimed?.isHiRes == true)
+                if (wantsHiRes && isLossless && !isHiRes) {
+                    return "24-bit unavailable; playing 16-bit Lossless"
+                }
+                if (wantsHiRes && !isLossless && mimeType != null) {
+                    val kb = bitrateKbps ?: claimed?.kbps
+                    return if (isHiQuality) {
+                        "Lossless unavailable; playing High Quality" + (if (kb != null) " ($kb kbps)" else "")
+                    } else {
+                        "Lossless unavailable; playing standard Opus/AAC"
+                    }
+                }
+                return null
             }
 
         /**
@@ -125,7 +165,7 @@ object NerdStats {
      * `audio/raw` is here because that is how Media3 names PCM — a WAV stream
      * reaches the renderer as raw samples, not as `audio/wav`.
      */
-    private val LOSSLESS_CODEC_SUFFIXES = listOf("flac", "alac", "raw")
+    private val LOSSLESS_CODEC_SUFFIXES = listOf("flac", "alac", "raw", "wav", "wave", "pcm")
 
     /**
      * Whether [mimeType] names a bit-exact codec.
@@ -137,8 +177,11 @@ object NerdStats {
      * track the last [current] publish happened to describe, which after a
      * queue advance is the previous one.
      */
-    fun isLosslessMime(mimeType: String?): Boolean =
-        mimeType != null && LOSSLESS_CODEC_SUFFIXES.any { mimeType.endsWith(it) }
+    fun isLosslessMime(mimeType: String?): Boolean {
+        if (mimeType.isNullOrBlank()) return false
+        val clean = mimeType.substringBefore(';').trim().lowercase()
+        return LOSSLESS_CODEC_SUFFIXES.any { clean.endsWith(it) }
+    }
 
     /**
      * The bitrate a lossy stream has to reach to be worth calling out.
@@ -198,6 +241,10 @@ object NerdStats {
     }
 
     fun pickedBitrateKbps(videoId: String?): Int? = videoId?.let { picked[it] }
+
+    fun clearPicked(videoId: String?) {
+        if (videoId != null) picked.remove(videoId)
+    }
 
     /**
      * Undoes [onSourceStream] for [trackId].

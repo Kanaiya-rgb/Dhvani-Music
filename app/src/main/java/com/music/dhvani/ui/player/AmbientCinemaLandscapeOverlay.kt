@@ -13,6 +13,7 @@ import com.music.dhvani.ui.components.DynamicPlayerSlider
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -28,6 +29,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -69,6 +71,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -87,6 +90,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.launch
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -101,22 +105,29 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import coil3.request.crossfade
+import com.music.dhvani.R
 import com.music.dhvani.data.lyrics.LyricLine
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.artworkAt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
@@ -138,7 +149,9 @@ import kotlin.math.roundToInt
 fun AmbientCinemaLandscapeOverlay(
     song: Song,
     isPlaying: Boolean,
+    isLoading: Boolean = false,
     positionMs: Long,
+    bufferedPositionMs: Long = 0L,
     durationMs: Long,
     lyrics: List<LyricLine>?,
     queue: List<Song> = emptyList(),
@@ -241,12 +254,14 @@ fun AmbientCinemaLandscapeOverlay(
     // 3. Slider Style & Scrubbing State (Honors user choice in settings)
     val sliderStyle by AppSettings.sliderStyle.collectAsStateWithLifecycle()
     val squigglySlider by AppSettings.squigglySlider.collectAsStateWithLifecycle()
+    val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubFraction by remember { mutableFloatStateOf(0f) }
 
     val currentFraction = if (durationMs > 0) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
     val displayFraction = if (isScrubbing) scrubFraction else currentFraction
     val displayPositionMs = if (isScrubbing) (scrubFraction * durationMs).toLong() else positionMs
+    val bufferedFraction = if (durationMs > 0) (bufferedPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
 
     // 4. Brightness Management
     var brightness by remember {
@@ -426,17 +441,17 @@ fun AmbientCinemaLandscapeOverlay(
             // Dynamically scale artwork based on device screen height & controls visibility
             val targetArtworkSize = when {
                 !areControlsVisible -> when {
-                    availableColHeight < 280.dp -> 170.dp
-                    availableColHeight < 330.dp -> 205.dp
-                    availableColHeight < 380.dp -> 236.dp
-                    else -> 265.dp
+                    availableColHeight < 280.dp -> 180.dp
+                    availableColHeight < 330.dp -> 215.dp
+                    availableColHeight < 380.dp -> 245.dp
+                    else -> 275.dp
                 }
                 else -> when {
-                    availableColHeight < 260.dp -> 126.dp
-                    availableColHeight < 300.dp -> 146.dp
-                    availableColHeight < 360.dp -> 168.dp
-                    availableColHeight < 410.dp -> 188.dp
-                    else -> 212.dp
+                    availableColHeight < 260.dp -> 130.dp
+                    availableColHeight < 300.dp -> 150.dp
+                    availableColHeight < 360.dp -> 172.dp
+                    availableColHeight < 410.dp -> 192.dp
+                    else -> 218.dp
                 }
             }
             val artworkSize by animateDpAsState(
@@ -444,8 +459,7 @@ fun AmbientCinemaLandscapeOverlay(
                 animationSpec = tween(durationMillis = 280, easing = LinearOutSlowInEasing),
                 label = "artworkSize",
             )
-            val haloSize = artworkSize + 22.dp
-            val artworkShapeRadius = if (isCompact) 20.dp else 24.dp
+            val haloSize = artworkSize + 24.dp
 
             // Proportionate, compact slider width aligned with artwork
             val sliderWidth = (artworkSize + 28.dp).coerceIn(180.dp, 255.dp)
@@ -540,9 +554,9 @@ fun AmbientCinemaLandscapeOverlay(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    // Artwork with ambient shadow glow
+                    // Rotating Circular Vinyl Record with ambient halo glow
                     Box(contentAlignment = Alignment.Center) {
-                        // Ambient halo behind card (smooth radial gradient without GPU blur overhead)
+                        // Ambient halo behind record (smooth radial gradient without GPU blur overhead)
                         Box(
                             modifier = Modifier
                                 .size(haloSize)
@@ -558,20 +572,34 @@ fun AmbientCinemaLandscapeOverlay(
                                 ),
                         )
 
-                        Surface(
-                            shape = RoundedCornerShape(artworkShapeRadius),
-                            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.25f)),
-                            shadowElevation = if (isCompact) 12.dp else 20.dp,
-                            modifier = Modifier.size(artworkSize),
-                        ) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(context)
-                                    .data(song.artworkAt(800) ?: song.thumbnailUrl)
-                                    .build(),
-                                contentDescription = song.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize(),
-                            )
+                        CinemaVinylRecord(
+                            song = song,
+                            isPlaying = isPlaying,
+                            size = artworkSize,
+                        )
+
+                        // Buffering indicator over vinyl center (visible whether HUD controls are shown or hidden)
+                        val bufferingAlpha by animateFloatAsState(
+                            targetValue = if (isLoading) 1f else 0f,
+                            animationSpec = tween(durationMillis = 200),
+                            label = "cinemaBufferingAlpha",
+                        )
+                        if (bufferingAlpha > 0.01f) {
+                            Box(
+                                modifier = Modifier
+                                    .size(artworkSize * 0.32f)
+                                    .alpha(bufferingAlpha)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.65f))
+                                    .border(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f), CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    strokeWidth = 2.5.dp,
+                                    modifier = Modifier.size(artworkSize * 0.18f),
+                                )
+                            }
                         }
                     }
 
@@ -649,6 +677,7 @@ fun AmbientCinemaLandscapeOverlay(
                                     squigglySlider = squigglySlider,
                                     activeColor = MaterialTheme.colorScheme.primary,
                                     inactiveColor = Color.White.copy(alpha = 0.28f),
+                                    bufferedValue = bufferedFraction,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -706,12 +735,20 @@ fun AmbientCinemaLandscapeOverlay(
                                         },
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                            contentDescription = if (isPlaying) "Pause" else "Play",
-                                            tint = Color.Black,
-                                            modifier = Modifier.size(playPauseIconSize),
-                                        )
+                                        if (isLoading) {
+                                            CircularProgressIndicator(
+                                                color = Color.Black,
+                                                strokeWidth = 2.5.dp,
+                                                modifier = Modifier.size(playPauseIconSize),
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                                tint = Color.Black,
+                                                modifier = Modifier.size(playPauseIconSize),
+                                            )
+                                        }
                                     }
                                 }
 
@@ -1141,12 +1178,20 @@ fun AmbientCinemaLandscapeOverlay(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             if (isCurrent) {
-                                                Icon(
-                                                    imageVector = Icons.Rounded.GraphicEq,
-                                                    contentDescription = "Playing",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(16.dp),
-                                                )
+                                                if (isLoading) {
+                                                    CircularProgressIndicator(
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        strokeWidth = 2.dp,
+                                                        modifier = Modifier.size(14.dp),
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.GraphicEq,
+                                                        contentDescription = "Playing",
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(16.dp),
+                                                    )
+                                                }
                                             } else {
                                                 Text(
                                                     text = "${index + 1}",
@@ -1325,6 +1370,152 @@ fun AmbientCinemaLandscapeOverlay(
         }
     }
 }
+}
+
+/**
+ * Rotating circular vinyl record presentation of the currently playing song's artwork.
+ *
+ * - Smooth continuous rotation running exclusively on the GPU layer via [graphicsLayer].
+ * - Automatically pauses at the exact angle when playback pauses, resumes seamlessly when playback starts.
+ * - Cleanly resets to upright (0°) whenever the track changes.
+ * - Completely isolated from song playback position ticks to prevent stutter or animation restarts.
+ * - Subtle concentric microgrooves, restrained gloss sheen, fine outer rim, and centered spindle label/hole.
+ * - Graceful crossfade on track transitions, falling back to [R.drawable.app_logo] if cover art is unavailable.
+ */
+@Composable
+private fun CinemaVinylRecord(
+    song: Song,
+    isPlaying: Boolean,
+    size: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val rotationAngle = remember { mutableFloatStateOf(0f) }
+
+    // Reset rotation cleanly to upright when track changes
+    LaunchedEffect(song.videoId) {
+        rotationAngle.floatValue = 0f
+    }
+
+    // Continuous smooth turntable rotation while actively playing
+    // When paused, automatically freezes at the exact current angle without resetting!
+    LaunchedEffect(isPlaying, song.videoId) {
+        if (isPlaying) {
+            var lastFrameTime = 0L
+            while (isActive) {
+                withFrameNanos { frameTime ->
+                    if (lastFrameTime != 0L) {
+                        val dt = (frameTime - lastFrameTime) / 1_000_000_000f
+                        // 15 degrees per second = 360 degrees in 24 seconds (~15 RPM turntable speed)
+                        rotationAngle.floatValue = (rotationAngle.floatValue + dt * 15f) % 360f
+                    }
+                    lastFrameTime = frameTime
+                }
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .shadow(
+                elevation = 16.dp,
+                shape = CircleShape,
+                clip = false,
+                ambientColor = Color.Black.copy(alpha = 0.5f),
+                spotColor = Color.Black.copy(alpha = 0.65f),
+            )
+            .graphicsLayer {
+                // Read inside draw-phase lambda: zero recompositions, purely GPU-accelerated!
+                rotationZ = rotationAngle.floatValue
+            }
+            .clip(CircleShape)
+            .background(Color(0xFF0F0F13)),
+        contentAlignment = Alignment.Center,
+    ) {
+        // 1. Current track's cover art cropped into circular record
+        AsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(song.artworkAt(800) ?: song.thumbnailUrl ?: R.drawable.app_logo)
+                .crossfade(true)
+                .build(),
+            contentDescription = song.title,
+            placeholder = painterResource(R.drawable.app_logo),
+            error = painterResource(R.drawable.app_logo),
+            fallback = painterResource(R.drawable.app_logo),
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // 2. Restrained vinyl microgrooves & subtle light sheen
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = Offset(this.size.width / 2f, this.size.height / 2f)
+            val maxRadius = this.size.width / 2f
+
+            // Hairline concentric grooves (restrained so artwork stays vivid and legible)
+            val grooveFractions = floatArrayOf(0.42f, 0.54f, 0.65f, 0.75f, 0.85f, 0.93f)
+            val grooveStrokePx = 0.75.dp.toPx()
+            val grooveShadowPx = 0.5.dp.toPx()
+            for (f in grooveFractions) {
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.08f),
+                    radius = maxRadius * f,
+                    center = center,
+                    style = Stroke(width = grooveStrokePx),
+                )
+                drawCircle(
+                    color = Color.Black.copy(alpha = 0.12f),
+                    radius = (maxRadius * f) - (0.5.dp.toPx()),
+                    center = center,
+                    style = Stroke(width = grooveShadowPx),
+                )
+            }
+
+            // Soft radial gloss sheen
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        Color.White.copy(alpha = 0.035f),
+                        Color.Transparent,
+                        Color.White.copy(alpha = 0.045f),
+                        Color.Transparent,
+                    ),
+                    center = center,
+                    radius = maxRadius,
+                ),
+                radius = maxRadius,
+                center = center,
+            )
+        }
+
+        // 3. Center Spindle Label Ring & Hole (Matching layout reference)
+        // Concentric outer center ring (~28% of diameter)
+        Box(
+            modifier = Modifier
+                .size(size * 0.28f)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.22f))
+                .border(1.2.dp, Color.White.copy(alpha = 0.38f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            // Dark center spindle hole (~13% of diameter)
+            Box(
+                modifier = Modifier
+                    .size(size * 0.13f)
+                    .clip(CircleShape)
+                    .background(Color(0xFF141418))
+                    .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape),
+            )
+        }
+
+        // 4. Fine outer rim of the record
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .border(1.4.dp, Color.White.copy(alpha = 0.42f), CircleShape),
+        )
+    }
 }
 
 private fun formatTime(ms: Long): String {

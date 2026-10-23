@@ -61,6 +61,12 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.WaterDrop
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -80,6 +86,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import android.app.Activity
 import android.content.Intent
 import android.speech.RecognizerIntent
@@ -108,12 +115,15 @@ import com.music.dhvani.data.model.UiState
 import com.music.dhvani.R
 import com.music.dhvani.ui.components.MessageState
 import com.music.dhvani.ui.components.PAGE_GUTTER
+import com.music.dhvani.ui.components.PlaySingHumSheet
 import com.music.dhvani.ui.components.ROW_DIVIDER_INSET
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.font.FontWeight
 import com.music.dhvani.ui.components.SongRow
 import com.music.dhvani.data.model.detectSongLanguage
 import com.music.dhvani.ui.components.LanguageBadgePill
+import com.music.dhvani.ui.components.AudioQualityBadgePill
+import com.music.dhvani.ui.components.getAudioQualityBadge
 import com.music.dhvani.ui.components.thumbnailBorder
 import com.music.dhvani.ui.components.songListSkeleton
 import com.music.dhvani.ui.haptics.Haptic
@@ -132,6 +142,9 @@ fun SearchScreen(
     onSongClick: (List<Song>, Int) -> Unit,
     onSongLongPress: (Song) -> Unit,
     onSongSwipe: (Song) -> Unit,
+    onPlayNext: ((Song) -> Unit)? = null,
+    onAddToQueue: ((Song) -> Unit)? = null,
+    onAddToPlaylist: ((Song) -> Unit)? = null,
     onBrowseClick: (BrowseItem) -> Unit,
     /**
      * Holding an album or playlist hit rather than tapping it — the same menu
@@ -153,7 +166,9 @@ fun SearchScreen(
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
     var isSearchFocused by remember { mutableStateOf(false) }
+    var showPlaySingHum by rememberSaveable { mutableStateOf(false) }
 
+    // When search is focused or mid-query, Back clears input/focus and smoothly returns to the clean discovery landing page
     BackHandler(enabled = isSearchFocused || query.isNotEmpty()) {
         if (query.isNotEmpty()) {
             onQueryChange("")
@@ -161,7 +176,7 @@ fun SearchScreen(
         focusManager.clearFocus()
     }
 
-    // Speech-to-text Voice Search Launcher
+    // Speech-to-text Voice Search Launcher (fallback)
     val voiceSearchLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -194,13 +209,6 @@ fun SearchScreen(
         if (focusTrigger > 0) focusRequester.requestFocus()
     }
 
-    // When search is focused or mid-query, Back clears input/focus and smoothly returns to the clean discovery landing page
-    BackHandler(enabled = isSearchFocused || query.isNotEmpty()) {
-        if (query.isNotEmpty()) {
-            onQueryChange("")
-        }
-        focusManager.clearFocus()
-    }
     // A non-empty suggestion list means the field is mid-edit — see
     // MainViewModel.suggestions. Nothing below it is worth showing while it is
     // up: the results are for whatever was searched before this edit began,
@@ -236,22 +244,47 @@ fun SearchScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        // Search field and filter tabs stay fixed at the top, outside the
-        // scrolling list, so they're always reachable rather than scrolling
-        // away with the results or recent searches beneath them.
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.background)
-                .statusBarsPadding()
-                .padding(top = 8.dp),
-        ) {
+    val leadCover = remember(displayData) {
+        displayData.firstNotNullOfOrNull { result ->
+            when (result) {
+                is SearchResult.Track -> result.song.thumbnailUrl
+                is SearchResult.Browse -> result.item.thumbnailUrl
+            }
+        }
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        com.music.dhvani.ui.components.ScreenAmbientBackdrop(
+            artworkUrl = leadCover,
+            fallbackColor = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.matchParentSize(),
+        )
+
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Search field and filter tabs stay fixed at the top, outside the
+            // scrolling list, so they're always reachable rather than scrolling
+            // away with the results or recent searches beneath them.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.88f))
+                    .statusBarsPadding()
+                    .padding(top = 8.dp),
+            ) {
+            Text(
+                text = stringResource(R.string.search),
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.5).sp,
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(start = PAGE_GUTTER, end = PAGE_GUTTER, bottom = 12.dp),
+            )
             SearchField(
                 query = query,
                 onQueryChange = onQueryChange,
                 onSubmit = onSubmit,
-                onVoiceClick = launchVoiceSearch,
+                onVoiceClick = { showPlaySingHum = true },
                 onFocusChanged = { isSearchFocused = it },
                 focusRequester = focusRequester,
                 modifier = Modifier.padding(start = PAGE_GUTTER, end = PAGE_GUTTER, bottom = 6.dp),
@@ -289,6 +322,7 @@ fun SearchScreen(
                         onSongClick(listOf(song), 0)
                         onQueryChange("")
                     },
+                    onSongLongPress = onSongLongPress,
                     onQueryClick = { term ->
                         onSuggestionClick(term)
                         focusManager.clearFocus()
@@ -379,6 +413,7 @@ fun SearchScreen(
                                 },
                                 onLongPress = { onSongLongPress(row.song) },
                                 onSwipeToQueue = { onSongSwipe(row.song) },
+                                trailingContent = null,
                             )
                             is SearchResult.Browse -> BrowseRow(
                                 item = row.item,
@@ -398,7 +433,43 @@ fun SearchScreen(
             }
         }
     }
+
+    var pendingAutoPlay by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(results, pendingAutoPlay) {
+        if (pendingAutoPlay && results is UiState.Success) {
+            val tracks = results.data.filterIsInstance<SearchResult.Track>().map { it.song }
+            if (tracks.isNotEmpty()) {
+                pendingAutoPlay = false
+                onSongClick(tracks, 0)
+            }
+        }
+    }
+
+    if (showPlaySingHum) {
+        PlaySingHumSheet(
+            onDismiss = { showPlaySingHum = false },
+            onPlayNow = { songTitle ->
+                showPlaySingHum = false
+                pendingAutoPlay = true
+                onQueryChange(songTitle)
+                onSuggestionClick(songTitle)
+                focusManager.clearFocus()
+            },
+            onViewInSearch = { songTitle ->
+                showPlaySingHum = false
+                pendingAutoPlay = false
+                onQueryChange(songTitle)
+                onSuggestionClick(songTitle)
+                focusManager.clearFocus()
+            },
+            history = history,
+        )
+    }
 }
+}
+
+
 
 /**
  * What YouTube would complete the half-typed query to, in place of the results
@@ -413,30 +484,30 @@ private fun LazyListScope.searchSuggestions(
     suggestions: List<SearchSuggestionItem>,
     currentQuery: String,
     onTrackClick: (Song) -> Unit,
+    onSongLongPress: ((Song) -> Unit)? = null,
     onQueryClick: (String) -> Unit,
     onFill: (String) -> Unit,
 ) {
     val textItems = suggestions.filterIsInstance<SearchSuggestionItem.Text>()
     val trackItems = suggestions.filterIsInstance<SearchSuggestionItem.Track>()
 
-    val topText = textItems.take(4)
-    val remainingText = textItems.drop(4)
-
-    // 1. Top 3-4 text suggestions on top
-    items(
-        items = topText,
-        key = { "suggest:top:${it.query}" },
-        contentType = { "text_suggestion" },
-    ) { item ->
-        val isFirst = topText.firstOrNull() == item
-        QuerySuggestionRow(
-            term = item.query,
-            onFill = if (isFirst && item.query.equals(currentQuery, ignoreCase = true)) null else ({ onFill(item.query) }),
-            onClick = { onQueryClick(item.query) },
-        )
+    // 1. Group all text/query suggestions strictly above song results
+    if (textItems.isNotEmpty()) {
+        items(
+            items = textItems,
+            key = { "suggest:query:${it.query}" },
+            contentType = { "text_suggestion" },
+        ) { item ->
+            val isFirst = textItems.firstOrNull() == item
+            QuerySuggestionRow(
+                term = item.query,
+                onFill = if (isFirst && item.query.equals(currentQuery, ignoreCase = true)) null else ({ onFill(item.query) }),
+                onClick = { onQueryClick(item.query) },
+            )
+        }
     }
 
-    // 2. Song suggestions with artwork covers directly below the top text suggestions
+    // 2. Song suggestions with artwork covers directly below the text suggestions (no query suggestions after songs)
     if (trackItems.isNotEmpty()) {
         items(
             items = trackItems,
@@ -446,37 +517,25 @@ private fun LazyListScope.searchSuggestions(
             TrackSuggestionRow(
                 song = item.song,
                 onClick = { onTrackClick(item.song) },
-                onFill = { onFill(item.song.title) },
-            )
-        }
-    }
-
-    // 3. Remaining text suggestions at the bottom
-    if (remainingText.isNotEmpty()) {
-        items(
-            items = remainingText,
-            key = { "suggest:more:${it.query}" },
-            contentType = { "text_suggestion" },
-        ) { item ->
-            QuerySuggestionRow(
-                term = item.query,
-                onFill = { onFill(item.query) },
-                onClick = { onQueryClick(item.query) },
+                onLongPress = onSongLongPress?.let { { it(item.song) } },
+                onMoreClick = onSongLongPress?.let { { it(item.song) } },
             )
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TrackSuggestionRow(
     song: Song,
     onClick: () -> Unit,
-    onFill: (() -> Unit)?,
+    onLongPress: (() -> Unit)? = null,
+    onMoreClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
             .padding(start = PAGE_GUTTER, end = 8.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -494,6 +553,9 @@ private fun TrackSuggestionRow(
             val detectedLang = remember(song.title, song.artist, song.albumName) {
                 detectSongLanguage(song.title, song.artist, song.albumName)
             }
+            val qualityBadge = remember(song.sourceQuality, song.localPath, song.localUri) {
+                getAudioQualityBadge(song)
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -506,6 +568,9 @@ private fun TrackSuggestionRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
+                if (qualityBadge != null) {
+                    AudioQualityBadgePill(quality = qualityBadge)
+                }
                 if (detectedLang != null) {
                     LanguageBadgePill(detectedLang)
                 }
@@ -528,19 +593,20 @@ private fun TrackSuggestionRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (onFill != null) {
+        val triggerMore = onMoreClick ?: onLongPress
+        if (triggerMore != null) {
             Box(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .clickable(onClick = onFill),
+                    .clickable(onClick = triggerMore),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    Icons.Rounded.NorthWest,
-                    contentDescription = stringResource(R.string.recent_search_edit, song.title),
+                    imageVector = Icons.Rounded.MoreVert,
+                    contentDescription = stringResource(R.string.more),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(20.dp),
                 )
             }
         } else {

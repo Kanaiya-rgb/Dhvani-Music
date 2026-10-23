@@ -35,6 +35,10 @@ data class StreamFormat(
     val isLossless: Boolean?
         get() = codec?.let { it in LOSSLESS_CODECS }
 
+    /** Whether this stream claims Hi-Res lossless (past 16-bit or past 48kHz). */
+    val isHiRes: Boolean
+        get() = isLossless == true && ((bitDepth ?: 0) > 16 || (sampleRateHz ?: 0) > 48_000)
+
     /** "24-bit · 192 kHz", "FLAC", "320 kbps" — whichever parts are known. */
     val summary: String
         get() = listOfNotNull(

@@ -327,10 +327,13 @@ private fun DownloadManagerRow(
             when (progress) {
                 is DownloadProgress.Queued -> RowStatus("Queued")
                 is DownloadProgress.Running -> {
+                    val animatedFraction by animateFloatAsState(
+                        targetValue = if (progress.isFinalizing) 1f else progress.fraction,
+                        animationSpec = tween(250),
+                        label = "downloadRowFraction",
+                    )
                     LinearProgressIndicator(
-                        // Indeterminate until the first response names a
-                        // length  a bar frozen at nothing reads as broken.
-                        progress = { progress.fraction },
+                        progress = { animatedFraction },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(3.dp),
@@ -342,14 +345,18 @@ private fun DownloadManagerRow(
                     )
                     Spacer(Modifier.height(3.dp))
                     RowStatus(
-                        if (progress.fraction > 0f) {
-                            "Downloading · ${(progress.fraction * 100).toInt()}%"
-                        } else {
-                            "Starting"
-                        },
+                        text = com.music.dhvani.download.DownloadFormatters.formatRunningProgress(
+                            fraction = progress.fraction,
+                            bytesDownloaded = progress.bytesDownloaded,
+                            totalBytes = progress.totalBytes,
+                            bytesPerSecond = progress.bytesPerSecond,
+                            etaSeconds = progress.etaSeconds,
+                            isFinalizing = progress.isFinalizing,
+                        ),
+                        color = if (progress.isFinalizing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                is DownloadProgress.Done -> RowStatus("Saved to Music/DhvaniMusic")
+                is DownloadProgress.Done -> RowStatus("Saved to Music/DhvaniMusic", color = Color(0xFF59DDA9))
                 is DownloadProgress.Failed ->
                     RowStatus(progress.reason, MaterialTheme.colorScheme.error)
             }
@@ -408,7 +415,8 @@ private fun RowAction(
  */
 private fun DownloadSession.State.summary(): String {
     val parts = buildList {
-        if (waiting > 0) add("$waiting waiting")
+        if (activeRunning > 0) add("$activeRunning downloading")
+        if (queued > 0) add("$queued queued")
         if (finished > 0) add("$finished done")
         if (failed > 0) add("$failed failed")
     }

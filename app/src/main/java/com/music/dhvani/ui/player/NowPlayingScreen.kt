@@ -2,18 +2,26 @@
 
 package com.music.dhvani.ui.player
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
+import android.util.Log
 import android.view.View
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -118,6 +126,7 @@ import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ArrowDropDown
@@ -190,7 +199,9 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -221,6 +232,9 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.media3.common.Player
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import com.music.dhvani.R
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
@@ -231,6 +245,7 @@ import com.music.dhvani.data.model.ROW_ART_PX
 import com.music.dhvani.ui.rememberIsForeground
 import com.music.dhvani.ui.components.thumbnailBorder
 import com.music.dhvani.ui.haptics.Haptic
+import com.music.dhvani.ui.haptics.Haptics
 import com.music.dhvani.ui.haptics.rememberHaptics
 import com.music.dhvani.ui.icons.DhvaniIcons
 import androidx.compose.material3.CircularProgressIndicator
@@ -1054,6 +1069,29 @@ fun NowPlayingScreen(
     var showAudioPipeline by remember { mutableStateOf(false) }
     var showMediaOutputDialog by remember { mutableStateOf(false) }
     val outputStatus by AudioOutputStatus.current.collectAsStateWithLifecycle()
+    var hasPromptedBluetoothPermission by remember { mutableStateOf(false) }
+
+    val btPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { isGranted ->
+        Log.d("MediaOutput", "BLUETOOTH_CONNECT permission result: granted=$isGranted")
+        if (isGranted) {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audioManager != null) {
+                AudioOutputStatus.updateDevice(context, audioManager)
+            }
+        }
+        showMediaOutputDialog = true
+    }
+
+    val openMediaOutput: () -> Unit = {
+        Log.d("MediaOutput", "Media Output button tapped: opening MediaOutputDialog")
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        if (audioManager != null) {
+            AudioOutputStatus.updateDevice(context, audioManager)
+        }
+        showMediaOutputDialog = true
+    }
     val rawTranslationLanguage by AppSettings.translationLanguage.collectAsStateWithLifecycle()
     val targetLang = if (rawTranslationLanguage.isBlank()) {
         val appLocale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().get(0)
@@ -1200,6 +1238,7 @@ fun NowPlayingScreen(
 
     val swipeThumbnail by AppSettings.swipeThumbnail.collectAsStateWithLifecycle()
     val swipeSensitivity by AppSettings.swipeSensitivity.collectAsStateWithLifecycle()
+    val coverDoubleTapSeek by AppSettings.coverDoubleTapSeek.collectAsStateWithLifecycle()
     val swipeThreshold = with(density) { (72.dp * (1.6f - swipeSensitivity)).toPx() }
     var swipeOffset by remember { mutableFloatStateOf(0f) }
     val swipeSettle by animateFloatAsState(
@@ -1214,7 +1253,14 @@ fun NowPlayingScreen(
     var pendingSeek by remember { mutableStateOf<Float?>(null) }
 
     val fraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
-    val bufferedFraction = if (durationMs > 0) (bufferedPositionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+    val isTrackOffline = song.localUri != null || song.localPath != null ||
+        song.videoId.startsWith("local:") || song.videoId.startsWith("file:") || song.videoId.startsWith("content:") ||
+        com.music.dhvani.download.Downloads.saved.value.containsKey(song.videoId)
+    val bufferedFraction = if (!isTrackOffline && durationMs > 0) {
+        (bufferedPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
     val shown = when {
         scrubbing -> scrubValue
         pendingSeek != null -> pendingSeek!!
@@ -1688,6 +1734,7 @@ fun NowPlayingScreen(
                         .build(),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    onState = { if (it is AsyncImagePainter.State.Success) artLoaded = true },
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
@@ -2114,87 +2161,95 @@ fun NowPlayingScreen(
                     // with its loading icon, is that somewhere. Once
                     // [artLoaded] catches up the two are showing the same
                     // bitmap, so hiding one behind the other is invisible.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                alpha = if (isVideoActive && canvasRendered && !isCardCanvas && p < 0.01f) {
-                                    // Canvas is playing full-screen: hide the static art so the
-                                    // video behind it shows through — but only when the sleeve is
-                                    // fully expanded (p ≈ 0). Once it starts collapsing into the
-                                    // header thumbnail (p > 0) the canvas stays full-screen while
-                                    // the sleeve slot shrinks, so we must reveal the still art to
-                                    // fill the collapsed thumbnail next to the song title.
-                                    0f
-                                } else if (isVideoActive && isCardCanvas) {
-                                    1f
-                                } else if (artLoaded) {
-                                    1f - heroVisible
-                                } else {
-                                    1f
-                                }
-                            }
-                            // A drop shadow grounds a photo; on the flat
-                            // placeholder tile it has nothing to sit behind, so
-                            // it just reads as a second, darker square ringing
-                            // the first. Only cast it once there's actually art.
-                            .shadow(
-                                if (artLoaded) lerp(14.dp, 6.dp, p) else 0.dp,
-                                RoundedCornerShape(lerp(10.dp, 7.dp, p)),
-                            )
-                            .clip(RoundedCornerShape(lerp(10.dp, 7.dp, p)))
-                            .background(Color.Black.copy(alpha = 0.18f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (!artLoaded) {
-                            Icon(
-                                imageVector = DhvaniIcons.MusicNote,
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.35f),
-                                modifier = Modifier.size(lerp(40.dp, 20.dp, p)),
-                            )
-                        }
-                        AsyncImage(
-                            // Decode at the sleeve's *expanded* size, always.
-                            // Coil otherwise sizes the decode to however large
-                            // this is when the request goes out — and changing
-                            // track from the queue does that while the sleeve is
-                            // collapsed to a thumbnail, leaving a thumbnail-sized
-                            // bitmap to be blown back up when the queue closes.
-                            // Skipping tracks with the transport keeps it sharp
-                            // only because the sleeve happens to be full size at
-                            // that moment.
-                            //
-                            // Asked for at the source's own size rather than the
-                            // sleeve's: it is the same request the full-bleed
-                            // banner makes, and the banner is taller than the
-                            // sleeve is wide. One ask, one decode, one bitmap for
-                            // both — and nothing to upscale when the two swap.
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(song.artworkAt(ART_PX))
-                                .size(ART_PX)
-                                .build(),
-                            contentDescription = null,
-                            // Video thumbnails are 16:9; letterboxing them inside
-                            // the square sleeve looks like a broken frame.
-                            contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
-                            onState = { artLoaded = it is AsyncImagePainter.State.Success },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                    val sleeveAlpha = when {
+                        isVideoActive && canvasRendered && !isCardCanvas && p < 0.01f -> 0f
+                        isVideoActive && isCardCanvas -> 1f
+                        heroMode -> p.coerceIn(0f, 1f)
+                        artLoaded -> (1f - heroVisible).coerceIn(0f, 1f)
+                        else -> if (heroMode) 0f else 1f
+                    }
 
-                        // Where the clip plays when it can't have the banner:
-                        // inside the same clip as the still art
-                        if (isCardCanvas && canvasArtwork != null) {
-                            key(canvasArtwork?.url) {
-                                CanvasArtworkPlayer(
-                                    artwork = canvasArtwork!!,
-                                    isPlaying = isPlaying,
-                                    isActive = isVideoActive,
-                                    applyBottomGradientMask = false,
-                                    onFirstFrameRendered = { canvasRendered = true },
-                                    onRenderedChanged = { canvasRendered = it },
-                                    modifier = Modifier.fillMaxSize(),
+                    val sleeveElevation = when {
+                        sleeveAlpha <= 0.005f -> 0.dp
+                        !artLoaded -> 0.dp
+                        isVideoActive && !isCardCanvas -> 0.dp
+                        heroMode -> lerp(14.dp, 6.dp, p) * sleeveAlpha
+                        else -> lerp(14.dp, 6.dp, p) * sleeveAlpha
+                    }
+
+                    if (sleeveAlpha > 0.001f || !heroMode) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    alpha = sleeveAlpha
+                                }
+                                .then(
+                                    if (sleeveElevation > 0.dp) {
+                                        Modifier.shadow(
+                                            elevation = sleeveElevation,
+                                            shape = RoundedCornerShape(lerp(10.dp, 7.dp, p)),
+                                        )
+                                    } else Modifier
                                 )
+                                .clip(RoundedCornerShape(lerp(10.dp, 7.dp, p)))
+                                .then(
+                                    if (sleeveAlpha > 0.01f) {
+                                        Modifier.background(Color.Black.copy(alpha = 0.18f * sleeveAlpha))
+                                    } else Modifier
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (!artLoaded) {
+                                Icon(
+                                    imageVector = DhvaniIcons.MusicNote,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.35f * sleeveAlpha),
+                                    modifier = Modifier.size(lerp(40.dp, 20.dp, p)),
+                                )
+                            }
+                            AsyncImage(
+                                // Decode at the sleeve's *expanded* size, always.
+                                // Coil otherwise sizes the decode to however large
+                                // this is when the request goes out — and changing
+                                // track from the queue does that while the sleeve is
+                                // collapsed to a thumbnail, leaving a thumbnail-sized
+                                // bitmap to be blown back up when the queue closes.
+                                // Skipping tracks with the transport keeps it sharp
+                                // only because the sleeve happens to be full size at
+                                // that moment.
+                                //
+                                // Asked for at the source's own size rather than the
+                                // sleeve's: it is the same request the full-bleed
+                                // banner makes, and the banner is taller than the
+                                // sleeve is wide. One ask, one decode, one bitmap for
+                                // both — and nothing to upscale when the two swap.
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(song.artworkAt(ART_PX))
+                                    .size(ART_PX)
+                                    .build(),
+                                contentDescription = null,
+                                // Video thumbnails are 16:9; letterboxing them inside
+                                // the square sleeve looks like a broken frame.
+                                contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                                onState = { artLoaded = it is AsyncImagePainter.State.Success },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+
+                            // Where the clip plays when it can't have the banner:
+                            // inside the same clip as the still art
+                            if (isCardCanvas && canvasArtwork != null) {
+                                key(canvasArtwork?.url) {
+                                    CanvasArtworkPlayer(
+                                        artwork = canvasArtwork!!,
+                                        isPlaying = isPlaying,
+                                        isActive = isVideoActive,
+                                        applyBottomGradientMask = false,
+                                        onFirstFrameRendered = { canvasRendered = true },
+                                        onRenderedChanged = { canvasRendered = it },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
                             }
                         }
                     }
@@ -2259,6 +2314,31 @@ fun NowPlayingScreen(
                             }
                         }
                     }
+                }
+
+                // Double tap cover to seek (YouTube style 10s forward / rewind)
+                if (coverDoubleTapSeek && !queueOpen && !lyricsOpen && p < 0.05f) {
+                    CoverDoubleTapSeekOverlay(
+                        modifier = if (heroMode) {
+                            Modifier
+                                .fillMaxWidth()
+                                .height(groupTop + fullArt)
+                        } else {
+                            Modifier
+                                .offset { IntOffset(artStart.roundToPx(), artTop.roundToPx()) }
+                                .size(artSize)
+                        },
+                        shape = if (heroMode) {
+                            RoundedCornerShape(0.dp)
+                        } else {
+                            RoundedCornerShape(lerp(10.dp, 7.dp, p))
+                        },
+                        enabled = coverDoubleTapSeek && !queueOpen && !lyricsOpen && p < 0.05f,
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        onSeek = onSeek,
+                        haptics = haptics,
+                    )
                 }
 
                 // Sits in the gap under the sleeve, clear of its rounded
@@ -3428,7 +3508,7 @@ fun NowPlayingScreen(
                 // dragging this along with it every tick. The screen's center
                 // doesn't move.
                 LosslessOrStats(
-                    isLoading = isLoading,
+                    isLoading = isLoading && !isTrackOffline,
                     stillRacing = stillRacing,
                     losslessRequested = losslessRequested,
                     nerdStats = nerdStats,
@@ -3554,14 +3634,32 @@ fun NowPlayingScreen(
                                 color = MaterialTheme.colorScheme.primary,
                             )
 
-                            val codec = codecLabel(nerdStats?.mimeType) ?: (if (nerdStats?.isLossless == true) "FLAC" else "Opus / AAC")
-                            val sampleRate = nerdStats?.sampleRateHz?.let { "%.1f kHz".format(Locale.ROOT, it / 1000f) } ?: "44.1 kHz"
-                            val bitDepth = nerdStats?.bitDepth?.let { "$it-bit" } ?: (if (nerdStats?.isLossless == true) "16-bit" else "16-bit")
-                            val bitrate = nerdStats?.bitrateKbps?.let { "$it kbps" } ?: (if (nerdStats?.isLossless == true) "Lossless (~1411 kbps)" else "Standard")
+                            val codec = codecLabel(nerdStats?.mimeType)
+                                ?: nerdStats?.claimed?.codec?.let { codecLabel(it) ?: it }
+                                ?: "Not reported"
+                            val sampleRate = nerdStats?.sampleRateHz?.let { "%.1f kHz".format(Locale.ROOT, it / 1000f) }
+                                ?: nerdStats?.claimed?.sampleRateHz?.let { "%.1f kHz (Declared)".format(Locale.ROOT, it / 1000f) }
+                                ?: "Not reported"
+                            val bitDepth = nerdStats?.bitDepth?.let { "$it-bit" }
+                                ?: nerdStats?.claimed?.bitDepth?.let { "$it-bit (Declared)" }
+                                ?: "Not reported"
+                            val bitrate = nerdStats?.bitrateKbps?.takeIf { it > 0 }?.let { "$it kbps" }
+                                ?: nerdStats?.claimed?.kbps?.takeIf { it > 0 }?.let { "$it kbps (Declared)" }
+                                ?: "Not reported"
+
+                            val qualityTier = when {
+                                nerdStats?.isHiRes == true -> "Hi-Res Lossless"
+                                nerdStats?.isLossless == true -> "Bit-Exact Lossless"
+                                nerdStats?.isHiQuality == true -> "High Quality Lossy"
+                                nerdStats?.mimeType != null -> "Compressed Audio"
+                                nerdStats?.claimed?.isHiRes == true -> "Hi-Res (Unverified)"
+                                nerdStats?.claimed?.isLossless == true -> "Lossless (Unverified)"
+                                else -> "Not reported"
+                            }
 
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Quality Tier", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(if (nerdStats?.isLossless == true) "Bit-Exact Lossless" else "Compressed Audio", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text(qualityTier, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Format / Codec", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3578,6 +3676,18 @@ fun NowPlayingScreen(
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Bitrate", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(bitrate, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            }
+                            if (nerdStats?.isSearchingBetterQuality == true) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Quality Status", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                                    Text("Searching for better quality…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            nerdStats?.qualityNotice?.let { notice ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(if (nerdStats?.downgraded == true) "Downgrade Notice" else "Quality Notice", style = MaterialTheme.typography.bodyMedium, color = if (nerdStats?.downgraded == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                    Text(notice, style = MaterialTheme.typography.bodyMedium, color = if (nerdStats?.downgraded == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                                }
                             }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Dolby Atmos / Spatial", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3653,7 +3763,7 @@ fun NowPlayingScreen(
                 )
                 // While the stream URL resolves and buffers, the play glyph
                 // would be a lie — show progress instead.
-                if (isLoading) {
+                if (isLoading && !isPlaying) {
                     // Same footprint as TransportGlyph(62.dp) — a smaller box
                     // here would shunt everything below it on every load.
                     Box(Modifier.size(74.dp), contentAlignment = Alignment.Center) {
@@ -3823,6 +3933,29 @@ fun NowPlayingScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                val displayDevice = if (outputStatus.deviceName.isNotBlank() &&
+                    !outputStatus.deviceName.equals("System default", ignoreCase = true) &&
+                    !outputStatus.deviceName.equals(android.os.Build.MODEL, ignoreCase = true) &&
+                    !outputStatus.deviceName.equals("Phone Speaker", ignoreCase = true)
+                ) {
+                    outputStatus.deviceName
+                } else {
+                    AudioOutputStatus.getPhoneName(context)
+                }
+                val deviceIcon = when {
+                    outputStatus.isUsb -> Icons.Rounded.GraphicEq
+                    outputStatus.isBluetooth -> Icons.Rounded.Headphones
+                    outputStatus.isWired -> Icons.Rounded.Headphones
+                    outputStatus.deviceName.contains("bluetooth", ignoreCase = true) ||
+                        outputStatus.deviceName.contains("buds", ignoreCase = true) ||
+                        outputStatus.deviceName.contains("airpods", ignoreCase = true) ||
+                        outputStatus.deviceName.contains("headphone", ignoreCase = true) ||
+                        outputStatus.deviceName.contains("wireless", ignoreCase = true) -> Icons.Rounded.Headphones
+                    outputStatus.deviceName.contains("wired", ignoreCase = true) ||
+                        outputStatus.deviceName.contains("headset", ignoreCase = true) -> Icons.Rounded.Headphones
+                    else -> Icons.Rounded.PhoneAndroid
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -3863,9 +3996,9 @@ fun NowPlayingScreen(
                             if (!queueOpen) {
                                 // Normal Mode: [ 🎧 | 👤 ]
                                 PillSegment(
-                                    icon = Icons.Rounded.Headphones,
-                                    contentDescription = "Media Output",
-                                    onClick = { showMediaOutputDialog = true },
+                                    icon = deviceIcon,
+                                    contentDescription = "Media Output: $displayDevice",
+                                    onClick = openMediaOutput,
                                     haptic = Haptic.Tap,
                                 )
                                 PillDivider()
@@ -3946,25 +4079,33 @@ fun NowPlayingScreen(
 
                 Spacer(Modifier.height(10.dp))
 
-                // Under bottom bar: Device name (phone name or Bluetooth sink)
-                val displayDevice = if (outputStatus.deviceName.isNotBlank() &&
-                    !outputStatus.deviceName.equals("System default", ignoreCase = true) &&
-                    !outputStatus.deviceName.equals(android.os.Build.MODEL, ignoreCase = true) &&
-                    !outputStatus.deviceName.equals("Phone Speaker", ignoreCase = true)
+                // Under bottom bar: Sleek transparent device output indicator (Spotify style)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = openMediaOutput)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                 ) {
-                    outputStatus.deviceName
-                } else {
-                    AudioOutputStatus.getPhoneName(context)
+                    Icon(
+                        imageVector = deviceIcon,
+                        contentDescription = "Media Output: $displayDevice",
+                        tint = if (outputStatus.isBluetooth) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.70f),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = displayDevice,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            letterSpacing = 0.2.sp,
+                        ),
+                        color = if (outputStatus.isBluetooth) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                Text(
-                    text = displayDevice,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                    color = Color.White.copy(alpha = 0.55f),
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                )
             }
 
             Spacer(Modifier.height(16.dp))
@@ -7889,6 +8030,13 @@ private fun formatTime(ms: Long): String {
  * overlay on the artwork Box above), so there is no tap here to swap it in —
  * the badge is a claim, the sleeve is where the evidence is.
  */
+private enum class QualityLevel {
+    STANDARD,
+    HIGH_QUALITY,
+    LOSSLESS,
+    HI_RES_LOSSLESS,
+}
+
 @Composable
 private fun LosslessOrStats(
     isLoading: Boolean,
@@ -7900,42 +8048,48 @@ private fun LosslessOrStats(
 ) {
     when {
         (stillRacing && nerdStats?.isLossless != true) ||
-            (isLoading && losslessRequested && nerdStats == null) -> LosslessLabel(
+            (isLoading && losslessRequested && nerdStats == null) -> QualityIndicator(
             text = if (nerdStats?.isHiQuality == true) {
                 "Hi-Quality, Upgrading Quality"
             } else {
                 "Upgrading Quality"
             },
+            level = if (nerdStats?.isHiQuality == true) QualityLevel.HIGH_QUALITY else QualityLevel.STANDARD,
             animated = false,
             modifier = modifier,
             onClick = onClick,
         )
-        nerdStats?.isDolbyAtmos == true && nerdStats.isLossless -> LosslessLabel(
+        nerdStats?.isDolbyAtmos == true && nerdStats.isLossless -> QualityIndicator(
             text = "Dolby Atmos • Lossless",
+            level = if (nerdStats.isHiRes) QualityLevel.HI_RES_LOSSLESS else QualityLevel.LOSSLESS,
             animated = true,
             modifier = modifier,
             onClick = onClick,
         )
-        nerdStats?.isDolbyAtmos == true -> LosslessLabel(
+        nerdStats?.isDolbyAtmos == true -> QualityIndicator(
             text = "Dolby Atmos",
+            level = QualityLevel.HIGH_QUALITY,
             animated = true,
             modifier = modifier,
             onClick = onClick,
         )
-        nerdStats?.isLossless == true -> LosslessLabel(
+        nerdStats?.isLossless == true -> QualityIndicator(
             text = if (nerdStats.isHiRes) "Hi-Res Lossless" else "Lossless",
+            level = if (nerdStats.isHiRes) QualityLevel.HI_RES_LOSSLESS else QualityLevel.LOSSLESS,
             animated = true,
             modifier = modifier,
             onClick = onClick,
         )
-        nerdStats?.isHiQuality == true -> LosslessLabel(
+        nerdStats?.isHiQuality == true -> QualityIndicator(
             text = "High quality",
+            level = QualityLevel.HIGH_QUALITY,
             animated = false,
             modifier = modifier,
             onClick = onClick,
         )
-        else -> LosslessLabel(
+        else -> QualityIndicator(
             text = "Standard",
+            level = QualityLevel.STANDARD,
             animated = false,
             modifier = modifier,
             onClick = onClick,
@@ -7943,7 +8097,109 @@ private fun LosslessOrStats(
     }
 }
 
-/** A frosted badge ahead of the quality tag — "High quality", "Hi-Res Lossless", "Lossless", "Dolby Atmos". */
+/**
+ * Clean, compact inline audio quality indicator displayed directly on the screen.
+ * Shows quality level icon and label with pure inline presentation (no pill box, no border).
+ * For Hi-Res Lossless, renders a radiant gold/amber effect with subtle warm ambient glow.
+ */
+@Composable
+private fun QualityIndicator(
+    text: String,
+    level: QualityLevel,
+    animated: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
+    val tierColor = when (level) {
+        QualityLevel.HI_RES_LOSSLESS -> Color(0xFFFBBF24) // Gold for Hi-Res
+        QualityLevel.LOSSLESS -> Color.White.copy(alpha = 0.90f) // Clean White for Lossless
+        QualityLevel.HIGH_QUALITY -> Color(0xFFE2E8F0)     // Crisp White for High Quality
+        QualityLevel.STANDARD -> Color.White.copy(alpha = 0.70f) // Subdued Silver for Standard
+    }
+
+    val icon: ImageVector = when (level) {
+        QualityLevel.HI_RES_LOSSLESS -> DhvaniIcons.QualityHiRes
+        QualityLevel.LOSSLESS -> DhvaniIcons.QualityLossless
+        QualityLevel.HIGH_QUALITY -> if (text.contains("Dolby", ignoreCase = true)) {
+            Icons.Rounded.SurroundSound
+        } else {
+            DhvaniIcons.QualityHigh
+        }
+        QualityLevel.STANDARD -> DhvaniIcons.QualityStandard
+    }
+
+    val isAppleLossless = level == QualityLevel.LOSSLESS || level == QualityLevel.HI_RES_LOSSLESS
+
+    // Pure inline presentation directly on the screen without pill background, border, or outline
+    Row(
+        modifier = modifier
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$text audio stream quality"
+            }
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(
+                enabled = onClick != null,
+                onClick = { onClick?.invoke() },
+            )
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = if (isAppleLossless) Modifier.size(width = 18.dp, height = 12.dp) else Modifier.size(15.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (level == QualityLevel.HI_RES_LOSSLESS) {
+                // Subtle warm golden ambient glow behind the icon for legibility over any background
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFFF59E0B).copy(alpha = 0.35f),
+                                    Color.Transparent,
+                                ),
+                            ),
+                            shape = CircleShape,
+                        ),
+                )
+            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tierColor,
+                modifier = if (isAppleLossless) Modifier.size(width = 17.dp, height = 11.dp) else Modifier.size(14.dp),
+            )
+        }
+        Spacer(Modifier.width(4.5.dp))
+        if (animated) {
+            ShimmerText(
+                text = text,
+                level = level,
+            )
+        } else {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 0.2.sp,
+                    shadow = Shadow(
+                        color = Color.Black.copy(alpha = 0.85f),
+                        offset = Offset(0f, 1f),
+                        blurRadius = 4f,
+                    ),
+                ),
+                color = tierColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** Legacy alias redirecting to [QualityIndicator] for backward compatibility. */
 @Composable
 private fun LosslessLabel(
     text: String,
@@ -7951,54 +8207,30 @@ private fun LosslessLabel(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
 ) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Color.White.copy(alpha = 0.08f),
-        border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.12f)),
-        modifier = modifier
-            .then(if (onClick != null) Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick) else Modifier),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Headphones,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = if (animated) 0.85f else 0.65f),
-                modifier = Modifier.size(13.dp),
-            )
-            Spacer(Modifier.width(4.5.dp))
-            if (animated) {
-                ShimmerText(text = text)
-            } else {
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = 0.2.sp,
-                    ),
-                    color = Color.White.copy(alpha = 0.70f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
+    val level = when {
+        text.contains("Hi-Res", ignoreCase = true) -> QualityLevel.HI_RES_LOSSLESS
+        text.contains("Lossless", ignoreCase = true) -> QualityLevel.LOSSLESS
+        text.contains("High quality", ignoreCase = true) || text.contains("Hi-Quality", ignoreCase = true) || text.contains("Dolby", ignoreCase = true) -> QualityLevel.HIGH_QUALITY
+        else -> QualityLevel.STANDARD
     }
+    QualityIndicator(
+        text = text,
+        level = level,
+        animated = animated,
+        modifier = modifier,
+        onClick = onClick,
+    )
 }
 
 /**
- * "Lossless", with a highlight band sweeping left to right across it every
- * three seconds — confirmed, not just claimed, so it's worth the shine.
- *
- * The band's width is measured off the text itself via [onSizeChanged]
- * rather than assumed, so the sweep always clears the word fully at both
- * ends instead of being sized for whatever length happened to be typical.
+ * Sweeping highlight across quality label with support for radiant gold effect on Hi-Res Lossless
+ * and crisp silvery white sweep on Lossless.
  */
 @Composable
-private fun ShimmerText(text: String) {
+private fun ShimmerText(
+    text: String,
+    level: QualityLevel = QualityLevel.LOSSLESS,
+) {
     var widthPx by remember { mutableIntStateOf(0) }
     val transition = rememberInfiniteTransition(label = "lossless-shimmer")
     val progress by transition.animateFloat(
@@ -8010,24 +8242,76 @@ private fun ShimmerText(text: String) {
         ),
         label = "lossless-shimmer-progress",
     )
-    val baseColor = Color.White.copy(alpha = 0.55f)
+
     val brush = if (widthPx <= 0) {
-        Brush.linearGradient(listOf(baseColor, baseColor))
+        val staticColor = when (level) {
+            QualityLevel.HI_RES_LOSSLESS -> Color(0xFFFBBF24)
+            QualityLevel.LOSSLESS -> Color.White.copy(alpha = 0.90f)
+            QualityLevel.HIGH_QUALITY -> Color(0xFFE2E8F0)
+            QualityLevel.STANDARD -> Color.White.copy(alpha = 0.70f)
+        }
+        Brush.linearGradient(listOf(staticColor, staticColor))
     } else {
         val band = widthPx * 0.6f
         val center = -band + progress * (widthPx + 2 * band)
-        Brush.linearGradient(
-            colorStops = arrayOf(0f to baseColor, 0.5f to Color.White, 1f to baseColor),
-            start = Offset(center - band, 0f),
-            end = Offset(center + band, 0f),
-        )
+        when (level) {
+            QualityLevel.HI_RES_LOSSLESS -> {
+                // Radiant gold shimmer sweep for Hi-Res Lossless
+                val goldBase = Color(0xFFD97706)
+                val goldMid = Color(0xFFFBBF24)
+                val goldHighlight = Color(0xFFFFFBEB)
+                Brush.linearGradient(
+                    colorStops = arrayOf(
+                        0f to goldBase,
+                        0.25f to goldMid,
+                        0.5f to goldHighlight,
+                        0.75f to goldMid,
+                        1f to goldBase,
+                    ),
+                    start = Offset(center - band, 0f),
+                    end = Offset(center + band, 0f),
+                )
+            }
+            QualityLevel.LOSSLESS -> {
+                // Silvery white clean shimmer sweep for Lossless
+                val baseColor = Color.White.copy(alpha = 0.60f)
+                Brush.linearGradient(
+                    colorStops = arrayOf(
+                        0f to baseColor,
+                        0.5f to Color.White,
+                        1f to baseColor,
+                    ),
+                    start = Offset(center - band, 0f),
+                    end = Offset(center + band, 0f),
+                )
+            }
+            else -> {
+                val baseColor = Color.White.copy(alpha = 0.65f)
+                Brush.linearGradient(
+                    colorStops = arrayOf(
+                        0f to baseColor,
+                        0.5f to Color.White,
+                        1f to baseColor,
+                    ),
+                    start = Offset(center - band, 0f),
+                    end = Offset(center + band, 0f),
+                )
+            }
+        }
     }
+
     Text(
         text = text,
-        style = MaterialTheme.typography.labelMedium.copy(
+        style = MaterialTheme.typography.labelSmall.copy(
             brush = brush,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = (MaterialTheme.typography.labelMedium.fontSize.value + 1).sp,
+            fontWeight = FontWeight.Medium,
+            fontSize = 11.5.sp,
+            letterSpacing = 0.2.sp,
+            shadow = Shadow(
+                color = Color.Black.copy(alpha = 0.85f),
+                offset = Offset(0f, 1f),
+                blurRadius = 4f,
+            ),
         ),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -8063,7 +8347,8 @@ private fun NerdStats.Snapshot.describe(): String? {
                 },
             )
         }
-        if (downgraded) add("↓ from ${claimed?.summary}")
+        qualityNotice?.let(::add)
+        if (isSearchingBetterQuality) add("Searching for better quality…")
     }
     return parts.joinToString(" · ").takeIf { it.isNotEmpty() }
 }
@@ -8087,6 +8372,268 @@ private fun TrackAnalysisState.label(): String = when (this) {
     TrackAnalysisState.ANALYSING -> "analysing…"
     TrackAnalysisState.WAITING -> "waiting"
     TrackAnalysisState.FAILED -> "failed"
+}
+/**
+ * Detects double-tap and rapid multi-tap gestures on either side of the cover to trigger
+ * seek actions. Captures the exact tap offset coordinates for water ripple shockwave animation.
+ * If a user drags vertically (e.g. to dismiss player) or horizontally (e.g. to swipe tracks),
+ * the tap gesture is cleanly aborted without consuming events.
+ */
+private suspend fun PointerInputScope.detectYouTubeDoubleTap(
+    onSeekTap: (isForward: Boolean, tapOffset: Offset) -> Unit,
+) {
+    var lastTapTime = 0L
+    var lastTapSide: Boolean? = null
+    var tapCount = 0
+
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val downTime = SystemClock.uptimeMillis()
+        val width = size.width
+        val isForward = down.position.x >= width / 2f
+
+        var upOrCancel: PointerInputChange? = null
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Main)
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (!change.pressed) {
+                upOrCancel = change
+                break
+            }
+            val distance = (change.position - down.position).getDistance()
+            if (distance > viewConfiguration.touchSlop) {
+                upOrCancel = null
+                break
+            }
+        }
+
+        if (upOrCancel != null) {
+            val upTime = SystemClock.uptimeMillis()
+            val tapDuration = upTime - downTime
+            if (tapDuration < 400L) {
+                val timeSinceLastTap = upTime - lastTapTime
+                if (lastTapSide == isForward && timeSinceLastTap < 650L) {
+                    tapCount++
+                    upOrCancel.consume()
+                    onSeekTap(isForward, upOrCancel.position)
+                    lastTapTime = upTime
+                } else {
+                    tapCount = 1
+                    lastTapSide = isForward
+                    lastTapTime = upTime
+                }
+            } else {
+                tapCount = 0
+                lastTapSide = null
+            }
+        } else {
+            tapCount = 0
+            lastTapSide = null
+        }
+    }
+}
+
+/**
+ * Modern double-tap seek overlay over the album cover:
+ * - Expanding water shockwave concentric rings radiating from the exact finger tap position.
+ * - Sleek glassmorphic frosted pill badge (+10s / -10s) with spring bounce & punch animation on consecutive taps.
+ */
+@Composable
+private fun CoverDoubleTapSeekOverlay(
+    modifier: Modifier = Modifier,
+    enabled: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    onSeek: (Long) -> Unit,
+    haptics: Haptics,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(0.dp),
+) {
+    if (!enabled) return
+
+    val currentPositionMs by rememberUpdatedState(positionMs)
+    val currentDurationMs by rememberUpdatedState(durationMs)
+    val currentOnSeek by rememberUpdatedState(onSeek)
+
+    val coroutineScope = rememberCoroutineScope()
+    var isSeeking by remember { mutableStateOf(false) }
+    var seekingForward by remember { mutableStateOf(true) }
+    var accumulatedSeconds by remember { mutableIntStateOf(0) }
+    var tapSequenceJob by remember { mutableStateOf<Job?>(null) }
+    var virtualPositionMs by remember { mutableLongStateOf(0L) }
+
+    // Tap location ripple animation
+    var tapOffset by remember { mutableStateOf(Offset.Zero) }
+    var rippleKey by remember { mutableIntStateOf(0) }
+    val rippleProgress = remember { Animatable(0f) }
+
+    // Glass pill badge animation
+    val badgeScale = remember { Animatable(0.7f) }
+    val badgeAlpha = remember { Animatable(0f) }
+
+    LaunchedEffect(rippleKey) {
+        if (rippleKey > 0) {
+            rippleProgress.snapTo(0f)
+            rippleProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
+            )
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .pointerInput(enabled) {
+                detectYouTubeDoubleTap { isForward, offset ->
+                    haptics.play(Haptic.Tap)
+
+                    tapOffset = offset
+                    rippleKey++
+
+                    if (!isSeeking || seekingForward != isForward) {
+                        isSeeking = true
+                        seekingForward = isForward
+                        accumulatedSeconds = 10
+                        virtualPositionMs = currentPositionMs
+                    } else {
+                        accumulatedSeconds += 10
+                    }
+
+                    // Animate badge entrance and punchy bounce on each tap
+                    coroutineScope.launch {
+                        badgeAlpha.animateTo(1f, tween(100))
+                    }
+                    coroutineScope.launch {
+                        badgeScale.snapTo(1.22f)
+                        badgeScale.animateTo(
+                            targetValue = 1.0f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow,
+                            ),
+                        )
+                    }
+
+                    val seekDelta = 10_000L
+                    val maxDuration = if (currentDurationMs > 0L) currentDurationMs else Long.MAX_VALUE
+                    virtualPositionMs = if (isForward) {
+                        (virtualPositionMs + seekDelta).coerceAtMost(maxDuration)
+                    } else {
+                        (virtualPositionMs - seekDelta).coerceAtLeast(0L)
+                    }
+                    currentOnSeek(virtualPositionMs)
+
+                    tapSequenceJob?.cancel()
+                    tapSequenceJob = coroutineScope.launch {
+                        delay(750)
+                        launch { badgeAlpha.animateTo(0f, tween(180)) }
+                        launch { badgeScale.animateTo(0.75f, tween(180)) }
+                        delay(200)
+                        isSeeking = false
+                        accumulatedSeconds = 0
+                    }
+                }
+            },
+    ) {
+        // Layer 1: Tap location shockwave ripples radiating from touch point
+        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+            val p = rippleProgress.value
+            if (p > 0f && p < 1f) {
+                val maxRadius = 155.dp.toPx()
+                val radius = p * maxRadius
+                val alpha = (1f - p) * 0.42f
+
+                // Glowing radial backdrop
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = alpha * 0.50f),
+                            Color.White.copy(alpha = alpha * 0.16f),
+                            Color.Transparent,
+                        ),
+                        center = tapOffset,
+                        radius = radius.coerceAtLeast(1f),
+                    ),
+                    center = tapOffset,
+                    radius = radius,
+                )
+
+                // Primary luminous shockwave ring
+                drawCircle(
+                    color = Color.White.copy(alpha = alpha * 0.90f),
+                    center = tapOffset,
+                    radius = radius,
+                    style = Stroke(width = (2.4f * (1f - p * 0.5f)).dp.toPx()),
+                )
+
+                // Secondary echoing inner ring
+                if (p > 0.12f) {
+                    val innerRadius = ((p - 0.12f) / 0.88f) * maxRadius * 0.65f
+                    val innerAlpha = (1f - p) * 0.28f
+                    drawCircle(
+                        color = Color.White.copy(alpha = innerAlpha),
+                        center = tapOffset,
+                        radius = innerRadius,
+                        style = Stroke(width = 1.2.dp.toPx()),
+                    )
+                }
+            }
+        }
+
+        // Layer 2: Pure Floating White Indicator (No background box)
+        if (isSeeking || badgeAlpha.value > 0.01f) {
+            val badgeAlignment = if (seekingForward) Alignment.CenterEnd else Alignment.CenterStart
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 28.dp),
+                contentAlignment = badgeAlignment,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            scaleX = badgeScale.value
+                            scaleY = badgeScale.value
+                            alpha = badgeAlpha.value
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (!seekingForward) {
+                        Icon(
+                            imageVector = Icons.Rounded.FastRewind,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+                    Text(
+                        text = if (seekingForward) "+${accumulatedSeconds}s" else "-${accumulatedSeconds}s",
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.4.sp,
+                        style = TextStyle(
+                            shadow = Shadow(
+                                color = Color.Black.copy(alpha = 0.85f),
+                                offset = Offset(0f, 2f),
+                                blurRadius = 12f,
+                            ),
+                        ),
+                    )
+                    if (seekingForward) {
+                        Icon(
+                            imageVector = Icons.Rounded.FastForward,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 /**

@@ -37,6 +37,8 @@ import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.MimeTypes
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
@@ -287,8 +289,9 @@ class PlaybackService : MediaSessionService() {
                 .add(SessionCommand(ACTION_SWAP_QUALITY, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_CHANGE_AUDIO_TRACK, Bundle.EMPTY))
                 .build()
-            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(commands)
+                .setMediaButtonPreferences(notificationButtons())
                 .build()
         }
 
@@ -441,6 +444,7 @@ class PlaybackService : MediaSessionService() {
                 scheduleBufferingStallWatchdog(exoPlayer)
             }
             publishWidgetState(playing = playWhenReady)
+            overlayManager?.onPlayWhenReadyChanged(playWhenReady)
         }
 
         /**
@@ -501,7 +505,7 @@ class PlaybackService : MediaSessionService() {
             autoplayLoadJob = null
             autoplaySeed = null
             loadAutoplayForCurrentTrack()
-            mediaSession?.setCustomLayout(notificationButtons())
+            updateNotificationButtons()
         }
 
         /**
@@ -517,6 +521,7 @@ class PlaybackService : MediaSessionService() {
             // The player this fired on, which is by definition the one the
             // session is currently pointed at.
             val exoPlayer = player ?: return
+            overlayManager?.onPlayerError(error.message ?: "Playback error")
             recoverFrom(error, exoPlayer)
         }
 
@@ -526,6 +531,7 @@ class PlaybackService : MediaSessionService() {
             // The player this fired on, which is by definition the one the
             // session is currently pointed at.
             val exoPlayer = player ?: return
+            overlayManager?.onPlaybackStateChanged(state)
             if (state == Player.STATE_BUFFERING && exoPlayer.playWhenReady) {
                 scheduleBufferingStallWatchdog(exoPlayer)
             } else {
@@ -590,8 +596,9 @@ class PlaybackService : MediaSessionService() {
             val exoPlayer = player ?: return
             if (exoPlayer.isPlaying) prefetchAround(exoPlayer)
             if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) {
-                mediaSession?.setCustomLayout(notificationButtons())
+                updateNotificationButtons()
             }
+            overlayManager?.onQueueChanged()
         }
     }
 
@@ -673,7 +680,9 @@ class PlaybackService : MediaSessionService() {
             initializedTimestampMs: Long,
             initializationDurationMs: Long,
         ) {
+            currentDecoderName = decoderName
             AudioOutputStatus.publishDecoder(decoderName)
+            publishNerdStats()
             val cutAt = swapCutAt ?: return
             TrackLog.d(
                 "DhvaniMusic",
@@ -701,6 +710,11 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
 
+        // Ensure critical playback stores are ready even if service was restarted by Android OS directly
+        AudioCache.init(this)
+        LastPlayed.init(this)
+        OriginalVersion.init(this)
+
         // First, because everything below assumes it is standing up fresh and
         // one of the two ways this service starts does not give it that.
         //
@@ -722,53 +736,79 @@ class PlaybackService : MediaSessionService() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 getString(R.string.playback_channel_name),
-                NotificationManager.IMPORTANCE_DEFAULT,
+                NotificationManager.IMPORTANCE_LOW,
             ).apply {
                 description = "Playback controls and status bar notification"
                 setShowBadge(true)
                 setSound(null, null)
                 enableLights(false)
                 enableVibration(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
             notificationManager?.createNotificationChannel(channel)
         }
 
-        scope.launch {
-            AppSettings.showStatusBarIcon.collectLatest { showIcon ->
-                try {
-                    val iconRes = if (showIcon) R.drawable.ic_notification_logo else R.drawable.ic_notification_empty
-                    setMediaNotificationProvider(
-                        DefaultMediaNotificationProvider.Builder(this@PlaybackService)
-                            .setChannelId(CHANNEL_ID)
-                            .setChannelName(R.string.playback_channel_name)
-                            .build()
-                            .apply { setSmallIcon(iconRes) },
-                    )
-                    updateStatusBarNotification()
-                } catch (e: Throwable) {
-                    setMediaNotificationProvider(
-                        DefaultMediaNotificationProvider.Builder(this@PlaybackService)
-                            .setChannelId(CHANNEL_ID)
-                            .setChannelName(R.string.playback_channel_name)
-                            .build()
-                            .apply { setSmallIcon(R.drawable.ic_notification_logo) },
-                    )
-                }
-            }
-        }
+        // Cancel any obsolete separate status bar notification
+        (getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(STATUS_BAR_NOTIF_ID)
 
-        // The player screen toggles QueueShuffle directly on its MediaController.
+        val defaultNotificationProvider = DefaultMediaNotificationProvider.Builder(this@PlaybackService)
+            .setChannelId(CHANNEL_ID)
+            .setChannelName(R.string.playback_channel_name)
+            .build()
+            .apply { setSmallIcon(R.drawable.ic_notification_logo) }
+
+        setMediaNotificationProvider(
+            object : androidx.media3.session.MediaNotification.Provider {
+                override fun createNotification(
+                    mediaSession: MediaSession,
+                    customLayout: com.google.common.collect.ImmutableList<CommandButton>,
+                    actionFactory: androidx.media3.session.MediaNotification.ActionFactory,
+                    onNotificationChangedCallback: androidx.media3.session.MediaNotification.Provider.Callback,
+                ): androidx.media3.session.MediaNotification {
+                    val wrappedCallback = androidx.media3.session.MediaNotification.Provider.Callback { updatedNotification ->
+                        applyDhvaniNotificationStyling(updatedNotification.notification)
+                        onNotificationChangedCallback.onNotificationChanged(updatedNotification)
+                    }
+                    val mediaNotification = defaultNotificationProvider.createNotification(
+                        mediaSession,
+                        customLayout,
+                        actionFactory,
+                        wrappedCallback,
+                    )
+                    applyDhvaniNotificationStyling(mediaNotification.notification)
+                    return mediaNotification
+                }
+
+                override fun handleCustomCommand(
+                    mediaSession: MediaSession,
+                    action: String,
+                    extras: android.os.Bundle,
+                ): Boolean = defaultNotificationProvider.handleCustomCommand(mediaSession, action, extras)
+
+                override fun getNotificationChannelInfo(): androidx.media3.session.MediaNotification.Provider.NotificationChannelInfo =
+                    defaultNotificationProvider.getNotificationChannelInfo()
+
+                private fun applyDhvaniNotificationStyling(notification: android.app.Notification) {
+                    notification.extras?.putCharSequence(
+                        android.app.Notification.EXTRA_SUB_TEXT,
+                        getString(R.string.app_name),
+                    )
+                    notification.color = 0xFFF97316.toInt()
+                }
+            },
+        )
+
         // Observe the shared state here so the notification's Shuffle icon and
         // label follow that toggle immediately as well.
         scope.launch {
             QueueShuffle.enabled
                 .collectLatest {
-                    mediaSession?.setCustomLayout(notificationButtons())
+                    updateNotificationButtons()
                 }
         }
         scope.launch {
             LikeState.overrides.collectLatest {
-                mediaSession?.setCustomLayout(notificationButtons())
+                updateNotificationButtons()
             }
         }
 
@@ -833,7 +873,7 @@ class PlaybackService : MediaSessionService() {
                     throw java.io.IOException("Stream resolution timed out for $videoId", e)
                 }
                 val headers = PlayerClient.forStreamUrl(streamUrl).mediaHeaders()
-                val ytFormat = StreamFormat(source = "YouTube Music", codec = "opus", kbps = 160)
+                val ytFormat = StreamFormat(source = "Standard Opus", codec = "opus", kbps = 160)
                 NerdStats.onSourceStream(videoId, ytFormat)
                 StreamChoice.remember(videoId, SourceStream(streamUrl, headers = headers, format = ytFormat), substituted = false)
                 return@Factory dataSpec.buildUpon()
@@ -841,6 +881,8 @@ class PlaybackService : MediaSessionService() {
                     .setHttpRequestHeaders(headers)
                     .build()
             }
+
+            val targetSourceId = dataSpec.uri.getQueryParameter("src")
 
             if (isExplicitHifi || isExplicitLossless) {
                 QualityUpgrade.forget(videoId)
@@ -851,6 +893,7 @@ class PlaybackService : MediaSessionService() {
                         target = SourceResolver.targetIn(dataSpec.uri),
                         forceHighQuality = isExplicitHifi,
                         forceLossless = isExplicitLossless,
+                        targetSourceId = targetSourceId,
                     )
                 }
                 NerdStats.onLosslessRaceEnd(videoId)
@@ -858,14 +901,19 @@ class PlaybackService : MediaSessionService() {
                     is Resolved.Module -> {
                         NerdStats.onSourceStream(videoId, won.stream.format)
                         StreamChoice.remember(videoId, won.stream, substituted = true)
+                        val streamUri = if (won.stream.format.isLossless == true && !won.stream.url.substringAfterLast('/').contains('.')) {
+                            Uri.parse("${won.stream.url}#.flac")
+                        } else {
+                            Uri.parse(won.stream.url)
+                        }
                         return@Factory dataSpec.buildUpon()
-                            .setUri(Uri.parse(won.stream.url))
+                            .setUri(streamUri)
                             .setHttpRequestHeaders(won.stream.headers)
                             .build()
                     }
                     is Resolved.YouTube -> {
                         val headers = PlayerClient.forStreamUrl(won.url).mediaHeaders()
-                        val ytFormat = StreamFormat(source = "YouTube Music", codec = "opus", kbps = 160)
+                        val ytFormat = StreamFormat(source = "Standard Opus", codec = "opus", kbps = 160)
                         NerdStats.onSourceStream(videoId, ytFormat)
                         StreamChoice.remember(videoId, SourceStream(won.url, headers = headers, format = ytFormat), substituted = false)
                         return@Factory dataSpec.buildUpon()
@@ -899,8 +947,13 @@ class PlaybackService : MediaSessionService() {
                         "at ${dataSpec.position} (${upgraded.format.summary})",
                     about = videoId,
                 )
+                val targetUri = if (upgraded.format.isLossless == true && !upgraded.url.substringAfterLast('/').contains('.')) {
+                    Uri.parse("${upgraded.url}#.flac")
+                } else {
+                    Uri.parse(upgraded.url)
+                }
                 return@Factory dataSpec.buildUpon()
-                    .setUri(Uri.parse(upgraded.url))
+                    .setUri(targetUri)
                     .setHttpRequestHeaders(upgraded.headers)
                     .build()
             }
@@ -920,28 +973,27 @@ class PlaybackService : MediaSessionService() {
             // the middle of an MP4 ended up appended to a WebM. See
             // [StreamChoice].
             StreamChoice.of(videoId)?.let { serving ->
-                // What the stream claims to be, restated on every open rather
-                // than only on the one that chose it.
-                //
-                // The race below is what used to report this, and it was enough
-                // while the race was the only way a substitution could be made.
-                // Read-ahead now pins one before the track is reached, so a
-                // warmed track arrives *here* on its very first open and never
-                // reaches the race at all — leaving the player with a 320kbps
-                // stream and nothing on record saying so, and the quality badge
-                // reading blank until the decoder got far enough to measure it
-                // for itself.
-                //
-                // Only when the format states something. A plain YouTube choice
-                // is remembered with an empty one, and writing that over a
-                // claim some other path made would be worse than saying nothing.
-                if (serving.format != StreamFormat()) {
-                    NerdStats.onSourceStream(videoId, serving.format)
+                val ceiling = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality
+                val isOverBudget = when (ceiling) {
+                    com.music.dhvani.data.settings.AudioQuality.LOSSLESS -> {
+                        val wantsLossless = isExplicitLossless || com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value == "LOSSLESS"
+                        wantsLossless && serving.format.isLossless != true
+                    }
+                    com.music.dhvani.data.settings.AudioQuality.HIGH -> serving.format.isLossless == true
+                    com.music.dhvani.data.settings.AudioQuality.MEDIUM, com.music.dhvani.data.settings.AudioQuality.LOW ->
+                        serving.format.isLossless == true || (serving.format.kbps != null && serving.format.kbps > ceiling.maxKbps)
                 }
-                return@Factory dataSpec.buildUpon()
-                    .setUri(Uri.parse(serving.url))
-                    .setHttpRequestHeaders(serving.headers)
-                    .build()
+                if (isOverBudget) {
+                    StreamChoice.forget(videoId)
+                } else {
+                    if (serving.format != StreamFormat()) {
+                        NerdStats.onSourceStream(videoId, serving.format)
+                    }
+                    return@Factory dataSpec.buildUpon()
+                        .setUri(Uri.parse(serving.url))
+                        .setHttpRequestHeaders(serving.headers)
+                        .build()
+                }
             }
             // A track queued from YouTube may be held by a source the user
             // ranked above it — see [SourceResolver.substituteForYouTube] and
@@ -976,14 +1028,20 @@ class PlaybackService : MediaSessionService() {
                 resolveWithModulePriority(
                     videoId = videoId,
                     target = SourceResolver.targetIn(dataSpec.uri),
+                    targetSourceId = targetSourceId,
                 )
             }
             when (won) {
                 is Resolved.Module -> {
                     NerdStats.onSourceStream(videoId, won.stream.format)
                     StreamChoice.remember(videoId, won.stream, substituted = true)
+                    val streamUri = if (won.stream.format.isLossless == true && !won.stream.url.substringAfterLast('/').contains('.')) {
+                        Uri.parse("${won.stream.url}#.flac")
+                    } else {
+                        Uri.parse(won.stream.url)
+                    }
                     dataSpec.buildUpon()
-                        .setUri(Uri.parse(won.stream.url))
+                        .setUri(streamUri)
                         .setHttpRequestHeaders(won.stream.headers)
                         .build()
                 }
@@ -997,7 +1055,10 @@ class PlaybackService : MediaSessionService() {
                 // again while the fallback plays.
                 is Resolved.YouTube -> {
                     val headers = PlayerClient.forStreamUrl(won.url).mediaHeaders()
-                    StreamChoice.remember(videoId, SourceStream(won.url, headers = headers), substituted = false)
+                    val ytBitrate = NerdStats.pickedBitrateKbps(videoId) ?: 160
+                    val ytFormat = StreamFormat(source = "Standard Opus", codec = "opus", kbps = ytBitrate)
+                    NerdStats.onSourceStream(videoId, ytFormat)
+                    StreamChoice.remember(videoId, SourceStream(won.url, headers = headers, format = ytFormat), substituted = false)
                     dataSpec.buildUpon()
                         .setUri(Uri.parse(won.url))
                         .setHttpRequestHeaders(headers)
@@ -1085,13 +1146,29 @@ class PlaybackService : MediaSessionService() {
         overlayManager = DynamicIslandOverlayManager(this) { player }
 
         val coilBitmapLoader = CoilBitmapLoader(this, scope)
-        mediaSession = MediaSession.Builder(this, SessionPlayer(exoPlayer, controller))
+        mediaSession = MediaSession.Builder(
+            this,
+            SessionPlayer(exoPlayer, controller) { loadAutoplayForCurrentTrack() },
+        )
             .setId(SESSION_ID)
             .setSessionActivity(sessionActivity())
             .setCallback(sessionCallback)
             .setBitmapLoader(coilBitmapLoader)
+            .setMediaButtonPreferences(notificationButtons())
             .build()
-        mediaSession?.setCustomLayout(notificationButtons())
+        activeMediaSession = mediaSession
+        updateNotificationButtons()
+    }
+
+    /**
+     * Updates media button preferences and legacy custom layout for all MediaSession controllers.
+     */
+    private fun updateNotificationButtons() {
+        val buttons = notificationButtons()
+        mediaSession?.let { session ->
+            session.setMediaButtonPreferences(buttons)
+            session.setCustomLayout(buttons)
+        }
     }
 
     /**
@@ -1128,7 +1205,7 @@ class PlaybackService : MediaSessionService() {
 
     private fun toggleShuffleFromNotification() {
         player?.let(QueueShuffle::toggle)
-        mediaSession?.setCustomLayout(notificationButtons())
+        updateNotificationButtons()
     }
 
     private fun toggleAutoplayFromNotification() {
@@ -1150,7 +1227,7 @@ class PlaybackService : MediaSessionService() {
             repeatAllStash = emptyList()
             repeatAllStashSeed = null
         }
-        mediaSession?.setCustomLayout(notificationButtons())
+        updateNotificationButtons()
     }
 
     /**
@@ -1280,12 +1357,12 @@ class PlaybackService : MediaSessionService() {
         } else {
             LikeState.set(videoId, target)
         }
-        mediaSession?.setCustomLayout(notificationButtons())
+        updateNotificationButtons()
         favoriteActionJob = scope.launch {
             YtMusicRepository.rate(videoId, target)
                 .onFailure {
                     LikeState.set(videoId, previous)
-                    mediaSession?.setCustomLayout(notificationButtons())
+                    updateNotificationButtons()
                     TrackLog.w("DhvaniMusic", "notification favorite failed: ${it.message}", about = videoId)
                 }
         }
@@ -1346,7 +1423,7 @@ class PlaybackService : MediaSessionService() {
         incoming.addListener(playbackListener)
         incoming.addAnalyticsListener(formatListener)
 
-        mediaSession?.player = SessionPlayer(incoming, requireNotNull(crossfade))
+        mediaSession?.player = SessionPlayer(incoming, requireNotNull(crossfade)) { loadAutoplayForCurrentTrack() }
 
         if (!isQualitySwap) {
             onTrackBecameCurrent(
@@ -1355,9 +1432,14 @@ class PlaybackService : MediaSessionService() {
                 reason = Player.MEDIA_ITEM_TRANSITION_REASON_AUTO,
                 alreadyAudible = true,
             )
+            updateNotificationButtons()
         } else {
+            currentDecoderName = null
+            AudioOutputStatus.publishDecoder(null)
+            publishNerdStats()
             reportProgress()
             publishWidgetState()
+            updateNotificationButtons()
         }
     }
 
@@ -1381,8 +1463,14 @@ class PlaybackService : MediaSessionService() {
             val currentPos = active.currentPosition
             val wasPlaying = active.playWhenReady
 
-            val targetItem = when (mode) {
-                "ORIGINAL_YT", "YOUTUBE" -> {
+            val isLosslessMode = mode == "LOSSLESS" ||
+                SourceRegistry.configs.value.any { it.id == mode && it.kind.canServeLossless } ||
+                mode.contains("lossless", ignoreCase = true) ||
+                mode.contains("monochrome", ignoreCase = true) ||
+                mode.contains("addon", ignoreCase = true)
+
+            val targetItem = when {
+                mode == "ORIGINAL_YT" || mode == "YOUTUBE" -> {
                     OriginalVersion.pin(videoId)
                     AppSettings.setPreferredPlaybackSource("YOUTUBE")
                     StreamChoice.refuseSubstitutes(videoId)
@@ -1390,17 +1478,18 @@ class PlaybackService : MediaSessionService() {
                     QualityUpgrade.forget(videoId)
                     song.toDirectYouTubeMediaItem()
                 }
-                "LOSSLESS" -> {
+                isLosslessMode -> {
                     OriginalVersion.unpin(videoId)
-                    AppSettings.setPreferredPlaybackSource("LOSSLESS")
-                    val losslessConfig = SourceRegistry.configs.value.firstOrNull { it.kind.canServeLossless }
-                    if (losslessConfig != null && !losslessConfig.enabled) {
-                        SourceRegistry.setEnabled(losslessConfig.id, true)
+                    AppSettings.setPreferredPlaybackSource(mode)
+                    val targetConfig = SourceRegistry.configs.value.firstOrNull { it.id == mode }
+                        ?: SourceRegistry.configs.value.firstOrNull { it.kind.canServeLossless }
+                    if (targetConfig != null && !targetConfig.enabled) {
+                        SourceRegistry.setEnabled(targetConfig.id, true)
                     }
                     StreamChoice.allowSubstitutes(videoId)
                     StreamChoice.forget(videoId)
                     QualityUpgrade.forget(videoId)
-                    song.toLosslessMediaItem()
+                    song.toLosslessMediaItem(targetConfig?.id ?: mode)
                 }
                 else -> { // HIGH_QUALITY / JIOSAAVN
                     OriginalVersion.unpin(videoId)
@@ -1415,6 +1504,8 @@ class PlaybackService : MediaSessionService() {
                     song.toHighQualityMediaItem()
                 }
             }
+
+            TrackLog.d("DhvaniMusic", "swapCurrentQuality: mode=$mode targetUri=${targetItem.localConfiguration?.uri}")
 
             val queueItems = (0 until active.mediaItemCount).map { i ->
                 if (i == currIdx) targetItem else active.getMediaItemAt(i)
@@ -1440,20 +1531,33 @@ class PlaybackService : MediaSessionService() {
                     standby.volume = 1f
                     return@launch
                 }
-                if (SystemClock.elapsedRealtime() - startTime > 10000L) {
-                    // Timeout fallback: abort standby
+                if (SystemClock.elapsedRealtime() - startTime > 12000L) {
+                    TrackLog.w("DhvaniMusic", "swapCurrentQuality timed out waiting for standby player")
                     standby.stop()
                     standby.clearMediaItems()
                     standby.volume = 1f
+                    val activeMime = active.audioFormat?.sampleMimeType
+                    if (activeMime?.contains("opus", ignoreCase = true) == true) {
+                        val ytBitrate = NerdStats.pickedBitrateKbps(videoId) ?: 160
+                        NerdStats.onSourceStream(videoId, StreamFormat(source = "Standard Opus", codec = "opus", kbps = ytBitrate))
+                    }
+                    publishNerdStats()
                     return@launch
                 }
                 delay(25)
             }
 
             if (!isActive || standby.playerError != null) {
+                TrackLog.w("DhvaniMusic", "swapCurrentQuality aborted: standby error=${standby.playerError?.message}")
                 standby.stop()
                 standby.clearMediaItems()
                 standby.volume = 1f
+                val activeMime = active.audioFormat?.sampleMimeType
+                if (activeMime?.contains("opus", ignoreCase = true) == true) {
+                    val ytBitrate = NerdStats.pickedBitrateKbps(videoId) ?: 160
+                    NerdStats.onSourceStream(videoId, StreamFormat(source = "Standard Opus", codec = "opus", kbps = ytBitrate))
+                }
+                publishNerdStats()
                 return@launch
             }
 
@@ -1779,6 +1883,14 @@ class PlaybackService : MediaSessionService() {
         // ExoPlayer preparing the next item while this one played, so
         // it is pending by now; the ones that aren't are picked up by
         // the sampler in [reportProgress].
+        val previousMediaId = audioFormatFor
+        if (previousMediaId != null && previousMediaId != newSong?.videoId) {
+            QualityUpgrade.forget(previousMediaId)
+            NerdStats.clearDeclared(previousMediaId)
+            NerdStats.clearPicked(previousMediaId)
+        }
+        currentDecoderName = null
+        AudioOutputStatus.publishDecoder(null)
         upgradeJob?.cancel()
         lookForBetterCopy(exoPlayer)
         saveQueue()
@@ -2296,6 +2408,7 @@ class PlaybackService : MediaSessionService() {
      * of the session.
      */
     private var audioFormatFor: String? = null
+    private var currentDecoderName: String? = null
 
     /**
      * Starts the second look for the playing track, if it settled for less
@@ -2317,8 +2430,73 @@ class PlaybackService : MediaSessionService() {
      * instead — see [adoptCachedTrack] and [QualityUpgrade.adoptUnresolved].
      */
     private fun lookForBetterCopy(player: ExoPlayer) {
-        // Mid-track quality upgrades and background stream swaps are disabled
-        // so that whatever stream starts playing continues smoothly from start to finish without interruption.
+        val item = player.currentMediaItem ?: return
+        val mediaId = item.mediaId
+        val uri = item.localConfiguration?.uri
+        val isDowngraded = NerdStats.current.value?.downgraded == true
+        val alreadyPending = QualityUpgrade.isPending(mediaId)
+        val shelved = QualityUpgrade.shelvedFor(mediaId)
+        val ceiling = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality
+        val isShelvedOverBudget = shelved != null && when (ceiling) {
+            com.music.dhvani.data.settings.AudioQuality.LOSSLESS -> false
+            com.music.dhvani.data.settings.AudioQuality.HIGH -> shelved.format.isLossless == true
+            com.music.dhvani.data.settings.AudioQuality.MEDIUM, com.music.dhvani.data.settings.AudioQuality.LOW ->
+                shelved.format.isLossless == true || (shelved.format.kbps != null && shelved.format.kbps > ceiling.maxKbps)
+        }
+        val validShelved = if (isShelvedOverBudget) {
+            QualityUpgrade.unshelve(mediaId)
+            null
+        } else {
+            shelved
+        }
+
+        if (!alreadyPending && validShelved == null && !QualityUpgrade.couldStillUpgrade(mediaId, uri, isDowngraded)) return
+        if (upgradeJob?.isActive == true) {
+            if (upgradeFor == mediaId) return
+            upgradeJob?.cancel()
+        }
+        upgradeFor = mediaId
+        if (alreadyPending) {
+            TrackLog.d("DhvaniMusic", "looking again for a better copy of $mediaId", about = mediaId)
+        }
+        upgradeJob = scope.launch(TrackLog.about(mediaId)) {
+            if (validShelved != null) {
+                TrackLog.d("DhvaniMusic", "re-offering the upgrade already proved for $mediaId")
+                NerdStats.onLosslessRaceStart(mediaId)
+                try {
+                    swapIn(mediaId, validShelved)
+                } finally {
+                    NerdStats.onLosslessRaceEnd(mediaId)
+                }
+                return@launch
+            }
+            val playingSeconds = withTimeoutOrNull(DURATION_SETTLE_MS) {
+                while (true) {
+                    val ms = withContext(Dispatchers.Main) {
+                        this@PlaybackService.player
+                            ?.takeIf { it.currentMediaItem?.mediaId == mediaId }
+                            ?.duration
+                            ?: 0L
+                    }
+                    if (ms > 0) return@withTimeoutOrNull (ms / 1000).toInt()
+                    delay(UPGRADE_PROVE_STEP_MS)
+                }
+                @Suppress("UNREACHABLE_CODE") null
+            }
+            if (!QualityUpgrade.isPending(mediaId) &&
+                (uri == null || !adoptCachedTrack(mediaId, uri, playingSeconds))
+            ) {
+                return@launch
+            }
+            val better = withContext(Dispatchers.IO) {
+                QualityUpgrade.lookAgain(mediaId, playingSeconds)
+            } ?: return@launch
+            try {
+                swapIn(mediaId, better)
+            } finally {
+                NerdStats.onLosslessRaceEnd(mediaId)
+            }
+        }
     }
 
     /**
@@ -2357,12 +2535,14 @@ class PlaybackService : MediaSessionService() {
         val videoId = uri.getQueryParameter("v") ?: return false
         val downloaded = com.music.dhvani.download.Downloads.savedUri(this, videoId) != null
         if (downloaded) return false
+        val isDowngraded = NerdStats.current.value?.downgraded == true
         return QualityUpgrade.adoptUnresolved(
             mediaId = mediaId,
             uri = uri,
             target = SourceResolver.targetIn(uri),
             playingMime = mime,
             playing = withContext(Dispatchers.IO) { cachedFloor(uri, format, durationSec) },
+            isDowngraded = isDowngraded,
         )
     }
 
@@ -2433,6 +2613,88 @@ class PlaybackService : MediaSessionService() {
      * and quietly keep playing the old stream.
      */
 
+
+    private suspend fun swapIn(mediaId: String, stream: SourceStream) {
+        val at = withContext(Dispatchers.Main) { swapPointFor(mediaId) } ?: return
+        if (at.duration > 0 && at.duration - at.position < UPGRADE_MIN_REMAINING_MS) {
+            TrackLog.d("DhvaniMusic", "upgrade abandoned: only ${at.duration - at.position}ms of the track left")
+            return
+        }
+
+        val upgradedUri = QualityUpgrade.upgradedUri(at.uri)
+        val alreadyFilled = QualityUpgrade.forcedStream(Uri.parse(upgradedUri))?.url == stream.url
+        QualityUpgrade.force(mediaId, stream)
+        val warmedThrough = auditionUpgrade(mediaId, at, upgradedUri, stream, alreadyFilled)
+        if (warmedThrough == null) {
+            QualityUpgrade.forget(mediaId)
+            withContext(Dispatchers.IO) { AudioCache.discardRendition(Uri.parse(upgradedUri)) }
+            return
+        }
+
+        var waitedForCrossfade = 0L
+        while (withContext(Dispatchers.Main) { crossfade?.isTransitioning() } == true &&
+            waitedForCrossfade < UPGRADE_CROSSFADE_WAIT_TIMEOUT_MS
+        ) {
+            delay(UPGRADE_CROSSFADE_POLL_MS)
+            waitedForCrossfade += UPGRADE_CROSSFADE_POLL_MS
+        }
+
+        withContext(Dispatchers.Main) { crossfade?.msSinceTransition() }?.let { since ->
+            if (since < UPGRADE_AFTER_CROSSFADE_MS) {
+                val settle = UPGRADE_AFTER_CROSSFADE_MS - since
+                TrackLog.d("DhvaniMusic", "upgrade for $mediaId holding ${settle}ms; a transition just ended")
+                delay(settle)
+            }
+        }
+
+        withContext(Dispatchers.Main) {
+            val now = swapPointFor(mediaId)
+            if (crossfade?.isTransitioning() == true) {
+                QualityUpgrade.shelve(mediaId, stream)
+                TrackLog.d("DhvaniMusic", "upgrade for $mediaId shelved: a crossfade was still running")
+                return@withContext
+            }
+            if (now == null) {
+                QualityUpgrade.shelve(mediaId, stream)
+                TrackLog.d("DhvaniMusic", "upgrade for $mediaId proved but the queue moved on; shelved")
+                return@withContext
+            }
+            val player = player ?: return@withContext
+            if (now.duration > 0 && now.duration - now.position < UPGRADE_MIN_REMAINING_MS) {
+                TrackLog.d("DhvaniMusic", "upgrade abandoned: only ${now.duration - now.position}ms of the track left")
+                QualityUpgrade.forget(mediaId)
+                return@withContext
+            }
+            if (QualityUpgrade.forcedStream(Uri.parse(upgradedUri)) == null) {
+                TrackLog.d("DhvaniMusic", "upgrade abandoned: its stream was dropped while it was being proved")
+                return@withContext
+            }
+            if (now.position >= (warmedThrough - 1_000L).coerceAtLeast(0L)) {
+                TrackLog.w(
+                    "DhvaniMusic",
+                    "upgrade abandoned: landing at ${now.position}ms, past/too close to warmed ${warmedThrough}ms",
+                )
+                QualityUpgrade.forget(mediaId)
+                return@withContext
+            }
+
+            val previousFormat = NerdStats.declaredFormat(mediaId)
+            swappingMediaId = mediaId
+            swapCutAt = SystemClock.elapsedRealtime()
+            player.replaceMediaItem(
+                player.currentMediaItemIndex,
+                now.item.buildUpon().setUri(upgradedUri).build(),
+            )
+            player.seekTo(player.currentMediaItemIndex, now.position)
+            player.prepare()
+            QualityUpgrade.unshelve(mediaId)
+            TrackLog.d("DhvaniMusic", "upgraded to ${stream.format.summary} at ${now.position}ms")
+            watchUpgrade(mediaId, now.uri, now.position, now.duration, previousFormat)
+            launch(Dispatchers.IO) {
+                AudioCache.warmRange(Uri.parse(upgradedUri), 0, ANALYSIS_HEAD_BYTES)
+            }
+        }
+    }
 
     /** Main thread. Null unless [mediaId] is still current and still un-upgraded. */
     private fun swapPointFor(mediaId: String): SwapPoint? {
@@ -2676,6 +2938,7 @@ class PlaybackService : MediaSessionService() {
                     /* bufferForPlaybackAfterRebufferMs = */ START_PLAYBACK_MS,
                 )
                 .setTargetBufferBytes(AUDITION_BUFFER_BYTES)
+                .setPrioritizeTimeOverSizeThresholds(true)
                 .build(),
         )
         .build()
@@ -2831,6 +3094,7 @@ class PlaybackService : MediaSessionService() {
         target: TrackMatcher.Target,
         forceHighQuality: Boolean = false,
         forceLossless: Boolean = false,
+        targetSourceId: String? = null,
     ): Resolved {
         // A substitute already broke this track once — see
         // [StreamChoice.refuseSubstitutes]. Racing the modules again would find
@@ -2844,12 +3108,23 @@ class PlaybackService : MediaSessionService() {
             return Resolved.YouTube(StreamResolver.resolve(videoId))
         }
 
+        val ceiling = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality
         // Check if an upgraded stream was already proved or shelved for this track
         QualityUpgrade.shelvedFor(videoId)?.let { shelved ->
-            TrackLog.d("DhvaniMusic", "Using shelved upgrade for $videoId directly at track start", about = videoId)
-            NerdStats.onSourceStream(videoId, shelved.format)
-            StreamChoice.remember(videoId, shelved, substituted = true)
-            return Resolved.Module(shelved)
+            val isOverBudget = when (ceiling) {
+                com.music.dhvani.data.settings.AudioQuality.LOSSLESS -> false
+                com.music.dhvani.data.settings.AudioQuality.HIGH -> shelved.format.isLossless == true
+                com.music.dhvani.data.settings.AudioQuality.MEDIUM, com.music.dhvani.data.settings.AudioQuality.LOW ->
+                    shelved.format.isLossless == true || (shelved.format.kbps != null && shelved.format.kbps > ceiling.maxKbps)
+            }
+            if (isOverBudget) {
+                QualityUpgrade.unshelve(videoId)
+            } else {
+                TrackLog.d("DhvaniMusic", "Using shelved upgrade for $videoId directly at track start", about = videoId)
+                NerdStats.onSourceStream(videoId, shelved.format)
+                StreamChoice.remember(videoId, shelved, substituted = true)
+                return Resolved.Module(shelved)
+            }
         }
 
         NerdStats.onLosslessRaceStart(videoId)
@@ -2858,14 +3133,24 @@ class PlaybackService : MediaSessionService() {
         // [TrackLog.about]. Without it the module walk and the client walk both
         // log from a scope that knows nothing, which is most of what a resolve
         // has to say about itself.
+        val allowLossless = ceiling == com.music.dhvani.data.settings.AudioQuality.LOSSLESS
         val req = when {
             forceLossless -> StreamRequest.Lossless
             forceHighQuality -> StreamRequest.Best
             else -> SourceResolver.requestForNow()
         }
-        val timeoutMs = if (forceHighQuality || forceLossless) 4000L else SUBSTITUTE_TIMEOUT_MS
+        val preferredSource = com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value
+        val isOriginalPinned = OriginalVersion.isPinned(videoId)
+        val wantsHighQuality = !isOriginalPinned && (
+            preferredSource == "JIOSAAVN" ||
+            preferredSource == "LOSSLESS" ||
+            !targetSourceId.isNullOrBlank() ||
+            SourceRegistry.configs.value.any { it.id == preferredSource }
+        )
+
+        val timeoutMs = if (forceHighQuality || forceLossless || wantsHighQuality) 5000L else SUBSTITUTE_TIMEOUT_MS
         val lookup = scope.async(Dispatchers.IO + TrackLog.about(videoId)) {
-            withTimeoutOrNull(timeoutMs) { SourceResolver.substituteForYouTube(target, req) }
+            withTimeoutOrNull(timeoutMs) { SourceResolver.substituteForYouTube(target, req, targetSourceId) }
         }
         // Started now rather than after the modules have had their say, and
         // wrapped rather than thrown from: it is awaited only on the paths
@@ -2875,20 +3160,13 @@ class PlaybackService : MediaSessionService() {
             runCatching { StreamResolver.resolve(videoId) }
         }
 
-        val preferredSource = com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value
-        val isOriginalPinned = OriginalVersion.isPinned(videoId)
-        val wantsHighQuality = !isOriginalPinned && (preferredSource == "JIOSAAVN" || preferredSource == "LOSSLESS")
-
-        val quick: SourceStream? = if (forceHighQuality || forceLossless) {
+        val quick: SourceStream? = if (forceHighQuality || forceLossless || wantsHighQuality) {
             lookup.await()
-        } else if (wantsHighQuality) {
-            // Live playback: user prefers high quality (JioSaavn 320k or Lossless).
-            // Allow lookup up to 4000ms so it resolves automatically up front.
-            // If JioSaavn finishes earlier (e.g. 1.2s), it returns immediately.
-            // If it returns null (not available on JioSaavn), it immediately falls back to YouTube without hanging.
-            withTimeoutOrNull(4000L) { lookup.await() }
         } else {
-            val earlyLookup = withTimeoutOrNull(1000L) { lookup.await() }
+            // Prompt playback start: give enabled sources up to 1200ms to answer ahead of YouTube.
+            // If they answer fast, play lossless/high-quality right away!
+            // If not, race YouTube fallback so the track starts promptly without delay.
+            val earlyLookup = withTimeoutOrNull(1200L) { lookup.await() }
             if (earlyLookup != null) {
                 earlyLookup
             } else {
@@ -2900,28 +3178,37 @@ class PlaybackService : MediaSessionService() {
         }
 
         if (quick != null) {
-            // The modules got there first, so the YouTube walk is genuinely
-            // spare work now. Cancelling drops only this service's wait on it;
-            // [StreamResolver] parents the walk itself elsewhere and lets it
-            // finish into its own cache.
             fallback.cancel()
-            NerdStats.onLosslessRaceEnd(videoId)
+            val reqIsLossless = req is StreamRequest.Lossless
+            val isBelow = quick.belowRequest ||
+                (reqIsLossless && quick.format.isLossless != true) ||
+                (reqIsLossless && quick.format.isHiRes != true && (quick.format.bitDepth ?: 16) < 24)
+            if (isBelow) {
+                val settled = QualityUpgrade.settledForLess(
+                    mediaId = videoId,
+                    target = target,
+                    inFlight = null,
+                    playing = quick.format,
+                )
+                if (!settled) NerdStats.onLosslessRaceEnd(videoId)
+            } else {
+                NerdStats.onLosslessRaceEnd(videoId)
+            }
             return Resolved.Module(quick)
         }
 
-        if (wantsHighQuality && lookup.isActive) {
-            scope.launch(Dispatchers.IO + TrackLog.about(videoId)) {
-                val foundLater = runCatching { lookup.await() }.getOrNull()
-                if (foundLater != null) {
-                    TrackLog.d("DhvaniMusic", "Late high-quality match found for $videoId; shelving for future replay", about = videoId)
-                    QualityUpgrade.shelve(videoId, foundLater)
-                    StreamChoice.remember(videoId, foundLater, substituted = true)
-                }
-            }
-        }
-
         val url = fallback.await().getOrThrow()
-        NerdStats.onLosslessRaceEnd(videoId)
+        // Fast start: YouTube won the quick race.
+        // Start playback promptly while parallel search continues for a better version of the same recording.
+        val ytBitrate = NerdStats.pickedBitrateKbps(videoId) ?: 160
+        val playingFormat = StreamFormat(source = "Standard Opus", codec = "opus", kbps = ytBitrate)
+        val pending = QualityUpgrade.settledForLess(
+            mediaId = videoId,
+            target = target,
+            inFlight = lookup.takeIf { lookup.isActive },
+            playing = playingFormat,
+        )
+        if (!pending) NerdStats.onLosslessRaceEnd(videoId)
         return Resolved.YouTube(url)
     }
 
@@ -2943,25 +3230,122 @@ class PlaybackService : MediaSessionService() {
         val mediaId = player.currentMediaItem?.mediaId
         val declared = NerdStats.declaredFormat(mediaId)
         val uri = player.currentMediaItem?.localConfiguration?.uri
+
+        val isOpusActual = format?.sampleMimeType?.contains("opus", ignoreCase = true) == true
+        val isAacActual = format?.sampleMimeType?.contains("mp4", ignoreCase = true) == true || format?.sampleMimeType?.contains("aac", ignoreCase = true) == true
+        val isFlacActual = format?.sampleMimeType?.contains("flac", ignoreCase = true) == true || format?.sampleMimeType?.contains("raw", ignoreCase = true) == true
+
         val resolvedSource = when {
-            !declared?.source.isNullOrBlank() -> declared?.source
-            uri?.host?.contains("saavn", ignoreCase = true) == true -> "JioSaavn"
+            isOpusActual -> {
+                if (uri?.scheme == "file" || uri?.scheme == "content" || mediaId?.startsWith("local_") == true) "Local Audio"
+                else "Standard Opus"
+            }
+            isAacActual -> {
+                if (uri?.host?.contains("saavn", ignoreCase = true) == true || declared?.source?.contains("Saavn", ignoreCase = true) == true || declared?.source?.contains("AAC", ignoreCase = true) == true) "High Quality AAC"
+                else if (uri?.scheme == "file" || uri?.scheme == "content" || mediaId?.startsWith("local_") == true) "Local Audio"
+                else "Standard Opus"
+            }
+            isFlacActual -> {
+                when {
+                    !declared?.source.isNullOrBlank() -> declared.source
+                    uri?.host?.contains("monochrome", ignoreCase = true) == true -> {
+                        val depth = bitDepthOf(format.pcmEncoding) ?: declared?.bitDepth ?: 16
+                        val rate = format.sampleRate.takeIf { it != Format.NO_VALUE } ?: declared?.sampleRateHz ?: 44100
+                        if (depth > 16 || rate > 48000) "Monochrome Hi-Res" else "Monochrome Lossless"
+                    }
+                    else -> declared?.source ?: "Lossless Plugin"
+                }
+            }
+            declared != null && !declared.source.isNullOrBlank() -> declared.source
+            uri?.host?.contains("monochrome", ignoreCase = true) == true -> "Monochrome Hi-Res"
+            uri?.host?.contains("saavn", ignoreCase = true) == true -> "High Quality AAC"
             uri?.scheme == "file" || uri?.scheme == "content" || mediaId?.startsWith("local_") == true -> "Local Audio"
-            format?.sampleMimeType?.contains("flac", ignoreCase = true) == true -> "Lossless Plugin"
-            format?.sampleMimeType?.contains("mp4", ignoreCase = true) == true && ((format.bitrate ?: 0) >= 250_000 || declared?.kbps == 320) -> "JioSaavn"
-            uri?.host?.contains("googlevideo", ignoreCase = true) == true || uri?.host?.contains("youtube", ignoreCase = true) == true -> "YouTube Music"
-            else -> declared?.source ?: "YouTube Music"
+            uri?.host?.contains("googlevideo", ignoreCase = true) == true || uri?.host?.contains("youtube", ignoreCase = true) == true -> "Standard Opus"
+            else -> declared?.source ?: "Standard Opus"
         }
+
+        val isFlacOrLossless = if (isOpusActual || isAacActual) {
+            false
+        } else {
+            isFlacActual ||
+                declared?.isLossless == true ||
+                resolvedSource.contains("Monochrome", ignoreCase = true) ||
+                resolvedSource.contains("Lossless", ignoreCase = true)
+        }
+
+        val resolvedDepth = format?.pcmEncoding?.let(::bitDepthOf)
+            ?: declared?.bitDepth
+            ?: if (isFlacOrLossless && resolvedSource.contains("Hi-Res", ignoreCase = true)) 24
+            else if (isFlacOrLossless || isOpusActual || isAacActual) 16
+            else null
+
+        val resolvedChannels = format?.channelCount?.takeIf { it != Format.NO_VALUE }
+            ?: 2
+
+        val resolvedSampleRate = format?.sampleRate?.takeIf { it != Format.NO_VALUE }
+            ?: declared?.sampleRateHz
+            ?: 44100
+
+        var flacBitrate: Int? = null
+        if (isFlacOrLossless) {
+            if (uri != null) {
+                val durationMs = player.duration.takeIf { it > 0 }
+                val cachedLength = AudioCache.contentLengthOf(uri).takeIf { it > 0 }
+                if (durationMs != null && cachedLength != null) {
+                    val calcKbps = ((cachedLength * 8L) / durationMs).toInt()
+                    if (calcKbps in 400..15000) {
+                        flacBitrate = calcKbps
+                    }
+                }
+            }
+            if (flacBitrate == null) {
+                val depth = resolvedDepth ?: 16
+                val pcmRateKbps = (resolvedSampleRate.toLong() * resolvedChannels.toLong() * depth.toLong()) / 1000L
+                val ratio = if (depth >= 24) 52L else 58L
+                flacBitrate = (pcmRateKbps * ratio / 100L).toInt()
+            }
+        }
+
+        val resolvedBitrateKbps = when {
+            isFlacOrLossless -> {
+                format?.bitrate?.takeIf { it != Format.NO_VALUE && it >= 500_000 }?.div(1000)
+                    ?: declared?.kbps?.takeIf { it >= 500 }
+                    ?: flacBitrate
+            }
+            isOpusActual -> {
+                format.bitrate.takeIf { it != Format.NO_VALUE && it > 0 }?.div(1000)
+                    ?: NerdStats.pickedBitrateKbps(mediaId)?.takeIf { it in 50..320 }
+                    ?: 160
+            }
+            else -> {
+                format?.bitrate?.takeIf { it != Format.NO_VALUE && it > 0 }?.div(1000)
+                    ?: declared?.kbps?.takeIf { it > 0 }
+                    ?: NerdStats.pickedBitrateKbps(mediaId)?.takeIf { it > 0 }
+            }
+        }
+
+        val activeDecoder = AudioDecoderResolver.resolveDecoderName(
+            currentDecoder = currentDecoderName ?: AudioOutputStatus.current.value.decoderName,
+            mimeType = format?.sampleMimeType ?: if (isFlacOrLossless) "audio/flac" else null,
+            isLossless = isFlacOrLossless,
+        )
+
+        currentDecoderName = activeDecoder
+        if (AudioOutputStatus.current.value.decoderName != activeDecoder) {
+            AudioOutputStatus.publishDecoder(activeDecoder)
+        }
+
+        val isSearching = mediaId != null && mediaId in NerdStats.racingLossless.value
         NerdStats.current.value = NerdStats.Snapshot(
-            mimeType = format?.sampleMimeType,
-            bitrateKbps = format?.bitrate?.takeIf { it != Format.NO_VALUE }?.div(1000)
-                ?: declared?.kbps
-                ?: NerdStats.pickedBitrateKbps(mediaId),
-            sampleRateHz = format?.sampleRate?.takeIf { it != Format.NO_VALUE },
-            channels = format?.channelCount?.takeIf { it != Format.NO_VALUE },
-            bitDepth = format?.pcmEncoding?.let(::bitDepthOf),
+            mimeType = format?.sampleMimeType ?: if (isFlacOrLossless) "audio/flac" else null,
+            bitrateKbps = resolvedBitrateKbps,
+            sampleRateHz = resolvedSampleRate,
+            channels = resolvedChannels,
+            bitDepth = resolvedDepth,
             claimed = declared,
             sourceName = resolvedSource,
+            decoderName = activeDecoder,
+            isSearchingBetterQuality = isSearching,
         )
     }
 
@@ -3177,12 +3561,13 @@ class PlaybackService : MediaSessionService() {
      */
     private fun farBufferingLoadControl() = DefaultLoadControl.Builder()
         .setBufferDurationsMs(
-            DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+            /* minBufferMs = */ 10_000,
             /* maxBufferMs = */ FAR_BUFFER_MS,
             /* bufferForPlaybackMs = */ START_PLAYBACK_MS,
             /* bufferForPlaybackAfterRebufferMs = */ RESUME_PLAYBACK_MS,
         )
         .setTargetBufferBytes(FAR_BUFFER_BYTES)
+        .setPrioritizeTimeOverSizeThresholds(true)
         .setBackBuffer(/* backBufferDurationMs = */ BACK_BUFFER_MS, /* retainBackBufferFromKeyframe = */ true)
         .build()
 
@@ -3203,6 +3588,30 @@ class PlaybackService : MediaSessionService() {
         reverb: com.music.dhvani.playback.audio.ReverbAudioProcessor,
         watchdog: LosslessStallWatchdogAudioProcessor,
     ) = object : DefaultRenderersFactory(this) {
+        init {
+            val configuredFloatOutput = shouldEnableFloatOutput()
+            setEnableAudioFloatOutput(configuredFloatOutput)
+            if (configuredFloatOutput) {
+                setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                    val selector = if (mimeType == MimeTypes.AUDIO_FLAC) {
+                        MediaCodecSelector.PREFER_SOFTWARE
+                    } else {
+                        MediaCodecSelector.DEFAULT
+                    }
+                    val candidates = selector.getDecoderInfos(
+                        mimeType,
+                        requiresSecureDecoder,
+                        requiresTunnelingDecoder,
+                    )
+                    if (mimeType == MimeTypes.AUDIO_FLAC) {
+                        candidates.filterNot { AudioOutputPolicy.isUnsafeFloatFlacDecoder(it.name) }
+                    } else {
+                        candidates
+                    }
+                }
+            }
+        }
+
         override fun buildAudioSink(
             context: Context,
             enableFloatOutput: Boolean,
@@ -3210,6 +3619,25 @@ class PlaybackService : MediaSessionService() {
         ): AudioSink = DefaultAudioSink.Builder(context)
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+            .setAudioTrackProvider(object : DefaultAudioSink.AudioTrackProvider {
+                private val defaultProvider = androidx.media3.exoplayer.audio.DefaultAudioTrackProvider()
+                override fun getAudioTrack(
+                    audioTrackConfig: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig,
+                    audioAttributes: androidx.media3.common.AudioAttributes,
+                    audioSessionId: Int,
+                    context: Context?,
+                ): android.media.AudioTrack {
+                    val track = defaultProvider.getAudioTrack(audioTrackConfig, audioAttributes, audioSessionId, context)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        preferredAudioDeviceInfo?.let { dev ->
+                            val set = track.setPreferredDevice(dev)
+                            Log.d("MediaOutput", "Newly created AudioTrack.setPreferredDevice(${dev.productName}, type=${dev.type}) returned: $set")
+                        }
+                    }
+                    attachRoutingListener(track)
+                    return track
+                }
+            })
             .setAudioProcessorChain(
                 DefaultAudioSink.DefaultAudioProcessorChain(
                     // Equalizer and reverb run before spatial widening and transition filtering
@@ -3225,6 +3653,28 @@ class PlaybackService : MediaSessionService() {
                 ),
             )
             .build()
+    }
+
+    private var preferredAudioDeviceInfo: android.media.AudioDeviceInfo? = null
+    private var isApplyingAudioRoute: Boolean = false
+    private var activeAudioTrack: android.media.AudioTrack? = null
+
+    private fun attachRoutingListener(track: android.media.AudioTrack) {
+        activeAudioTrack = track
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val listener = android.media.AudioRouting.OnRoutingChangedListener { router ->
+                val routedDev = router.routedDevice
+                Log.d("MediaOutput", "Hardware AudioTrack routing changed: name=${routedDev?.productName}, type=${routedDev?.type}")
+                AudioOutputStatus.onActiveDeviceConfirmed(applicationContext, routedDev)
+            }
+            track.addOnRoutingChangedListener(listener, Handler(Looper.getMainLooper()))
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            track.routedDevice?.let { dev ->
+                Log.d("MediaOutput", "Initial hardware AudioTrack routed to: name=${dev.productName}, type=${dev.type}")
+                AudioOutputStatus.onActiveDeviceConfirmed(applicationContext, dev)
+            }
+        }
     }
 
     /**
@@ -3285,6 +3735,12 @@ class PlaybackService : MediaSessionService() {
                 spatialAudioProcessorB.enabled = active
                 applyDolbyAudioSessionEffect(active)
             }
+        }
+        scope.launch {
+            AudioRouting.selectedId.drop(1).collect { applyOutputRoute() }
+        }
+        scope.launch {
+            AppSettings.preferUsbDac.drop(1).collect { applyOutputRoute() }
         }
     }
 
@@ -3608,6 +4064,12 @@ class PlaybackService : MediaSessionService() {
 
 
     override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
         (getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(STATUS_BAR_NOTIF_ID)
         unregisterAudioDeviceCallback()
         com.music.dhvani.playback.eq.EqualizerManager.unregisterProcessor(equalizerProcessorA)
@@ -3671,6 +4133,7 @@ class PlaybackService : MediaSessionService() {
         crossfade = null
         mediaSession?.release()
         mediaSession = null
+        activeMediaSession = null
         player?.removeListener(playbackListener)
         player?.removeAnalyticsListener(formatListener)
         player?.release()
@@ -3682,6 +4145,7 @@ class PlaybackService : MediaSessionService() {
         // is not a reason to leave either behind.
         spare?.release()
         spare = null
+        activeAudioTrack = null
         com.music.dhvani.data.telemetry.TelemetryManager.setOffline()
         super.onDestroy()
     }
@@ -3696,18 +4160,12 @@ class PlaybackService : MediaSessionService() {
         audioDeviceCallback = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
                 super.onAudioDevicesAdded(addedDevices)
+                Log.d("MediaOutput", "Audio devices added: ${addedDevices?.map { "${it.productName} (type=${it.type})" }}")
                 AudioOutputStatus.updateDevice(this@PlaybackService, audioManager)
                 if (!AppSettings.resumeOnBluetooth.value) return
                 val hasTargetDevice = addedDevices?.any { dev ->
-                    dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                    dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                    dev.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                    dev.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
-                        dev.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                        dev.type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
-                        dev.type == AudioDeviceInfo.TYPE_BLE_BROADCAST
-                    ))
+                    AudioOutputStatus.isMediaBluetoothDevice(dev) ||
+                    AudioOutputStatus.isWiredDevice(dev)
                 } == true
 
                 if (hasTargetDevice) {
@@ -3723,63 +4181,177 @@ class PlaybackService : MediaSessionService() {
 
             override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
                 super.onAudioDevicesRemoved(removedDevices)
+                Log.d("MediaOutput", "Audio devices removed: ${removedDevices?.map { "${it.productName} (type=${it.type})" }}")
+                val activeDev = AudioOutputStatus.confirmedActiveDevice.value
+                val wasActiveRemoved = activeDev != null && removedDevices?.any { it.id == activeDev.id } == true
+                if (wasActiveRemoved) {
+                    Log.d("MediaOutput", "Active audio device '${activeDev.productName}' disconnected. Falling back to phone speaker.")
+                    AudioRouting.forget()
+                    player?.setPreferredAudioDevice(null)
+                    spare?.setPreferredAudioDevice(null)
+                    AudioOutputStatus.errorMessage.value = "${activeDev.productName} disconnected"
+                }
                 AudioOutputStatus.updateDevice(this@PlaybackService, audioManager)
             }
         }
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, Handler(Looper.getMainLooper()))
     }
 
-    private fun applyAudioRoute(routeId: String) {
+    private fun applyAudioRoute(routeId: String): Boolean {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
+
+        val outputs = try {
+            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
+        } catch (e: Throwable) {
+            emptyList()
+        }
+
+        Log.d("MediaOutput", "applyAudioRoute requested: routeId=$routeId. Connected outputs: ${outputs.map { "${it.productName}(type=${it.type}, id=${it.id})" }}")
+
+        val targetDevice: AudioDeviceInfo? = when {
+            routeId == "speaker" -> AudioOutputStatus.findBuiltInSpeaker(outputs)
+            routeId.startsWith("bluetooth") -> {
+                val specificId = routeId.removePrefix("bluetooth_").removePrefix("bluetooth").takeIf { it.isNotBlank() }?.toIntOrNull()
+                if (specificId != null) {
+                    outputs.firstOrNull { it.id == specificId && AudioOutputStatus.isMediaBluetoothDevice(it) }
+                } else {
+                    outputs.firstOrNull { AudioOutputStatus.isMediaBluetoothDevice(it) }
+                }
+            }
+            routeId.startsWith("usb") -> {
+                val specificId = routeId.removePrefix("usb_").removePrefix("usb").takeIf { it.isNotBlank() }?.toIntOrNull()
+                if (specificId != null) {
+                    outputs.firstOrNull { it.id == specificId && AudioOutputStatus.isUsbDevice(it) }
+                } else {
+                    outputs.firstOrNull { AudioOutputStatus.isUsbDevice(it) }
+                }
+            }
+            routeId == "wired" -> outputs.firstOrNull { AudioOutputStatus.isWiredDevice(it) }
+            else -> null
+        }
+
+        if (routeId != "speaker" && targetDevice == null) {
+            Log.w("MediaOutput", "Routing aborted: target device for route '$routeId' was not found or is disconnected")
+            AudioOutputStatus.errorMessage.value = "Selected audio device is not connected"
+            return false
+        }
+
+        try {
+            isApplyingAudioRoute = true
+            preferredAudioDeviceInfo = targetDevice
+            player?.setPreferredAudioDevice(targetDevice)
+            spare?.setPreferredAudioDevice(targetDevice)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val trackAccepted = activeAudioTrack?.setPreferredDevice(targetDevice)
+                Log.d("MediaOutput", "activeAudioTrack.setPreferredDevice(${targetDevice?.productName}, type=${targetDevice?.type}) returned: $trackAccepted")
+            }
+            Log.d("MediaOutput", "Successfully applied setPreferredAudioDevice: ${targetDevice?.productName ?: "Phone Speaker / System Default"} (type=${targetDevice?.type})")
+
+            // Restore stream volume if 0/muted so audio is immediately audible on phone speaker
+            val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            if (currentVol == 0) {
+                val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (maxVol * 0.5f).toInt(), 0)
+            }
+
+            // Teardown and recreate the AudioTrack pipeline so the HAL binds directly to targetDevice!
+            val p = player
+            if (p != null) {
+                val wasPlaying = p.isPlaying
+                val curIndex = p.currentMediaItemIndex
+                val curPos = p.currentPosition
+                p.stop()
+                p.seekTo(curIndex, curPos)
+                p.prepare()
+                if (wasPlaying) {
+                    p.play()
+                }
+            }
+
+            if (targetDevice != null) {
+                AudioRouting.select(targetDevice.id)
+                AudioOutputStatus.onActiveDeviceConfirmed(applicationContext, targetDevice)
+            } else {
+                AudioRouting.forget()
+                AudioOutputStatus.updateDevice(this, audioManager)
+            }
+            return true
+        } catch (e: Throwable) {
+            Log.e("MediaOutput", "Failed to setPreferredAudioDevice for $routeId: ${e.message}", e)
+            AudioOutputStatus.errorMessage.value = "Device routing error: ${e.message}"
+            return false
+        } finally {
+            isApplyingAudioRoute = false
+        }
+    }
+
+    private fun applyOutputRoute() {
+        if (isApplyingAudioRoute) return
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val usb = preferredUsbDevice()
+        val chosen = AudioRouting.infoFor(audioManager, AudioRouting.selectedId.value)
+        val preferred = chosen ?: usb.takeIf { AppSettings.preferUsbDac.value }
 
-        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        when (routeId) {
-            "speaker" -> {
-                val speaker = outputs.firstOrNull {
-                    it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER ||
-                    it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE
-                }
-                player?.setPreferredAudioDevice(speaker)
-                spare?.setPreferredAudioDevice(speaker)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && speaker != null) {
-                    audioManager.setCommunicationDevice(speaker)
+        try {
+            isApplyingAudioRoute = true
+            preferredAudioDeviceInfo = preferred
+            player?.setPreferredAudioDevice(preferred)
+            spare?.setPreferredAudioDevice(preferred)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val trackAccepted = activeAudioTrack?.setPreferredDevice(preferred)
+                Log.d("MediaOutput", "activeAudioTrack.setPreferredDevice(${preferred?.productName}, type=${preferred?.type}) returned: $trackAccepted")
+            }
+            Log.d("MediaOutput", "Successfully applied setPreferredAudioDevice in applyOutputRoute: ${preferred?.productName ?: "Phone Speaker / System Default"} (type=${preferred?.type})")
+
+            val p = player
+            if (p != null) {
+                val wasPlaying = p.isPlaying
+                val curIndex = p.currentMediaItemIndex
+                val curPos = p.currentPosition
+                p.stop()
+                p.seekTo(curIndex, curPos)
+                p.prepare()
+                if (wasPlaying) {
+                    p.play()
                 }
             }
-            "bluetooth" -> {
-                val bt = outputs.firstOrNull {
-                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
-                        it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                        it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
-                    ))
-                }
-                player?.setPreferredAudioDevice(bt)
-                spare?.setPreferredAudioDevice(bt)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    audioManager.clearCommunicationDevice()
-                }
+
+            if (preferred != null) {
+                AudioOutputStatus.onActiveDeviceConfirmed(applicationContext, preferred)
+            } else {
+                AudioOutputStatus.updateDevice(this, audioManager)
             }
-            "wired" -> {
-                val wired = outputs.firstOrNull {
-                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
-                }
-                player?.setPreferredAudioDevice(wired)
-                spare?.setPreferredAudioDevice(wired)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    audioManager.clearCommunicationDevice()
-                }
-            }
-            else -> {
-                player?.setPreferredAudioDevice(null)
-                spare?.setPreferredAudioDevice(null)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    audioManager.clearCommunicationDevice()
-                }
-            }
+        } catch (e: Throwable) {
+            Log.e("MediaOutput", "Failed to applyOutputRoute: ${e.message}", e)
+        } finally {
+            isApplyingAudioRoute = false
         }
-        AudioOutputStatus.updateDevice(this, audioManager)
+    }
+
+    private fun preferredUsbDevice(): AudioDeviceInfo? {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return null
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).firstOrNull { device ->
+                device.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
+                    device.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                    device.type == AudioDeviceInfo.TYPE_USB_ACCESSORY
+            }
+        } else {
+            null
+        }
+    }
+
+    private fun shouldEnableFloatOutput(): Boolean {
+        val usb = preferredUsbDevice()
+        return AudioOutputPolicy.shouldUseFloatOutput(
+            requestedMode = AppSettings.outputPcmMode.value,
+            isPreferredUsbRoute = AppSettings.preferUsbDac.value && usb != null,
+            advertisesPcmFloat = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                usb?.encodings?.contains(android.media.AudioFormat.ENCODING_PCM_FLOAT) == true
+            } else false,
+        )
     }
 
     private fun unregisterAudioDeviceCallback() {
@@ -3792,107 +4364,95 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun updateStatusBarNotification() {
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
-        val showIcon = com.music.dhvani.data.settings.AppSettings.showStatusBarIcon.value
-        val exoPlayer = player
-        val isPlaying = exoPlayer?.isPlaying == true
-        val song = exoPlayer?.currentMediaItem?.toSong()
-
-        if (!showIcon || !isPlaying || song == null) {
-            notificationManager.cancel(STATUS_BAR_NOTIF_ID)
-            return
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (androidx.core.content.ContextCompat.checkSelfPermission(
-                    this,
-                    android.Manifest.permission.POST_NOTIFICATIONS,
-                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
-            ) {
-                return
-            }
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                STATUS_BAR_CHANNEL_ID,
-                "Playback Status",
-                NotificationManager.IMPORTANCE_LOW,
-            ).apply {
-                description = "Shows Dhvani logo in the status bar while music is playing"
-                setShowBadge(true)
-                setSound(null, null)
-                enableLights(false)
-                enableVibration(false)
-            }
-            notificationManager.createNotificationChannel(channel)
-        }
-
-        val pendingIntent = sessionActivity()
-
-        val notification = NotificationCompat.Builder(this, STATUS_BAR_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification_logo)
-            .setContentTitle(song.title)
-            .setContentText(song.artist)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .build()
-
-        notificationManager.notify(STATUS_BAR_NOTIF_ID, notification)
+        // Standard Android MediaSession notification natively manages the status bar icon and media card.
+        // We cancel and prevent posting any redundant secondary notification to avoid flicker or duplication.
+        (getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(STATUS_BAR_NOTIF_ID)
     }
 
     /**
      * What the MediaSession, and so every control surface, actually talks to.
      *
-     * Two behaviours are grafted onto the player here rather than left to
-     * ExoPlayer's defaults:
+     * Two behaviours are grafted onto the player here:
      *
-     * **Back restarts the track.** ExoPlayer already implements
-     * restart-then-skip in [Player.seekToPrevious], gated on
-     * `maxSeekToPreviousPosition`. External surfaces don't use it:
-     * [DefaultMediaNotificationProvider] binds its previous button to
-     * `COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM`, which skips unconditionally. So
-     * that command is redirected rather than left to behave differently
-     * depending on which back button was pressed.
+     * **Back restarts the track.** When previous is requested and the track is past
+     * its beginning, or on the first item of a queue, seeking to 0 restarts the track.
+     * Commands are kept available so system media cards do not gray out Previous.
      *
      * **A skip cancels the crossfade.** Blending is for a track running out,
      * not for one being changed: told to move on, the listener wants the song
      * they were on to stop, not to keep playing over the one they asked for.
-     * So every skip tells [CrossfadeController] to drop whatever is in flight
-     * and then moves the queue plainly.
-     *
-     * Command availability is deliberately untouched — mutating it through a
-     * [ForwardingPlayer] means intercepting listener callbacks too. The one
-     * consequence is the first track of a queue, where ExoPlayer withholds
-     * `COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM` for want of a previous item: back
-     * stays inert on those surfaces, exactly as it already was. In the app it
-     * restarts, since that path asks for `COMMAND_SEEK_TO_PREVIOUS`.
      */
     private class SessionPlayer(
         player: Player,
         private val crossfade: CrossfadeController,
+        private val onSkipNextFallback: () -> Unit = {},
     ) : ForwardingPlayer(player) {
+
+        override fun getAvailableCommands(): Player.Commands {
+            val base = super.getAvailableCommands().buildUpon()
+            // Always allow seek to previous (to restart current track or skip to previous)
+            // as long as the track is seekable or there is a previous item.
+            if (isCurrentMediaItemSeekable || hasPreviousMediaItem()) {
+                base.add(COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                base.add(COMMAND_SEEK_TO_PREVIOUS)
+            }
+            if (hasNextMediaItem() || AppSettings.autoplay.value) {
+                base.add(COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                base.add(COMMAND_SEEK_TO_NEXT)
+            }
+            return base.build()
+        }
+
+        override fun isCommandAvailable(command: Int): Boolean {
+            if (command == COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM || command == COMMAND_SEEK_TO_PREVIOUS) {
+                return isCurrentMediaItemSeekable || hasPreviousMediaItem()
+            }
+            if (command == COMMAND_SEEK_TO_NEXT_MEDIA_ITEM || command == COMMAND_SEEK_TO_NEXT) {
+                return hasNextMediaItem() || AppSettings.autoplay.value
+            }
+            return super.isCommandAvailable(command)
+        }
 
         override fun seekToPreviousMediaItem() {
             crossfade.onSkipRequested()
-            wrappedPlayer.seekToPrevious()
+            if (wrappedPlayer.hasPreviousMediaItem()) {
+                wrappedPlayer.seekToPrevious()
+            } else if (wrappedPlayer.isCurrentMediaItemSeekable) {
+                wrappedPlayer.seekTo(0L)
+            }
+        }
+
+        override fun seekToPrevious() {
+            crossfade.onSkipRequested()
+            if (wrappedPlayer.hasPreviousMediaItem() || wrappedPlayer.isCurrentMediaItemSeekable) {
+                wrappedPlayer.seekToPrevious()
+            }
         }
 
         override fun seekToNextMediaItem() {
             crossfade.onSkipRequested()
-            wrappedPlayer.seekToNextMediaItem()
+            if (wrappedPlayer.hasNextMediaItem()) {
+                wrappedPlayer.seekToNextMediaItem()
+            } else {
+                onSkipNextFallback()
+            }
         }
 
         override fun seekToNext() {
             crossfade.onSkipRequested()
-            wrappedPlayer.seekToNext()
+            if (wrappedPlayer.hasNextMediaItem()) {
+                wrappedPlayer.seekToNext()
+            } else {
+                onSkipNextFallback()
+            }
         }
     }
 
-    private companion object {
+    companion object {
+        @Volatile
+        var activeMediaSession: MediaSession? = null
+            internal set
+
         /**
          * Shared by both players. Identical on purpose: they take turns being
          * the session, and a difference here would be an audible change of
@@ -3935,8 +4495,8 @@ class PlaybackService : MediaSessionService() {
         /** Past any song, so the byte ceiling is what stops loading. */
         const val FAR_BUFFER_MS = 15 * 60 * 1000
 
-        /** ~6 minutes at 160kbps: a whole track, for all but the longest. */
-        const val FAR_BUFFER_BYTES = 8 * 1024 * 1024
+        /** 32MB buffer ceiling accommodates large Lossless / Hi-Res FLAC tracks as well as Opus. */
+        const val FAR_BUFFER_BYTES = 32 * 1024 * 1024
 
         /**
          * A short nudge backwards, and no more: this shares the byte ceiling
@@ -3944,14 +4504,14 @@ class PlaybackService : MediaSessionService() {
          */
         const val BACK_BUFFER_MS = 30 * 1000
 
-        /** Enough to build a stable buffer so playback never starves at 3 seconds. */
-        const val START_PLAYBACK_MS = 2_000
+        /** Fast initial audio start so playback begins almost immediately. */
+        const val START_PLAYBACK_MS = 500
 
         /** Maximum time playback can sit in STATE_BUFFERING without progress before auto-recovery. */
         const val BUFFERING_STALL_TIMEOUT_MS = 6_000L
 
-        /** More room after a stall than at the start — see the load control. */
-        const val RESUME_PLAYBACK_MS = 2_000
+        /** Swift recovery after a rebuffer. */
+        const val RESUME_PLAYBACK_MS = 800
 
         /**
          * Outer cap on stream resolution. Individual client calls and probes

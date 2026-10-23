@@ -3,25 +3,15 @@ package com.music.dhvani.ui.components
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,22 +19,21 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,24 +42,21 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.GraphicEq
-import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -81,11 +67,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -99,34 +82,61 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import com.music.dhvani.R
 import com.music.dhvani.data.settings.AppSettings
+import com.music.dhvani.ui.haptics.Haptic
+import com.music.dhvani.ui.haptics.rememberHaptics
+import java.io.File
 
 /**
- * Ultra-premium, responsive first-launch onboarding dialog for Dhvani Music.
- * Features:
- * - Dynamic ambient aura backlight matching the active avatar's palette
- * - 2-step setup: Avatar Selection & VIP Profile Persona
- * - Real-time Live VIP Profile Preview Card with animated equalizer waves
- * - Quick suggestion tags for effortless name selection
- * - Pinned bottom navigation ensuring action buttons are NEVER cut off
+ * Single-screen Add / Edit Profile screen for Dhvani Music.
+ * Follows the NuvioMobile profile architecture:
+ * - Top back navigation with "Add Profile" / "Edit Profile" title
+ * - Single scrollable canvas combining Profile Identity, Custom Avatar URL, and 5-Column Avatar Catalog
+ * - Real-time responsive avatar preview card reflecting the selected avatar or custom URL
+ * - Pinned bottom CTA ("Create Profile" / "Save Profile") anchored above system navigation bars
  */
 @Composable
 fun WelcomeNameDialog(
+    initialName: String? = null,
+    initialAvatarId: Int? = null,
+    isInitialSetup: Boolean = true,
+    title: String? = null,
+    onDismiss: (() -> Unit)? = null,
     onDismissOrCompleted: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    val focusRequester = remember { FocusRequester() }
+    val haptics = rememberHaptics()
 
-    val defaultName = remember { getSuggestedListenerName(context) }
+    val defaultName = remember { initialName?.ifBlank { null } ?: getSuggestedListenerName(context) }
     var inputName by rememberSaveable { mutableStateOf(defaultName) }
-    var selectedAvatarId by rememberSaveable {
-        mutableIntStateOf(AppSettings.userPresetAvatarId.value)
+
+    val validInitialAvatarId = remember {
+        val candidate = initialAvatarId ?: AppSettings.userPresetAvatarId.value
+        if (PRESET_AVATARS.any { it.id == candidate }) candidate else getPresetAvatar(candidate).id
     }
-    var currentStep by rememberSaveable { mutableIntStateOf(1) }
+    var selectedAvatarId by rememberSaveable { mutableIntStateOf(validInitialAvatarId) }
+
+    val currentSavedCustom = remember { AppSettings.userCustomAvatarPath.value }
+    val initialCustomUrl = remember {
+        if (currentSavedCustom.startsWith("http://", ignoreCase = true) ||
+            currentSavedCustom.startsWith("https://", ignoreCase = true)
+        ) currentSavedCustom else ""
+    }
+    val initialLocalPath = remember {
+        if (!currentSavedCustom.startsWith("http://", ignoreCase = true) &&
+            !currentSavedCustom.startsWith("https://", ignoreCase = true)
+        ) currentSavedCustom else ""
+    }
+    var customAvatarUrl by rememberSaveable { mutableStateOf(initialCustomUrl) }
+    var customLocalPath by rememberSaveable { mutableStateOf(initialLocalPath) }
     var selectedCategory by rememberSaveable { mutableStateOf("All") }
 
-    val categories = listOf("All", "3D Characters", "Music & Vibes", "Cyber & Space", "Fun & Playful", "Neon Glyphs")
+    val categories = listOf("All", "Animals", "Minimalist", "Characters", "Portraits", "Sketches")
     val filteredPresets = remember(selectedCategory) {
         if (selectedCategory == "All") PRESET_AVATARS else PRESET_AVATARS.filter { it.category == selectedCategory }
     }
@@ -135,917 +145,572 @@ fun WelcomeNameDialog(
         getPresetAvatar(selectedAvatarId)
     }
 
-    val completeSetup = {
-        keyboardController?.hide()
-        val finalName = inputName.trim().ifBlank { defaultName }
-        AppSettings.setUserAvatarPreset(selectedAvatarId)
-        AppSettings.setUserName(finalName)
-        onDismissOrCompleted(finalName)
-    }
+    val previewAccent = selectedPreset.colors.first()
 
-    LaunchedEffect(currentStep) {
-        if (currentStep == 2) {
-            kotlinx.coroutines.delay(200)
-            runCatching { focusRequester.requestFocus() }
+    // Photo picker launcher for picking from device gallery
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    val avatarFile = File(context.filesDir, "dhvani_user_avatar.jpg")
+                    avatarFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                    customLocalPath = avatarFile.absolutePath
+                    customAvatarUrl = ""
+                    haptics.play(Haptic.Tap)
+                    Toast.makeText(context, "Photo selected!", Toast.LENGTH_SHORT).show()
+                }
+            }.onFailure {
+                Toast.makeText(context, "Failed to load photo: ${it.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
-    // Step back interceptor
-    BackHandler(enabled = currentStep > 1) {
-        currentStep = 1
+    val completeSetup = {
+        keyboardController?.hide()
+        val finalName = inputName.trim().ifBlank { defaultName }
+
+        if (customLocalPath.isNotBlank() && File(customLocalPath).exists()) {
+            AppSettings.setUserCustomAvatar(customLocalPath)
+        } else if (customAvatarUrl.isNotBlank() && customAvatarUrl.startsWith("http")) {
+            AppSettings.setUserCustomAvatar(customAvatarUrl.trim())
+        } else {
+            AppSettings.setUserAvatarPreset(selectedAvatarId)
+        }
+
+        AppSettings.setUserName(finalName)
+        haptics.play(Haptic.Tap)
+        onDismissOrCompleted(finalName)
     }
 
-    // Dynamic animations
-    val infiniteTransition = rememberInfiniteTransition(label = "welcomeAnimations")
-    val shimmerOffset by infiniteTransition.animateFloat(
-        initialValue = -200f,
-        targetValue = 1000f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "headerShimmer",
-    )
+    val handleDismiss = {
+        if (onDismiss != null) {
+            onDismiss()
+        } else {
+            completeSetup()
+        }
+    }
 
-    val pulseGlowScale by infiniteTransition.animateFloat(
-        initialValue = 0.94f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "pulseGlowScale",
-    )
-    val pulseGlowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.30f,
-        targetValue = 0.70f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "pulseGlowAlpha",
-    )
-
-    // Mini animated equalizer waves
-    val eq1 by infiniteTransition.animateFloat(
-        initialValue = 4f,
-        targetValue = 14f,
-        animationSpec = infiniteRepeatable(tween(600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "eq1",
-    )
-    val eq2 by infiniteTransition.animateFloat(
-        initialValue = 14f,
-        targetValue = 5f,
-        animationSpec = infiniteRepeatable(tween(500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "eq2",
-    )
-    val eq3 by infiniteTransition.animateFloat(
-        initialValue = 6f,
-        targetValue = 16f,
-        animationSpec = infiniteRepeatable(tween(750, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "eq3",
-    )
-    val eq4 by infiniteTransition.animateFloat(
-        initialValue = 12f,
-        targetValue = 4f,
-        animationSpec = infiniteRepeatable(tween(650, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "eq4",
-    )
-
-    val primaryAccent = selectedPreset.colors.first()
-    val secondaryAccent = selectedPreset.colors.last()
+    BackHandler(enabled = true) {
+        handleDismiss()
+    }
 
     Dialog(
-        onDismissRequest = {
-            if (currentStep > 1) {
-                currentStep = 1
-            } else {
-                completeSetup()
-            }
-        },
+        onDismissRequest = { handleDismiss() },
         properties = DialogProperties(
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
             usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
         ),
     ) {
+        val view = androidx.compose.ui.platform.LocalView.current
+        androidx.compose.runtime.DisposableEffect(view) {
+            val setupWindow = {
+                var p: android.view.ViewParent? = view.parent
+                while (p != null) {
+                    if (p is androidx.compose.ui.window.DialogWindowProvider) {
+                        val window = p.window
+                        window.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+                        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+                        window.setBackgroundDrawableResource(android.R.color.transparent)
+                        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+                        break
+                    }
+                    p = p.parent
+                }
+            }
+            val listener = object : android.view.View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: android.view.View) { setupWindow() }
+                override fun onViewDetachedFromWindow(v: android.view.View) {}
+            }
+            view.addOnAttachStateChangeListener(listener)
+            setupWindow()
+            onDispose {
+                view.removeOnAttachStateChangeListener(listener)
+            }
+        }
+
         Surface(
-            modifier = Modifier
-                .widthIn(max = 440.dp)
-                .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.89f)
-                .clip(RoundedCornerShape(32.dp))
-                .border(
-                    width = 1.2.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            primaryAccent.copy(alpha = 0.60f),
-                            secondaryAccent.copy(alpha = 0.25f),
-                            Color.White.copy(alpha = 0.08f),
-                        )
-                    ),
-                    shape = RoundedCornerShape(32.dp),
-                ),
-            color = Color(0xFF0F0E17),
-            shadowElevation = 36.dp,
+            modifier = Modifier.fillMaxSize(),
+            color = Color(0xFF0F0F12),
         ) {
             Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding(),
             ) {
-                // ── Top Shimmer Animated Accent Line ─────────────────────────────
-                Box(
+                // ── Top Bar ─────────────────────────────────────────────
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(3.5.dp)
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(
-                                    primaryAccent,
-                                    secondaryAccent,
-                                    Color(0xFF06B6D4),
-                                    Color(0xFFD946EF),
-                                    primaryAccent,
-                                ),
-                                startX = shimmerOffset,
-                                endX = shimmerOffset + 600f,
-                                tileMode = TileMode.Repeated,
-                            )
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = { handleDismiss() },
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
                         )
-                )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = title ?: if (isInitialSetup) "Add Profile" else "Customize Profile",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(
+                        onClick = { completeSetup() },
+                        enabled = inputName.isNotBlank(),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = "Save",
+                            tint = if (inputName.isNotBlank()) Color.White else Color.White.copy(alpha = 0.35f),
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+                }
 
-                Spacer(Modifier.height(14.dp))
-
-                // ── Top Header Section: Segmented Step Tracker + Hero Avatar ───────
+                // ── Scrollable Body ─────────────────────────────────────
                 Column(
                     modifier = Modifier
+                        .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    // Segmented Step Indicator Pill
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(Color.White.copy(alpha = 0.06f))
-                            .border(
-                                width = 1.dp,
-                                brush = Brush.horizontalGradient(
-                                    listOf(
-                                        primaryAccent.copy(alpha = 0.5f),
-                                        secondaryAccent.copy(alpha = 0.25f),
-                                    )
-                                ),
-                                shape = RoundedCornerShape(24.dp),
-                            )
-                            .padding(horizontal = 6.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    // ── Card 1: Profile Identity Card ───────────────────────────
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFF19191E),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
                     ) {
-                        // Step 1 Pill
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(
-                                    if (currentStep == 1) {
-                                        Brush.horizontalGradient(listOf(primaryAccent, secondaryAccent))
-                                    } else {
-                                        Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-                                    }
-                                )
-                                .clickable { currentStep = 1 }
-                                .padding(horizontal = 12.dp, vertical = 4.dp),
-                            contentAlignment = Alignment.Center,
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            Text(
-                                text = "1. Choose Avatar",
-                                fontSize = 11.5.sp,
-                                fontWeight = if (currentStep == 1) FontWeight.Bold else FontWeight.Medium,
-                                color = if (currentStep == 1) Color.White else Color.White.copy(alpha = 0.6f),
-                            )
-                        }
+                            // Top Row: Avatar Preview + Name & Subtitle
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                // Dynamic Avatar Preview
+                                val scaleAnim by animateFloatAsState(
+                                    targetValue = 1f,
+                                    animationSpec = spring(dampingRatio = 0.65f, stiffness = 400f),
+                                    label = "avatarScale",
+                                )
 
-                        // Step 2 Pill
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(
-                                    if (currentStep == 2) {
-                                        Brush.horizontalGradient(listOf(primaryAccent, secondaryAccent))
-                                    } else {
-                                        Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                                Box(
+                                    modifier = Modifier
+                                        .size(84.dp)
+                                        .scale(scaleAnim)
+                                        .clip(CircleShape)
+                                        .background(previewAccent)
+                                        .border(2.dp, Color.White.copy(alpha = 0.25f), CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    when {
+                                        customLocalPath.isNotBlank() && File(customLocalPath).exists() -> {
+                                            AsyncImage(
+                                                model = ImageRequest.Builder(context)
+                                                    .data(File(customLocalPath))
+                                                    .crossfade(true)
+                                                    .build(),
+                                                contentDescription = "Custom Profile Photo",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                            )
+                                        }
+                                        customAvatarUrl.isNotBlank() -> {
+                                            AsyncImage(
+                                                model = ImageRequest.Builder(context)
+                                                    .data(customAvatarUrl)
+                                                    .crossfade(true)
+                                                    .build(),
+                                                contentDescription = "Custom Avatar URL",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                            )
+                                        }
+                                        selectedPreset.drawableRes != null -> {
+                                            Image(
+                                                painter = painterResource(selectedPreset.drawableRes),
+                                                contentDescription = selectedPreset.name,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                            )
+                                        }
+                                        else -> {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Person,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(44.dp),
+                                            )
+                                        }
                                     }
-                                )
-                                .clickable { currentStep = 2 }
-                                .padding(horizontal = 12.dp, vertical = 4.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "2. Profile Name",
-                                fontSize = 11.5.sp,
-                                fontWeight = if (currentStep == 2) FontWeight.Bold else FontWeight.Medium,
-                                color = if (currentStep == 2) Color.White else Color.White.copy(alpha = 0.6f),
+                                }
+
+                                // Identity Text info
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Text(
+                                        text = inputName.ifBlank { "New profile" },
+                                        fontSize = 19.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = "New profile  |  Music Listener",
+                                        fontSize = 13.sp,
+                                        color = Color.White.copy(alpha = 0.55f),
+                                    )
+                                    Text(
+                                        text = if (customLocalPath.isNotBlank() || customAvatarUrl.isNotBlank()) {
+                                            "Avatar: Custom"
+                                        } else {
+                                            "Avatar: ${selectedPreset.name}"
+                                        },
+                                        fontSize = 13.sp,
+                                        color = Color.White.copy(alpha = 0.75f),
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                }
+                            }
+
+                            // Profile Name Input Field
+                            OutlinedTextField(
+                                value = inputName,
+                                onValueChange = { inputName = it },
+                                placeholder = {
+                                    Text("Profile name", color = Color.White.copy(alpha = 0.35f))
+                                },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color(0xFF131317),
+                                    unfocusedContainerColor = Color(0xFF131317),
+                                    focusedBorderColor = Color.White.copy(alpha = 0.3f),
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                ),
+                                trailingIcon = {
+                                    if (inputName.isNotBlank()) {
+                                        IconButton(onClick = { inputName = "" }) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Clear,
+                                                contentDescription = "Clear",
+                                                tint = Color.White.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.Words,
+                                    imeAction = ImeAction.Done,
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = { keyboardController?.hide() },
+                                ),
                             )
+
+                            // Quick Suggestions
+                            val suggestions = listOf("Audiophile", "Melophile", "Night Owl", "Beats Explorer")
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                suggestions.forEach { suggestion ->
+                                    val isSelected = inputName.trim().equals(suggestion, ignoreCase = true)
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSelected) previewAccent.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.05f),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            if (isSelected) previewAccent else Color.White.copy(alpha = 0.12f),
+                                        ),
+                                        modifier = Modifier.clickable {
+                                            haptics.play(Haptic.Select)
+                                            inputName = suggestion
+                                        },
+                                    ) {
+                                        Text(
+                                            text = suggestion,
+                                            fontSize = 12.sp,
+                                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.7f),
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
-                    Spacer(Modifier.height(10.dp))
-
-                    // Hero Avatar Preview with Ambient Glow
-                    Box(
-                        modifier = Modifier.size(88.dp),
-                        contentAlignment = Alignment.Center,
+                    // ── Card 2: Custom Avatar URL / Gallery ─────────────────────
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFF19191E),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
                     ) {
-                        // Ambient radial glow
-                        Box(
-                            modifier = Modifier
-                                .size(88.dp)
-                                .scale(pulseGlowScale)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.radialGradient(
-                                        colors = listOf(
-                                            primaryAccent.copy(alpha = pulseGlowAlpha * 0.55f),
-                                            secondaryAccent.copy(alpha = pulseGlowAlpha * 0.20f),
-                                            Color.Transparent,
-                                        )
-                                    )
-                                )
-                        )
-
-                        // Pulsing sweep glow halo ring
-                        Box(
-                            modifier = Modifier
-                                .size(82.dp)
-                                .scale(pulseGlowScale)
-                                .border(
-                                    width = 1.5.dp,
-                                    brush = Brush.sweepGradient(
-                                        listOf(
-                                            primaryAccent.copy(alpha = pulseGlowAlpha),
-                                            secondaryAccent.copy(alpha = pulseGlowAlpha * 0.5f),
-                                            primaryAccent.copy(alpha = pulseGlowAlpha),
-                                        )
-                                    ),
-                                    shape = CircleShape,
-                                )
-                        )
-
-                        // Main Avatar Circle
-                        Crossfade(
-                            targetState = selectedPreset,
-                            label = "AvatarCrossfade",
-                        ) { preset ->
-                            Box(
-                                modifier = Modifier
-                                    .size(74.dp)
-                                    .clip(CircleShape)
-                                    .border(
-                                        width = 2.dp,
-                                        brush = Brush.linearGradient(
-                                            colors = listOf(
-                                                Color.White.copy(alpha = 0.90f),
-                                                primaryAccent.copy(alpha = 0.60f),
-                                                Color.White.copy(alpha = 0.30f),
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                text = "Custom avatar URL",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                            )
+                            Text(
+                                text = "Paste an image link, or leave this empty to use the built-in avatar catalog.",
+                                fontSize = 13.sp,
+                                color = Color.White.copy(alpha = 0.55f),
+                                lineHeight = 18.sp,
+                            )
+                            OutlinedTextField(
+                                value = customAvatarUrl,
+                                onValueChange = { value ->
+                                    customAvatarUrl = value
+                                    if (value.isNotBlank()) {
+                                        customLocalPath = ""
+                                    }
+                                },
+                                placeholder = {
+                                    Text("https://example.com/avatar.png", color = Color.White.copy(alpha = 0.35f), fontSize = 14.sp)
+                                },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color(0xFF131317),
+                                    unfocusedContainerColor = Color(0xFF131317),
+                                    focusedBorderColor = Color.White.copy(alpha = 0.3f),
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                ),
+                                trailingIcon = {
+                                    if (customAvatarUrl.isNotBlank()) {
+                                        IconButton(onClick = { customAvatarUrl = "" }) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Clear,
+                                                contentDescription = "Clear",
+                                                tint = Color.White.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(18.dp),
                                             )
-                                        ),
-                                        shape = CircleShape,
-                                    )
-                                    .background(Brush.linearGradient(preset.colors)),
-                                contentAlignment = Alignment.Center,
+                                        }
+                                    }
+                                },
+                            )
+
+                            // Pick from gallery action button
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.White.copy(alpha = 0.06f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.09f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        photoPickerLauncher.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    },
                             ) {
-                                if (preset.drawableRes != null) {
-                                    Image(
-                                        painter = painterResource(preset.drawableRes),
-                                        contentDescription = preset.name,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(CircleShape),
-                                    )
-                                } else {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
                                     Icon(
-                                        imageVector = preset.icon,
-                                        contentDescription = preset.name,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(38.dp),
+                                        imageVector = Icons.Rounded.Image,
+                                        contentDescription = null,
+                                        tint = Color.White.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = if (customLocalPath.isNotBlank()) "Photo selected from device" else "Or pick photo from gallery",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color.White.copy(alpha = 0.8f),
                                     )
                                 }
                             }
                         }
                     }
 
-                    Spacer(Modifier.height(6.dp))
-
-                    // Avatar Vibe Chip
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color.White.copy(alpha = 0.08f))
-                            .border(
-                                width = 0.8.dp,
-                                brush = Brush.horizontalGradient(listOf(primaryAccent.copy(0.6f), secondaryAccent.copy(0.4f))),
-                                shape = RoundedCornerShape(20.dp),
-                            )
-                            .padding(horizontal = 12.dp, vertical = 3.5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    // ── Card 3: Choose an Avatar ────────────────────────────────
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFF19191E),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.AutoAwesome,
-                            contentDescription = null,
-                            tint = primaryAccent,
-                            modifier = Modifier.size(12.dp),
-                        )
-                        Text(
-                            text = selectedPreset.name,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
-                        )
-                        Text(
-                            text = "• ${selectedPreset.category}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = Color.White.copy(alpha = 0.65f),
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(10.dp))
-
-                // ── Middle Scrollable / Animated Area (WEIGHT 1f) ─────────────────
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                ) {
-                    AnimatedContent(
-                        targetState = currentStep,
-                        transitionSpec = {
-                            if (targetState > initialState) {
-                                (slideInHorizontally(animationSpec = tween(320, easing = FastOutSlowInEasing)) { width -> width } +
-                                        fadeIn(animationSpec = tween(260))).togetherWith(
-                                    slideOutHorizontally(animationSpec = tween(320, easing = FastOutSlowInEasing)) { width -> -width } +
-                                            fadeOut(animationSpec = tween(220))
-                                )
-                            } else {
-                                (slideInHorizontally(animationSpec = tween(320, easing = FastOutSlowInEasing)) { width -> -width } +
-                                        fadeIn(animationSpec = tween(260))).togetherWith(
-                                    slideOutHorizontally(animationSpec = tween(320, easing = FastOutSlowInEasing)) { width -> width } +
-                                            fadeOut(animationSpec = tween(220))
-                                )
-                            }.using(SizeTransform(clip = false))
-                        },
-                        label = "OnboardingStepTransition",
-                        modifier = Modifier.fillMaxSize(),
-                    ) { step ->
-                        if (step == 1) {
-                            // ═════════════════════════════════════════════════════
-                            // STEP 1: AVATAR SELECTION GRID
-                            // ═════════════════════════════════════════════════════
-                            Column(
-                                modifier = Modifier.fillMaxSize(),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
-                                    text = "Welcome to Dhvani",
-                                    fontSize = 19.sp,
+                                    text = "Choose an avatar",
+                                    fontSize = 17.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
-                                    textAlign = TextAlign.Center,
                                 )
-
-                                Spacer(Modifier.height(2.dp))
-
                                 Text(
-                                    text = "Choose your persona for your music journey",
-                                    fontSize = 12.sp,
-                                    color = Color.White.copy(alpha = 0.65f),
-                                    textAlign = TextAlign.Center,
+                                    text = selectedPreset.name,
+                                    fontSize = 13.sp,
+                                    color = Color.White.copy(alpha = 0.55f),
                                 )
+                            }
 
-                                Spacer(Modifier.height(10.dp))
-
-                                // Category Filter Chips
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState())
-                                        .padding(bottom = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    categories.forEach { cat ->
-                                        val isCatSelected = selectedCategory == cat
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(14.dp))
-                                                .background(
-                                                    if (isCatSelected) {
-                                                        Brush.horizontalGradient(listOf(primaryAccent.copy(alpha = 0.35f), secondaryAccent.copy(alpha = 0.25f)))
-                                                    } else {
-                                                        Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.06f)))
-                                                    }
-                                                )
-                                                .border(
-                                                    width = 1.dp,
-                                                    color = if (isCatSelected) primaryAccent.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.12f),
-                                                    shape = RoundedCornerShape(14.dp),
-                                                )
-                                                .clickable { selectedCategory = cat }
-                                                .padding(horizontal = 11.dp, vertical = 5.dp),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Text(
-                                                text = cat,
-                                                fontSize = 11.5.sp,
-                                                fontWeight = if (isCatSelected) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (isCatSelected) Color.White else Color.White.copy(alpha = 0.7f),
-                                            )
-                                        }
+                            // Category filter chips
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                categories.forEach { cat ->
+                                    val isCatSelected = selectedCategory == cat
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isCatSelected) Color.White else Color.White.copy(alpha = 0.06f),
+                                        modifier = Modifier.clickable {
+                                            haptics.play(Haptic.Select)
+                                            selectedCategory = cat
+                                        },
+                                    ) {
+                                        Text(
+                                            text = cat,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isCatSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isCatSelected) Color.Black else Color.White.copy(alpha = 0.7f),
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        )
                                     }
                                 }
+                            }
 
-                                // 4-Column Responsive Grid
-                                LazyVerticalGrid(
-                                    columns = GridCells.Fixed(4),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f),
-                                    contentPadding = PaddingValues(vertical = 4.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                ) {
-                                    items(filteredPresets, key = { it.id }) { preset ->
-                                        val isSelected = selectedAvatarId == preset.id
-                                        val animatedScale by animateFloatAsState(
-                                            targetValue = if (isSelected) 1.08f else 1f,
-                                            animationSpec = spring(dampingRatio = 0.6f),
-                                            label = "PresetScale",
-                                        )
+                            // 5-Column Avatar Catalog Grid (matching Nuvio reference layout)
+                            val columns = 5
+                            val spacing = 10.dp
 
-                                        Box(
-                                            contentAlignment = Alignment.Center,
-                                            modifier = Modifier
-                                                .aspectRatio(1f)
-                                                .scale(animatedScale)
-                                                .clip(CircleShape)
-                                                .border(
-                                                    width = if (isSelected) 2.5.dp else 1.dp,
-                                                    brush = if (isSelected) {
-                                                        Brush.linearGradient(listOf(primaryAccent, secondaryAccent))
-                                                    } else {
-                                                        Brush.linearGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.08f)))
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(spacing),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                filteredPresets.chunked(columns).forEach { row ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(spacing),
+                                    ) {
+                                        row.forEach { avatar ->
+                                            val isSelected = (avatar.id == selectedAvatarId) && customAvatarUrl.isBlank() && customLocalPath.isBlank()
+                                            val itemScale by animateFloatAsState(
+                                                targetValue = if (isSelected) 1.08f else 1.0f,
+                                                animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+                                                label = "itemScale",
+                                            )
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .aspectRatio(1f)
+                                                    .scale(itemScale)
+                                                    .clip(CircleShape)
+                                                    .background(avatar.colors.first())
+                                                    .border(
+                                                        width = if (isSelected) 3.dp else 1.dp,
+                                                        color = if (isSelected) Color.White else Color.White.copy(alpha = 0.12f),
+                                                        shape = CircleShape,
+                                                    )
+                                                    .clickable {
+                                                        haptics.play(Haptic.Tap)
+                                                        customAvatarUrl = ""
+                                                        customLocalPath = ""
+                                                        selectedAvatarId = avatar.id
                                                     },
-                                                    shape = CircleShape,
-                                                )
-                                                .padding(2.5.dp)
-                                                .clip(CircleShape)
-                                                .background(Brush.linearGradient(preset.colors))
-                                                .clickable {
-                                                    selectedAvatarId = preset.id
-                                                },
-                                        ) {
-                                            if (preset.drawableRes != null) {
-                                                Image(
-                                                    painter = painterResource(preset.drawableRes),
-                                                    contentDescription = preset.name,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .clip(CircleShape),
-                                                )
-                                            } else {
-                                                Icon(
-                                                    imageVector = preset.icon,
-                                                    contentDescription = preset.name,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(24.dp),
-                                                )
-                                            }
-
-                                            if (isSelected) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .background(Color.Black.copy(alpha = 0.35f)),
-                                                    contentAlignment = Alignment.Center,
-                                                ) {
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                if (avatar.drawableRes != null) {
+                                                    Image(
+                                                        painter = painterResource(avatar.drawableRes),
+                                                        contentDescription = avatar.name,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                                    )
+                                                } else {
                                                     Icon(
-                                                        imageVector = Icons.Rounded.Check,
-                                                        contentDescription = "Selected",
+                                                        imageVector = avatar.icon,
+                                                        contentDescription = avatar.name,
                                                         tint = Color.White,
-                                                        modifier = Modifier.size(18.dp),
+                                                        modifier = Modifier.size(24.dp),
                                                     )
                                                 }
                                             }
                                         }
-                                    }
-                                }
-                            }
-                        } else {
-                            // ═════════════════════════════════════════════════════
-                            // STEP 2: NAME ENTRY & LIVE PROFILE CARD PREVIEW
-                            // ═════════════════════════════════════════════════════
-                            val suggestedNames = remember {
-                                val list = mutableListOf<String>()
-                                if (defaultName.isNotBlank() && defaultName != "Music Lover") {
-                                    list.add(defaultName)
-                                }
-                                list.addAll(listOf("Music Lover", "Sound Traveler", "Vibe Master", "Night Owl", "Beat Drop"))
-                                list.distinct()
-                            }
 
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(vertical = 4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text(
-                                    text = "Name Your Profile",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    textAlign = TextAlign.Center,
-                                )
-
-                                Spacer(Modifier.height(4.dp))
-
-                                Text(
-                                    text = "This name appears across your recaps, playlists, and greetings",
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp,
-                                    color = Color.White.copy(alpha = 0.65f),
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(horizontal = 12.dp),
-                                )
-
-                                Spacer(Modifier.height(16.dp))
-
-                                // ── Live VIP Profile Card Preview ────────────────
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(
-                                            Brush.linearGradient(
-                                                colors = listOf(
-                                                    primaryAccent.copy(alpha = 0.18f),
-                                                    secondaryAccent.copy(alpha = 0.08f),
-                                                    Color.White.copy(alpha = 0.04f),
-                                                )
-                                            )
-                                        )
-                                        .border(
-                                            width = 1.dp,
-                                            brush = Brush.horizontalGradient(
-                                                listOf(
-                                                    primaryAccent.copy(alpha = 0.5f),
-                                                    secondaryAccent.copy(alpha = 0.25f),
-                                                )
-                                            ),
-                                            shape = RoundedCornerShape(20.dp),
-                                        )
-                                        .padding(14.dp),
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                    ) {
-                                        // Mini Avatar Preview
-                                        Box(
-                                            modifier = Modifier
-                                                .size(52.dp)
-                                                .clip(CircleShape)
-                                                .border(1.5.dp, primaryAccent, CircleShape)
-                                                .background(Brush.linearGradient(selectedPreset.colors)),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            if (selectedPreset.drawableRes != null) {
-                                                Image(
-                                                    painter = painterResource(selectedPreset.drawableRes),
-                                                    contentDescription = selectedPreset.name,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize().clip(CircleShape),
-                                                )
-                                            } else {
-                                                Icon(
-                                                    imageVector = selectedPreset.icon,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(26.dp),
-                                                )
-                                            }
+                                        // Fill remaining items in row to maintain grid alignment
+                                        repeat(columns - row.size) {
+                                            Spacer(modifier = Modifier.weight(1f))
                                         }
-
-                                        Column(
-                                            modifier = Modifier.weight(1f),
-                                            verticalArrangement = Arrangement.spacedBy(3.dp),
-                                        ) {
-                                            Text(
-                                                text = inputName.trim().ifBlank { "Music Lover" },
-                                                fontSize = 16.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            ) {
-                                                Text(
-                                                    text = "Dhvani Listener",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = primaryAccent,
-                                                )
-                                                // Live mini Equalizer Animation
-                                                Row(
-                                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                                    verticalAlignment = Alignment.Bottom,
-                                                    modifier = Modifier.height(14.dp),
-                                                ) {
-                                                    listOf(eq1, eq2, eq3, eq4).forEach { heightVal ->
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .width(2.dp)
-                                                                .height(heightVal.dp)
-                                                                .clip(CircleShape)
-                                                                .background(primaryAccent.copy(alpha = 0.9f))
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // Preview Tag Pill
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(Color.White.copy(alpha = 0.08f))
-                                                .padding(horizontal = 8.dp, vertical = 3.dp),
-                                        ) {
-                                            Text(
-                                                text = "PREVIEW",
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                letterSpacing = 0.5.sp,
-                                                color = Color.White.copy(alpha = 0.7f),
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(Modifier.height(18.dp))
-
-                                // Name Input Field
-                                OutlinedTextField(
-                                    value = inputName,
-                                    onValueChange = { inputName = it },
-                                    label = {
-                                        Text(
-                                            text = "Your Name or Nickname",
-                                            color = Color.White.copy(alpha = 0.6f),
-                                            fontSize = 13.sp,
-                                        )
-                                    },
-                                    placeholder = {
-                                        Text(
-                                            text = "e.g. DJ Kanaiya, Alex...",
-                                            color = Color.White.copy(alpha = 0.35f),
-                                            fontSize = 13.sp,
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Person,
-                                            contentDescription = null,
-                                            tint = primaryAccent,
-                                            modifier = Modifier.size(20.dp),
-                                        )
-                                    },
-                                    trailingIcon = {
-                                        if (inputName.isNotBlank()) {
-                                            IconButton(
-                                                onClick = { inputName = "" },
-                                                modifier = Modifier.size(28.dp),
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Rounded.Close,
-                                                    contentDescription = "Clear",
-                                                    tint = Color.White.copy(alpha = 0.5f),
-                                                    modifier = Modifier.size(16.dp),
-                                                )
-                                            }
-                                        }
-                                    },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(
-                                        capitalization = KeyboardCapitalization.Words,
-                                        imeAction = ImeAction.Done,
-                                    ),
-                                    keyboardActions = KeyboardActions(
-                                        onDone = { completeSetup() }
-                                    ),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedTextColor = Color.White,
-                                        unfocusedTextColor = Color.White,
-                                        focusedBorderColor = primaryAccent,
-                                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                                        cursorColor = primaryAccent,
-                                        focusedContainerColor = Color.White.copy(alpha = 0.04f),
-                                        unfocusedContainerColor = Color.White.copy(alpha = 0.02f),
-                                    ),
-                                    shape = RoundedCornerShape(18.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .focusRequester(focusRequester),
-                                )
-
-                                Spacer(Modifier.height(14.dp))
-
-                                // Quick Name Suggestions
-                                Text(
-                                    text = "Quick suggestions:",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color.White.copy(alpha = 0.5f),
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                                )
-
-                                Spacer(Modifier.height(6.dp))
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    suggestedNames.forEach { suggestion ->
-                                        val isCurrent = inputName.trim() == suggestion
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(14.dp))
-                                                .background(
-                                                    if (isCurrent) primaryAccent.copy(alpha = 0.3f)
-                                                    else Color.White.copy(alpha = 0.06f)
-                                                )
-                                                .border(
-                                                    width = 0.8.dp,
-                                                    color = if (isCurrent) primaryAccent else Color.White.copy(alpha = 0.12f),
-                                                    shape = RoundedCornerShape(14.dp),
-                                                )
-                                                .clickable { inputName = suggestion }
-                                                .padding(horizontal = 10.dp, vertical = 5.dp),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Text(
-                                                text = suggestion,
-                                                fontSize = 11.5.sp,
-                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isCurrent) Color.White else Color.White.copy(alpha = 0.75f),
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(Modifier.height(10.dp))
-                            }
-                        }
-                    }
-                }
-
-                // ── Pinned Bottom Action Bar (NEVER CUT OFF) ──────────────────────
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF0F0E17))
-                        .padding(horizontal = 18.dp, vertical = 14.dp),
-                ) {
-                    if (currentStep == 1) {
-                        Button(
-                            onClick = { currentStep = 2 },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.Transparent,
-                            ),
-                            contentPadding = PaddingValues(0.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        Brush.horizontalGradient(
-                                            colors = listOf(primaryAccent, secondaryAccent)
-                                        ),
-                                        shape = RoundedCornerShape(16.dp),
-                                    ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center,
-                                ) {
-                                    Text(
-                                        text = "Next: Set Profile Name",
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            OutlinedButton(
-                                onClick = { currentStep = 1 },
-                                modifier = Modifier.height(52.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = Color.White,
-                                    containerColor = Color.White.copy(alpha = 0.06f),
-                                ),
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                    contentDescription = "Back",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = "Back",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color.White,
-                                )
-                            }
-
-                            Button(
-                                onClick = { completeSetup() },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(52.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.Transparent,
-                                ),
-                                contentPadding = PaddingValues(0.dp),
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(
-                                            Brush.horizontalGradient(
-                                                colors = listOf(primaryAccent, secondaryAccent)
-                                            ),
-                                            shape = RoundedCornerShape(16.dp),
-                                        ),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                    ) {
-                                        Text(
-                                            text = "Start Listening",
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(18.dp),
-                                        )
                                     }
                                 }
                             }
                         }
                     }
+
+                    // ── Primary Action Button (inside scroll view — always scrollable to!) ──
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { completeSetup() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        shape = RoundedCornerShape(27.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (inputName.isNotBlank()) Color.White else Color(0xFF28282E),
+                            contentColor = if (inputName.isNotBlank()) Color.Black else Color.White.copy(alpha = 0.35f),
+                            disabledContainerColor = Color(0xFF202024),
+                            disabledContentColor = Color.White.copy(alpha = 0.35f),
+                        ),
+                        enabled = inputName.isNotBlank(),
+                    ) {
+                        Text(
+                            text = if (isInitialSetup) "Create Profile" else "Save Profile",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+
+                    // Bottom padding ensuring button scrolls comfortably well above system navigation bars
+                    Spacer(Modifier.navigationBarsPadding())
+                    Spacer(Modifier.height(40.dp))
                 }
             }
         }
@@ -1062,10 +727,12 @@ private fun getSuggestedListenerName(context: Context): String {
         } else {
             null
         }
-        if (!sysDeviceName.isNullOrBlank() &&
-            !sysDeviceName.contains("Redmi", ignoreCase = true) &&
-            !sysDeviceName.contains(Build.MODEL, ignoreCase = true)
-        ) {
+        val isHardwareName = !sysDeviceName.isNullOrBlank() && (
+            sysDeviceName.contains(Build.MODEL, ignoreCase = true) ||
+            sysDeviceName.contains(Build.MANUFACTURER, ignoreCase = true) ||
+            sysDeviceName.contains(Build.BRAND, ignoreCase = true)
+        )
+        if (!sysDeviceName.isNullOrBlank() && !isHardwareName) {
             return@runCatching sysDeviceName
         }
         "Music Lover"

@@ -79,19 +79,19 @@ object AudioEngine {
             else -> rawMime.substringAfterLast("/").uppercase()
         }
 
-        val sourceSampleRate = stats?.sampleRateHz ?: 44_100
-        val sourceBitDepth = stats?.bitDepth ?: if (stats?.isLossless == true) 24 else 16
+        val sourceSampleRate = stats?.sampleRateHz ?: stats?.claimed?.sampleRateHz
+        val sourceBitDepth = stats?.bitDepth ?: stats?.claimed?.bitDepth
         val sourceChannels = stats?.channels ?: 2
 
         val sourceNode = SourceNode(
-            codec = friendlyCodec,
-            bitrateKbps = stats?.bitrateKbps,
+            codec = if (stats?.mimeType != null || stats?.claimed != null) friendlyCodec else "Not reported",
+            bitrateKbps = stats?.bitrateKbps ?: stats?.claimed?.kbps,
             sampleRateHz = sourceSampleRate,
             bitDepth = sourceBitDepth,
             channels = sourceChannels,
             isLossless = stats?.isLossless == true,
             isHiRes = stats?.isHiRes == true,
-            sourceProvider = stats?.sourceName ?: "YouTube Music",
+            sourceProvider = stats?.sourceName ?: stats?.claimed?.source ?: (if (stats?.mimeType != null) "YouTube Music" else "Not reported"),
         )
 
         // 2. Hardware Output Node
@@ -137,14 +137,14 @@ object AudioEngine {
             }
         } else null
 
-        // Detect Bit-Perfect playback: source matches negotiated output rate & depth
-        val isBitPerfect = isUsb && (sourceSampleRate >= 44_100) && !EqualizerManager.enabled.value
+        val targetRate = outputSnapshot.actualSampleRateHz ?: 48000
+        val isBitPerfect = isUsb && sourceSampleRate != null && sourceSampleRate == targetRate && !EqualizerManager.enabled.value
 
         val negotiatedFormat = when {
-            isUsb && isBitPerfect -> "${sourceSampleRate / 1000} kHz / ${sourceBitDepth}-bit Direct"
-            isUsb -> "USB Direct: ${sourceSampleRate / 1000} kHz / 24-bit"
-            isBt -> "${btCodec ?: "Bluetooth"}: 48 kHz / 16-bit"
-            else -> "AudioTrack: 48 kHz / 16-bit Float-Dithered"
+            isUsb && isBitPerfect -> "${sourceSampleRate / 1000} kHz / ${sourceBitDepth ?: 16}-bit Direct USB Bit-Perfect"
+            isUsb -> "USB DAC: ${targetRate / 1000} kHz (Not verified bit-exact)"
+            isBt -> "${btCodec ?: "Bluetooth"}: $targetRate Hz / 16-bit (System mixed)"
+            else -> "AudioTrack: $targetRate Hz (System mixed)"
         }
 
         val encodingsList = outputSnapshot.encodings.map { enc ->
@@ -175,8 +175,9 @@ object AudioEngine {
 
         val resamplingStatus = when {
             isBitPerfect -> "Bit-Perfect (Direct Pass)"
-            sourceSampleRate == 48_000 -> "Native Pass (48 kHz)"
-            else -> "Resampled (${sourceSampleRate / 1000} kHz ➔ 48 kHz)"
+            sourceSampleRate != null && sourceSampleRate == targetRate -> "Native Pass ($targetRate Hz)"
+            sourceSampleRate != null -> "Resampled (${sourceSampleRate / 1000} kHz ➔ ${targetRate / 1000} kHz)"
+            else -> "Not reported"
         }
 
         val dspNode = DspNode(

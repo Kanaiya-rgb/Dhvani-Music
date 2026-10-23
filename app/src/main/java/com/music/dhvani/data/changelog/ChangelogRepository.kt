@@ -34,85 +34,11 @@ object ChangelogRepository {
     private const val GITHUB_RELEASES_URL = "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Music/releases?per_page=15"
     private const val CDN_VERSION_URL = "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/version.json"
 
-    val FALLBACK_RELEASES = listOf(
-        ReleaseChangelog(
-            version = "v2.1.2",
-            date = "16 Sep 2026",
-            isLatest = true,
-            summary = "Super-Smooth Home Feed & Settings UX Polish",
-            items = listOf(
-                "🚀 Home Scroll Performance: Eliminated BoxWithConstraints subcompositions and scroll-tick recompositions for butter-smooth 60/120fps scrolling.",
-                "📱 Settings Subscreen Auto-Top: About and all sub-screens now open directly at the very top instead of retaining main scroll offset.",
-                "👨‍💻 Meet the Developer: Added personal Creator & Developer card with social links in About Dhvani Music.",
-                "🌐 Live Changelog Engine: Real-time synchronization with GitHub releases directly from Settings.",
-            ),
-        ),
-        ReleaseChangelog(
-            version = "v2.1.1",
-            date = "16 Sep 2026",
-            isLatest = false,
-            summary = "Status Bar Icon Crash Hotfix",
-            items = listOf(
-                "🐛 Critical Hotfix: Resolved a fatal RemoteServiceException crash caused by an empty vector drawable when Status bar playback icon is turned off.",
-                "✨ Valid Transparent Vector: Restored seamless status bar icon hiding without system errors.",
-                "⚡ Rock-solid stability on Android 12, 13, 14, and 15 devices.",
-            ),
-        ),
-        ReleaseChangelog(
-            version = "v2.1.0",
-            date = "16 Sep 2026",
-            isLatest = false,
-            summary = "Listen Together Revamp, Smart Queue Preload & Instant Update Alerts",
-            items = listOf(
-                "🌐 Listen Together Redesign: Completely revamped with futuristic aesthetic UI, glowing connection pills, and live waveform visualizers.",
-                "⚡ Real-Time Instant Update Alerts: Automatic background update check upon Wi-Fi or Mobile Data connection.",
-                "🚀 Smart Queue Preload: Instant prefetch for next 2 songs (synced lyrics, audio chunks, artwork) for 0ms delay skips.",
-                "💬 Apple Music Style Lyrics Icon: Modern quotation marks quote bubble glyph for lyrics.",
-                "🏝️ Floating Dynamic Island Permission Alert: Interactive preview guidance for Display Over Other Apps permission.",
-            ),
-        ),
-        ReleaseChangelog(
-            version = "v2.0.7",
-            date = "13 Sep 2026",
-            isLatest = false,
-            summary = "Status Bar Playback Icon & 32-bit Compatibility",
-            items = listOf(
-                "🔔 Status Bar Playback Icon: Show Dhvani logo in Android status bar during playback with toggle in Appearance Settings.",
-                "📱 Full 32-bit / Android Go Compatibility: armeabi-v7a support for entry-level devices.",
-                "🛡️ Notification Permission Handling: POST_NOTIFICATIONS runtime request for seamless background playback.",
-                "🎛️ Playback & Audio Fixes: Stream recovery and audio device transition enhancements.",
-            ),
-        ),
-        ReleaseChangelog(
-            version = "v2.0.6",
-            date = "12 Sep 2026",
-            isLatest = false,
-            summary = "Download Network Controls, CDN Update Notifications & Storage Fixes",
-            items = listOf(
-                "🌐 Song Download Network Policy: Download songs over Mobile Data & Wi-Fi (default), Only Wi-Fi, or Mobile Data Only.",
-                "🔔 High-Reliability Update Notifications: Fast CDN-backed update detection engine with heads-up notifications.",
-                "📊 Dynamic Offline Playback Statistics: Fixed download page stats to calculate live song counts and accurate cumulative playback duration.",
-                "🇮🇳 Multilingual Support: Complete Hindi & English localization across download preferences, storage, and settings.",
-                "✨ 12+ Kinetic Text-Effects Lyrics Engine: Full shader rendering with 12 distinctive visual animations.",
-            ),
-        ),
-        ReleaseChangelog(
-            version = "v2.0.5",
-            date = "12 Sep 2026",
-            isLatest = false,
-            summary = "Text-Effects Showcase Engine & UI Navigation Polish",
-            items = listOf(
-                "✨ 12+ Unique Text-Effects: Neon Electric, Digital Glitch, Ocean Wave, Cosmic Aurora, Volcanic Ember, Liquid Chrome, Retro CRT Terminal, Dancing Wave, and more.",
-                "🎯 Persistent Line-Sync Stylization: Active lyric lines ignite in distinctive signature shaders even for songs without word timestamps.",
-                "🧹 Settings Navigation Overhaul: Eliminated duplicate back buttons on Appearance and sub-settings.",
-                "⚡ Playback Smoothness: Optimized Compose canvas draw scopes and shaders for flawless 60/120fps motion.",
-            ),
-        ),
-    )
+    val FALLBACK_RELEASES: List<ReleaseChangelog> = emptyList()
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    private val _releases = MutableStateFlow(FALLBACK_RELEASES)
+    private val _releases = MutableStateFlow<List<ReleaseChangelog>>(emptyList())
     val releases = _releases.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
@@ -137,7 +63,7 @@ object ChangelogRepository {
             // Fallback 1: Try raw CDN version.json if GitHub API rate-limited
             val cdnRelease = fetchLatestFromCdn()
             if (cdnRelease != null) {
-                val currentList = FALLBACK_RELEASES.toMutableList()
+                val currentList = _releases.value.toMutableList()
                 val existingIndex = currentList.indexOfFirst { it.version.equals(cdnRelease.version, ignoreCase = true) }
                 if (existingIndex >= 0) {
                     currentList[existingIndex] = cdnRelease

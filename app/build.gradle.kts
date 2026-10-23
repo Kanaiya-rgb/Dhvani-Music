@@ -57,8 +57,8 @@ android {
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
         targetSdk = 36
-        versionCode = 40
-        versionName = "2.7.0"
+        versionCode = 41
+        versionName = "2.8.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -228,6 +228,7 @@ dependencies {
     // ---- Images: Coil 3 + Palette (dominant colors for the mesh gradient) ----
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
+    implementation("io.coil-kt.coil3:coil-svg:3.0.4")
     implementation("androidx.palette:palette-ktx:1.0.0")
 
     // ---- Frosted glass / progressive blur (Telegram-style bars) ----

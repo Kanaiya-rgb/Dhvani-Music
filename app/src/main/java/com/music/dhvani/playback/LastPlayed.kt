@@ -20,18 +20,22 @@ object LastPlayed {
     /** A restored queue: the tracks, which one was current, and how far in. */
     class Snapshot(val songs: List<Song>, val index: Int, val positionMs: Long)
 
-    private lateinit var prefs: SharedPreferences
+    private var prefs: SharedPreferences? = null
     private val json = Json { ignoreUnknownKeys = true }
 
+    @Synchronized
     fun init(context: Context) {
-        prefs = context.getSharedPreferences("flux_last_played", Context.MODE_PRIVATE)
+        if (prefs == null) {
+            prefs = context.applicationContext.getSharedPreferences("flux_last_played", Context.MODE_PRIVATE)
+        }
     }
 
     fun save(songs: List<Song>, index: Int, positionMs: Long) {
+        val sp = prefs ?: return
         if (songs.isEmpty()) return
         // AutoPlay keeps extending the queue, so it can run to hundreds of
         // tracks by the end of an evening. Store a window around where we are
-        // instead of the lot  the current track has to be inside it, and what
+        // instead of the lot — the current track has to be inside it, and what
         // follows is what resuming actually plays.
         val start = (index - KEEP_BEHIND).coerceIn(0, maxOf(0, songs.size - MAX_TRACKS))
         val window = songs.subList(start, minOf(songs.size, start + MAX_TRACKS))
@@ -51,7 +55,7 @@ object LastPlayed {
             index = (index - start).coerceIn(0, window.lastIndex),
             positionMs = positionMs.coerceAtLeast(0L),
         )
-        prefs.edit()
+        sp.edit()
             .putString(
                 KEY_QUEUE,
                 runCatching { json.encodeToString(StoredQueue.serializer(), stored) }.getOrNull(),
@@ -59,8 +63,12 @@ object LastPlayed {
             .apply()
     }
 
-    fun load(): Snapshot? {
-        val raw = prefs.getString(KEY_QUEUE, null) ?: return null
+    fun load(context: Context? = null): Snapshot? {
+        if (prefs == null && context != null) {
+            init(context)
+        }
+        val sp = prefs ?: return null
+        val raw = sp.getString(KEY_QUEUE, null) ?: return null
         val stored = runCatching { json.decodeFromString<StoredQueue>(raw) }.getOrNull() ?: return null
         if (stored.tracks.isEmpty()) return null
         return Snapshot(

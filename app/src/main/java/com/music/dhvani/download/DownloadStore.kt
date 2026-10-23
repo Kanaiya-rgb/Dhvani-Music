@@ -166,7 +166,8 @@ object DownloadStore {
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
             arrayOf(MediaStore.MediaColumns._ID),
             "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +
-                "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
+                "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? AND " +
+                "${MediaStore.MediaColumns.IS_PENDING} = 0",
             arrayOf(name, "%$FOLDER%"),
             null,
         )?.use { cursor ->
@@ -176,6 +177,24 @@ object DownloadStore {
                 .build()
         }
     }.onFailure { Log.w(TAG, "media store lookup failed for $name: ${it.message}") }.getOrNull()
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun findPendingEntry(context: Context, name: String): Uri? = runCatching {
+        context.contentResolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            arrayOf(MediaStore.MediaColumns._ID),
+            "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +
+                "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? AND " +
+                "${MediaStore.MediaColumns.IS_PENDING} = 1",
+            arrayOf(name, "%$FOLDER%"),
+            null,
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI.buildUpon()
+                .appendPath(cursor.getLong(0).toString())
+                .build()
+        }
+    }.getOrNull()
 
     /**
      * Whether [uri] still names a file that is there.
@@ -199,6 +218,19 @@ object DownloadStore {
         }
     }.onFailure { Log.w(TAG, "could not delete $uri: ${it.message}") }.getOrDefault(false)
 
+    /** Aborts and deletes any partial or pending file reserved under [name]. */
+    fun abortPending(context: Context, name: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            findPendingEntry(context, name)?.let { uri ->
+                runCatching { context.contentResolver.delete(uri, null, null) }
+            }
+        } else {
+            val target = legacyFile(name)
+            val part = File(target.parentFile, "$name.part")
+            if (part.exists()) part.delete()
+        }
+    }
+
     // ---- Writing ------------------------------------------------------------
 
     /**
@@ -217,24 +249,62 @@ object DownloadStore {
         /** Set on the legacy path only: what [part] is renamed to. */
         private val target: File?,
     ) {
-        fun openStream(): OutputStream =
-            part?.outputStream()
-                ?: context.contentResolver.openOutputStream(uri)
-                ?: error("Could not open $name for writing")
+        /** Bytes already written to this destination from an earlier interrupted download attempt. */
+        val existingBytes: Long
+            get() {
+                if (part != null) return if (part.exists()) part.length() else 0L
+                return runCatching {
+                    context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize }
+                }.getOrNull()?.takeIf { it > 0 } ?: 0L
+            }
+
+        fun openStream(append: Boolean = false): OutputStream =
+            if (part != null) {
+                java.io.FileOutputStream(part, append)
+            } else {
+                val mode = if (append) "wa" else "w"
+                context.contentResolver.openOutputStream(uri, mode)
+                    ?: error("Could not open $name for writing")
+            }
+
+        /** Truncates the pending destination to 0 bytes when resuming is rejected or not supported. */
+        fun truncate() {
+            val p = part
+            if (p != null) {
+                runCatching {
+                    if (p.exists()) p.delete()
+                    p.createNewFile()
+                }
+            } else {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri, "w")?.use { /* truncate */ }
+                }
+            }
+        }
 
         /** @return the uri the finished file can be reached at. */
         fun commit(): Uri {
-            if (part != null && target != null) {
-                if (!part.renameTo(target)) error("Could not finish writing $name")
+            val t = target
+            if (part != null && t != null) {
+                if (t.exists()) runCatching { t.delete() }
+                if (!part.renameTo(t)) {
+                    try {
+                        part.copyTo(t, overwrite = true)
+                        part.delete()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "failed to commit $name by rename or copy: ${e.message}", e)
+                        error("Could not finish writing $name: ${e.message}")
+                    }
+                }
                 // Nothing indexes a file that simply appeared; without this it
                 // is on disk and invisible to every app that lists media.
                 MediaScannerConnection.scanFile(
                     context,
-                    arrayOf(target.absolutePath),
+                    arrayOf(t.absolutePath),
                     null,
                     null,
                 )
-                return Uri.fromFile(target)
+                return Uri.fromFile(t)
             }
             context.contentResolver.update(
                 uri,
@@ -256,27 +326,25 @@ object DownloadStore {
     }
 
     /**
-     * Reserve [name] and return somewhere to write it.
+     * Reserve [name] and return somewhere to write it, reusing any interrupted pending file.
      *
      * @throws IllegalStateException if the folder or the store row can't be
-     *   made ? a failure worth surfacing, since every one of them means the
+     *   made — a failure worth surfacing, since every one of them means the
      *   download cannot start rather than that it might not finish.
      */
     fun begin(context: Context, name: String, mimeType: String): Pending {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val existingUri = findPendingEntry(context, name)
+            if (existingUri != null) {
+                return Pending(context, existingUri, name, part = null, target = null)
+            }
+
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, name)
                 put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
                 put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            // A MIME type the audio collection doesn't recognise is not a null
-            // return but an IllegalArgumentException thrown from inside the
-            // resolver, several frames away from anything that names the
-            // download it belongs to. Every type written here came from
-            // [storable] or from the stream resolver, so landing in this branch
-            // means one of those two is wrong about this device ? worth saying
-            // in those words the first time it happens again.
             val uri = runCatching {
                 context.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
             }.getOrElse { cause ->
@@ -290,7 +358,6 @@ object DownloadStore {
         val folder = target.parentFile ?: error("No Music folder on this device")
         if (!folder.exists() && !folder.mkdirs()) error("Could not create ${folder.path}")
         val part = File(folder, "$name.part")
-        part.delete()
         return Pending(context, Uri.fromFile(target), name, part = part, target = target)
     }
 

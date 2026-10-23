@@ -292,28 +292,31 @@ fun LibraryScreen(
 
     val context = LocalContext.current
 
-    PullToRefresh(
-        refreshing = refreshing,
-        onRefresh = {
-            onRefresh()
-            PlaylistSyncManager.checkAllAsync(context, force = true)
-        },
-        state = pullState,
-        modifier = modifier,
-    ) {
-        LazyColumn(
-            state = listState,
+    val leadCover = latestLikedCover
+        ?: replayCard?.artworkUrl
+        ?: (state as? UiState.Success)?.data?.shelves?.firstOrNull()?.items?.firstOrNull()?.thumbnailUrl
+
+    Box(modifier = modifier.fillMaxSize()) {
+        com.music.dhvani.ui.components.ScreenAmbientBackdrop(
+            artworkUrl = leadCover,
+            fallbackColor = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.matchParentSize(),
+        )
+
+        PullToRefresh(
+            refreshing = refreshing,
+            onRefresh = {
+                onRefresh()
+                PlaylistSyncManager.checkAllAsync(context, force = true)
+            },
+            state = pullState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = contentPadding,
         ) {
-            item {
-                Text(
-                    text = stringResource(R.string.library),
-                    style = MaterialTheme.typography.displayLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
-                )
-            }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = contentPadding,
+            ) {
             if (importStatus.isImporting) {
                 item(key = "import_progress_banner") {
                     BackgroundImportBanner(
@@ -626,6 +629,9 @@ fun LibraryScreen(
         }
     }
 }
+}
+
+
 
 /**
  * The way in to Replay, at the top of the page.

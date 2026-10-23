@@ -60,6 +60,6 @@ class YouTubeSource(
      */
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? {
         val url = StreamResolver.resolve(trackId)
-        return SourceStream(url = url, format = StreamFormat(codec = "opus"))
+        return SourceStream(url = url, format = StreamFormat(source = displayName, codec = "opus"))
     }
 }

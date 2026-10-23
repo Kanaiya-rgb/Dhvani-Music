@@ -309,11 +309,11 @@ object AppSettings {
 
     /**
      * Quality ceilings, one per kind of connection — the point of the split is
-     * that Wi-Fi can stay on High while mobile data is capped. Both default to
-     * High; the mobile plan is the user's to budget, not ours to assume.
+     * that Wi-Fi can stay on Lossless while mobile data can be capped. Both default
+     * to Lossless as requested by the user.
      */
-    val audioQualityWifi = MutableStateFlow(AudioQuality.HIGH)
-    val audioQualityCellular = MutableStateFlow(AudioQuality.HIGH)
+    val audioQualityWifi = MutableStateFlow(AudioQuality.LOSSLESS)
+    val audioQualityCellular = MutableStateFlow(AudioQuality.LOSSLESS)
 
     /**
      * What a saved file should be, answered on its own terms.
@@ -386,7 +386,7 @@ object AppSettings {
 
     val crossfadeSeconds = MutableStateFlow(4)
     val gaplessPlayback = MutableStateFlow(true)
-    val preferredPlaybackSource = MutableStateFlow("JIOSAAVN")
+    val preferredPlaybackSource = MutableStateFlow("LOSSLESS")
 
     /**
      * Lets Automix's analyzer decide the transition's timing and length
@@ -400,6 +400,8 @@ object AppSettings {
      */
     val smartFadeEnabled = MutableStateFlow(false)
     val skipSilence = MutableStateFlow(false)
+    val outputPcmMode = MutableStateFlow(OutputPcmMode.PCM_16)
+    val preferUsbDac = MutableStateFlow(false)
 
     /**
      * Widens stereo output via [com.music.dhvani.playback.SpatialAudioProcessor],
@@ -454,6 +456,7 @@ object AppSettings {
     val hideStatusBarOnFullscreen = MutableStateFlow(false)
     val swipeThumbnail = MutableStateFlow(true)
     val swipeSensitivity = MutableStateFlow(0.73f)
+    val coverDoubleTapSeek = MutableStateFlow(true)
     val lyricsPosition = MutableStateFlow(LyricsPosition.CENTER)
     val lyricsAnimationStyle = MutableStateFlow(LyricsAnimationStyle.FADE)
     val lyricsGlowEffect = MutableStateFlow(false)
@@ -465,7 +468,6 @@ object AppSettings {
     val defaultOpenTab = MutableStateFlow(0)
     val gridItemSize = MutableStateFlow(GridItemSize.SMALL)
     val slimNavBar = MutableStateFlow(false)
-    val dynamicIslandEnabled = MutableStateFlow(true)
     val systemDynamicIslandEnabled = MutableStateFlow(false)
     val translationLanguage = MutableStateFlow("")
     val lyricsTranslationLanguage = translationLanguage
@@ -525,6 +527,9 @@ object AppSettings {
     /** Drops haze blur (status bar, mini player, bottom fade, lyrics focus) for a solid-fill look. */
     val reduceDynamicBlur = MutableStateFlow(false)
 
+    /** Real backdrop-sampled glass (blur, lens refraction) on the floating nav bar, Android 12+ only. */
+    val liquidGlass = MutableStateFlow(true)
+
     /** Performance Mode for budget / low-end devices: drops blur, freezes mesh gradient, reduces heavy animations */
     val performanceMode = MutableStateFlow(false)
 
@@ -548,6 +553,12 @@ object AppSettings {
 
     /** Whether to show the Dhvani app icon in the top status bar during playback. */
     val showStatusBarIcon = MutableStateFlow(false)
+
+    /** Whether to display handwritten artist signatures on artist profile pages. */
+    val artistSignaturesEnabled = MutableStateFlow(true)
+
+    /** Optional custom Signature API URL endpoint (e.g. self-hosted BitChord or community endpoint). */
+    val customSignatureApiUrl = MutableStateFlow("")
 
     /**
      * Time-synced lyrics on the player, lit up as they are sung.
@@ -640,7 +651,7 @@ object AppSettings {
     val userName = MutableStateFlow("")
     val hasPromptedUserName = MutableStateFlow(false)
     val userAvatarType = MutableStateFlow("PRESET") // "PRESET", "CUSTOM"
-    val userPresetAvatarId = MutableStateFlow(101) // 1..8 (neon) or 101..114 (3D illustrated)
+    val userPresetAvatarId = MutableStateFlow(1001) // 1001 (Bram) from Nuvio catalog
     val userCustomAvatarPath = MutableStateFlow("")
     val userCity = MutableStateFlow("")
     val userState = MutableStateFlow("")
@@ -792,10 +803,10 @@ object AppSettings {
      * would blame a Wi-Fi setting for an outage.
      */
     val downloadsAllowedNow: Boolean
-        get() = when (downloadNetwork.value) {
-            DownloadNetwork.BOTH -> true
-            DownloadNetwork.WIFI_ONLY -> meteredConnection.value != true
-            DownloadNetwork.CELLULAR_ONLY -> meteredConnection.value == true
+        get() = when {
+            wifiOnlyDownloads.value || downloadNetwork.value == DownloadNetwork.WIFI_ONLY -> meteredConnection.value != true
+            downloadNetwork.value == DownloadNetwork.CELLULAR_ONLY -> meteredConnection.value == true
+            else -> true
         }
 
     fun init(context: Context) {
@@ -835,7 +846,7 @@ object AppSettings {
         val savedUserName = if (preserveUserIdentity) prefs.getString(KEY_USER_NAME, null) else null
         val savedHasPromptedUserName = if (preserveUserIdentity) prefs.getBoolean(KEY_HAS_PROMPTED_USER_NAME, false) else false
         val savedUserAvatarType = if (preserveUserIdentity) prefs.getString(KEY_USER_AVATAR_TYPE, null) else null
-        val savedUserPresetAvatarId = if (preserveUserIdentity) prefs.getInt(KEY_USER_PRESET_AVATAR_ID, 101) else 101
+        val savedUserPresetAvatarId = if (preserveUserIdentity) prefs.getInt(KEY_USER_PRESET_AVATAR_ID, 1001) else 1001
         val savedUserCustomAvatarPath = if (preserveUserIdentity) prefs.getString(KEY_USER_CUSTOM_AVATAR_PATH, null) else null
         val savedUserCity = if (preserveUserIdentity) prefs.getString(KEY_USER_CITY, null) else null
         val savedUserState = if (preserveUserIdentity) prefs.getString(KEY_USER_STATE, null) else null
@@ -955,6 +966,13 @@ object AppSettings {
         crossfadeSeconds.value = prefs.getInt(KEY_CROSSFADE, 4)
         smartFadeEnabled.value = prefs.getBoolean(KEY_SMART_FADE, false)
         skipSilence.value = prefs.getBoolean(KEY_SKIP_SILENCE, false)
+        outputPcmMode.value = runCatching {
+            OutputPcmMode.valueOf(
+                prefs.getString(KEY_OUTPUT_PCM_MODE, OutputPcmMode.PCM_16.name)
+                    ?: OutputPcmMode.PCM_16.name,
+            )
+        }.getOrDefault(OutputPcmMode.PCM_16)
+        preferUsbDac.value = prefs.getBoolean(KEY_PREFER_USB_DAC, false)
         gaplessPlayback.value = prefs.getBoolean(KEY_GAPLESS_PLAYBACK, true)
         spatialAudio.value = prefs.getBoolean(KEY_SPATIAL_AUDIO, false)
         val hasHardwareDolby = appContext?.let { DolbyUtils.isDolbyAtmosAvailable(it) } ?: false
@@ -990,7 +1008,13 @@ object AppSettings {
             ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "DARK")
         }.getOrDefault(ThemeMode.DARK)
         autoplay.value = prefs.getBoolean(KEY_AUTOPLAY, true)
-        preferredPlaybackSource.value = prefs.getString(KEY_PREFERRED_PLAYBACK_SOURCE, "JIOSAAVN") ?: "JIOSAAVN"
+        val defaultPreferred = if (audioQualityWifi.value == AudioQuality.LOSSLESS || audioQualityCellular.value == AudioQuality.LOSSLESS) "LOSSLESS" else "JIOSAAVN"
+        val savedPreferred = prefs.getString(KEY_PREFERRED_PLAYBACK_SOURCE, defaultPreferred) ?: defaultPreferred
+        preferredPlaybackSource.value = if ((audioQualityWifi.value == AudioQuality.LOSSLESS || audioQualityCellular.value == AudioQuality.LOSSLESS) && savedPreferred == "JIOSAAVN") {
+            "LOSSLESS"
+        } else {
+            savedPreferred
+        }
         showNerdStats.value = prefs.getBoolean(KEY_NERD_STATS, false)
 
         val isLowEnd = isLowEndDevice()
@@ -1004,12 +1028,13 @@ object AppSettings {
         dontRepeatSuggestions.value = prefs.getBoolean(KEY_DONT_REPEAT_SUGGESTIONS, false)
         convertVideoToAudio.value = prefs.getBoolean(KEY_CONVERT_VIDEO_TO_AUDIO, true)
         reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, if (isPerfMode) true else isLowEnd)
+        liquidGlass.value = prefs.getBoolean(KEY_LIQUID_GLASS, true)
         dynamicTheme.value = prefs.getBoolean(KEY_DYNAMIC_THEME, true)
         accentColor.value = if (prefs.contains(KEY_ACCENT_COLOR)) {
             val c = prefs.getInt(KEY_ACCENT_COLOR, 0)
             if (c != 0) c else null
         } else null
-        uiDesignStyle.value = UiDesignStyle.fromId(prefs.getString(KEY_UI_DESIGN_STYLE, null))
+        uiDesignStyle.value = UiDesignStyle.DEFAULT
         enableHighRefreshRate.value = prefs.getBoolean(KEY_ENABLE_HIGH_REFRESH_RATE, !isLowEnd)
         densityScale.value = prefs.getFloat(KEY_DENSITY_SCALE, 1.0f)
         sliderStyle.value = runCatching {
@@ -1036,6 +1061,7 @@ object AppSettings {
         hideStatusBarOnFullscreen.value = prefs.getBoolean(KEY_HIDE_STATUS_BAR_ON_FULLSCREEN, false)
         swipeThumbnail.value = prefs.getBoolean(KEY_SWIPE_THUMBNAIL, true)
         swipeSensitivity.value = prefs.getFloat(KEY_SWIPE_SENSITIVITY, 0.73f)
+        coverDoubleTapSeek.value = prefs.getBoolean(KEY_COVER_DOUBLE_TAP_SEEK, true)
         lyricsPosition.value = runCatching {
             LyricsPosition.valueOf(prefs.getString(KEY_LYRICS_POSITION, null) ?: "CENTER")
         }.getOrDefault(LyricsPosition.CENTER)
@@ -1051,7 +1077,6 @@ object AppSettings {
             GridItemSize.valueOf(prefs.getString(KEY_GRID_ITEM_SIZE, null) ?: "SMALL")
         }.getOrDefault(GridItemSize.SMALL)
         slimNavBar.value = prefs.getBoolean(KEY_SLIM_NAV_BAR, false)
-        dynamicIslandEnabled.value = prefs.getBoolean(KEY_DYNAMIC_ISLAND_ENABLED, true)
         systemDynamicIslandEnabled.value = prefs.getBoolean(KEY_SYSTEM_DYNAMIC_ISLAND_ENABLED, false)
         showRecognizeButton.value = prefs.getBoolean(KEY_SHOW_RECOGNIZE_BUTTON, true)
         showPlayRandomButton.value = prefs.getBoolean(KEY_SHOW_PLAY_RANDOM_BUTTON, true)
@@ -1079,6 +1104,8 @@ object AppSettings {
             runCatching { CanvasStyle.valueOf(it) }.getOrNull()
         } ?: CanvasStyle.HALF_SCREEN
         showStatusBarIcon.value = prefs.getBoolean(KEY_SHOW_STATUS_BAR_ICON, false)
+        artistSignaturesEnabled.value = prefs.getBoolean(KEY_ARTIST_SIGNATURES_ENABLED, true)
+        customSignatureApiUrl.value = prefs.getString(KEY_CUSTOM_SIGNATURE_API_URL, "").orEmpty()
         syncedLyrics.value = prefs.getBoolean(KEY_SYNCED_LYRICS, true)
         lyricsSources.value = readLyricsSources()
         lyricsSourceOrder.value = readLyricsSourceOrder()
@@ -1147,7 +1174,8 @@ object AppSettings {
         listenTogetherIsHost.value = prefs.getBoolean(KEY_LISTEN_TOGETHER_IS_HOST, false)
         listenTogetherSessionTimestamp.value = prefs.getLong(KEY_LISTEN_TOGETHER_SESSION_TIMESTAMP, 0L)
         userAvatarType.value = prefs.getString(KEY_USER_AVATAR_TYPE, "PRESET") ?: "PRESET"
-        userPresetAvatarId.value = prefs.getInt(KEY_USER_PRESET_AVATAR_ID, 1)
+        val rawPresetId = prefs.getInt(KEY_USER_PRESET_AVATAR_ID, 1001)
+        userPresetAvatarId.value = com.music.dhvani.ui.components.getPresetAvatar(rawPresetId).id
         userCustomAvatarPath.value = prefs.getString(KEY_USER_CUSTOM_AVATAR_PATH, "") ?: ""
         userCity.value = prefs.getString(KEY_USER_CITY, "") ?: ""
         userState.value = prefs.getString(KEY_USER_STATE, "") ?: ""
@@ -1191,8 +1219,8 @@ object AppSettings {
     }
 
     private fun readQuality(key: String): AudioQuality {
-        val stored = prefs.getString(key, null) ?: return AudioQuality.HIGH
-        return runCatching { AudioQuality.valueOf(stored) }.getOrDefault(AudioQuality.HIGH)
+        val stored = prefs.getString(key, null) ?: return AudioQuality.LOSSLESS
+        return runCatching { AudioQuality.valueOf(stored) }.getOrDefault(AudioQuality.LOSSLESS)
     }
 
     /**
@@ -1259,12 +1287,18 @@ object AppSettings {
     fun setAudioQualityWifi(value: AudioQuality) {
         audioQualityWifi.value = value
         prefs.edit().putString(KEY_QUALITY_WIFI, value.name).apply()
+        if (value == AudioQuality.LOSSLESS && preferredPlaybackSource.value != "YOUTUBE") {
+            setPreferredPlaybackSource("LOSSLESS")
+        }
         syncListeningMode()
     }
 
     fun setAudioQualityCellular(value: AudioQuality) {
         audioQualityCellular.value = value
         prefs.edit().putString(KEY_QUALITY_CELLULAR, value.name).apply()
+        if (value == AudioQuality.LOSSLESS && preferredPlaybackSource.value != "YOUTUBE") {
+            setPreferredPlaybackSource("LOSSLESS")
+        }
         syncListeningMode()
     }
 
@@ -1343,6 +1377,16 @@ object AppSettings {
     fun setSkipSilence(value: Boolean) {
         skipSilence.value = value
         prefs.edit().putBoolean(KEY_SKIP_SILENCE, value).apply()
+    }
+
+    fun setOutputPcmMode(value: OutputPcmMode) {
+        outputPcmMode.value = value
+        prefs.edit().putString(KEY_OUTPUT_PCM_MODE, value.name).apply()
+    }
+
+    fun setPreferUsbDac(value: Boolean) {
+        preferUsbDac.value = value
+        prefs.edit().putBoolean(KEY_PREFER_USB_DAC, value).apply()
     }
 
     fun setSpatialAudio(value: Boolean) {
@@ -1534,6 +1578,11 @@ object AppSettings {
         }
     }
 
+    fun setLiquidGlass(value: Boolean) {
+        liquidGlass.value = value
+        prefs.edit().putBoolean(KEY_LIQUID_GLASS, value).apply()
+    }
+
     fun setDynamicTheme(value: Boolean) {
         dynamicTheme.value = value
         prefs.edit().putBoolean(KEY_DYNAMIC_THEME, value).apply()
@@ -1618,11 +1667,6 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_HIDE_STATUS_BAR_ON_FULLSCREEN, value).apply()
     }
 
-    fun setDynamicIslandEnabled(value: Boolean) {
-        dynamicIslandEnabled.value = value
-        prefs.edit().putBoolean(KEY_DYNAMIC_ISLAND_ENABLED, value).apply()
-    }
-
     fun setSystemDynamicIslandEnabled(value: Boolean) {
         systemDynamicIslandEnabled.value = value
         prefs.edit().putBoolean(KEY_SYSTEM_DYNAMIC_ISLAND_ENABLED, value).apply()
@@ -1667,6 +1711,11 @@ object AppSettings {
     fun setSwipeSensitivity(value: Float) {
         swipeSensitivity.value = value
         prefs.edit().putFloat(KEY_SWIPE_SENSITIVITY, value).apply()
+    }
+
+    fun setCoverDoubleTapSeek(value: Boolean) {
+        coverDoubleTapSeek.value = value
+        prefs.edit().putBoolean(KEY_COVER_DOUBLE_TAP_SEEK, value).apply()
     }
 
     fun setLyricsPosition(value: LyricsPosition) {
@@ -2002,10 +2051,10 @@ object AppSettings {
     fun clearUserAvatar() {
         userAvatarType.value = "PRESET"
         userCustomAvatarPath.value = ""
-        userPresetAvatarId.value = 1
+        userPresetAvatarId.value = 1001
         prefs.edit()
             .putString(KEY_USER_AVATAR_TYPE, "PRESET")
-            .putInt(KEY_USER_PRESET_AVATAR_ID, 1)
+            .putInt(KEY_USER_PRESET_AVATAR_ID, 1001)
             .putString(KEY_USER_CUSTOM_AVATAR_PATH, "")
             .apply()
         backupUserData()
@@ -2184,7 +2233,7 @@ object AppSettings {
                 val uName = (root["userName"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
                 val plRaw = (root["playlistsRaw"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
                 val bAvType = (root["userAvatarType"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
-                val bPId = (root["userPresetAvatarId"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 1
+                val bPId = (root["userPresetAvatarId"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 1001
                 val bCPath = (root["userCustomAvatarPath"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
 
                 val editor = prefs.edit()
@@ -2364,6 +2413,17 @@ object AppSettings {
     fun setShowStatusBarIcon(value: Boolean) {
         showStatusBarIcon.value = value
         prefs.edit().putBoolean(KEY_SHOW_STATUS_BAR_ICON, value).apply()
+    }
+
+    fun setArtistSignaturesEnabled(value: Boolean) {
+        artistSignaturesEnabled.value = value
+        prefs.edit().putBoolean(KEY_ARTIST_SIGNATURES_ENABLED, value).apply()
+    }
+
+    fun setCustomSignatureApiUrl(value: String) {
+        val trimmed = value.trim()
+        customSignatureApiUrl.value = trimmed
+        prefs.edit().putString(KEY_CUSTOM_SIGNATURE_API_URL, trimmed).apply()
     }
 
     /** Clamped to [DEFAULT_CACHE_LIMIT_BYTES]..[MAX_CACHE_LIMIT_BYTES] — the floor is the default, not zero. */
@@ -2739,6 +2799,8 @@ object AppSettings {
     private const val KEY_SMART_FADE = "smart_fade_enabled"
     private const val KEY_GAPLESS_PLAYBACK = "gapless_playback"
     private const val KEY_SKIP_SILENCE = "skip_silence"
+    private const val KEY_OUTPUT_PCM_MODE = "output_pcm_mode"
+    private const val KEY_PREFER_USB_DAC = "prefer_usb_dac"
     private const val KEY_SPATIAL_AUDIO = "spatial_audio"
     private const val KEY_DOLBY_ATMOS_ENABLED = "dolby_atmos_enabled"
     private const val KEY_PREFERRED_PLAYBACK_SOURCE = "preferred_playback_source"
@@ -2761,6 +2823,7 @@ object AppSettings {
     private const val KEY_DONT_REPEAT_SUGGESTIONS = "dont_repeat_suggestions"
     private const val KEY_CONVERT_VIDEO_TO_AUDIO = "convert_video_to_audio"
     private const val KEY_REDUCE_BLUR = "reduce_dynamic_blur"
+    private const val KEY_LIQUID_GLASS = "liquid_glass"
     private const val KEY_DEFAULT_TO_SONG_ON_CELLULAR = "default_to_song_on_cellular"
     private const val KEY_VIDEO_BACKDROP_QUALITY = "video_backdrop_quality"
     private const val KEY_VIDEO_BACKDROP_LOOP_MODE = "video_backdrop_loop_mode"
@@ -2796,6 +2859,7 @@ object AppSettings {
     private const val KEY_HIDE_STATUS_BAR_ON_FULLSCREEN = "hide_status_bar_on_fullscreen"
     private const val KEY_SWIPE_THUMBNAIL = "swipe_thumbnail"
     private const val KEY_SWIPE_SENSITIVITY = "swipe_sensitivity"
+    private const val KEY_COVER_DOUBLE_TAP_SEEK = "cover_double_tap_seek"
     private const val KEY_LYRICS_POSITION = "lyrics_position"
     private const val KEY_LYRICS_ANIMATION_STYLE = "lyrics_animation_style"
     private const val KEY_LYRICS_GLOW_EFFECT = "lyrics_glow_effect"
@@ -2867,10 +2931,11 @@ object AppSettings {
     private const val KEY_CANVAS_OVER_CELLULAR = "canvas_over_cellular"
     private const val KEY_CANVAS_PAUSE_WITH_AUDIO = "canvas_pause_with_audio"
     private const val KEY_PLAYER_DEFAULT_VIEW_MODE = "player_default_view_mode"
-    private const val KEY_DYNAMIC_ISLAND_ENABLED = "dynamic_island_enabled"
     private const val KEY_SYSTEM_DYNAMIC_ISLAND_ENABLED = "system_dynamic_island_enabled"
     private const val KEY_AUTO_DOWNLOAD_ON_PLAY = "auto_download_on_play"
     private const val KEY_AUTO_DOWNLOAD_LIKED = "auto_download_liked"
+    private const val KEY_ARTIST_SIGNATURES_ENABLED = "artist_signatures_enabled"
+    private const val KEY_CUSTOM_SIGNATURE_API_URL = "custom_signature_api_url"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"
 }
 

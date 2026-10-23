@@ -1,6 +1,9 @@
 package com.music.dhvani.ui.components
 
 import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,60 +20,28 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.dhvani.data.settings.AppSettings
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 
 /**
  * The run the fade needs below the bar to get from full blur to none without
  * the eye finding where it got there.
- *
- * Shortened from 120: the page's first heading sits a fixed distance down the
- * screen, well inside this run, and over 120dp the ramp still had something
- * like a tenth of its blur left there  enough to leave a heavy 30sp title
- * looking soft before it had been scrolled anywhere. The tail is what hides the
- * layer's end, so it cannot simply be cut; 88 is as short as it goes before the
- * ramp starts to be findable. The rest of the clearance is bought by starting
- * the page's content lower  the two are tuned against each other, and neither
- * fixes it alone.
  */
-private val FADE_RUN = 88.dp
+private val FADE_RUN = 64.dp
 
 /**
- * How much blur the fade reaches at its outer edge  short of all of it.
- *
- * The last quarter buys almost nothing visually and costs the most: a blur has
- * nothing to sample past the edge of its own layer, so the harder it is pushed
- * there the more of the layer is flat material colour rather than blurred
- * content, and the more that edge reads as a band of colour laid over the page.
- * Stopping at three quarters keeps the ramp and loses the band.
+ * How much blur the fade reaches at its outer edge — restrained to prevent
+ * excessive opacity bands over the ambient artwork.
  */
 private const val PEAK = 0.75f
-
-/**
- * How dark the readability scrim starts, at the very top of the strip.
- *
- * Modest on purpose: it is there to give white glyphs a floor on a pale sleeve,
- * not to grey out the artwork. Anything heavier and the bar stops being a fade
- * over a picture and starts being a header with a picture behind it.
- */
-private const val SCRIM_PEAK = 0.42f
-
-/** Enough stops that the ramp does not band across a near-flat colour. */
-private const val SCRIM_STOPS = 12
 
 /**
  * The glass behind every top bar: full blur along the top edge, ramping to
  * nothing on the way down.
  *
- * A bar carrying a uniform pane is a rectangle sitting on the page, and its
- * bottom edge is a line drawn across whatever scrolls under it. That reads
- * worst on a detail page, whose artwork runs up under the status bar, but it
- * is the same hard edge on a feed  so the fade is what every page gets, and
- * [FrostedTopBar] paints no backdrop of its own anywhere.
- *
- * Fading out instead leaves the title and back arrow something to be legible
- * against and the page nothing to be interrupted by.
+ * At rest, the header remains transparent and continuous with the ambient
+ * background. When content scrolls beneath the bar, it smoothly ramps up
+ * backdrop blur and a protective frosted wash so content is cleanly obscured.
  */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -78,86 +49,78 @@ fun TopFadeBlur(
     hazeState: HazeState,
     /**
      * The colour of the page behind this: the theme's background on a feed, a
-     * detail page's artwork wash on one of those. See the effect below for why
-     * it cannot just be the theme's in both cases.
+     * detail page's artwork wash on one of those.
      */
     pageColor: Color,
     modifier: Modifier = Modifier,
     /**
      * A wash laid over the blur to keep the bar's glyphs readable.
-     *
-     * Blur alone does not settle contrast  it makes a pale sleeve into a pale
-     * blur, and a row of bright artwork scrolling under a feed's title into a
-     * bright smear. The scrim gives the glyphs a floor to sit on whatever
-     * happens to pass beneath them.
-     *
-     * Laid *over* the blur rather than under it, which is the only order that
-     * works: haze samples the content tagged as its source, not whatever
-     * sibling happens to sit between that content and itself, so a scrim
-     * underneath would be painted over by the blurred content and do nothing.
      */
     scrimColor: Color,
+    /**
+     * Whether the content beneath has scrolled under the header.
+     * At rest (false), the header stays transparent and seamlessly blended with
+     * the ambient background, while softly ramping up blur/scrim when scrolled.
+     */
+    scrolled: Boolean = true,
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    // The bar fills itself solid instead when blur is reduced, so this has
-    // nothing left to do.
-    if (reduceDynamicBlur) return
 
-    val height = topBarHeight() + FADE_RUN
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(height)
-            .optimizedHazeEffect(
-                state = hazeState,
-                // Keyed to the colour of the page underneath, not the theme's.
-                //
-                // Both halves of this material are flat colour: the style's
-                // background is painted as an opaque rect under the sampled
-                // content, and its tint is a film over that. The progressive
-                // gradient reaches neither  it ramps only the blur radius and
-                // the tint's alpha  so wherever the blur has least to say,
-                // that flat colour is most of what is left. A blur has nothing
-                // to sample past the top
-                // of its own layer, so the first blur-radius of this strip is
-                // barely covered by blurred content and shows mostly the flat
-                // colour of the material instead. Given the theme's near-black
-                // background, that is a black bar spreading unevenly down into
-                // the artwork: the exact artefact this was added to remove.
-                style = HazeMaterials.ultraThin(pageColor),
-            ) {
-                // Cubic rather than haze's quadratic, and eased out rather than
-                // in: the ramp falls away quickly under the bar and then spends
-                // the rest of its run near nothing, which is what hides where
-                // the layer ends. The mirror of the bottom fade's arrival.
-                progressive = HazeProgressive.verticalGradient(
-                    easing = EaseOutCubic,
-                    startIntensity = PEAK,
-                    endIntensity = 0f,
-                )
-                // Uniform across the layer, so it would show as texture over
-                // the untouched foot of the ramp  the edge being hidden.
-                noiseFactor = 0f
-            },
+    val scrollProgress by animateFloatAsState(
+        targetValue = if (scrolled) 1f else 0f,
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        label = "topFadeBlurScroll",
     )
 
-    val scrim = remember(scrimColor) {
-        Brush.verticalGradient(
-            // The same eased-out shape as the blur above it, so the two arrive
-            // at nothing together. A scrim that outlasted the blur would leave
-            // a tinted band hanging below a fade that had already finished 
-            // the one artefact this bar exists to avoid.
-            colorStops = Array(SCRIM_STOPS) { i ->
-                val t = i / (SCRIM_STOPS - 1f)
-                t to scrimColor.copy(alpha = SCRIM_PEAK * (1f - EaseOutCubic.transform(t)))
-            },
+    val topBarH = topBarHeight()
+    val totalHeight = topBarH + (FADE_RUN * scrollProgress)
+
+    // 1. Hardware blur layer (when supported and blur is not disabled)
+    if (!reduceDynamicBlur && scrollProgress > 0.01f) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(totalHeight)
+                .optimizedHazeEffect(
+                    state = hazeState,
+                    // Translucent wash keyed to pageColor to prevent solid dark blocks
+                    style = HazeMaterials.ultraThin(pageColor.copy(alpha = (0.28f * scrollProgress).coerceIn(0f, 1f))),
+                ) {
+                    progressive = HazeProgressive.verticalGradient(
+                        easing = EaseOutCubic,
+                        startIntensity = PEAK * scrollProgress,
+                        endIntensity = 0f,
+                    )
+                    noiseFactor = 0f
+                },
         )
     }
+
+    // 2. Guaranteed Frosted Protective Surface & Readability Scrim:
+    // Even on devices where GPU blur is bypassed (e.g. low-end devices or battery saver),
+    // this ensures content scrolling beneath the bar is smoothly obscured and NEVER
+    // produces double-exposure illegibility over the header glyphs/text.
+    //
+    // At rest (scrollProgress == 0), only a very gentle status bar vignette (0.12f alpha)
+    // is applied at the top edge, leaving the rest 100% transparent into the ambient background.
+    val backgroundBrush = remember(scrimColor, scrollProgress, topBarH, totalHeight) {
+        val barFraction = if (totalHeight > 0.dp) (topBarH / totalHeight).coerceIn(0.5f, 0.85f) else 0.72f
+        val peakAlpha = (0.86f * scrollProgress).coerceIn(0f, 1f)
+        val midAlpha = (0.72f * scrollProgress).coerceIn(0f, 1f)
+        Brush.verticalGradient(
+            colorStops = arrayOf(
+                0.0f to scrimColor.copy(alpha = if (scrollProgress > 0.01f) peakAlpha else 0.12f),
+                barFraction * 0.75f to scrimColor.copy(alpha = if (scrollProgress > 0.01f) peakAlpha else 0.05f),
+                barFraction to scrimColor.copy(alpha = if (scrollProgress > 0.01f) midAlpha else 0.0f),
+                1.0f to Color.Transparent,
+            )
+        )
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(height)
-            .background(scrim),
+            .height(totalHeight)
+            .background(backgroundBrush),
     )
 }

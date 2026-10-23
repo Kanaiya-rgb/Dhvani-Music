@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
@@ -841,6 +842,171 @@ object DhvaniIcons {
         }.build()
     }
 
+    /** Apple Music icon with authentic red badge and white double musical note */
+    val AppleMusic: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_apple_music",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            // Background circle
+            path(
+                fill = SolidColor(Color(0xFFFA2D48)),
+            ) {
+                moveTo(2f, 12f)
+                arcToRelative(10f, 10f, 0f, isMoreThanHalf = true, isPositiveArc = true, 20f, 0f)
+                arcToRelative(10f, 10f, 0f, isMoreThanHalf = true, isPositiveArc = true, -20f, 0f)
+                close()
+            }
+            // Apple Music Double Note
+            path(
+                fill = SolidColor(Color.White),
+            ) {
+                // Top connecting beam and vertical stems
+                moveTo(16.5f, 6.2f)
+                lineTo(10.5f, 7.8f)
+                curveTo(9.9f, 8.0f, 9.5f, 8.5f, 9.5f, 9.1f)
+                lineTo(9.5f, 15.2f)
+                // Left note head
+                curveTo(9.1f, 14.9f, 8.5f, 14.7f, 7.8f, 14.7f)
+                curveTo(6.3f, 14.7f, 5.0f, 15.6f, 5.0f, 16.8f)
+                curveTo(5.0f, 18.0f, 6.3f, 19.0f, 7.8f, 19.0f)
+                curveTo(9.4f, 19.0f, 10.7f, 18.0f, 10.7f, 16.8f)
+                lineTo(10.7f, 10.6f)
+                lineTo(15.3f, 9.4f)
+                lineTo(15.3f, 13.7f)
+                // Right note head
+                curveTo(14.9f, 13.4f, 14.3f, 13.2f, 13.6f, 13.2f)
+                curveTo(12.1f, 13.2f, 10.8f, 14.1f, 10.8f, 15.3f)
+                curveTo(10.8f, 16.5f, 12.1f, 17.5f, 13.6f, 17.5f)
+                curveTo(15.2f, 17.5f, 16.5f, 16.5f, 16.5f, 15.3f)
+                lineTo(16.5f, 6.2f)
+                close()
+            }
+        }.build()
+    }
+
+    /** TIDAL icon with authentic dark badge and cyan 4-diamond mark */
+    val Tidal: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_tidal",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            // Background circle
+            path(
+                fill = SolidColor(Color(0xFF000000)),
+            ) {
+                moveTo(2f, 12f)
+                arcToRelative(10f, 10f, 0f, isMoreThanHalf = true, isPositiveArc = true, 20f, 0f)
+                arcToRelative(10f, 10f, 0f, isMoreThanHalf = true, isPositiveArc = true, -20f, 0f)
+                close()
+            }
+            // 4 TIDAL Diamonds
+            path(
+                fill = SolidColor(Color(0xFF00E5FF)),
+            ) {
+                // Diamond 1 (Top-Left)
+                moveTo(3.9f, 9.5f)
+                lineTo(6.6f, 6.8f)
+                lineTo(9.3f, 9.5f)
+                lineTo(6.6f, 12.2f)
+                close()
+
+                // Diamond 2 (Top-Middle)
+                moveTo(9.3f, 9.5f)
+                lineTo(12.0f, 6.8f)
+                lineTo(14.7f, 9.5f)
+                lineTo(12.0f, 12.2f)
+                close()
+
+                // Diamond 3 (Top-Right)
+                moveTo(14.7f, 9.5f)
+                lineTo(17.4f, 6.8f)
+                lineTo(20.1f, 9.5f)
+                lineTo(17.4f, 12.2f)
+                close()
+
+                // Diamond 4 (Bottom-Middle)
+                moveTo(9.3f, 14.9f)
+                lineTo(12.0f, 12.2f)
+                lineTo(14.7f, 14.9f)
+                lineTo(12.0f, 17.6f)
+                close()
+            }
+        }.build()
+    }
+
+    /** Community icon with purple badge and clean multi-user group silhouette */
+    val Community: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_community",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            // Background circle
+            path(
+                fill = SolidColor(Color(0xFFA78BFA)),
+            ) {
+                moveTo(2f, 12f)
+                arcToRelative(10f, 10f, 0f, isMoreThanHalf = true, isPositiveArc = true, 20f, 0f)
+                arcToRelative(10f, 10f, 0f, isMoreThanHalf = true, isPositiveArc = true, -20f, 0f)
+                close()
+            }
+            // Clean Community People silhouette in crisp white
+            path(
+                fill = SolidColor(Color.White),
+            ) {
+                // Primary center user head
+                moveTo(12f, 8.5f)
+                arcToRelative(2.2f, 2.2f, 0f, isMoreThanHalf = true, isPositiveArc = false, 0f, -4.4f)
+                arcToRelative(2.2f, 2.2f, 0f, isMoreThanHalf = false, isPositiveArc = false, 0f, 4.4f)
+                close()
+
+                // Primary center user body / shoulders
+                moveTo(12f, 10.2f)
+                curveTo(10.2f, 10.2f, 7.8f, 11.1f, 7.8f, 12.8f)
+                lineTo(7.8f, 14f)
+                lineTo(16.2f, 14f)
+                lineTo(16.2f, 12.8f)
+                curveTo(16.2f, 11.1f, 13.8f, 10.2f, 12f, 10.2f)
+                close()
+
+                // Left secondary user head
+                moveTo(7.5f, 9.8f)
+                arcToRelative(1.7f, 1.7f, 0f, isMoreThanHalf = true, isPositiveArc = false, 0f, -3.4f)
+                arcToRelative(1.7f, 1.7f, 0f, isMoreThanHalf = false, isPositiveArc = false, 0f, 3.4f)
+                close()
+
+                // Left secondary user body
+                moveTo(6.5f, 11.8f)
+                curveTo(5.3f, 12.2f, 4.5f, 13.0f, 4.5f, 14.2f)
+                lineTo(4.5f, 15f)
+                lineTo(7.2f, 15f)
+                lineTo(7.2f, 13.8f)
+                curveTo(7.2f, 12.9f, 7.6f, 12.1f, 8.2f, 11.5f)
+                curveTo(7.6f, 11.5f, 7.0f, 11.6f, 6.5f, 11.8f)
+                close()
+
+                // Right secondary user head
+                moveTo(16.5f, 9.8f)
+                arcToRelative(1.7f, 1.7f, 0f, isMoreThanHalf = true, isPositiveArc = false, 0f, -3.4f)
+                arcToRelative(1.7f, 1.7f, 0f, isMoreThanHalf = false, isPositiveArc = false, 0f, 3.4f)
+                close()
+
+                // Right secondary user body
+                moveTo(17.5f, 11.8f)
+                curveTo(17.0f, 11.6f, 16.4f, 11.5f, 15.8f, 11.5f)
+                curveTo(16.4f, 12.1f, 16.8f, 12.9f, 16.8f, 13.8f)
+                lineTo(16.8f, 15f)
+                lineTo(19.5f, 15f)
+                lineTo(19.5f, 14.2f)
+                curveTo(19.5f, 13.0f, 18.7f, 12.2f, 17.5f, 11.8f)
+                close()
+            }
+        }.build()
+    }
+
     val Drums: ImageVector by lazy {
         ImageVector.Builder(
             name = "dhvani_drums",
@@ -932,5 +1098,68 @@ object DhvaniIcons {
                 arcToRelative(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, -4f, 0f)
             }
         }.build()
+    }
+
+    /** Standard fidelity audio — simple, clean 3-bar audio waveform */
+    val QualityStandard: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_quality_standard",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(6.5f, 9.5f); lineTo(6.5f, 14.5f)
+                moveTo(12f, 6f); lineTo(12f, 18f)
+                moveTo(17.5f, 9.5f); lineTo(17.5f, 14.5f)
+            }
+        }.build()
+    }
+
+    /** High Quality audio — dynamic 5-band frequency waveform */
+    val QualityHigh: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_quality_high",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = 2.0f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(4f, 10.5f); lineTo(4f, 13.5f)
+                moveTo(8f, 7f); lineTo(8f, 17f)
+                moveTo(12f, 4.5f); lineTo(12f, 19.5f)
+                moveTo(16f, 7f); lineTo(16f, 17f)
+                moveTo(20f, 10.5f); lineTo(20f, 13.5f)
+            }
+        }.build()
+    }
+
+    /** Apple Lossless logo SVG (Lossless audio) */
+    val QualityLossless: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "dhvani_quality_lossless",
+            defaultWidth = 20.dp, defaultHeight = 12.dp,
+            viewportWidth = 15f, viewportHeight = 9f,
+        ).apply {
+            addPath(
+                pathData = PathParser().parsePathString(
+                    "M8.184,0.35C9.944,0.35 10.703,3.296 11.338,5.238C11.673,3.842 11.497,3.542 11.857,3.542C11.99,3.542 12.126,3.633 12.126,3.798C12.126,3.809 12.123,3.839 12.117,3.883L12.091,4.058C12.02,4.522 11.845,5.494 11.654,6.144C13.198,10.191 14.345,4.861 14.474,3.772C14.493,3.615 14.612,3.542 14.731,3.542C14.891,3.542 15.022,3.662 14.997,3.843C14.72,5.605 14.295,8.35 12.547,8.35C11.582,8.35 11.04,7.595 10.611,6.73C9.54,4.626 9.047,1.093 7.997,1.093C7.66,1.093 7.411,1.444 7.394,1.444C7.362,1.444 7.337,1.301 7.023,0.909C7.322,0.567 7.734,0.35 8.184,0.35ZM2.458,0.354C5.211,0.354 5.456,7.618 7.014,7.618C7.197,7.618 7.394,7.507 7.61,7.256C7.729,7.458 7.851,7.638 7.978,7.796C7.667,8.151 7.28,8.35 6.795,8.35C5.054,8.349 4.306,5.434 3.663,3.466C3.511,4.097 3.432,4.669 3.402,4.925C3.382,5.088 3.263,5.163 3.143,5.163C3.009,5.163 2.874,5.071 2.874,4.908L2.874,4.908L2.877,4.87C2.966,4.223 3.146,3.243 3.347,2.56C3.079,1.858 2.745,1.091 2.252,1.091C1.257,1.091 0.687,3.591 0.527,4.925C0.508,5.088 0.388,5.163 0.268,5.163C0.135,5.163 0,5.071 0,4.908C0,4.896 0.001,4.883 0.002,4.87C0.283,2.836 0.808,0.354 2.458,0.354ZM5.315,0.35C5.809,0.35 6.339,0.608 6.797,1.211C6.822,1.241 7.078,1.639 7.159,1.777C8.277,3.802 8.818,7.627 9.881,7.627C10.065,7.627 10.264,7.513 10.484,7.256C10.604,7.458 10.726,7.638 10.852,7.796C10.542,8.15 10.155,8.35 9.67,8.35C6.933,8.349 6.636,1.09 5.128,1.09C4.788,1.09 4.536,1.444 4.519,1.444C4.487,1.444 4.462,1.301 4.148,0.909C4.455,0.558 4.87,0.35 5.315,0.35Z"
+                ).toNodes(),
+                fill = stroke,
+            )
+        }.build()
+    }
+
+    /** Apple Lossless logo SVG (Hi-Res Lossless audio) */
+    val QualityHiRes: ImageVector by lazy {
+        QualityLossless
     }
 }

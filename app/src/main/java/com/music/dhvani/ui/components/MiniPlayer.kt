@@ -142,7 +142,7 @@ fun MiniPlayer(
             Modifier.background(Color.Black)
         }
         com.music.dhvani.data.settings.MiniPlayerBackgroundStyle.BLUR -> {
-            Modifier.hazeEffect(state = hazeState, style = HazeMaterials.thin(containerColor))
+            Modifier.hazeEffect(state = hazeState, style = HazeMaterials.thin(Color(0xFF161922).copy(alpha = 0.55f)))
         }
         com.music.dhvani.data.settings.MiniPlayerBackgroundStyle.GRADIENT -> {
             Modifier.background(
@@ -158,9 +158,9 @@ fun MiniPlayer(
         }
         else -> {
             if (reduceDynamicBlur) {
-                Modifier.background(containerColor)
+                Modifier.background(Color(0xFF161922).copy(alpha = 0.88f))
             } else {
-                Modifier.hazeEffect(state = hazeState, style = HazeMaterials.thin(containerColor))
+                Modifier.hazeEffect(state = hazeState, style = HazeMaterials.thin(Color(0xFF161922).copy(alpha = 0.55f)))
             }
         }
     }
@@ -208,8 +208,8 @@ fun MiniPlayer(
         )
         com.music.dhvani.data.settings.UiDesignStyle.DEFAULT -> androidx.compose.ui.graphics.Brush.verticalGradient(
             listOf(
-                Color.White.copy(alpha = 0.15f),
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                Color.White.copy(alpha = 0.22f),
+                Color.White.copy(alpha = 0.10f),
                 Color.White.copy(alpha = 0.05f),
             )
         )
@@ -283,7 +283,7 @@ fun MiniPlayer(
                         ),
                 )
             }
-            if (isLoading) {
+            if (isLoading && !isPlaying) {
                 Box(Modifier.size(GLYPH_SLOT), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(
                         color = MaterialTheme.colorScheme.primary,

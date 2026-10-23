@@ -1,5 +1,7 @@
 package com.music.dhvani.data.model
 
+import androidx.compose.runtime.Immutable
+
 /** A playable YouTube Music track. */
 data class Song(
     val videoId: String,
@@ -109,6 +111,11 @@ fun formatDurationText(durationMs: Long): String {
     }
 }
 
+private val SIZE_HINT = Regex("""w\d+-h\d+""")
+private val GOOGLE_WH_REGEX = Regex("""=w\d+-h\d+.*""")
+private val GOOGLE_S_REGEX = Regex("""=s\d+.*""")
+private val SAAVN_DIMEN_REGEX = Regex("""50x50|150x150""")
+
 /** As [Song.artworkAt], for artwork that isn't a track's. */
 fun String?.artworkAt(px: Int): String? {
     if (this == null || this.isBlank()) return null
@@ -117,8 +124,8 @@ fun String?.artworkAt(px: Int): String? {
     // 1. Google / YouTube Music CDN (e.g. lh3.googleusercontent.com) -> HD 1200+ px
     if (url.contains("googleusercontent.com") || url.contains("ggpht.com")) {
         url = if (url.contains("=")) {
-            url.replace(Regex("""=w\d+-h\d+.*"""), "=w$px-h$px-l90-rj")
-                .replace(Regex("""=s\d+.*"""), "=s$px-l90-rj")
+            url.replace(GOOGLE_WH_REGEX, "=w$px-h$px-l90-rj")
+                .replace(GOOGLE_S_REGEX, "=s$px-l90-rj")
         } else {
             url.replace(SIZE_HINT, "w$px-h$px")
         }
@@ -133,13 +140,11 @@ fun String?.artworkAt(px: Int): String? {
     }
     // 3. JioSaavn CDN: always fetch full 500x500 HD master
     if (url.contains("saavncdn.com")) {
-        url = url.replace(Regex("""50x50|150x150"""), "500x500")
+        url = url.replace(SAAVN_DIMEN_REGEX, "500x500")
             .replace("http://", "https://")
     }
     return url
 }
-
-private val SIZE_HINT = Regex("""w\d+-h\d+""")
 
 /**
  * Artwork for a list row — 52dp at most, so about 140px on a 3x screen.
@@ -164,6 +169,7 @@ const val NOTIFICATION_ART_PX = 1024
 enum class BrowseType { ALBUM, ARTIST, PLAYLIST, OTHER }
 
 /** A non-track search result: album, artist or playlist. */
+@Immutable
 data class BrowseItem(
     val browseId: String,
     val title: String,
@@ -186,6 +192,7 @@ enum class SearchFilter(val label: String, val params: String?) {
 }
 
 /** A card in a home-feed carousel: either a track (videoId) or an album/playlist (browseId). */
+@Immutable
 data class ShelfItem(
     val title: String,
     val subtitle: String,
@@ -197,20 +204,38 @@ data class ShelfItem(
 )
 
 /** The signed-in Google account, as YouTube Music reports it. */
+@Immutable
 data class Account(
     val name: String,
     val email: String,
     val thumbnailUrl: String?,
 )
 
+@Immutable
 data class HomeShelf(
     val title: String,
     val items: List<ShelfItem>,
     /** YouTube's "strapline" — the grey line Apple Music runs under a heading. */
     val subtitle: String = "",
-)
+) {
+    val isSongShelf: Boolean by lazy {
+        if (items.isEmpty()) false
+        else {
+            val songCount = items.count { it.videoId != null && it.browseId == null }
+            val titleLower = title.lowercase(java.util.Locale.ROOT)
+            val titleMatch = titleLower.contains("pick") ||
+                titleLower.contains("song") ||
+                titleLower.contains("track") ||
+                titleLower.contains("chart") ||
+                titleLower.contains("trending") ||
+                titleLower.contains("top")
+            (songCount >= items.size * 0.75) || (songCount >= 3 && titleMatch)
+        }
+    }
+}
 
 /** A page of the Home feed, plus the token for the next one — null once exhausted. */
+@Immutable
 data class HomeFeed(
     val shelves: List<HomeShelf>,
     val continuation: String?,

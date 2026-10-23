@@ -22,6 +22,15 @@
     <!-- Audio effects routing and hardware LoudnessEnhancer overdrive -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
+    <!-- Bluetooth audio device discovery and name resolution for Media Output selector -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_CONNECT"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+
     <!-- Setting custom trimmed ringtones -->
     <uses-permission
         android:name="android.permission.WRITE_SETTINGS"
@@ -48,6 +57,23 @@
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+
+    <!-- In-app voice search, speech recognition, and song listening -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <queries>
+        <!-- Google Quick Search Box for Sound Search / Hum to search -->
+        <package android:name="com.google.android.googlequicksearchbox" />
+        <intent>
+            <action android:name="com.google.android.googlequicksearchbox.MUSIC_SEARCH" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
 
     <application
         android:name=".DhvaniApplication"

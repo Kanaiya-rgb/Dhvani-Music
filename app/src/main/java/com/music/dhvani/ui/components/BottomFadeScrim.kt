@@ -94,7 +94,11 @@ fun BottomFadeScrim(
             // ramped its radius along, so the strip reads at the same weight.
             colorStops = Array(STOPS) { i ->
                 val t = i / (STOPS - 1f)
-                t to pageColor.copy(alpha = EaseInCubic.transform(t))
+                // Restrained peak at 0.68f prevents a solid opaque wall at the bottom,
+                // letting the ambient wallpaper glow remain faintly visible through
+                // the glass navigation bar while keeping scrolling content softened.
+                val alpha = 0.68f * EaseInCubic.transform(t)
+                t to pageColor.copy(alpha = alpha)
             },
         )
     }

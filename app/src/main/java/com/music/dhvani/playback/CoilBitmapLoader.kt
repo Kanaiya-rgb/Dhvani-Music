@@ -50,7 +50,8 @@ class CoilBitmapLoader(
                 .build()
             val result = runCatching { SingletonImageLoader.get(context).execute(request) }.getOrNull()
             if (result is SuccessResult) {
-                result.image.toBitmap()
+                runCatching { result.image.toBitmap() }.getOrNull()
+                    ?: throw IllegalStateException("Failed to convert image to bitmap from $uri")
             } else {
                 throw IllegalStateException("Failed to load bitmap from $uri")
             }

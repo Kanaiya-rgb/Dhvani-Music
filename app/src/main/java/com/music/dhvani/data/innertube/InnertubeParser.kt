@@ -95,8 +95,8 @@ object InnertubeParser {
             }
         }
 
-        // Return top 4 text suggestions first, then songs with covers, then remaining text suggestions
-        return textItems.take(4) + trackItems + textItems.drop(4)
+        // Group all text/query suggestions strictly above song results (no text suggestions after song results)
+        return textItems + trackItems
     }
 
     /** Depth-first collection of a named renderer, preserving document order. */

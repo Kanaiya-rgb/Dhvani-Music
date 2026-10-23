@@ -12,6 +12,7 @@ import coil3.disk.DiskCache
 import coil3.disk.directory
 import coil3.memory.MemoryCache
 import coil3.request.crossfade
+import coil3.svg.SvgDecoder
 import com.music.dhvani.auth.AuthStore
 import com.music.dhvani.playback.AudioCache
 import com.music.dhvani.playback.LastPlayed
@@ -38,6 +39,9 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         // Early setups needed immediately
         AppSettings.init(this)
+        LastPlayed.init(this)
+        com.music.dhvani.playback.OriginalVersion.init(this)
+        com.music.dhvani.listentogether.ListenTogetherManager.init(this)
         authStore = AuthStore(this)
         Innertube.cookie = authStore.cookie
 
@@ -69,7 +73,6 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
             com.music.dhvani.playback.OriginalVersion.init(this@DhvaniApplication)
             com.music.dhvani.data.canvas.CanvasCache.init(this@DhvaniApplication)
             com.music.dhvani.data.canvas.CanvasRepository.init(this@DhvaniApplication)
-            com.music.dhvani.listentogether.ListenTogetherManager.init(this@DhvaniApplication)
             initLastfm()
 
             if (AppSettings.consumeVersionUpdate(BuildConfig.VERSION_CODE)) {
@@ -97,7 +100,23 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
         val memoryPercent = if (isLowRam) 0.12 else 0.25
         val maxDiskBytes = if (isLowRam) 120L * 1024 * 1024 else 250L * 1024 * 1024
 
+        val imageOkHttpClient = com.music.dhvani.data.Http.client.newBuilder()
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val newRequest = if (request.header("User-Agent") == null) {
+                    request.newBuilder()
+                        .header("User-Agent", "DhvaniMusic/1.0 (Android; https://github.com/Kanaiya-rgb/Dhvani-Music)")
+                        .build()
+                } else request
+                chain.proceed(newRequest)
+            }
+            .build()
+
         return ImageLoader.Builder(context)
+            .components {
+                add(coil3.network.okhttp.OkHttpNetworkFetcherFactory(callFactory = { imageOkHttpClient }))
+                add(SvgDecoder.Factory(renderToBitmap = true))
+            }
             .memoryCache {
                 MemoryCache.Builder()
                     .maxSizePercent(context, memoryPercent)

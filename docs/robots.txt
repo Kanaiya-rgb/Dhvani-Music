@@ -1,4 +1,2 @@
 User-agent: *
-Allow: /
-
-Sitemap: https://kanaiya-rgb.github.io/Dhvani-Music/sitemap.xml
+Disallow: /

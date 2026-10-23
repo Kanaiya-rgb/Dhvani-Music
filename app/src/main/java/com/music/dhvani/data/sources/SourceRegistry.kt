@@ -33,10 +33,14 @@ data class SourceConfig(
 ) {
     /** What the sources screen and the player show. Never blank. */
     val displayName: String
-        get() = label.ifBlank {
-            baseUrl.takeIf { it.isNotBlank() }
-                ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
-                ?: kind.label
+        get() = when {
+            kind == SourceKind.JIOSAAVN && (label.isBlank() || label.equals("JioSaavn", ignoreCase = true)) -> "High Quality AAC"
+            kind == SourceKind.YOUTUBE && (label.isBlank() || label.equals("YouTube Music", ignoreCase = true) || label.equals("YouTube", ignoreCase = true)) -> "Standard Opus"
+            else -> label.ifBlank {
+                baseUrl.takeIf { it.isNotBlank() }
+                    ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
+                    ?: kind.label
+            }
         }
 
     /** Whether this has enough filled in to be worth contacting at all. */
@@ -92,12 +96,57 @@ object SourceRegistry {
         }
 
         val stored = prefs.getString(KEY_SOURCES, null)?.let(::decodeStored) ?: emptyList()
+        val removedIds = prefs.getStringSet(KEY_REMOVED_SOURCES, emptySet()) ?: emptySet()
 
-        // Seeded rather than persisted-on-first-write, so that a build that
-        // adds a new built-in kind picks it up for existing installs too.
-        val seeded = stored + BUILT_IN_KINDS
-            .filter { kind -> stored.none { it.kind == kind } }
-            .map { SourceConfig(kind = it, enabled = true) }
+        // Purge retired/non-functional sources (e.g. Tido/Tidal addon that only verified connection without streaming)
+        val sanitized = stored.filterNot {
+            it.baseUrl.contains("tido", ignoreCase = true) ||
+                it.baseUrl.contains("tidal", ignoreCase = true) ||
+                it.label.contains("tido", ignoreCase = true) ||
+                it.label.contains("tidal hi-res", ignoreCase = true)
+        }.map { cfg ->
+            // Upgrade generic "Custom Module" label to friendly manifest names
+            if (cfg.label == "Custom Module" || cfg.label.isBlank()) {
+                val upgraded = friendlyAddonName(cfg.baseUrl)
+                if (upgraded.isNotBlank()) cfg.copy(label = upgraded) else cfg
+            } else cfg
+        }
+
+        // Seed default community addons (e.g. BluBit Station Hi-Fi, Eljohnzc Mono, Eljohnzc PH)
+        // only if user hasn't explicitly removed them or already configured them
+        val missingCommunityAddons = DEFAULT_COMMUNITY_ADDONS.filter { defaultAddon ->
+            defaultAddon.id !in removedIds &&
+                sanitized.none { existing ->
+                    existing.baseUrl.trimEnd('/').equals(defaultAddon.baseUrl.trimEnd('/'), ignoreCase = true) ||
+                        (defaultAddon.baseUrl.contains("bluebit") && existing.baseUrl.contains("bluebit")) ||
+                        (defaultAddon.baseUrl.contains("eljohnzc-mono") && existing.baseUrl.contains("eljohnzc-mono")) ||
+                        (defaultAddon.baseUrl.contains("4433c7caff7fd070309e") && existing.baseUrl.contains("4433c7caff7fd070309e"))
+                }
+        }
+
+        // Built-ins (Monochrome, JioSaavn, YouTube) with stable IDs
+        val missingBuiltins = BUILT_IN_KINDS
+            .filter { kind -> sanitized.none { it.kind == kind } }
+            .map {
+                val stableId = when (it) {
+                    SourceKind.MONOCHROME -> "monochrome"
+                    SourceKind.JIOSAAVN -> "jiosaavn"
+                    SourceKind.YOUTUBE -> "youtube"
+                    else -> UUID.randomUUID().toString()
+                }
+                SourceConfig(id = stableId, kind = it, enabled = true)
+            }
+
+        // Put Monochrome (bit-exact built-in) and active working addons at the top
+        val allSources = (sanitized + missingBuiltins + missingCommunityAddons).distinctBy { it.id }
+        val seeded = allSources.sortedBy { cfg ->
+            when (cfg.kind) {
+                SourceKind.MONOCHROME -> 0
+                SourceKind.CUSTOM_MODULE, SourceKind.MODULE -> 1
+                SourceKind.JIOSAAVN -> 2
+                SourceKind.YOUTUBE -> 3
+            }
+        }
 
         // If a module index URL was baked in at build time, ensure it is the
         // one stored — add the module source if missing, or silently update its
@@ -162,20 +211,32 @@ object SourceRegistry {
         }
     }
 
-    /** The enabled sources, module first and YouTube last, however they're stored. */
+    /** The enabled sources in their configured user order. */
     fun active(): List<MusicSource> =
         configs.value
             .filter { it.enabled && it.isComplete }
-            .sortedBy { it.kind.ordinal }
             .mapNotNull { instances[it.id] }
 
     fun instance(configId: String): MusicSource? = instances[configId]
+        ?: instances.values.firstOrNull { it.configId == configId }
+        ?: active().firstOrNull { it.configId == configId || it.kind.name.equals(configId, ignoreCase = true) }
+        ?: if (configId.contains("monochrome", ignoreCase = true)) active().firstOrNull { it.kind == SourceKind.MONOCHROME }
+        else if (configId.equals("JIOSAAVN", ignoreCase = true)) active().firstOrNull { it.kind == SourceKind.JIOSAAVN }
+        else null
 
     fun config(configId: String): SourceConfig? = configs.value.firstOrNull { it.id == configId }
 
     // ── Editing ─────────────────────────────────────────────────────────
 
-    fun add(config: SourceConfig) = publish(configs.value + config)
+    fun reorder(newOrder: List<SourceConfig>) = publish(newOrder)
+
+    fun add(config: SourceConfig) {
+        if (::prefs.isInitialized) {
+            val removed = (prefs.getStringSet(KEY_REMOVED_SOURCES, emptySet()) ?: emptySet()) - config.id
+            prefs.edit().putStringSet(KEY_REMOVED_SOURCES, removed).apply()
+        }
+        publish(configs.value + config)
+    }
 
     fun update(config: SourceConfig) =
         publish(configs.value.map { if (it.id == config.id) config else it })
@@ -183,6 +244,10 @@ object SourceRegistry {
     fun remove(configId: String) {
         val target = config(configId) ?: return
         if (target.kind in BUILT_IN_KINDS) return
+        if (::prefs.isInitialized) {
+            val removed = (prefs.getStringSet(KEY_REMOVED_SOURCES, emptySet()) ?: emptySet()) + configId
+            prefs.edit().putStringSet(KEY_REMOVED_SOURCES, removed).apply()
+        }
         publish(configs.value.filterNot { it.id == configId })
     }
 
@@ -208,37 +273,53 @@ object SourceRegistry {
         setEnabled(module.id, enabled)
     }
 
-    /** The user's own module index, if they have set one. */
+    /** The user's primary custom module index, if they have set one. */
     fun customModule(): SourceConfig? =
         configs.value.firstOrNull { it.kind == SourceKind.CUSTOM_MODULE }
 
-    /**
-     * Points the custom module at [url], replacing whatever was there.
-     *
-     * Only ever one: a second index would be a second full search on every
-     * track for a feature whose whole purpose is "use mine instead", and the
-     * order between two of them would be arbitrary. So this replaces rather
-     * than appends, and a blank [url] clears it.
-     *
-     * The replacement is a *new* [SourceConfig] rather than an edit of the old
-     * one, so [publish] sees a different id and drops the warm [ModuleSource]
-     * built against the previous index — see [configuredBy].
-     */
+    fun friendlyAddonName(url: String): String = when {
+        url.contains("bluebit", ignoreCase = true) -> "BluBit Station Hi-Fi"
+        url.contains("eljohnzc-mono", ignoreCase = true) -> "Eljohnzc Addon Monochrome"
+        url.contains("4433c7caff7fd070309e", ignoreCase = true) ||
+            url.contains("eljohnzc-addon", ignoreCase = true) -> "Eljohnzc Addon 🇵🇭"
+        url.contains("losslessbridge", ignoreCase = true) -> "Lossless Bridge"
+        url.contains("qobuz", ignoreCase = true) -> "Qobuz Addon"
+        else -> ""
+    }
+
+    fun isAddonUrl(url: String): Boolean {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return false
+        return trimmed.endsWith("manifest.json", ignoreCase = true) ||
+            trimmed.contains("/manifest.json", ignoreCase = true) ||
+            trimmed.contains("addon", ignoreCase = true) ||
+            trimmed.contains("workers.dev", ignoreCase = true) ||
+            trimmed.contains("deplexo", ignoreCase = true) ||
+            trimmed.contains("bitchord", ignoreCase = true) ||
+            trimmed.contains("velixir", ignoreCase = true)
+    }
+
     fun setCustomModule(url: String, label: String = "") {
         val trimmed = url.trim()
-        val without = configs.value.filterNot { it.kind == SourceKind.CUSTOM_MODULE }
-        if (trimmed.isEmpty()) {
-            publish(without)
-            return
+        if (trimmed.isEmpty()) return
+        val computedLabel = label.ifBlank {
+            friendlyAddonName(trimmed).ifBlank {
+                if (isAddonUrl(trimmed)) "Custom Addon" else "Custom Module"
+            }
         }
-        publish(
-            without + SourceConfig(
-                kind = SourceKind.CUSTOM_MODULE,
-                label = label.trim(),
-                baseUrl = trimmed,
-                enabled = true,
-            ),
-        )
+        val existing = configs.value.firstOrNull { it.baseUrl.trimEnd('/').equals(trimmed.trimEnd('/'), ignoreCase = true) }
+        if (existing != null) {
+            update(existing.copy(baseUrl = trimmed, label = computedLabel, enabled = true))
+        } else {
+            add(
+                SourceConfig(
+                    kind = SourceKind.CUSTOM_MODULE,
+                    label = computedLabel,
+                    baseUrl = trimmed,
+                    enabled = true,
+                ),
+            )
+        }
     }
 
     private fun publish(next: List<SourceConfig>, persist: Boolean = true) {
@@ -267,12 +348,14 @@ object SourceRegistry {
      * old address, which is precisely the state the user is in the middle of
      * correcting.
      */
-    suspend fun probeCandidate(config: SourceConfig): SourceHealth = build(config).health()
+    suspend fun probeCandidate(config: SourceConfig): SourceHealth {
+        val candidate = build(config)
+        return candidate.health()
+    }
 
     private fun build(config: SourceConfig): MusicSource = when (config.kind) {
-        // Same protocol, same implementation — the kinds differ only in rank.
-        SourceKind.CUSTOM_MODULE -> ModuleSource(config)
-        SourceKind.MODULE -> ModuleSource(config)
+        SourceKind.CUSTOM_MODULE, SourceKind.MODULE -> ModuleSource(config)
+        SourceKind.MONOCHROME -> MonochromeSource(config)
         SourceKind.JIOSAAVN -> JioSaavnSource(config)
         SourceKind.YOUTUBE -> YouTubeSource(config)
     }
@@ -323,12 +406,71 @@ object SourceRegistry {
             .build()
             .toString()
 
-    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.YOUTUBE)
+    val DEFAULT_COMMUNITY_ADDONS = listOf(
+        SourceConfig(
+            id = "builtin_addon_eljohnzc_mono",
+            kind = SourceKind.CUSTOM_MODULE,
+            label = "Eljohnzc Addon Monochrome",
+            baseUrl = "https://eljohnzc-mono.de.deplexo.com/manifest.json",
+            enabled = true,
+        ),
+        SourceConfig(
+            id = "builtin_addon_eljohnzc_ph",
+            kind = SourceKind.CUSTOM_MODULE,
+            label = "Eljohnzc Addon 🇵🇭",
+            baseUrl = "https://eljohnzc-addon.de.deplexo.com/4433c7caff7fd070309e/manifest.json",
+            enabled = true,
+        ),
+        SourceConfig(
+            id = "builtin_addon_bluebit",
+            kind = SourceKind.CUSTOM_MODULE,
+            label = "BluBit Station Hi-Fi",
+            baseUrl = "https://bluebit.jucepe0929.workers.dev/",
+            enabled = false,
+        ),
+    )
+
+    val COMMUNITY_ADDON_PRESETS = listOf(
+        CommunityAddonPreset(
+            name = "Eljohnzc Addon Monochrome",
+            url = "https://eljohnzc-mono.de.deplexo.com/manifest.json",
+            tag = "Lossless FLAC",
+            description = "16-bit 44.1kHz Lossless FLAC stream",
+        ),
+        CommunityAddonPreset(
+            name = "Eljohnzc Addon 🇵🇭",
+            url = "https://eljohnzc-addon.de.deplexo.com/4433c7caff7fd070309e/manifest.json",
+            tag = "Lossless & Atmos",
+            description = "Tidal Lossless and Dolby Atmos",
+        ),
+        CommunityAddonPreset(
+            name = "BluBit Station Hi-Fi",
+            url = "https://bluebit.jucepe0929.workers.dev/",
+            tag = "24-bit Hi-Res",
+            description = "Tidal & Deezer Lossless FLAC via Cloudflare Workers",
+        ),
+        CommunityAddonPreset(
+            name = "Lossless Bridge",
+            url = "https://losslessbridge.de.deplexo.com/",
+            tag = "Hi-Res FLAC",
+            description = "Lossless bridge audio server",
+        ),
+    )
+
+    private val BUILT_IN_KINDS = listOf(SourceKind.MONOCHROME, SourceKind.JIOSAAVN, SourceKind.YOUTUBE)
 
     /** What the build-time module index is called on screen, in place of its host. */
     private const val ENV_MODULE_LABEL = "Ricky's Addon"
 
     private const val KEY_SOURCES = "sources"
+    private const val KEY_REMOVED_SOURCES = "removed_source_ids"
     private const val PREFIX = "src:"
     private const val SEPARATOR = "::"
 }
+
+data class CommunityAddonPreset(
+    val name: String,
+    val url: String,
+    val tag: String,
+    val description: String,
+)

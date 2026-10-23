@@ -183,31 +183,6 @@ fun DiscordScreen(
             onConnect = onOpenLogin,
         )
 
-        SettingsGroup(
-            header = "Community",
-            footer = "Join our official community for feature updates, music chats, and bug reports.",
-        ) {
-            SettingsRow(
-                icon = discordIcon,
-                title = "Join Discord Community",
-                subtitle = "discord.gg/cQkNcqCwkA",
-                trailing = {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
-                        contentDescription = "Open Discord",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-                onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, "https://discord.gg/cQkNcqCwkA".toUri()).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    runCatching { context.startActivity(intent) }
-                },
-            )
-        }
-
         if (!connected) {
             SettingsGroup(
                 footer = "Signing in opens Discord's own login page. Nothing is typed into this app.",

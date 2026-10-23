@@ -113,7 +113,7 @@ fun ListenTogetherScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val manager = remember { ListenTogetherManager.getInstance() }
+    val manager = remember { ListenTogetherManager.init(context) }
     val connectionState by manager.connectionState.collectAsStateWithLifecycle()
     val roomState by manager.roomState.collectAsStateWithLifecycle()
     val role by manager.role.collectAsStateWithLifecycle()

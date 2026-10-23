@@ -20,7 +20,7 @@ import org.junit.Test
  *
  * The first two are worth pinning because both fail late and badly. A wrong
  * extension or MIME type is not a compile error and not a bad-sounding download
- * — it is `IllegalArgumentException: Unsupported MIME type` from inside a
+ * Â— it is `IllegalArgumentException: Unsupported MIME type` from inside a
  * `ContentResolver.insert`, several frames from anything naming the track, which
  * is precisely how every download in a build once failed while reporting itself
  * as a connection problem.
@@ -98,7 +98,7 @@ class DownloadStoreTest {
 
     /**
      * Only the top rung is worth a source's own file. The rungs below it are AAC
-     * rungs, and YouTube's AAC ladder is the more reliable fetch for those — so
+     * rungs, and YouTube's AAC ladder is the more reliable fetch for those Â— so
      * asking a module for a transcode it would have to make is worse on both
      * counts.
      */
@@ -117,7 +117,7 @@ class DownloadStoreTest {
 
     /**
      * High means "the best rung there is", and the sentinel that says so must
-     * not survive into a request as a literal 2-billion-kbps cap — the
+     * not survive into a request as a literal 2-billion-kbps cap Â— the
      * difference between a ceiling nothing exceeds and no ceiling at all is
      * invisible until something starts formatting the number.
      */
@@ -143,7 +143,7 @@ class DownloadStoreTest {
      * The Wi-Fi-only gate, including the case that is easiest to get backwards:
      * offline. A null [AppSettings.meteredConnection] means there is no active
      * network at all, and refusing there would blame a Wi-Fi setting for an
-     * outage — the download is let through to fail on the network and say so.
+     * outage Â— the download is let through to fail on the network and say so.
      */
     @Test
     fun `wifi-only refuses metered connections and nothing else`() {
@@ -174,7 +174,7 @@ class DownloadStoreTest {
     /**
      * The two settings are independent on purpose, and this is the pairing that
      * proves it: a capped mobile-data *stream* must not quietly downgrade a
-     * *file*. It used to — the ceiling was what decided whether a download could
+     * *file*. It used to Â— the ceiling was what decided whether a download could
      * be lossless, so someone with their own FLAC server streamed the FLAC and
      * downloaded a transcode of the same recording.
      */

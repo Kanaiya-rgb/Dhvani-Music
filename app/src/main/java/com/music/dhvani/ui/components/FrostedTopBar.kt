@@ -2,6 +2,7 @@ package com.music.dhvani.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,6 +54,28 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
+import java.time.Duration
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+import java.util.Locale
 import coil3.compose.AsyncImage
 import com.music.dhvani.R
 import com.music.dhvani.data.model.Account
@@ -85,14 +109,154 @@ val TopBarContentGap = 12.dp
  * opens on a band of empty space.
  */
 @Composable
-fun topBarHeight(): Dp =
-    WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TopBarContentHeight
+fun topBarHeight(): Dp {
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val cutoutTop = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
+    return maxOf(statusBarTop, cutoutTop) + TopBarContentHeight
+}
 
 /**
  * Where page content should start: clear of the bar, plus [TopBarContentGap].
  */
 @Composable
 fun topBarContentPadding(): Dp = topBarHeight() + TopBarContentGap
+
+@Immutable
+data class HomeGreetingState(
+    val dateText: String,
+    val greetingText: String,
+)
+
+internal fun computeHomeGreeting(
+    locale: Locale = Locale.getDefault(),
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): HomeGreetingState {
+    val now = ZonedDateTime.now(zoneId)
+    val dateText = try {
+        val formatter = DateTimeFormatter.ofPattern("EEEE, d MMMM", locale)
+        now.format(formatter).uppercase(locale)
+    } catch (_: Exception) {
+        val formatter = DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.ENGLISH)
+        now.format(formatter).uppercase(Locale.ENGLISH)
+    }
+
+    val hour = now.hour
+    val greetingText = when (hour) {
+        in 5..11 -> "Good morning"
+        in 12..16 -> "Good afternoon"
+        else -> "Good evening"
+    }
+
+    return HomeGreetingState(dateText = dateText, greetingText = greetingText)
+}
+
+@Composable
+fun rememberHomeGreeting(): HomeGreetingState {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    var state by remember { mutableStateOf(computeHomeGreeting()) }
+
+    // Re-check when app resumes
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val updated = computeHomeGreeting()
+                if (updated != state) {
+                    state = updated
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Update on system date, time, timezone, or locale settings change
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                val updated = computeHomeGreeting()
+                if (updated != state) {
+                    state = updated
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_DATE_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            addAction(Intent.ACTION_LOCALE_CHANGED)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            context.registerReceiver(receiver, filter)
+        }
+        onDispose {
+            runCatching { context.unregisterReceiver(receiver) }
+        }
+    }
+
+    // Efficiently sleep until the next hour or midnight transition (no periodic polling)
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = ZonedDateTime.now(ZoneId.systemDefault())
+            val nextHour = now.truncatedTo(ChronoUnit.HOURS).plusHours(1)
+            val delayMs = Duration.between(now, nextHour).toMillis().coerceAtLeast(1000L)
+            delay(delayMs)
+            val updated = computeHomeGreeting()
+            if (updated != state) {
+                state = updated
+            }
+        }
+    }
+
+    return state
+}
+
+/**
+ * Native Home screen greeting header showing the localized uppercase date label
+ * and time-based greeting ("Good morning", "Good afternoon", or "Good evening").
+ */
+@Composable
+fun HomeGreetingHeader(
+    modifier: Modifier = Modifier,
+) {
+    val greeting = rememberHomeGreeting()
+
+    Column(
+        modifier = modifier.padding(end = 136.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = greeting.dateText,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.8.sp,
+                lineHeight = 14.sp,
+            ),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = greeting.greetingText,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.4).sp,
+                lineHeight = 26.sp,
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
 
 /**
  * The top bar's content — title, back affordance, actions — over no backdrop
@@ -115,6 +279,7 @@ fun FrostedTopBar(
     title: String,
     scrolled: Boolean,
     modifier: Modifier = Modifier,
+    isHome: Boolean = false,
     onBack: (() -> Unit)? = null,
     onLanguageClick: (() -> Unit)? = null,
     refreshing: Boolean = false,
@@ -123,20 +288,14 @@ fun FrostedTopBar(
     pullFraction: () -> Float = { 0f },
     actions: @Composable () -> Unit = {},
 ) {
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val titleAlpha by animateFloatAsState(
         targetValue = if (scrolled) 1f else 0f,
-        animationSpec = tween(220),
+        animationSpec = tween(260, easing = FastOutSlowInEasing),
         label = "topBarTitleAlpha",
     )
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .then(
-                if (reduceDynamicBlur) Modifier.background(MaterialTheme.colorScheme.surface)
-                else Modifier,
-            ),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Box(
             modifier = Modifier
@@ -146,7 +305,10 @@ fun FrostedTopBar(
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = (-0.2).sp,
+                ),
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -157,7 +319,10 @@ fun FrostedTopBar(
                     // long title truncates instead of running under them.
                     .padding(horizontal = 96.dp)
                     .fillMaxWidth()
-                    .graphicsLayer { alpha = titleAlpha },
+                    .graphicsLayer {
+                        alpha = if (onBack != null || isHome) titleAlpha else 0f
+                        translationY = 6.dp.toPx() * (1f - titleAlpha)
+                    },
             )
             // On a pushed page the back affordance is always visible, since
             // there is no large in-list header to fall back on.
@@ -172,44 +337,31 @@ fun FrostedTopBar(
                         tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
-            } else {
-                Row(
+            } else if (isHome) {
+                HomeGreetingHeader(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .padding(start = 16.dp)
                         .graphicsLayer {
-                            alpha = if (title.isEmpty()) 1f else (1f - titleAlpha).coerceIn(0f, 1f)
+                            val a = if (title.isEmpty()) 1f else (1f - titleAlpha).coerceIn(0f, 1f)
+                            alpha = a
+                            translationY = -6.dp.toPx() * (1f - a)
                         },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    // Dhvani Sound Wave App Logo
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF0F1116)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        AsyncImage(
-                            model = R.drawable.app_logo,
-                            contentDescription = "Dhvani Logo",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(10.dp)),
-                            contentScale = ContentScale.Crop,
-                        )
-                    }
-
-                    Text(
-                        text = "Dhvani",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = (-0.5).sp,
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
+                )
+            } else {
+                Text(
+                    text = title.ifEmpty { "Dhvani" },
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 16.dp),
+                )
             }
             Row(
                 modifier = Modifier

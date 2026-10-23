@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.GridView
@@ -56,6 +57,7 @@ import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.ViewStream
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.SlowMotionVideo
 import androidx.compose.material.icons.rounded.Style
 import androidx.compose.material3.Button
@@ -68,20 +70,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import com.music.dhvani.data.settings.UiDesignStyle
-import com.music.dhvani.ui.theme.uiDesignCard
 import com.music.dhvani.ui.haptics.rememberHaptics
 import com.music.dhvani.ui.haptics.Haptic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -111,6 +112,7 @@ import com.music.dhvani.ui.components.PlayerSliderTrack
 import com.music.dhvani.ui.components.SliderStyleDialog
 import com.music.dhvani.ui.components.SquigglySlider
 import com.music.dhvani.ui.components.WavySlider
+import com.music.dhvani.ui.components.isGlassSupported
 import com.music.dhvani.ui.player.fullBleedArtworkAvailable
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -134,7 +136,6 @@ fun AppearanceSettingsScreen(
     val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
     val dynamicTheme by AppSettings.dynamicTheme.collectAsStateWithLifecycle()
     val accentColor by AppSettings.accentColor.collectAsStateWithLifecycle()
-    val uiDesignStyle by AppSettings.uiDesignStyle.collectAsStateWithLifecycle()
     val enableHighRefreshRate by AppSettings.enableHighRefreshRate.collectAsStateWithLifecycle()
     val densityScale by AppSettings.densityScale.collectAsStateWithLifecycle()
     var showCustomColorDialog by remember { mutableStateOf(false) }
@@ -161,17 +162,21 @@ fun AppearanceSettingsScreen(
 
     val swipeThumbnail by AppSettings.swipeThumbnail.collectAsStateWithLifecycle()
     val swipeSensitivity by AppSettings.swipeSensitivity.collectAsStateWithLifecycle()
+    val coverDoubleTapSeek by AppSettings.coverDoubleTapSeek.collectAsStateWithLifecycle()
 
     val defaultOpenTab by AppSettings.defaultOpenTab.collectAsStateWithLifecycle()
     val slimNavBar by AppSettings.slimNavBar.collectAsStateWithLifecycle()
-    val dynamicIslandEnabled by AppSettings.dynamicIslandEnabled.collectAsStateWithLifecycle()
+    val liquidGlass by AppSettings.liquidGlass.collectAsStateWithLifecycle()
     val systemDynamicIslandEnabled by AppSettings.systemDynamicIslandEnabled.collectAsStateWithLifecycle()
     val showPlayRandomButton by AppSettings.showPlayRandomButton.collectAsStateWithLifecycle()
 
     val showLikedPlaylist by AppSettings.showLikedPlaylist.collectAsStateWithLifecycle()
     val showDownloadedPlaylist by AppSettings.showDownloadedPlaylist.collectAsStateWithLifecycle()
+    val artistSignaturesEnabled by AppSettings.artistSignaturesEnabled.collectAsStateWithLifecycle()
+    val customSignatureApiUrl by AppSettings.customSignatureApiUrl.collectAsStateWithLifecycle()
 
     // Dialog control states
+    var showSignatureApiDialog by remember { mutableStateOf(false) }
     var showDensityDialog by remember { mutableStateOf(false) }
     var showDensityRestartDialog by remember { mutableStateOf(false) }
     var showSliderStyleDialog by remember { mutableStateOf(false) }
@@ -424,46 +429,6 @@ fun AppearanceSettingsScreen(
             )
         }
 
-        // ── 1.5. UI Design & Aesthetic Style ─────────────────────────────
-        val haptics = rememberHaptics()
-        SettingsGroup(header = "UI Design & Aesthetic Style") {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-            ) {
-                Text(
-                    text = "Choose your favorite app interface design style. All cards, sheets, and bars will adopt this aesthetic.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = ROW_INSET, vertical = 2.dp),
-                )
-                Spacer(Modifier.height(12.dp))
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = ROW_INSET),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(UiDesignStyle.entries, key = { it.id }) { style ->
-                        val selected = style == uiDesignStyle
-                        UiDesignStyleCard(
-                            style = style,
-                            selected = selected,
-                            onClick = {
-                                haptics.play(Haptic.Select)
-                                AppSettings.setUiDesignStyle(style)
-                            },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "${uiDesignStyle.displayName}: ${uiDesignStyle.description}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = ROW_INSET, vertical = 4.dp),
-                )
-            }
-        }
 
         // ── 2. Player Controls & Style ──────────────────────────────────
         SettingsGroup(header = stringResource(R.string.player)) {
@@ -579,6 +544,23 @@ fun AppearanceSettingsScreen(
                     onClick = { showSensitivityDialog = true },
                 )
             }
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.FastForward,
+                title = "Double Tap Cover to Seek",
+                subtitle = "Double-tap left or right side of album cover to rewind or forward 10s (YouTube style)",
+                trailing = {
+                    Switch(
+                        checked = coverDoubleTapSeek,
+                        onCheckedChange = AppSettings::setCoverDoubleTapSeek,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = { AppSettings.setCoverDoubleTapSeek(!coverDoubleTapSeek) },
+            )
             if (fullBleedArtworkAvailable(windowWidth)) {
                 RowDivider()
                 SettingsRow(
@@ -591,28 +573,28 @@ fun AppearanceSettingsScreen(
             RowDivider()
             SettingsRow(
                 icon = Icons.Rounded.SlowMotionVideo,
-                title = "Spotify canvas style",
+                title = "Canvas S style",
                 value = spotifyCanvasStyle.label,
                 onClick = { showSpotifyCanvasStyleDialog = true },
             )
             RowDivider()
             SettingsRow(
                 icon = Icons.Rounded.SlowMotionVideo,
-                title = "Apple Music canvas style",
+                title = "Canvas A style",
                 value = appleMusicCanvasStyle.label,
                 onClick = { showAppleCanvasStyleDialog = true },
             )
             RowDivider()
             SettingsRow(
                 icon = Icons.Rounded.SlowMotionVideo,
-                title = "Tidal canvas style",
+                title = "Canvas T style",
                 value = tidalCanvasStyle.label,
                 onClick = { showTidalCanvasStyleDialog = true },
             )
             RowDivider()
             SettingsRow(
                 icon = Icons.Rounded.SlowMotionVideo,
-                title = "Community canvas style",
+                title = "Canvas Community style",
                 value = communityCanvasStyle.label,
                 onClick = { showCommunityCanvasStyleDialog = true },
             )
@@ -641,6 +623,35 @@ fun AppearanceSettingsScreen(
                 onClick = { AppSettings.setCanvasPauseWithAudio(!canvasPauseWithAudio) },
             )
 
+        }
+
+        // ── Artist Profiles & Signatures ──────────────────────────────
+        SettingsGroup(header = "Artist Profiles & Signatures") {
+            SettingsRow(
+                icon = Icons.Rounded.Edit,
+                title = "Artist signatures",
+                subtitle = "Display handwritten artist signatures on artist profiles",
+                trailing = {
+                    Switch(
+                        checked = artistSignaturesEnabled,
+                        onCheckedChange = AppSettings::setArtistSignaturesEnabled,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = { AppSettings.setArtistSignaturesEnabled(!artistSignaturesEnabled) },
+            )
+            if (artistSignaturesEnabled) {
+                RowDivider()
+                SettingsRow(
+                    icon = Icons.Rounded.AutoAwesome,
+                    title = "Custom Signature API URL",
+                    subtitle = if (customSignatureApiUrl.isBlank()) "Default (Wikidata & Curated)" else customSignatureApiUrl,
+                    onClick = { showSignatureApiDialog = true },
+                )
+            }
         }
 
         // ── Performance & Smoothness (Low-End Devices) ──────────────────
@@ -733,23 +744,6 @@ fun AppearanceSettingsScreen(
         // ── 4. Dynamic Island ───────────────────────────────────────────
         SettingsGroup(header = "Dynamic Island") {
             SettingsRow(
-                icon = Icons.Rounded.GraphicEq,
-                title = "Dynamic Island Notch Player",
-                subtitle = "iPhone-style floating capsule with live equalizer while playing",
-                trailing = {
-                    Switch(
-                        checked = dynamicIslandEnabled,
-                        onCheckedChange = AppSettings::setDynamicIslandEnabled,
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = MaterialTheme.colorScheme.primary,
-                            checkedBorderColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    )
-                },
-                onClick = { AppSettings.setDynamicIslandEnabled(!dynamicIslandEnabled) },
-            )
-            RowDivider()
-            SettingsRow(
                 icon = Icons.Rounded.Layers,
                 title = "System-Wide Floating Island",
                 subtitle = "Float Dynamic Island over other apps with swipe-up to hide",
@@ -796,6 +790,29 @@ fun AppearanceSettingsScreen(
                     )
                 },
                 onClick = { AppSettings.setSlimNavBar(!slimNavBar) },
+            )
+            RowDivider()
+            val liquidGlassSupported = isGlassSupported()
+            SettingsRow(
+                icon = Icons.Rounded.AutoAwesome,
+                title = stringResource(R.string.liquid_glass),
+                subtitle = stringResource(
+                    if (liquidGlassSupported) R.string.liquid_glass_subtitle
+                    else R.string.liquid_glass_unavailable
+                ),
+                enabled = liquidGlassSupported,
+                trailing = {
+                    Switch(
+                        checked = liquidGlass,
+                        onCheckedChange = AppSettings::setLiquidGlass,
+                        enabled = liquidGlassSupported,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = { if (liquidGlassSupported) AppSettings.setLiquidGlass(!liquidGlass) },
             )
             RowDivider()
             SettingsRow(
@@ -1172,7 +1189,7 @@ fun AppearanceSettingsScreen(
 
     if (showSpotifyCanvasStyleDialog) {
         CanvasStyleDialog(
-            title = "Spotify Canvas Style",
+            title = "Canvas S Style",
             currentStyle = spotifyCanvasStyle,
             onSelect = { AppSettings.setSpotifyCanvasStyle(it) },
             onDismiss = { showSpotifyCanvasStyleDialog = false },
@@ -1181,7 +1198,7 @@ fun AppearanceSettingsScreen(
 
     if (showAppleCanvasStyleDialog) {
         CanvasStyleDialog(
-            title = "Apple Music Canvas Style",
+            title = "Canvas A Style",
             currentStyle = appleMusicCanvasStyle,
             onSelect = { AppSettings.setAppleMusicCanvasStyle(it) },
             onDismiss = { showAppleCanvasStyleDialog = false },
@@ -1190,7 +1207,7 @@ fun AppearanceSettingsScreen(
 
     if (showTidalCanvasStyleDialog) {
         CanvasStyleDialog(
-            title = "Tidal Canvas Style",
+            title = "Canvas T Style",
             currentStyle = tidalCanvasStyle,
             onSelect = { AppSettings.setTidalCanvasStyle(it) },
             onDismiss = { showTidalCanvasStyleDialog = false },
@@ -1199,10 +1216,62 @@ fun AppearanceSettingsScreen(
 
     if (showCommunityCanvasStyleDialog) {
         CanvasStyleDialog(
-            title = "Community Canvas Style",
+            title = "Canvas Community Style",
             currentStyle = communityCanvasStyle,
             onSelect = { AppSettings.setCommunityCanvasStyle(it) },
             onDismiss = { showCommunityCanvasStyleDialog = false },
+        )
+    }
+
+    if (showSignatureApiDialog) {
+        var tempUrl by remember { mutableStateOf(customSignatureApiUrl) }
+        AlertDialog(
+            onDismissRequest = { showSignatureApiDialog = false },
+            title = { Text("Custom Signature API") },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter a custom signature API endpoint. Leave empty to use Dhvani's built-in Wikidata and curated signatures.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = tempUrl,
+                        onValueChange = { tempUrl = it },
+                        label = { Text("Signature API URL") },
+                        placeholder = { Text("https://example.com/api?artist={artist}") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    AppSettings.setCustomSignatureApiUrl(tempUrl)
+                    com.music.dhvani.data.artist.ArtistSignatureRepository.clearCache()
+                    showSignatureApiDialog = false
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                Row {
+                    if (tempUrl.isNotBlank()) {
+                        TextButton(onClick = {
+                            tempUrl = ""
+                            AppSettings.setCustomSignatureApiUrl("")
+                            com.music.dhvani.data.artist.ArtistSignatureRepository.clearCache()
+                            showSignatureApiDialog = false
+                        }) {
+                            Text("Reset")
+                        }
+                    }
+                    TextButton(onClick = { showSignatureApiDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            },
         )
     }
 
@@ -1373,112 +1442,6 @@ private fun CoverStyleDialog(
     )
 }
 
-@Composable
-private fun UiDesignStyleCard(
-    style: UiDesignStyle,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-    val borderWidth = if (selected) 2.dp else 1.dp
-    val primaryColor = MaterialTheme.colorScheme.primary
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .width(112.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(96.dp)
-                .uiDesignCard(style = style, shape = RoundedCornerShape(16.dp))
-                .border(borderWidth, borderColor, RoundedCornerShape(16.dp))
-                .padding(10.dp),
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.SpaceBetween,
-                horizontalAlignment = Alignment.Start,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (selected) primaryColor.copy(alpha = 0.25f)
-                            else MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Style,
-                        contentDescription = null,
-                        tint = if (selected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(15.dp),
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(
-                                if (selected) primaryColor.copy(alpha = 0.7f)
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
-                            )
-                    )
-                    Box(
-                        modifier = Modifier
-                            .weight(0.6f)
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(
-                                if (selected) primaryColor.copy(alpha = 0.4f)
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)
-                            )
-                    )
-                }
-            }
-
-            if (selected) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .size(20.dp)
-                        .clip(CircleShape)
-                        .background(primaryColor),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Check,
-                        contentDescription = "Selected",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(13.dp),
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = style.displayName,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
 
 @Composable
 private fun CustomColorPickerDialog(

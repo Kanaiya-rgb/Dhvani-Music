@@ -1,11 +1,14 @@
 package com.music.dhvani.playback
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import com.music.dhvani.data.settings.OutputPcmMode
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -17,10 +20,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
  */
 object AudioOutputStatus {
     data class OutputRoute(
-        val id: String, // "speaker", "bluetooth", "wired"
+        val id: String, // "speaker", "bluetooth", "bluetooth_123", "wired", "usb_123"
         val name: String,
         val isSelected: Boolean,
         val isConnected: Boolean = true,
+        val isBluetooth: Boolean = false,
+        val isWired: Boolean = false,
+        val isUsb: Boolean = false,
+        val isSpeaker: Boolean = false,
         val device: AudioDeviceInfo? = null,
     )
 
@@ -31,6 +38,9 @@ object AudioOutputStatus {
         val sampleRatesHz: IntArray = IntArray(0),
         val encodings: IntArray = IntArray(0),
         val isUsb: Boolean = false,
+        val isBluetooth: Boolean = false,
+        val isWired: Boolean = false,
+        val isSpeaker: Boolean = true,
         val actualEncoding: Int? = null,
         val actualSampleRateHz: Int? = null,
         val floatFallback: Boolean = false,
@@ -40,113 +50,240 @@ object AudioOutputStatus {
 
     val current = MutableStateFlow(Snapshot())
     val availableRoutes = MutableStateFlow<List<OutputRoute>>(emptyList())
-    val selectedRouteId = MutableStateFlow<String>("auto")
+    val selectedRouteId = MutableStateFlow<String>("speaker")
+    val confirmedActiveRouteId = MutableStateFlow<String>("speaker")
+    val confirmedActiveDevice = MutableStateFlow<AudioDeviceInfo?>(null)
+    val errorMessage = MutableStateFlow<String?>(null)
 
-    var onRouteSelectedListener: ((String) -> Unit)? = null
+    var onRouteSelectedListener: ((String) -> Boolean)? = null
 
-    fun selectRoute(routeId: String) {
-        selectedRouteId.value = routeId
-        onRouteSelectedListener?.invoke(routeId)
+    fun isMediaBluetoothDevice(dev: AudioDeviceInfo): Boolean {
+        if (!dev.isSink) return false
+        return dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
+                dev.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                dev.type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+                dev.type == AudioDeviceInfo.TYPE_BLE_BROADCAST
+            ))
     }
 
-    fun updateDevice(context: Context, manager: AudioManager) {
-        val device = resolveActiveDevice(manager)
-        val resolvedName = resolveDeviceDisplayName(context, device)
-        val isUsb = device?.type in setOf(
+    fun isWiredDevice(dev: AudioDeviceInfo): Boolean {
+        if (!dev.isSink) return false
+        return dev.type in setOf(
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_LINE_ANALOG,
+            AudioDeviceInfo.TYPE_LINE_DIGITAL,
+        )
+    }
+
+    fun isUsbDevice(dev: AudioDeviceInfo): Boolean {
+        if (!dev.isSink) return false
+        return dev.type in setOf(
             AudioDeviceInfo.TYPE_USB_DEVICE,
             AudioDeviceInfo.TYPE_USB_HEADSET,
             AudioDeviceInfo.TYPE_USB_ACCESSORY,
         )
+    }
+
+    fun isSpeakerDevice(dev: AudioDeviceInfo): Boolean {
+        if (!dev.isSink) return false
+        return dev.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER ||
+            dev.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE
+    }
+
+    fun findBuiltInSpeaker(devices: Iterable<AudioDeviceInfo>): AudioDeviceInfo? {
+        return devices.firstOrNull { it.isSink && it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            ?: devices.firstOrNull { it.isSink && it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE }
+            ?: devices.firstOrNull { it.isSink && !isMediaBluetoothDevice(it) && !isWiredDevice(it) && !isUsbDevice(it) && it.type != AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
+    }
+
+    fun selectRoute(routeId: String): Boolean {
+        Log.d("MediaOutput", "User requested route: $routeId")
+        errorMessage.value = null
+        val listener = onRouteSelectedListener
+        if (listener == null) {
+            Log.w("MediaOutput", "Route request failed: PlaybackService onRouteSelectedListener is null")
+            errorMessage.value = "Playback service unavailable"
+            return false
+        }
+        val success = listener.invoke(routeId)
+        Log.d("MediaOutput", "Route request result for $routeId: success=$success")
+        if (!success) {
+            if (errorMessage.value == null) {
+                errorMessage.value = "Could not route playback to selected device"
+            }
+        }
+        return success
+    }
+
+    /**
+     * Called when the ExoPlayer AudioTrack confirms hardware playout routing or
+     * when the system audio routing changes.
+     */
+    fun onActiveDeviceConfirmed(context: Context, device: AudioDeviceInfo?) {
+        val isBt = device != null && isMediaBluetoothDevice(device)
+        val isWired = device != null && isWiredDevice(device)
+        val isUsb = device != null && isUsbDevice(device)
+        val isSpeaker = device == null || isSpeakerDevice(device)
+
+        val resolvedName = resolveDeviceDisplayName(context, device)
+        Log.d("MediaOutput", "Confirmed active route: '$resolvedName' (type=${device?.type}, id=${device?.id}, isBt=$isBt, isSpeaker=$isSpeaker)")
+
+        confirmedActiveDevice.value = device
+        errorMessage.value = null
+
+        val activeRouteId = when {
+            isBt -> {
+                val match = availableRoutes.value.firstOrNull { it.device?.id == device.id }
+                match?.id ?: if (availableRoutes.value.count { it.isBluetooth } <= 1) "bluetooth" else "bluetooth_${device.id}"
+            }
+            isWired -> "wired"
+            isUsb -> {
+                val match = availableRoutes.value.firstOrNull { it.device?.id == device.id }
+                match?.id ?: if (availableRoutes.value.count { it.isUsb } <= 1) "usb" else "usb_${device.id}"
+            }
+            else -> "speaker"
+        }
+
+        confirmedActiveRouteId.value = activeRouteId
+        selectedRouteId.value = activeRouteId
+
         current.value = current.value.copy(
             deviceName = resolvedName,
-            sampleRatesHz = device?.sampleRates ?: IntArray(0),
-            encodings = device?.encodings ?: IntArray(0),
+            isBluetooth = isBt,
+            isWired = isWired,
             isUsb = isUsb,
+            isSpeaker = isSpeaker,
+            sampleRatesHz = device?.sampleRates ?: current.value.sampleRatesHz,
+            encodings = device?.encodings ?: current.value.encodings,
+        )
+
+        // Keep availableRoutes synchronized with real active state
+        val updatedRoutes = availableRoutes.value.map { route ->
+            val isSelected = when {
+                activeRouteId == "speaker" -> route.id == "speaker"
+                activeRouteId.startsWith("bluetooth") -> route.id == activeRouteId || (route.isBluetooth && route.device?.id == device?.id)
+                activeRouteId.startsWith("usb") -> route.id == activeRouteId || (route.isUsb && route.device?.id == device?.id)
+                activeRouteId == "wired" -> route.id == "wired"
+                else -> false
+            }
+            route.copy(isSelected = isSelected)
+        }
+        if (updatedRoutes.isNotEmpty()) {
+            availableRoutes.value = updatedRoutes
+        }
+    }
+
+    fun updateDevice(context: Context, manager: AudioManager) {
+        val devices = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try { manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList() } catch (_: Throwable) { emptyList() }
+        } else emptyList()
+
+        val activeDev = confirmedActiveDevice.value?.takeIf { confirmed ->
+            devices.any { it.id == confirmed.id }
+        } ?: resolveActiveDevice(manager)
+
+        val resolvedName = resolveDeviceDisplayName(context, activeDev)
+        val isUsb = activeDev != null && isUsbDevice(activeDev)
+        val isBt = activeDev != null && isMediaBluetoothDevice(activeDev)
+        val isWired = activeDev != null && isWiredDevice(activeDev)
+        val isSpeaker = activeDev == null || isSpeakerDevice(activeDev)
+
+        current.value = current.value.copy(
+            deviceName = resolvedName,
+            sampleRatesHz = activeDev?.sampleRates ?: IntArray(0),
+            encodings = activeDev?.encodings ?: IntArray(0),
+            isUsb = isUsb,
+            isBluetooth = isBt,
+            isWired = isWired,
+            isSpeaker = isSpeaker,
         )
 
         // Build list of available output routes
         val routes = mutableListOf<OutputRoute>()
         val phoneName = getPhoneName(context)
 
-        val devices = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            try { manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList() } catch (_: Throwable) { emptyList() }
-        } else emptyList()
-
         // 1. Phone Speaker
-        val speakerDevice = devices.firstOrNull {
-            it.isSink && (it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER || it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE)
-        }
-        val isSpeakerActive = device == null || device.type in setOf(
-            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
-            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE,
-            AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-        )
+        val speakerDevice = findBuiltInSpeaker(devices)
+        val isSpeakerSelected = (confirmedActiveDevice.value == null && isSpeaker) ||
+            (confirmedActiveDevice.value != null && isSpeakerDevice(confirmedActiveDevice.value!!)) ||
+            (selectedRouteId.value == "speaker" && confirmedActiveDevice.value == null)
         routes.add(
             OutputRoute(
                 id = "speaker",
                 name = phoneName,
-                isSelected = if (selectedRouteId.value == "auto") isSpeakerActive else selectedRouteId.value == "speaker",
+                isSelected = isSpeakerSelected,
                 isConnected = true,
+                isSpeaker = true,
                 device = speakerDevice,
             )
         )
 
-        // 2. Bluetooth
-        val btDevice = devices.firstOrNull {
-            it.isSink && (
-                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
-                    it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                    it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
-                ))
-            )
+        // 2. Bluetooth Sinks (Deduplicated, media-only: strictly exclude SCO)
+        val btDevices = devices.filter { dev -> isMediaBluetoothDevice(dev) }.distinctBy { dev ->
+            val addr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                dev.address.orEmpty().ifBlank { dev.productName?.toString().orEmpty().trim() }
+            } else {
+                dev.productName?.toString().orEmpty().trim()
+            }
+            addr.ifBlank { dev.id.toString() }
         }
-        if (btDevice != null) {
-            val isBtActive = device != null && (
-                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
-                    device.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                    device.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
-                ))
-            )
-            val btName = btDevice.productName?.toString()?.trim().orEmpty()
+
+        btDevices.forEach { btDev ->
+            val routeId = if (btDevices.size == 1) "bluetooth" else "bluetooth_${btDev.id}"
+            val isBtConfirmed = confirmedActiveDevice.value != null && confirmedActiveDevice.value!!.id == btDev.id
+            val rawName = btDev.productName?.toString()?.trim().orEmpty()
+            val btName = if (isValidExternalName(rawName)) rawName else "Bluetooth Audio"
             routes.add(
                 OutputRoute(
-                    id = "bluetooth",
-                    name = if (isValidExternalName(btName)) btName else "Bluetooth Audio",
-                    isSelected = if (selectedRouteId.value == "auto") isBtActive else selectedRouteId.value == "bluetooth",
+                    id = routeId,
+                    name = btName,
+                    isSelected = isBtConfirmed,
                     isConnected = true,
-                    device = btDevice,
+                    isBluetooth = true,
+                    device = btDev,
                 )
             )
         }
 
-        // 3. Wired Headphones
-        val wiredDevice = devices.firstOrNull {
-            it.isSink && (
-                it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+        // 3. USB Audio Devices (DACs, USB Headsets)
+        val usbDevices = devices.filter { dev -> isUsbDevice(dev) }
+        usbDevices.forEach { usbDev ->
+            val routeId = if (usbDevices.size == 1) "usb" else "usb_${usbDev.id}"
+            val isUsbConfirmed = confirmedActiveDevice.value != null && confirmedActiveDevice.value!!.id == usbDev.id
+            val rawName = usbDev.productName?.toString()?.trim().orEmpty()
+            val usbName = if (isValidExternalName(rawName)) rawName else "USB Audio Device"
+            routes.add(
+                OutputRoute(
+                    id = routeId,
+                    name = usbName,
+                    isSelected = isUsbConfirmed,
+                    isConnected = true,
+                    isUsb = true,
+                    device = usbDev,
+                )
             )
         }
+
+        // 4. Wired Headphones / Line out
+        val wiredDevice = devices.firstOrNull { isWiredDevice(it) }
         if (wiredDevice != null) {
-            val isWiredActive = device != null && (
-                device.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                device.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
-            )
+            val isWiredConfirmed = confirmedActiveDevice.value != null && isWiredDevice(confirmedActiveDevice.value!!)
             routes.add(
                 OutputRoute(
                     id = "wired",
                     name = "Wired Headphones",
-                    isSelected = if (selectedRouteId.value == "auto") isWiredActive else selectedRouteId.value == "wired",
+                    isSelected = isWiredConfirmed,
                     isConnected = true,
+                    isWired = true,
                     device = wiredDevice,
                 )
             )
         }
 
         availableRoutes.value = routes
+        Log.d("MediaOutput", "Available routes updated: ${routes.map { "${it.name} (id=${it.id}, selected=${it.isSelected})" }}")
     }
 
     fun publish(
@@ -178,112 +315,73 @@ object AudioOutputStatus {
     fun resolveActiveDevice(manager: AudioManager): AudioDeviceInfo? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null
 
-        // If user explicitly forced a route
         val devices = try {
-            manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
         } catch (_: Throwable) {
             return null
         }
 
-        when (selectedRouteId.value) {
-            "speaker" -> {
-                val speaker = devices.firstOrNull {
-                    dev -> dev.isSink && (
-                        dev.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER ||
-                        dev.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE ||
-                        dev.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-                    )
-                }
+        when {
+            selectedRouteId.value == "speaker" -> {
+                val speaker = findBuiltInSpeaker(devices)
                 if (speaker != null) return speaker
             }
-            "bluetooth" -> {
-                val bt = devices.firstOrNull { dev ->
-                    dev.isSink && (
-                        dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                        dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                        (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
-                            dev.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                            dev.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
-                        ))
-                    )
+            selectedRouteId.value.startsWith("bluetooth") -> {
+                val specificId = selectedRouteId.value.removePrefix("bluetooth_").removePrefix("bluetooth").takeIf { it.isNotBlank() }?.toIntOrNull()
+                if (specificId != null) {
+                    val specific = devices.firstOrNull { it.id == specificId && isMediaBluetoothDevice(it) }
+                    if (specific != null) return specific
                 }
+                val bt = devices.firstOrNull { isMediaBluetoothDevice(it) }
                 if (bt != null) return bt
+            }
+            selectedRouteId.value.startsWith("usb") -> {
+                val specificId = selectedRouteId.value.removePrefix("usb_").removePrefix("usb").takeIf { it.isNotBlank() }?.toIntOrNull()
+                if (specificId != null) {
+                    val specific = devices.firstOrNull { it.id == specificId && isUsbDevice(it) }
+                    if (specific != null) return specific
+                }
+                val usb = devices.firstOrNull { isUsbDevice(it) }
+                if (usb != null) return usb
+            }
+            selectedRouteId.value == "wired" -> {
+                val wired = devices.firstOrNull { isWiredDevice(it) }
+                if (wired != null) return wired
             }
         }
 
-        // Priority 1: Bluetooth
-        val bluetooth = devices.firstOrNull { dev ->
-            dev.isSink && (
-                dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
-                    dev.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                    dev.type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
-                    dev.type == AudioDeviceInfo.TYPE_BLE_BROADCAST
-                ))
-            )
-        }
+        // Priority 1: Bluetooth (Media only, no SCO)
+        val bluetooth = devices.firstOrNull { isMediaBluetoothDevice(it) }
         if (bluetooth != null) return bluetooth
 
         // Priority 2: Wired / USB
-        val wiredOrUsb = devices.firstOrNull { dev ->
-            dev.isSink && (
-                dev.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                dev.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                dev.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
-                dev.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
-                dev.type == AudioDeviceInfo.TYPE_USB_ACCESSORY ||
-                dev.type == AudioDeviceInfo.TYPE_LINE_ANALOG ||
-                dev.type == AudioDeviceInfo.TYPE_LINE_DIGITAL ||
-                dev.type == AudioDeviceInfo.TYPE_HEARING_AID
-            )
-        }
+        val wiredOrUsb = devices.firstOrNull { isWiredDevice(it) || isUsbDevice(it) }
         if (wiredOrUsb != null) return wiredOrUsb
 
         // Priority 3: Built-in speaker
-        val speaker = devices.firstOrNull { dev ->
-            dev.isSink && (
-                dev.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER ||
-                dev.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE ||
-                dev.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-            )
-        }
-        return speaker ?: devices.firstOrNull { it.isSink }
+        val speaker = findBuiltInSpeaker(devices)
+        return speaker ?: devices.firstOrNull { it.isSink && it.type != AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
     }
 
     fun resolveDeviceDisplayName(context: Context?, device: AudioDeviceInfo?): String {
         if (device == null) return getPhoneName(context)
 
-        val type = device.type
         val rawName = device.productName?.toString()?.trim().orEmpty()
 
         return when {
-            type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-            type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
-                type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
-                type == AudioDeviceInfo.TYPE_BLE_BROADCAST
-            )) -> {
+            isMediaBluetoothDevice(device) -> {
                 if (isValidExternalName(rawName)) rawName else "Bluetooth Audio"
             }
 
-            type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-            type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-            type == AudioDeviceInfo.TYPE_LINE_ANALOG ||
-            type == AudioDeviceInfo.TYPE_LINE_DIGITAL -> {
+            isWiredDevice(device) -> {
                 if (isValidExternalName(rawName) && !rawName.equals("headset", ignoreCase = true)) rawName else "Wired Headphones"
             }
 
-            type == AudioDeviceInfo.TYPE_USB_DEVICE ||
-            type == AudioDeviceInfo.TYPE_USB_HEADSET ||
-            type == AudioDeviceInfo.TYPE_USB_ACCESSORY -> {
+            isUsbDevice(device) -> {
                 if (isValidExternalName(rawName)) rawName else "USB Audio"
             }
 
-            type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER ||
-            type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE ||
-            type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> {
+            isSpeakerDevice(device) -> {
                 getPhoneName(context)
             }
 
@@ -407,5 +505,86 @@ object AudioOutputStatus {
         AudioFormat.ENCODING_PCM_16BIT -> if (snapshot.floatFallback) "16-bit fallback" else "16-bit PCM"
         null -> if (snapshot.floatFallback) "16-bit fallback" else snapshot.requestedPcmMode.label
         else -> "PCM (${snapshot.actualEncoding})"
+    }
+
+    fun isMiuiOrHyperOs(): Boolean {
+        val brand = Build.BRAND.lowercase()
+        val manufacturer = Build.MANUFACTURER.lowercase()
+        if (brand.contains("xiaomi") || brand.contains("redmi") || brand.contains("poco") ||
+            manufacturer.contains("xiaomi") || manufacturer.contains("redmi") || manufacturer.contains("poco")
+        ) {
+            return true
+        }
+        val miuiProp = getSystemProperty("ro.miui.ui.version.name")
+        if (!miuiProp.isNullOrBlank()) return true
+        val miuiCode = getSystemProperty("ro.miui.ui.version.code")
+        if (!miuiCode.isNullOrBlank()) return true
+        val hyperOs = getSystemProperty("ro.mi.os.version.name")
+        if (!hyperOs.isNullOrBlank()) return true
+        return false
+    }
+
+    /**
+     * Attempts to launch Android's native system output switcher for the active MediaSession.
+     * Returns true if successfully launched; returns false if unavailable or unsupported on the device/OEM.
+     */
+    fun launchSystemMediaOutputSwitcher(context: Context): Boolean {
+        // 1. Media output switcher panels require Android 11+ (API 30+)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            Log.d("MediaOutput", "Android ${Build.VERSION.SDK_INT} < 30: System media output panel unsupported; using in-app picker")
+            return false
+        }
+
+        // 2. Xiaomi / MIUI / HyperOS check:
+        // Xiaomi custom ROMs strip or stub out AOSP Settings panels and slices, causing
+        // intent resolution to match but the activity to immediately finish/swallow without
+        // displaying any UI. Do not rely on private AOSP Settings intents on MIUI.
+        if (isMiuiOrHyperOs()) {
+            Log.d("MediaOutput", "Xiaomi/MIUI device detected (${Build.MANUFACTURER} ${Build.MODEL}). System output panel unsupported; opening in-app Media Output sheet")
+            return false
+        }
+
+        val sessionToken = PlaybackService.activeMediaSession?.platformToken
+        if (sessionToken == null) {
+            Log.d("MediaOutput", "No active MediaSession platformToken found; using in-app Media Output sheet")
+            return false
+        }
+
+        val packageName = context.packageName
+
+        // 3. For supported non-MIUI devices (such as Google Pixel), attempt system panel if supported
+        try {
+            val panelIntent = Intent("com.android.settings.panel.action.MEDIA_OUTPUT").apply {
+                putExtra("com.android.settings.panel.extra.PACKAGE_NAME", packageName)
+                putExtra("package_name", packageName)
+                putExtra("key_media_session_token", sessionToken)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val resolveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.queryIntentActivities(
+                    panelIntent,
+                    PackageManager.ResolveInfoFlags.of(0)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.queryIntentActivities(panelIntent, 0)
+            }
+
+            // Only attempt launch if supported by Google Pixel or authentic AOSP settings handler
+            val isGooglePixelOrAosp = Build.MANUFACTURER.equals("Google", ignoreCase = true) ||
+                resolveInfo.any { it.activityInfo?.packageName == "com.android.settings" || it.activityInfo?.packageName == "com.google.android.settings" }
+
+            if (resolveInfo.isNotEmpty() && isGooglePixelOrAosp) {
+                Log.d("MediaOutput", "Launching supported system media output panel on ${Build.MANUFACTURER} ${Build.MODEL}")
+                context.startActivity(panelIntent)
+                return true
+            } else {
+                Log.d("MediaOutput", "System media output panel not resolved or unsupported by OEM (${Build.MANUFACTURER}); using in-app picker")
+            }
+        } catch (e: Throwable) {
+            Log.w("MediaOutput", "System media output panel launch failed: ${e.message}; using in-app picker")
+        }
+
+        return false
     }
 }

@@ -3,19 +3,20 @@ package com.music.dhvani.playback
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.PixelFormat
+import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
+import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -28,7 +29,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,19 +46,24 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -79,8 +84,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.font.FontWeight
@@ -88,12 +96,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
@@ -103,7 +111,6 @@ import coil3.compose.AsyncImage
 import com.music.dhvani.MainActivity
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.artworkAt
-import androidx.compose.ui.graphics.toArgb
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.ui.theme.ArtworkPalette
 import com.music.dhvani.ui.theme.DhvaniTheme
@@ -111,7 +118,6 @@ import com.music.dhvani.ui.theme.rememberArtworkPalette
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -119,11 +125,12 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Manages the floating system-wide Dynamic Island overlay that appears
- * over any other Android application when music is playing.
+ * Manages the floating system-wide liquid-glass music island overlay that appears
+ * over any other Android application when music is playing or transitioning.
  *
- * Uses a pre-warmed persistent view architecture for instant 0ms latency,
- * butter-smooth spring physics, and zero jank.
+ * Adopts OxygenOS 15 / ColorOS 15 aesthetics: translucent dark glass with subtle perimeter
+ * highlights, luminous diffuse glow ("弥散光"), interactive progress scrubbing, fluid spring physics,
+ * and reliable next-track transitions without overlay disappearance.
  */
 class DynamicIslandOverlayManager(
     private val context: Context,
@@ -138,10 +145,16 @@ class DynamicIslandOverlayManager(
     // State flows
     private val currentSongFlow = MutableStateFlow<Song?>(null)
     private val isPlayingFlow = MutableStateFlow(false)
+    private val isLoadingFlow = MutableStateFlow(false)
+    private val isTransitioningFlow = MutableStateFlow(false)
+    private val playWhenReadyFlow = MutableStateFlow(false)
+    private val playbackStateFlow = MutableStateFlow(Player.STATE_IDLE)
     private val currentPositionFlow = MutableStateFlow(0L)
     private val durationMsFlow = MutableStateFlow(0L)
+    private val errorMessageFlow = MutableStateFlow<String?>(null)
     private val isDismissedByUserFlow = MutableStateFlow(false)
     private val shouldShowFlow = MutableStateFlow(false)
+    private val upcomingTracksFlow = MutableStateFlow<List<Pair<Int, Song>>>(emptyList())
     private var isOverlayAttached = false
 
     companion object {
@@ -153,18 +166,22 @@ class DynamicIslandOverlayManager(
     }
 
     init {
-        // Pre-seed state from player immediately so there is zero initialization lag
+        // Pre-seed state from player immediately
         playerProvider()?.let { player ->
             currentSongFlow.value = player.currentMediaItem?.toSong()
             isPlayingFlow.value = player.isPlaying
+            playWhenReadyFlow.value = player.playWhenReady
+            playbackStateFlow.value = player.playbackState
+            isLoadingFlow.value = player.playbackState == Player.STATE_BUFFERING
             currentPositionFlow.value = player.currentPosition.coerceAtLeast(0L)
             durationMsFlow.value = player.duration.coerceAtLeast(0L)
         }
+        updateUpcomingTracks()
 
         // Live progress updates during active background playback
         scope.launch {
             while (isActive) {
-                if (shouldShowFlow.value && isPlayingFlow.value) {
+                if (shouldShowFlow.value && isPlayingFlow.value && !isLoadingFlow.value && !isTransitioningFlow.value) {
                     playerProvider()?.let { player ->
                         currentPositionFlow.value = player.currentPosition.coerceAtLeast(0L)
                         val d = player.duration
@@ -194,6 +211,31 @@ class DynamicIslandOverlayManager(
             }
         }
         scope.launch {
+            isLoadingFlow.collect {
+                updateOverlayVisibility()
+            }
+        }
+        scope.launch {
+            isTransitioningFlow.collect {
+                updateOverlayVisibility()
+            }
+        }
+        scope.launch {
+            playWhenReadyFlow.collect {
+                updateOverlayVisibility()
+            }
+        }
+        scope.launch {
+            playbackStateFlow.collect {
+                updateOverlayVisibility()
+            }
+        }
+        scope.launch {
+            errorMessageFlow.collect {
+                updateOverlayVisibility()
+            }
+        }
+        scope.launch {
             currentSongFlow.collect { song ->
                 if (song != null) {
                     isDismissedByUserFlow.value = false
@@ -209,22 +251,72 @@ class DynamicIslandOverlayManager(
     }
 
     fun onSongChanged(song: Song?) {
-        currentSongFlow.value = song
-        playerProvider()?.let { player ->
-            currentPositionFlow.value = player.currentPosition.coerceAtLeast(0L)
-            durationMsFlow.value = player.duration.coerceAtLeast(0L)
+        if (song != null) {
+            currentSongFlow.value = song
+            isTransitioningFlow.value = false
+            isLoadingFlow.value = false
+            errorMessageFlow.value = null
+            playerProvider()?.let { player ->
+                currentPositionFlow.value = player.currentPosition.coerceAtLeast(0L)
+                durationMsFlow.value = player.duration.coerceAtLeast(0L)
+            }
+            updateUpcomingTracks()
+            isDismissedByUserFlow.value = false
         }
+        updateOverlayVisibility()
+    }
+
+    fun onQueueChanged() {
+        updateUpcomingTracks()
     }
 
     fun onIsPlayingChanged(isPlaying: Boolean) {
         isPlayingFlow.value = isPlaying
         if (isPlaying) {
+            isLoadingFlow.value = false
+            isTransitioningFlow.value = false
+            errorMessageFlow.value = null
             playerProvider()?.let { player ->
                 currentPositionFlow.value = player.currentPosition.coerceAtLeast(0L)
                 val d = player.duration
                 if (d > 0L) durationMsFlow.value = d
             }
         }
+        updateOverlayVisibility()
+    }
+
+    fun onPlayWhenReadyChanged(playWhenReady: Boolean) {
+        playWhenReadyFlow.value = playWhenReady
+        if (!playWhenReady) {
+            isTransitioningFlow.value = false
+            isLoadingFlow.value = false
+        }
+        updateOverlayVisibility()
+    }
+
+    fun onPlaybackStateChanged(state: Int) {
+        playbackStateFlow.value = state
+        val isBuffering = state == Player.STATE_BUFFERING
+        isLoadingFlow.value = isBuffering
+        if (state == Player.STATE_READY) {
+            isTransitioningFlow.value = false
+            errorMessageFlow.value = null
+        }
+        updateOverlayVisibility()
+    }
+
+    fun onPlayerError(error: String) {
+        isLoadingFlow.value = false
+        isTransitioningFlow.value = false
+        errorMessageFlow.value = error
+        updateOverlayVisibility()
+    }
+
+    private fun notifyTransitionStarted() {
+        isTransitioningFlow.value = true
+        isLoadingFlow.value = true
+        errorMessageFlow.value = null
+        updateOverlayVisibility()
     }
 
     private fun canDrawOverlay(): Boolean {
@@ -236,20 +328,9 @@ class DynamicIslandOverlayManager(
     fun setOverlayExpanded(expanded: Boolean) {
         if (isOverlayExpanded == expanded) return
         isOverlayExpanded = expanded
-        val view = composeView ?: return
-        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
-        val density = context.resources.displayMetrics.density
-
         if (expanded) {
-            // Allocate the exact compact expanded dimensions upfront (305dp x 120dp)
-            // so Compose expands with 0 IPC relayout calls and 0 SurfaceFlinger buffer reallocations
-            params.width = (305 * density).toInt()
-            params.height = (120 * density).toInt()
-            try {
-                windowManager.updateViewLayout(view, params)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            updateUpcomingTracks()
+            adjustExpandedDimensions()
         } else {
             // Wait for Compose spring contraction (~260ms) to complete before shrinking window
             scope.launch {
@@ -259,6 +340,7 @@ class DynamicIslandOverlayManager(
                     val currentParams = currentView.layoutParams as? WindowManager.LayoutParams ?: return@launch
                     currentParams.width = WindowManager.LayoutParams.WRAP_CONTENT
                     currentParams.height = WindowManager.LayoutParams.WRAP_CONTENT
+                    currentParams.y = getCollapsedY()
                     try {
                         windowManager.updateViewLayout(currentView, currentParams)
                     } catch (e: Exception) {
@@ -266,6 +348,77 @@ class DynamicIslandOverlayManager(
                     }
                 }
             }
+        }
+    }
+
+    private fun adjustExpandedDimensions() {
+        val view = composeView ?: return
+        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
+        val density = context.resources.displayMetrics.density
+        val screenWidth = context.resources.displayMetrics.widthPixels
+        val isLandscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val hasUpcoming = upcomingTracksFlow.value.isNotEmpty()
+
+        val targetWidthDp = ((screenWidth / density) - 20).coerceIn(310f, 356f)
+        val targetHeightDp = if (hasUpcoming) {
+            if (isLandscape) 180f else 208f
+        } else {
+            if (isLandscape) 130f else 148f
+        }
+        params.width = (targetWidthDp * density).toInt()
+        params.height = (targetHeightDp * density).toInt()
+        params.y = getCollapsedY()
+        try {
+            windowManager.updateViewLayout(view, params)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun updateUpcomingTracks() {
+        val player = playerProvider() ?: run {
+            upcomingTracksFlow.value = emptyList()
+            return
+        }
+        try {
+            val list = mutableListOf<Pair<Int, Song>>()
+            val count = player.mediaItemCount
+            val timeline = player.currentTimeline
+            val curIdx = player.currentMediaItemIndex
+
+            if (curIdx != C.INDEX_UNSET && count > 0) {
+                if (!timeline.isEmpty) {
+                    var idx = curIdx
+                    val visited = mutableSetOf(curIdx)
+                    for (step in 0 until 4) {
+                        idx = timeline.getNextWindowIndex(
+                            idx,
+                            player.repeatMode,
+                            player.shuffleModeEnabled,
+                        )
+                        if (idx == C.INDEX_UNSET || !visited.add(idx) || idx !in 0 until count) {
+                            break
+                        }
+                        val item = player.getMediaItemAt(idx)
+                        list.add(idx to item.toSong())
+                    }
+                } else {
+                    val nextIndex = player.nextMediaItemIndex
+                    if (nextIndex != C.INDEX_UNSET) {
+                        val end = (nextIndex + 3).coerceAtMost(count - 1)
+                        for (i in nextIndex..end) {
+                            val item = player.getMediaItemAt(i)
+                            list.add(i to item.toSong())
+                        }
+                    }
+                }
+            }
+            upcomingTracksFlow.value = list
+            if (isOverlayExpanded) {
+                adjustExpandedDimensions()
+            }
+        } catch (_: Throwable) {
+            upcomingTracksFlow.value = emptyList()
         }
     }
 
@@ -281,19 +434,35 @@ class DynamicIslandOverlayManager(
             return
         }
 
-        // Ensure the overlay view is attached and pre-warmed in memory
-        ensureOverlayAttached()
-
         val inForeground = isAppInForegroundFlow.value
         val isPlaying = isPlayingFlow.value
+        val isLoading = isLoadingFlow.value
+        val isTransitioning = isTransitioningFlow.value
+        val playWhenReady = playWhenReadyFlow.value
+        val playbackState = playbackStateFlow.value
         val hasSong = currentSongFlow.value != null
         val dismissed = isDismissedByUserFlow.value
+        val hasError = errorMessageFlow.value != null
 
-        val shouldShow = !inForeground && isPlaying && hasSong && !dismissed
-        if (!shouldShow && isOverlayExpanded) {
-            setOverlayExpanded(false)
-        }
+        // Playback is active while playing, buffering, transitioning to next track,
+        // or playWhenReady is true and not ended/idle, or during an error retry state.
+        val isPlaybackActive = isPlaying ||
+            isLoading ||
+            isTransitioning ||
+            (playWhenReady && playbackState != Player.STATE_ENDED && playbackState != Player.STATE_IDLE) ||
+            hasError
+
+        val shouldShow = !inForeground && hasSong && !dismissed && isPlaybackActive
         shouldShowFlow.value = shouldShow
+
+        if (shouldShow) {
+            ensureOverlayAttached()
+        } else {
+            if (isOverlayExpanded) {
+                setOverlayExpanded(false)
+            }
+            detachOverlay()
+        }
     }
 
     private fun ensureOverlayAttached() {
@@ -315,8 +484,10 @@ class DynamicIslandOverlayManager(
                 PixelFormat.TRANSLUCENT,
             ).apply {
                 gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                val statusBarHeight = getStatusBarHeight()
-                y = (statusBarHeight / 3).coerceAtLeast(8)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+                y = getCollapsedY()
             }
 
             val view = ComposeView(context).apply {
@@ -330,8 +501,12 @@ class DynamicIslandOverlayManager(
                             shouldShowFlow = shouldShowFlow,
                             songFlow = currentSongFlow,
                             isPlayingFlow = isPlayingFlow,
+                            isLoadingFlow = isLoadingFlow,
+                            isTransitioningFlow = isTransitioningFlow,
+                            errorMessageFlow = errorMessageFlow,
                             positionFlow = currentPositionFlow,
                             durationFlow = durationMsFlow,
+                            upcomingTracksFlow = upcomingTracksFlow,
                             onExpandedChanged = { isExp ->
                                 setOverlayExpanded(isExp)
                             },
@@ -339,14 +514,29 @@ class DynamicIslandOverlayManager(
                                 playerProvider()?.seekTo(targetMs)
                                 currentPositionFlow.value = targetMs
                             },
+                            onTrackClick = { queueIndex ->
+                                val player = playerProvider() ?: return@SystemDynamicIslandRoot
+                                notifyTransitionStarted()
+                                player.seekToDefaultPosition(queueIndex)
+                                player.play()
+                            },
                             onPlayPause = {
                                 val player = playerProvider() ?: return@SystemDynamicIslandRoot
-                                if (player.isPlaying) player.pause() else player.play()
+                                if (errorMessageFlow.value != null) {
+                                    errorMessageFlow.value = null
+                                    isLoadingFlow.value = true
+                                    player.prepare()
+                                    player.play()
+                                } else {
+                                    if (player.isPlaying) player.pause() else player.play()
+                                }
                             },
                             onNext = {
+                                notifyTransitionStarted()
                                 playerProvider()?.seekToNextMediaItem()
                             },
                             onPrevious = {
+                                notifyTransitionStarted()
                                 playerProvider()?.seekToPreviousMediaItem()
                             },
                             onDismiss = {
@@ -390,15 +580,22 @@ class DynamicIslandOverlayManager(
         scope.cancel()
     }
 
+    private fun getCollapsedY(): Int {
+        val isLandscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        if (isLandscape) return 8
+        val statusBarHeight = getStatusBarHeight()
+        return (statusBarHeight * 0.28f).toInt().coerceAtLeast(6)
+    }
+
     private fun getStatusBarHeight(): Int {
         val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
-        return if (resourceId > 0) context.resources.getDimensionPixelSize(resourceId) else 72
+        return if (resourceId > 0) context.resources.getDimensionPixelSize(resourceId) else (28 * context.resources.displayMetrics.density).toInt()
     }
 }
 
 /**
  * Root Composable wrapping the dynamic island inside an AnimatedVisibility container.
- * Pre-warmed composition guarantees 0ms delay and instant spring animations.
+ * Features OxygenOS 15 liquid-glass materials, subtle diffuse glow, and spring animations.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -406,10 +603,15 @@ private fun SystemDynamicIslandRoot(
     shouldShowFlow: MutableStateFlow<Boolean>,
     songFlow: MutableStateFlow<Song?>,
     isPlayingFlow: MutableStateFlow<Boolean>,
+    isLoadingFlow: MutableStateFlow<Boolean>,
+    isTransitioningFlow: MutableStateFlow<Boolean>,
+    errorMessageFlow: MutableStateFlow<String?>,
     positionFlow: MutableStateFlow<Long>,
     durationFlow: MutableStateFlow<Long>,
+    upcomingTracksFlow: MutableStateFlow<List<Pair<Int, Song>>>,
     onExpandedChanged: (Boolean) -> Unit,
     onSeek: (Long) -> Unit,
+    onTrackClick: (Int) -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -419,10 +621,36 @@ private fun SystemDynamicIslandRoot(
     val shouldShow by shouldShowFlow.collectAsState()
     val song by songFlow.collectAsState()
     val isPlaying by isPlayingFlow.collectAsState()
+    val isLoading by isLoadingFlow.collectAsState()
+    val isTransitioning by isTransitioningFlow.collectAsState()
+    val errorMessage by errorMessageFlow.collectAsState()
+
     val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
 
-    // If dismissed or hidden, reset expanded mode and shrink window
+    val effectiveLoading = (isLoading || isTransitioning) && !isPlaying
+
+    // Respect system reduced-motion settings
+    val isReducedMotion = remember(context) {
+        try {
+            val animatorScale = Settings.Global.getFloat(
+                context.contentResolver,
+                Settings.Global.ANIMATOR_DURATION_SCALE,
+                1.0f,
+            )
+            val transitionScale = Settings.Global.getFloat(
+                context.contentResolver,
+                Settings.Global.TRANSITION_ANIMATION_SCALE,
+                1.0f,
+            )
+            animatorScale == 0f || transitionScale == 0f
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    // Reset expanded mode when hidden
     androidx.compose.runtime.LaunchedEffect(shouldShow) {
         if (!shouldShow && expanded) {
             expanded = false
@@ -432,72 +660,113 @@ private fun SystemDynamicIslandRoot(
 
     AnimatedVisibility(
         visible = shouldShow && song != null,
-        enter = slideInVertically(
-            animationSpec = spring(
-                dampingRatio = 0.72f,
-                stiffness = 420f,
-            ),
-        ) { -it * 2 } + fadeIn(tween(140)) + scaleIn(
-            initialScale = 0.78f,
-            animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
-        ),
-        exit = slideOutVertically(
-            animationSpec = tween(160, easing = FastOutSlowInEasing),
-        ) { -it * 2 } + fadeOut(tween(120)) + scaleOut(
-            targetScale = 0.78f,
-            animationSpec = tween(150),
-        ),
+        enter = if (isReducedMotion) {
+            fadeIn(tween(120))
+        } else {
+            slideInVertically(
+                animationSpec = spring(
+                    dampingRatio = 0.84f,
+                    stiffness = 420f,
+                ),
+            ) { -it * 2 } + fadeIn(tween(180)) + scaleIn(
+                initialScale = 0.80f,
+                animationSpec = spring(dampingRatio = 0.84f, stiffness = 420f),
+            )
+        },
+        exit = if (isReducedMotion) {
+            fadeOut(tween(100))
+        } else {
+            slideOutVertically(
+                animationSpec = tween(160, easing = FastOutSlowInEasing),
+            ) { -it * 2 } + fadeOut(tween(130)) + scaleOut(
+                targetScale = 0.80f,
+                animationSpec = tween(140),
+            )
+        },
     ) {
         val currentSong = song ?: return@AnimatedVisibility
         val artworkModel = remember(currentSong.videoId) {
-            currentSong.artworkAt(160) ?: currentSong.thumbnailUrl
+            currentSong.artworkAt(200) ?: currentSong.thumbnailUrl
         }
         val palette = rememberArtworkPalette(
-            imageUrl = currentSong.artworkAt(160) ?: currentSong.thumbnailUrl,
+            imageUrl = currentSong.artworkAt(200) ?: currentSong.thumbnailUrl,
             dark = true,
         )
 
-        // Track vertical drag accumulation for swipe-up detection
         var dragAccumulator by remember { mutableFloatStateOf(0f) }
 
         val cornerRadius by animateDpAsState(
-            targetValue = if (expanded) 24.dp else 20.dp,
-            animationSpec = spring(
-                dampingRatio = 0.82f,
-                stiffness = 450f,
+            targetValue = if (expanded) 26.dp else 22.dp,
+            animationSpec = if (isReducedMotion) tween(80) else spring(
+                dampingRatio = 0.84f,
+                stiffness = 420f,
             ),
             label = "overlayCornerRadius",
         )
         val shape = RoundedCornerShape(cornerRadius)
 
+        // OxygenOS liquid glass dynamic background: dark translucent surface with fine edge highlight and restrained artwork glow
+        val glassBackground = remember(palette.accent, expanded) {
+            if (expanded) {
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xF2121522),
+                        Color(0xEA0D0F18),
+                        Color(0xF0090A10),
+                    ),
+                )
+            } else {
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xEC12141F),
+                        Color(0xE80A0B10),
+                        palette.accent.copy(alpha = 0.16f),
+                    ),
+                )
+            }
+        }
+        val glassBorder = remember(palette.accent, expanded) {
+            if (expanded) {
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.36f),
+                        palette.accent.copy(alpha = 0.25f),
+                        Color.White.copy(alpha = 0.08f),
+                    ),
+                )
+            } else {
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.08f),
+                        palette.accent.copy(alpha = 0.22f),
+                    ),
+                )
+            }
+        }
+
         Box(
             modifier = Modifier
                 .padding(horizontal = 4.dp)
                 .shadow(
-                    elevation = 12.dp,
+                    elevation = if (expanded) 16.dp else 12.dp,
                     shape = shape,
                     ambientColor = Color.Black.copy(alpha = 0.85f),
-                    spotColor = palette.accent.copy(alpha = 0.40f),
+                    spotColor = palette.accent.copy(alpha = 0.45f),
                 )
                 .clip(shape)
-                .background(Color(0xFF000000))
+                .background(glassBackground)
                 .border(
                     width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.22f),
-                            Color.White.copy(alpha = 0.05f),
-                        ),
-                    ),
+                    brush = glassBorder,
                     shape = shape,
                 )
                 .animateContentSize(
-                    animationSpec = spring(
-                        dampingRatio = 0.82f,
-                        stiffness = 450f,
+                    animationSpec = if (isReducedMotion) tween(100) else spring(
+                        dampingRatio = 0.84f,
+                        stiffness = 420f,
                     ),
                 )
-                // Use non-blocking draggable for swipe-up dismiss so taps are never delayed
                 .draggable(
                     state = rememberDraggableState { delta ->
                         dragAccumulator += delta
@@ -522,17 +791,16 @@ private fun SystemDynamicIslandRoot(
                 // Subtle swipe up indicator notch pill at top
                 Box(
                     modifier = Modifier
-                        .padding(top = 2.dp)
-                        .width(24.dp)
+                        .padding(top = 3.dp)
+                        .width(26.dp)
                         .height(2.5.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.25f)),
+                        .background(Color.White.copy(alpha = 0.22f)),
                 )
 
-                // High-performance Crossfade for zero dual-tree measurement overhead
                 Crossfade(
                     targetState = expanded,
-                    animationSpec = tween(140, easing = FastOutSlowInEasing),
+                    animationSpec = if (isReducedMotion) tween(90) else tween(160, easing = FastOutSlowInEasing),
                     label = "DynamicIslandCrossfade",
                 ) { isExp ->
                     if (isExp) {
@@ -541,9 +809,14 @@ private fun SystemDynamicIslandRoot(
                             artworkModel = artworkModel,
                             palette = palette,
                             isPlaying = isPlaying,
+                            isLoading = effectiveLoading,
+                            errorMessage = errorMessage,
+                            isReducedMotion = isReducedMotion,
                             positionFlow = positionFlow,
                             durationFlow = durationFlow,
+                            upcomingTracksFlow = upcomingTracksFlow,
                             onSeek = onSeek,
+                            onTrackClick = onTrackClick,
                             onPlayPause = onPlayPause,
                             onNext = onNext,
                             onPrevious = onPrevious,
@@ -560,6 +833,8 @@ private fun SystemDynamicIslandRoot(
                             artworkModel = artworkModel,
                             palette = palette,
                             isPlaying = isPlaying,
+                            isLoading = effectiveLoading,
+                            isReducedMotion = isReducedMotion,
                             onExpand = {
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 onExpandedChanged(true)
@@ -573,24 +848,34 @@ private fun SystemDynamicIslandRoot(
     }
 }
 
+/**
+ * Compact state: translucent dark capsule with mini artwork, song title, artist,
+ * and animated equalizer/spinner. Tapping anywhere on the capsule smoothly expands it.
+ */
 @Composable
 private fun CompactOverlayPill(
     song: Song,
     artworkModel: Any?,
     palette: ArtworkPalette,
     isPlaying: Boolean,
+    isLoading: Boolean,
+    isReducedMotion: Boolean,
     onExpand: () -> Unit,
 ) {
     val transition = rememberInfiniteTransition(label = "overlayArtSpin")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(12000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "artSpin",
-    )
+    val rotation by if (!isReducedMotion && isPlaying) {
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(14000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "artSpin",
+        )
+    } else {
+        remember { mutableFloatStateOf(0f) }
+    }
 
     Row(
         modifier = Modifier
@@ -599,26 +884,27 @@ private fun CompactOverlayPill(
                 indication = null,
                 onClick = onExpand,
             )
-            .padding(start = 7.dp, end = 8.dp, top = 3.dp, bottom = 5.dp)
+            .padding(start = 7.dp, end = 10.dp, top = 4.dp, bottom = 4.dp)
             .height(36.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        // Thumbnail
+        // Thumbnail with squircle corner radius
         AsyncImage(
             model = artworkModel,
             contentDescription = null,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(28.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF222222))
-                .then(if (isPlaying) Modifier.rotate(rotation) else Modifier),
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF1E202B))
+                .border(0.75.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(8.dp))
+                .then(if (isPlaying && !isReducedMotion) Modifier.rotate(rotation) else Modifier),
         )
 
-        // Song title & artist - tapping expands into full card
+        // Song title & artist
         Column(
-            modifier = Modifier
-                .widthIn(min = 60.dp, max = 110.dp),
+            modifier = Modifier.widthIn(min = 60.dp, max = 118.dp),
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
@@ -636,94 +922,94 @@ private fun CompactOverlayPill(
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 9.5.sp,
                 ),
-                color = Color.White.copy(alpha = 0.65f),
+                color = Color.White.copy(alpha = 0.68f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
 
-        // Kinetic Audio Equalizer tinted with the artwork's accent color
-        OverlayEqualizer(
-            isPlaying = isPlaying,
-            barColor = palette.accent,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
+        // Kinetic Audio Equalizer or Loading Spinner
+        if (isLoading) {
+            CircularProgressIndicator(
+                color = palette.accent,
+                strokeWidth = 2.dp,
+                modifier = Modifier
+                    .size(15.dp)
+                    .padding(horizontal = 2.dp),
+            )
+        } else {
+            OverlayEqualizer(
+                isPlaying = isPlaying,
+                barColor = palette.accent,
+                isReducedMotion = isReducedMotion,
+                modifier = Modifier.padding(horizontal = 2.dp),
+            )
+        }
     }
 }
 
-
+/**
+ * Expanded OxygenOS-inspired media card with large artwork, scrub progress bar,
+ * playback controls, and smooth collapse on header/capsule tap without extra arrows.
+ */
 @Composable
 private fun ExpandedOverlayCard(
     song: Song,
     artworkModel: Any?,
     palette: ArtworkPalette,
     isPlaying: Boolean,
+    isLoading: Boolean,
+    errorMessage: String?,
+    isReducedMotion: Boolean,
     positionFlow: MutableStateFlow<Long>,
     durationFlow: MutableStateFlow<Long>,
+    upcomingTracksFlow: MutableStateFlow<List<Pair<Int, Song>>>,
     onSeek: (Long) -> Unit,
+    onTrackClick: (Int) -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onCollapse: () -> Unit,
     onOpenApp: () -> Unit,
 ) {
-    // Dynamic theme colors extracted from album artwork (matching NowPlayingScreen)
     val accentColor = palette.accent
-    val sliderActiveColor = accentColor
-    val sliderInactiveColor = remember(accentColor) {
-        accentColor.copy(alpha = 0.24f)
-    }
-
-    // Play/Pause central squircle button background: rich jewel-toned accent
-    val playButtonBg = remember(accentColor) {
-        val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(accentColor.toArgb(), hsv)
-        hsv[1] = (hsv[1] * 0.70f).coerceIn(0.35f, 0.75f)
-        hsv[2] = 0.42f
-        Color(android.graphics.Color.HSVToColor(hsv))
-    }
-
-    // Prev & Next circular buttons background: subtle tinted dark
-    val sideButtonBg = remember(accentColor) {
-        val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(accentColor.toArgb(), hsv)
-        hsv[1] = (hsv[1] * 0.30f).coerceIn(0.08f, 0.25f)
-        hsv[2] = 0.22f
-        Color(android.graphics.Color.HSVToColor(hsv))
-    }
+    val upcomingTracks by upcomingTracksFlow.collectAsState()
 
     Column(
         modifier = Modifier
-            .width(295.dp)
-            .padding(start = 12.dp, end = 12.dp, top = 5.dp, bottom = 8.dp),
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onCollapse,
+            )
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        // Top row: Circular artwork with glowing ring, track title, artist, and collapse button
+        // Top section: Squircle Artwork, Track Info, and Top-Right Collapse Button
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onOpenApp)
-                .padding(vertical = 1.dp),
+                .padding(vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Circular album art with dynamic glowing border ring
+            // Squircle album art with glowing border ring - tapping opens full player in app
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .border(1.dp, accentColor.copy(alpha = 0.65f), CircleShape)
-                    .padding(2.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF1E1E1E)),
+                    .size(44.dp)
+                    .shadow(4.dp, RoundedCornerShape(12.dp), spotColor = accentColor.copy(alpha = 0.40f))
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF1E202B))
+                    .border(1.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(12.dp))
+                    .clickable(onClick = onOpenApp),
                 contentAlignment = Alignment.Center,
             ) {
                 AsyncImage(
                     model = artworkModel,
                     contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
 
@@ -735,125 +1021,253 @@ private fun ExpandedOverlayCard(
                     text = song.title,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.5.sp,
+                        fontSize = 13.5.sp,
                     ),
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = song.artist,
+                    text = if (errorMessage != null) "Failed to load · Tap Play to retry" else song.artist,
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 10.5.sp,
+                        fontSize = 11.sp,
+                        fontWeight = if (errorMessage != null) FontWeight.Medium else FontWeight.Normal,
                     ),
-                    color = Color.White.copy(alpha = 0.65f),
+                    color = if (errorMessage != null) accentColor else Color.White.copy(alpha = 0.70f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
 
-            // Collapse icon
+            // Top-right collapse button pointing UP
             IconButton(
                 onClick = onCollapse,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.10f))
+                    .border(0.75.dp, Color.White.copy(alpha = 0.18f), CircleShape),
             ) {
                 Icon(
                     imageVector = Icons.Rounded.KeyboardArrowUp,
-                    contentDescription = "Collapse Island",
-                    tint = Color.White.copy(alpha = 0.7f),
+                    contentDescription = "Collapse music player",
+                    tint = Color.White,
                     modifier = Modifier.size(18.dp),
                 )
             }
         }
 
-        // Sleek Player Progress Slider with colors dynamically matched to artwork
-        OverlayPlayerSlider(
+        // Slim interactive progress bar with elapsed and remaining time
+        OverlayProgressBar(
             positionFlow = positionFlow,
             durationFlow = durationFlow,
-            activeColor = sliderActiveColor,
-            inactiveColor = sliderInactiveColor,
+            accentColor = accentColor,
             onSeek = onSeek,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp),
         )
 
-        // Control Buttons Row (circular prev, squircle pill play/pause, circular next)
+        // Playback controls row: Audio visualizer on left, centered Previous/Play/Next, open-in-app button on right
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            // Previous button (circular with subtle artwork tint)
+            // Left: live audio visualizer or loading indicator
             Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(sideButtonBg)
-                    .clickable(onClick = onPrevious),
+                modifier = Modifier.size(36.dp),
                 contentAlignment = Alignment.Center,
             ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        color = accentColor,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(16.dp),
+                    )
+                } else {
+                    OverlayEqualizer(
+                        isPlaying = isPlaying,
+                        barColor = accentColor,
+                        isReducedMotion = isReducedMotion,
+                    )
+                }
+            }
+
+            // Center controls: Previous, Play/Pause pill, Next
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                IconButton(
+                    onClick = onPrevious,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.08f)),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.SkipPrevious,
+                        contentDescription = "Previous",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+
+                // Frosted jewel glass Play/Pause button
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .shadow(6.dp, CircleShape, spotColor = accentColor.copy(alpha = 0.50f))
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    accentColor.copy(alpha = 0.40f),
+                                    Color.White.copy(alpha = 0.15f),
+                                ),
+                            ),
+                        )
+                        .border(
+                            1.dp,
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.35f),
+                                    Color.White.copy(alpha = 0.10f),
+                                ),
+                            ),
+                            CircleShape,
+                        )
+                        .clickable(onClick = onPlayPause),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onNext,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.08f)),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.SkipNext,
+                        contentDescription = "Next",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+
+            // Right: Launch Dhvani app button
+            IconButton(
+                onClick = onOpenApp,
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.08f)),
+            ) {
                 Icon(
-                    imageVector = Icons.Rounded.SkipPrevious,
-                    contentDescription = "Previous",
-                    tint = Color.White,
+                    imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                    contentDescription = "Open Dhvani App",
+                    tint = Color.White.copy(alpha = 0.85f),
                     modifier = Modifier.size(18.dp),
                 )
             }
+        }
 
-            Spacer(Modifier.width(14.dp))
-
-            // Play / Pause button (compact squircle pill with rich artwork accent tint)
-            Box(
-                modifier = Modifier
-                    .width(52.dp)
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(playButtonBg)
-                    .clickable(onClick = onPlayPause),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-
-            Spacer(Modifier.width(14.dp))
-
-            // Next button (circular with subtle artwork tint)
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(sideButtonBg)
-                    .clickable(onClick = onNext),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.SkipNext,
-                    contentDescription = "Next",
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
+        // "Up Next" upcoming tracks row directly below playback controls: 54dp square thumbnails only
+        if (upcomingTracks.isNotEmpty()) {
+            OverlayUpcomingQueueRow(
+                upcomingTracks = upcomingTracks,
+                accentColor = accentColor,
+                onTrackClick = onTrackClick,
+            )
         }
     }
 }
 
 /**
- * Sleek interactive player slider bar matching iOS Dynamic Island aesthetics.
+ * Up Next row directly below playback controls showing up to 4 upcoming tracks as artwork-only square thumbnails (54dp).
+ * No song titles, artist names, captions, or placeholder images.
+ * If fewer than four tracks are queued, shows only those available.
+ * Tapping a cover plays that song and updates the queue.
+ */
+@Composable
+private fun OverlayUpcomingQueueRow(
+    upcomingTracks: List<Pair<Int, Song>>,
+    accentColor: Color,
+    onTrackClick: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val items = upcomingTracks.take(4)
+    if (items.isEmpty()) return
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        items.forEach { (queueIndex, song) ->
+            UpcomingCoverArt(
+                song = song,
+                accentColor = accentColor,
+                onClick = { onTrackClick(queueIndex) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun UpcomingCoverArt(
+    song: Song,
+    accentColor: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(54.dp)
+            .shadow(4.dp, RoundedCornerShape(12.dp), spotColor = accentColor.copy(alpha = 0.35f))
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF1E202B))
+            .border(0.75.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = song.artworkAt(200) ?: song.thumbnailUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+/**
+ * Interactive player slider bar matching OxygenOS 15 aesthetics.
  * Uses dynamic colors extracted from the current song's album artwork.
  * Isolates progress updates to this composable to avoid parent recompositions.
  */
 @Composable
-private fun OverlayPlayerSlider(
+private fun OverlayProgressBar(
     positionFlow: MutableStateFlow<Long>,
     durationFlow: MutableStateFlow<Long>,
-    activeColor: Color,
-    inactiveColor: Color,
+    accentColor: Color,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -861,7 +1275,7 @@ private fun OverlayPlayerSlider(
     val durationMs by durationFlow.collectAsState()
 
     var draggingFraction by remember { mutableFloatStateOf(-1f) }
-    val progress = remember(positionMs, durationMs, draggingFraction) {
+    val progressFraction = remember(positionMs, durationMs, draggingFraction) {
         if (draggingFraction >= 0f) {
             draggingFraction
         } else if (durationMs > 0L) {
@@ -873,67 +1287,123 @@ private fun OverlayPlayerSlider(
 
     var sliderWidthPx by remember { mutableFloatStateOf(1f) }
 
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(14.dp)
-            .onSizeChanged {
-                if (it.width > 0) {
-                    sliderWidthPx = it.width.toFloat()
-                }
-            }
-            .pointerInput(durationMs) {
-                detectTapGestures(
-                    onTap = { offset ->
-                        if (sliderWidthPx > 0f && durationMs > 0L) {
-                            val fraction = (offset.x / sliderWidthPx).coerceIn(0f, 1f)
-                            onSeek((fraction * durationMs).toLong())
-                        }
-                    },
-                )
-            }
-            .pointerInput(durationMs) {
-                detectHorizontalDragGestures(
-                    onDragStart = { offset ->
-                        if (sliderWidthPx > 0f) {
-                            draggingFraction = (offset.x / sliderWidthPx).coerceIn(0f, 1f)
-                        }
-                    },
-                    onDragEnd = {
-                        if (draggingFraction >= 0f && durationMs > 0L) {
-                            onSeek((draggingFraction * durationMs).toLong())
-                        }
-                        draggingFraction = -1f
-                    },
-                    onDragCancel = {
-                        draggingFraction = -1f
-                    },
-                    onHorizontalDrag = { change, _ ->
-                        change.consume()
-                        if (sliderWidthPx > 0f) {
-                            draggingFraction = (change.position.x / sliderWidthPx).coerceIn(0f, 1f)
-                        }
-                    },
-                )
-            },
-        contentAlignment = Alignment.CenterStart,
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // Track background (artwork-tinted inactive line)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(3.5.dp)
-                .clip(CircleShape)
-                .background(inactiveColor),
+        val displayPos = if (draggingFraction >= 0f && durationMs > 0L) {
+            (draggingFraction * durationMs).toLong()
+        } else {
+            positionMs
+        }
+
+        Text(
+            text = formatTime(displayPos),
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Medium,
+            ),
+            color = Color.White.copy(alpha = 0.65f),
         )
 
-        // Played active portion (artwork dynamic accent line)
         Box(
             modifier = Modifier
-                .fillMaxWidth(fraction = progress.coerceIn(0f, 1f))
-                .height(3.5.dp)
-                .clip(CircleShape)
-                .background(activeColor),
+                .weight(1f)
+                .height(18.dp)
+                .onSizeChanged {
+                    if (it.width > 0) sliderWidthPx = it.width.toFloat()
+                }
+                .pointerInput(durationMs) {
+                    detectTapGestures(
+                        onTap = { offset ->
+                            if (sliderWidthPx > 0f && durationMs > 0L) {
+                                val fraction = (offset.x / sliderWidthPx).coerceIn(0f, 1f)
+                                onSeek((fraction * durationMs).toLong())
+                            }
+                        },
+                    )
+                }
+                .pointerInput(durationMs) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { offset ->
+                            if (sliderWidthPx > 0f) {
+                                draggingFraction = (offset.x / sliderWidthPx).coerceIn(0f, 1f)
+                            }
+                        },
+                        onDragEnd = {
+                            if (draggingFraction >= 0f && durationMs > 0L) {
+                                onSeek((draggingFraction * durationMs).toLong())
+                            }
+                            draggingFraction = -1f
+                        },
+                        onDragCancel = {
+                            draggingFraction = -1f
+                        },
+                        onHorizontalDrag = { change, _ ->
+                            change.consume()
+                            if (sliderWidthPx > 0f) {
+                                draggingFraction = (change.position.x / sliderWidthPx).coerceIn(0f, 1f)
+                            }
+                        },
+                    )
+                },
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            // Track background
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.5.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.16f)),
+            )
+
+            // Active track fill
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction = progressFraction.coerceIn(0f, 1f))
+                    .height(3.5.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                accentColor.copy(alpha = 0.70f),
+                                accentColor,
+                            ),
+                        ),
+                    ),
+            )
+
+            // Thumb glow dot at current position
+            if (progressFraction > 0.01f) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(fraction = progressFraction.coerceIn(0f, 1f)),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .shadow(2.dp, CircleShape, spotColor = accentColor),
+                    )
+                }
+            }
+        }
+
+        val remainingMs = if (durationMs > displayPos) durationMs - displayPos else 0L
+        val remainingText = if (durationMs > 0L) "-${formatTime(remainingMs)}" else "0:00"
+
+        Text(
+            text = remainingText,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Medium,
+            ),
+            color = Color.White.copy(alpha = 0.65f),
         )
     }
 }
@@ -942,32 +1412,53 @@ private fun OverlayPlayerSlider(
 private fun OverlayEqualizer(
     isPlaying: Boolean,
     barColor: Color = Color(0xFF4CAF50),
+    isReducedMotion: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    if (isReducedMotion) {
+        Row(
+            modifier = modifier.height(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            val staticHeights = listOf(10.dp, 14.dp, 8.dp)
+            for (h in staticHeights) {
+                Box(
+                    modifier = Modifier
+                        .width(2.5.dp)
+                        .height(if (isPlaying) h else 4.dp)
+                        .clip(CircleShape)
+                        .background(barColor),
+                )
+            }
+        }
+        return
+    }
+
     val transition = rememberInfiniteTransition(label = "overlayEq")
     val h1 by transition.animateFloat(
         initialValue = 4f,
-        targetValue = 15f,
+        targetValue = 14f,
         animationSpec = infiniteRepeatable(
-            animation = tween(400, easing = FastOutSlowInEasing),
+            animation = tween(420, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "eq1",
     )
     val h2 by transition.animateFloat(
-        initialValue = 6f,
-        targetValue = 18f,
+        initialValue = 5f,
+        targetValue = 17f,
         animationSpec = infiniteRepeatable(
-            animation = tween(320, easing = FastOutSlowInEasing),
+            animation = tween(330, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "eq2",
     )
     val h3 by transition.animateFloat(
         initialValue = 3f,
-        targetValue = 14f,
+        targetValue = 12f,
         animationSpec = infiniteRepeatable(
-            animation = tween(460, easing = FastOutSlowInEasing),
+            animation = tween(470, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "eq3",
@@ -980,7 +1471,7 @@ private fun OverlayEqualizer(
     )
 
     Row(
-        modifier = modifier.height(18.dp),
+        modifier = modifier.height(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
@@ -993,6 +1484,20 @@ private fun OverlayEqualizer(
                     .background(barColor),
             )
         }
+    }
+}
+
+private fun formatTime(ms: Long): String {
+    if (ms <= 0L) return "0:00"
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return if (minutes >= 60) {
+        val hours = minutes / 60
+        val remMinutes = minutes % 60
+        "%d:%02d:%02d".format(hours, remMinutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
     }
 }
 

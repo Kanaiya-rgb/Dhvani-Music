@@ -193,7 +193,9 @@ object AudioCache {
      * it from. [SimpleCache] copes with files disappearing underneath it by
      * dropping the spans that named them.
      */
+    @Synchronized
     fun init(context: Context) {
+        if (::cache.isInitialized) return
         evictor.maxBytes = AppSettings.audioCacheLimitBytes.value
         cache = SimpleCache(
             File(context.cacheDir, "audio"),
@@ -417,13 +419,16 @@ object AudioCache {
         }
     }
 
-    private fun cacheFactory(upstream: DataSource.Factory) = CacheDataSource.Factory()
-        .setCache(cache)
-        .setUpstreamDataSourceFactory(upstream)
-        .setCacheKeyFactory(keyFactory)
-        // A cache write that fails (full disk, evicted mid-write) should drop
-        // to streaming, not surface as a playback error.
-        .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    private fun cacheFactory(upstream: DataSource.Factory): DataSource.Factory {
+        if (!::cache.isInitialized) return upstream
+        return CacheDataSource.Factory()
+            .setCache(cache)
+            .setUpstreamDataSourceFactory(upstream)
+            .setCacheKeyFactory(keyFactory)
+            // A cache write that fails (full disk, evicted mid-write) should drop
+            // to streaming, not surface as a playback error.
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
 
     /**
      * As [cacheFactory], minus [CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR] 

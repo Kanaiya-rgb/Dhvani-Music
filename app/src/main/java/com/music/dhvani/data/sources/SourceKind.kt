@@ -66,7 +66,7 @@ enum class SourceKind(
      * that exports `searchTracks()` and `getTrackStreamUrl()`. The app
      * fetches the index, loads each plugin's JS into a QuickJS sandbox,
      * and calls those functions — the same mechanism Convx uses to support
-     * services like Tidal, Qobuz, Apple Music, etc.
+     * services like Qobuz, Apple Music, etc.
      *
      * The JS runs in a sandboxed QuickJS VM with no access to the Android
      * runtime, only to a wired-in `fetch()` implementation.
@@ -74,16 +74,24 @@ enum class SourceKind(
     MODULE(
         label = "Module source",
         detail = "A URL to a compatible module index. Modules are JS plugins that " +
-            "can search and stream from services like Tidal, Qobuz, Apple Music and more.",
+            "can search and stream from services like Qobuz, Apple Music and more.",
         labels = listOf("FLAC", "Lossless", "Hi-Res", "Plugins"),
         needsServer = true,
         canServeLossless = true,
     ),
 
+    MONOCHROME(
+        label = "Monochrome Hi-Res",
+        detail = "Direct studio master FLAC streams up to 24-bit / 96 kHz.",
+        labels = listOf("FLAC", "24-bit · 96kHz", "Lossless"),
+        needsServer = false,
+        canServeLossless = true,
+        worthPrefetching = true,
+    ),
 
     JIOSAAVN(
-        label = "JioSaavn",
-        detail = "JioSaavn high-quality streams up to 320kbps AAC/MP4. A lossy fallback, tried before YouTube.",
+        label = "High Quality AAC",
+        detail = "High-quality streams up to 320kbps AAC/MP4. A lossy fallback, tried before standard Opus.",
         labels = listOf("High Quality", "320kbps"),
         needsServer = false,
         canServeLossless = false,
@@ -97,7 +105,7 @@ enum class SourceKind(
      * radio station or a related-tracks queue.
      */
     YOUTUBE(
-        label = "YouTube Music",
+        label = "Standard Opus",
         detail = "The full catalogue, at Opus up to about 171 kbps. Lossy — there is no " +
             "lossless rendition to ask for.",
         labels = listOf("Lossy", "Full catalogue", "Radio"),

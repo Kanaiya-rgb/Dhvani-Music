@@ -20,9 +20,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -43,7 +46,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -109,6 +114,7 @@ fun AudioPipelineSheet(
         animationSpec = infiniteRepeatable(tween(620, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "b4",
     )
+    var showOutputSheet by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -124,6 +130,9 @@ fun AudioPipelineSheet(
                 .clickable(onClick = onDismiss),
             contentAlignment = Alignment.BottomCenter,
         ) {
+            val configuration = LocalConfiguration.current
+            val maxSheetHeight = (configuration.screenHeightDp * 0.85f).dp
+
             Surface(
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
                 color = Color(0xFF0C0F15),
@@ -131,12 +140,15 @@ fun AudioPipelineSheet(
                 modifier = modifier
                     .fillMaxWidth()
                     .widthIn(max = 550.dp)
+                    .heightIn(max = maxSheetHeight)
                     .clickable(enabled = false) {},
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                        .padding(horizontal = 20.dp)
+                        .padding(top = 18.dp, bottom = 8.dp)
+                        .navigationBarsPadding(),
                 ) {
                     // Handle bar
                     Box(
@@ -215,23 +227,28 @@ fun AudioPipelineSheet(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .weight(1f, fill = false)
                             .verticalScroll(rememberScrollState()),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         // ================= 1. SOURCE NODE =================
+                        val srcBitrate = snapshot.source.bitrateKbps?.let { "$it kbps" } ?: "Not reported"
+                        val srcRate = snapshot.source.sampleRateHz?.let { "${it / 1000.0} kHz" } ?: "Not reported"
+                        val srcDepth = snapshot.source.bitDepth?.let { "$it-bit" } ?: "Not reported"
+
                         PipelineStageCard(
                             stageNumber = "1",
                             stageType = "SOURCE DECODER",
                             title = snapshot.source.codec,
-                            detail = "${snapshot.source.bitrateKbps ?: 256} kbps • ${snapshot.source.sampleRateHz ?: 44100} Hz / ${snapshot.source.bitDepth ?: 16}-bit",
-                            badgeText = if (snapshot.source.isHiRes) "Hi-Res" else if (snapshot.source.isLossless) "Lossless" else "VBR Audio",
+                            detail = "$srcBitrate • $srcRate / $srcDepth",
+                            badgeText = if (snapshot.source.isHiRes) "Hi-Res Lossless" else if (snapshot.source.isLossless) "Lossless" else "Compressed Audio",
                             accentColor = COLOR_SOURCE,
                             icon = Icons.Rounded.MusicNote,
                             extraMetrics = listOf(
                                 "Codec" to snapshot.source.codec,
-                                "Sample Rate" to "${(snapshot.source.sampleRateHz ?: 44100) / 1000.0} kHz",
-                                "Precision" to "${snapshot.source.bitDepth ?: 16}-bit",
-                                "Channels" to "${snapshot.source.channels} Ch (Stereo)",
+                                "Sample Rate" to srcRate,
+                                "Source Bit Depth" to srcDepth,
+                                "Channels" to (if (snapshot.source.channels > 0) "${snapshot.source.channels} Ch" else "Not reported"),
                             ),
                             trailingContent = {
                                 // Mini visualizer bars
@@ -291,6 +308,24 @@ fun AudioPipelineSheet(
                                 "Hardware Sink" to if (snapshot.output.isUsbDac) "USB Audio Class 2.0" else "AudioTrack HAL",
                                 "Latency" to "Ultra Low",
                             ),
+                            trailingContent = {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(COLOR_DAC.copy(alpha = 0.22f))
+                                        .clickable { showOutputSheet = true }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                ) {
+                                    Text(
+                                        text = "Switch",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        ),
+                                        color = Color.White,
+                                    )
+                                }
+                            },
                         )
 
                         Spacer(Modifier.height(16.dp))
@@ -346,6 +381,12 @@ fun AudioPipelineSheet(
                         Spacer(Modifier.height(16.dp))
                     }
                 }
+            }
+
+            if (showOutputSheet) {
+                AudioOutputSheet(
+                    onDismiss = { showOutputSheet = false },
+                )
             }
         }
     }

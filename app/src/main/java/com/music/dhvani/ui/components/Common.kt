@@ -131,6 +131,80 @@ fun LanguageBadgePill(
 }
 
 /**
+ * Compact audio quality badge pill (Hi-Res, Lossless, FLAC) displayed beside song titles.
+ * Displayed only when the track's confirmed source metadata verifies the format.
+ */
+@Composable
+fun AudioQualityBadgePill(
+    quality: String,
+    modifier: Modifier = Modifier,
+) {
+    val (bgColor, textColor, borderColor) = when (quality.uppercase(Locale.ROOT)) {
+        "HI-RES" -> Triple(
+            Color(0xFFFBBF24).copy(alpha = 0.16f),
+            Color(0xFFFBBF24),
+            Color(0xFFFBBF24).copy(alpha = 0.45f),
+        )
+        "LOSSLESS" -> Triple(
+            Color(0xFF2DD4BF).copy(alpha = 0.16f),
+            Color(0xFF2DD4BF),
+            Color(0xFF2DD4BF).copy(alpha = 0.45f),
+        )
+        "FLAC" -> Triple(
+            Color(0xFF38BDF8).copy(alpha = 0.16f),
+            Color(0xFF38BDF8),
+            Color(0xFF38BDF8).copy(alpha = 0.45f),
+        )
+        else -> Triple(
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.38f),
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(bgColor)
+            .border(
+                0.6.dp,
+                borderColor,
+                RoundedCornerShape(4.dp),
+            )
+            .padding(horizontal = 4.5.dp, vertical = 1.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = quality,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.3.sp,
+            ),
+            color = textColor,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * Returns a confirmed quality badge label ("Hi-Res", "Lossless", "FLAC") only when
+ * the track's exact audio-source metadata confirms it. Returns null if unknown.
+ */
+fun getAudioQualityBadge(song: Song): String? {
+    val sq = song.sourceQuality?.uppercase(Locale.ROOT)
+    return when {
+        sq != null && (sq.contains("HI-RES") || sq.contains("HI_RES") || sq.contains("HIRES") || sq.contains("24-BIT")) -> "Hi-Res"
+        sq != null && sq.contains("FLAC") -> "FLAC"
+        sq != null && (sq.contains("LOSSLESS") || sq.contains("ALAC") || sq.contains("WAV")) -> "Lossless"
+        song.localPath?.endsWith(".flac", ignoreCase = true) == true || song.localUri?.endsWith(".flac", ignoreCase = true) == true -> "FLAC"
+        song.localPath?.endsWith(".wav", ignoreCase = true) == true || song.localUri?.endsWith(".wav", ignoreCase = true) == true -> "Lossless"
+        song.localPath?.endsWith(".alac", ignoreCase = true) == true || song.localUri?.endsWith(".alac", ignoreCase = true) == true -> "Lossless"
+        else -> null
+    }
+}
+
+/**
  * The left and right inset every page's content sits at.
  *
  * It is the same inset the mini player and the tab bar float at, so the edge of
@@ -287,6 +361,7 @@ fun SongRow(
      * kind of thing that reads as pasted on.
      */
     downloadedTint: Color? = MaterialTheme.colorScheme.primary,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val haptics = rememberHaptics()
     val swipeStateHolder = remember { mutableStateOf<SwipeToDismissBoxState?>(null) }
@@ -309,7 +384,7 @@ fun SongRow(
     swipeStateHolder.value = swipeState
 
     if (onSwipeToQueue == null) {
-        SongRowContent(song, onClick, onLongPress, modifier, trackNumber, subtitleColor, downloadedTint)
+        SongRowContent(song, onClick, onLongPress, modifier, trackNumber, subtitleColor, downloadedTint, trailingContent)
         return
     }
 
@@ -350,6 +425,7 @@ fun SongRow(
             trackNumber = trackNumber,
             subtitleColor = subtitleColor,
             downloadedTint = downloadedTint,
+            trailingContent = trailingContent,
         )
     }
 }
@@ -411,6 +487,7 @@ private fun SongRowContent(
     trackNumber: Int? = null,
     subtitleColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     downloadedTint: Color? = MaterialTheme.colorScheme.primary,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -446,6 +523,9 @@ private fun SongRowContent(
             val detectedLang = remember(song.title, song.artist, song.albumName) {
                 detectSongLanguage(song.title, song.artist, song.albumName)
             }
+            val qualityBadge = remember(song.sourceQuality, song.localPath, song.localUri) {
+                getAudioQualityBadge(song)
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -458,6 +538,9 @@ private fun SongRowContent(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
+                if (qualityBadge != null) {
+                    AudioQualityBadgePill(quality = qualityBadge)
+                }
                 if (detectedLang != null) {
                     LanguageBadgePill(detectedLang)
                 }
@@ -491,7 +574,9 @@ private fun SongRowContent(
             )
         }
         // Same sheet the long-press opens, for anyone who doesn't think to hold.
-        if (onLongPress != null) {
+        if (trailingContent != null) {
+            trailingContent()
+        } else if (onLongPress != null) {
             Box(
                 modifier = Modifier
                     .size(36.dp)

@@ -93,6 +93,17 @@ import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.artworkAt
 import com.music.dhvani.data.model.durationMillis
 import com.music.dhvani.download.DownloadedCollection
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.dhvani.download.DownloadFormatters
+import com.music.dhvani.download.DownloadProgress
+import com.music.dhvani.download.DownloadSession
+import com.music.dhvani.download.Downloads
+import com.music.dhvani.ui.components.DownloadManagerSheet
 import com.music.dhvani.ui.components.MessageState
 import com.music.dhvani.ui.components.PAGE_GUTTER
 import com.music.dhvani.ui.components.ROW_DIVIDER_INSET
@@ -121,6 +132,7 @@ private const val LOCAL_TAB_ALBUMS = 2
  * the tab bar stays visible and Back returns to the grid rather than leaving
  * the screen.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocalMusicScreen(
     title: String = "Downloads",
@@ -163,6 +175,7 @@ fun LocalMusicScreen(
 ) {
     // Which top-level tab is selected.
     var selectedTab by rememberSaveable { mutableIntStateOf(LOCAL_TAB_SONGS) }
+    var showDownloadManager by remember { mutableStateOf(false) }
 
     // Narrows whichever tab is showing — songs by title/artist/album, artists
     // and albums by name. Not saved across process death: a filter left on a
@@ -365,20 +378,51 @@ fun LocalMusicScreen(
                 }
 
                 key == "tab:$LOCAL_TAB_SONGS" -> {
+                    val downloadSession by DownloadSession.state.collectAsStateWithLifecycle()
                     if (songs.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(bodyContentPadding),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            DhvaniOfflineBanner(
-                                songCount = 0,
-                                totalDurationMs = 0L,
-                                onExplore = onExplore ?: {},
-                                onImport = onImport,
-                                onBack = onBack ?: {},
-                            )
+                        if (downloadSession.busy) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(bodyContentPadding),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                ActiveDownloadBanner(
+                                    session = downloadSession,
+                                    onOpenManager = { showDownloadManager = true },
+                                    onCancel = { Downloads.cancel(it) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
+                                )
+                                Box(
+                                    modifier = Modifier.weight(1f),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    DhvaniOfflineBanner(
+                                        songCount = 0,
+                                        totalDurationMs = 0L,
+                                        onExplore = onExplore ?: {},
+                                        onImport = onImport,
+                                        onBack = onBack ?: {},
+                                    )
+                                }
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(bodyContentPadding),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                DhvaniOfflineBanner(
+                                    songCount = 0,
+                                    totalDurationMs = 0L,
+                                    onExplore = onExplore ?: {},
+                                    onImport = onImport,
+                                    onBack = onBack ?: {},
+                                )
+                            }
                         }
                     } else {
                         val filteredSongs = remember(songs, searchQuery) {
@@ -398,6 +442,7 @@ fun LocalMusicScreen(
                                 onSongLongPress = onSongLongPress,
                                 onSongSwipe = onSongSwipe,
                                 onShuffle = onShuffle,
+                                onOpenDownloadManager = { showDownloadManager = true },
                                 contentPadding = bodyContentPadding,
                             )
                         }
@@ -483,6 +528,136 @@ fun LocalMusicScreen(
                 }
             }
         }
+        if (showDownloadManager) {
+            ModalBottomSheet(
+                onDismissRequest = { showDownloadManager = false },
+                containerColor = MaterialTheme.colorScheme.surface,
+            ) {
+                DownloadManagerSheet(onDismiss = { showDownloadManager = false })
+            }
+        }
+    }
+}
+
+@Composable
+fun ActiveDownloadBanner(
+    session: DownloadSession.State,
+    onOpenManager: () -> Unit,
+    onCancel: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val activeItem = session.items.firstOrNull { it.progress is DownloadProgress.Running }
+        ?: session.items.firstOrNull { !it.progress.settled }
+        ?: return
+
+    val progress = activeItem.progress as? DownloadProgress.Running
+    val isFinalizing = progress?.isFinalizing == true
+    val animatedFraction by animateFloatAsState(
+        targetValue = if (isFinalizing) 1f else (progress?.fraction ?: 0f),
+        animationSpec = tween(250),
+        label = "activeDownloadBannerProgress",
+    )
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF1E2024))
+            .border(1.dp, Color(0xFF2E323A), RoundedCornerShape(14.dp))
+            .clickable(onClick = onOpenManager)
+            .padding(12.dp),
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AsyncImage(
+                    model = activeItem.song.artworkAt(ROW_ART_PX),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .thumbnailBorder(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (isFinalizing) "Finalizing…" else "Downloading…",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF59DDA9),
+                            ),
+                        )
+                        if (session.waiting > 1) {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "(${session.waiting} in queue)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Text(
+                        text = activeItem.song.title,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable { onCancel(activeItem.videoId) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Cancel",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { animatedFraction },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                strokeCap = StrokeCap.Round,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = if (progress != null) {
+                        DownloadFormatters.formatRunningProgress(
+                            fraction = progress.fraction,
+                            bytesDownloaded = progress.bytesDownloaded,
+                            totalBytes = progress.totalBytes,
+                            bytesPerSecond = progress.bytesPerSecond,
+                            etaSeconds = progress.etaSeconds,
+                            isFinalizing = progress.isFinalizing,
+                        )
+                    } else "Queued",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "Manage",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
     }
 }
 
@@ -502,6 +677,7 @@ private fun SongsTab(
     onSongLongPress: (Song) -> Unit,
     onSongSwipe: (Song) -> Unit,
     onShuffle: (List<Song>) -> Unit,
+    onOpenDownloadManager: () -> Unit = {},
     contentPadding: PaddingValues,
 ) {
     var sortOrder by rememberSaveable { mutableStateOf(LocalSortOrder.RECENT) }
@@ -519,6 +695,7 @@ private fun SongsTab(
         songs.sumOf { it.durationMillis() }
     }
     val haptics = rememberHaptics()
+    val dlSession by DownloadSession.state.collectAsStateWithLifecycle()
 
     LazyColumn(
         state = listState,
@@ -533,6 +710,18 @@ private fun SongsTab(
                     .fillMaxWidth()
                     .padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
             )
+        }
+        if (dlSession.busy) {
+            item {
+                ActiveDownloadBanner(
+                    session = dlSession,
+                    onOpenManager = onOpenDownloadManager,
+                    onCancel = { Downloads.cancel(it) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
+                )
+            }
         }
         item {
             Row(

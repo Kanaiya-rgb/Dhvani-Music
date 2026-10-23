@@ -70,15 +70,8 @@ object TrackMatcher {
         val title = searchableTitle(target.title, target.artist)
         if (title.isBlank()) return emptyList()
         val artist = primaryArtist(target.artist)
-        val lang = detectSongLanguage(target.title, target.artist)
-        val queries = mutableListOf<String>()
-        if (artist.isNotBlank()) queries.add("$title $artist")
-        if (lang != null && !title.contains(lang, ignoreCase = true)) {
-            queries.add("$title $lang")
-            if (artist.isNotBlank()) queries.add("$title $artist $lang")
-        }
-        queries.add(title)
-        return queries.distinct()
+        if (artist.isBlank()) return listOf(title)
+        return listOf("$title $artist", title)
     }
 
     /** The title with the packaging taken off, version markers kept. */

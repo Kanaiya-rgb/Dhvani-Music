@@ -13,7 +13,14 @@ sealed interface DownloadProgress {
     data object Queued : DownloadProgress
 
     /** [fraction] is 0f until the length is known, which is one request in. */
-    data class Running(val fraction: Float) : DownloadProgress
+    data class Running(
+        val fraction: Float,
+        val bytesDownloaded: Long = 0L,
+        val totalBytes: Long = 0L,
+        val bytesPerSecond: Long = 0L,
+        val etaSeconds: Long? = null,
+        val isFinalizing: Boolean = false,
+    ) : DownloadProgress
 
     data object Done : DownloadProgress
 
@@ -22,6 +29,59 @@ sealed interface DownloadProgress {
     /** Neither waiting nor coming back  nothing left for the user to watch. */
     val settled: Boolean get() = this is Done || this is Failed
 }
+
+object DownloadFormatters {
+    fun formatSpeed(bytesPerSec: Long): String? {
+        if (bytesPerSec <= 0L) return null
+        return when {
+            bytesPerSec < 1024L -> "$bytesPerSec B/s"
+            bytesPerSec < 1024L * 1024L -> "${"%.1f".format(java.util.Locale.US, bytesPerSec / 1024.0)} KB/s"
+            else -> "${"%.1f".format(java.util.Locale.US, bytesPerSec / (1024.0 * 1024.0))} MB/s"
+        }
+    }
+
+    fun formatEta(etaSeconds: Long?): String? {
+        if (etaSeconds == null || etaSeconds <= 0L) return null
+        return when {
+            etaSeconds < 60L -> "${etaSeconds}s left"
+            etaSeconds < 3600L -> "${etaSeconds / 60}m ${etaSeconds % 60}s left"
+            else -> "${etaSeconds / 3600}h ${(etaSeconds % 3600) / 60}m left"
+        }
+    }
+
+    fun formatBytes(bytes: Long): String {
+        return when {
+            bytes <= 0L -> "0 B"
+            bytes < 1024L -> "$bytes B"
+            bytes < 1024L * 1024L -> "${"%.1f".format(java.util.Locale.US, bytes / 1024.0)} KB"
+            else -> "${"%.1f".format(java.util.Locale.US, bytes / (1024.0 * 1024.0))} MB"
+        }
+    }
+
+    fun formatRunningProgress(
+        fraction: Float,
+        bytesDownloaded: Long,
+        totalBytes: Long,
+        bytesPerSecond: Long,
+        etaSeconds: Long?,
+        isFinalizing: Boolean,
+    ): String {
+        if (isFinalizing) return "Finalizing…"
+        val speed = formatSpeed(bytesPerSecond)
+        val eta = if (totalBytes > 0) formatEta(etaSeconds) else null
+        val percent = if (fraction > 0f) "${(fraction * 100).toInt()}%" else null
+
+        return when {
+            percent != null && speed != null && eta != null -> "$percent · $speed · $eta"
+            percent != null && speed != null -> "$percent · $speed"
+            percent != null -> "Downloading · $percent"
+            bytesDownloaded > 0L && speed != null -> "${formatBytes(bytesDownloaded)} · $speed"
+            bytesDownloaded > 0L -> "Downloading · ${formatBytes(bytesDownloaded)}"
+            else -> "Starting…"
+        }
+    }
+}
+
 
 /**
  * Everything downloaded since the app was opened, and whether the user has
@@ -77,6 +137,8 @@ object DownloadSession {
         /** When the last thing in the queue stopped moving, on [tick]'s clock. */
         val settledAt: Long = 0L,
     ) {
+        val activeRunning: Int get() = items.count { it.progress is DownloadProgress.Running }
+        val queued: Int get() = items.count { it.progress is DownloadProgress.Queued }
         val waiting: Int get() = items.count { !it.progress.settled }
         val finished: Int get() = items.count { it.progress is DownloadProgress.Done }
         val failed: Int get() = items.count { it.progress is DownloadProgress.Failed }
@@ -162,8 +224,15 @@ object DownloadSession {
         }
     }
 
-    fun running(videoId: String, fraction: Float) =
-        set(videoId, DownloadProgress.Running(fraction))
+    fun running(
+        videoId: String,
+        fraction: Float,
+        bytesDownloaded: Long = 0L,
+        totalBytes: Long = 0L,
+        bytesPerSecond: Long = 0L,
+        etaSeconds: Long? = null,
+        isFinalizing: Boolean = false,
+    ) = set(videoId, DownloadProgress.Running(fraction, bytesDownloaded, totalBytes, bytesPerSecond, etaSeconds, isFinalizing))
 
     fun done(videoId: String) = set(videoId, DownloadProgress.Done)
 

@@ -128,16 +128,22 @@ fun rememberPlayerState(controller: MediaController?): PlayerState {
 
         fun sync(error: String? = null) {
             val item = player.currentMediaItem
+            val currentSong = item?.toSong()
+            val isOffline = currentSong?.let { s ->
+                s.localUri != null || s.localPath != null ||
+                    s.videoId.startsWith("local:") || s.videoId.startsWith("file:") || s.videoId.startsWith("content:") ||
+                    Downloads.saved.value.containsKey(s.videoId)
+            } == true
             // Synced here too, so seeking while paused or buffering still moves
             // the scrubber (the poll loop only runs on play).
             position.positionMs = player.currentPosition.coerceAtLeast(0L)
-            position.bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L)
+            position.bufferedPositionMs = if (isOffline) 0L else player.bufferedPosition.coerceAtLeast(0L)
             state = state.copy(
-                song = item?.toSong(),
+                song = currentSong,
                 isPlaying = player.isPlaying,
                 durationMs = player.duration.coerceAtLeast(0L),
                 error = error,
-                isLoading = player.playbackState == Player.STATE_BUFFERING,
+                isLoading = player.playbackState == Player.STATE_BUFFERING && !player.isPlaying,
                 repeatMode = player.repeatMode,
                 queue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).toSong() },
                 queueIndex = player.currentMediaItemIndex,
@@ -172,8 +178,13 @@ fun rememberPlayerState(controller: MediaController?): PlayerState {
     }
     LaunchedEffect(controller, state.isPlaying, foreground) {
         while (controller != null && state.isPlaying && foreground) {
+            val isOffline = state.song?.let { s ->
+                s.localUri != null || s.localPath != null ||
+                    s.videoId.startsWith("local:") || s.videoId.startsWith("file:") || s.videoId.startsWith("content:") ||
+                    Downloads.saved.value.containsKey(s.videoId)
+            } == true
             position.positionMs = controller.currentPosition.coerceAtLeast(0L)
-            position.bufferedPositionMs = controller.bufferedPosition.coerceAtLeast(0L)
+            position.bufferedPositionMs = if (isOffline) 0L else controller.bufferedPosition.coerceAtLeast(0L)
             val duration = controller.duration.coerceAtLeast(0L)
             if (duration != state.durationMs) state = state.copy(durationMs = duration)
             delay(500)
@@ -364,13 +375,20 @@ fun Song.toHighQualityMediaItem(): MediaItem =
         .setUri(highQualityUri())
         .build()
 
-fun Song.losslessUri(): String =
-    "flux://watch?v=$videoId${matchQuery()}&q=lossless"
+fun Song.losslessUri(sourceId: String? = null): String = buildString {
+    append("flux://watch?v=").append(videoId)
+    append(matchQuery())
+    append("&q=lossless")
+    if (!sourceId.isNullOrBlank() && sourceId != "LOSSLESS") {
+        append("&src=").append(Uri.encode(sourceId))
+    }
+}
 
-fun Song.toLosslessMediaItem(): MediaItem =
+fun Song.toLosslessMediaItem(sourceId: String? = null): MediaItem =
     toMediaItem().buildUpon()
-        .setUri(losslessUri())
+        .setUri(losslessUri(sourceId))
         .build()
+
 
 fun Song.toMediaItem(): MediaItem {
     val sourceTrack = SourceRegistry.parseTrackKey(videoId)
@@ -412,14 +430,17 @@ fun Song.toMediaItem(): MediaItem {
         sourceTrack != null -> SourceRegistry.trackUri(sourceTrack.first, sourceTrack.second)
             .let { "$it${matchQuery()}" }
         OriginalVersion.isPinned(videoId) -> directYouTubeUri()
-        // The same three fields, for the same reason, on the YouTube path: a
-        // source ranked above YouTube gets offered this track before YouTube
-        // resolves it — see [SourceResolver.substituteForYouTube] — and that
-        // match is made on them, which the loader thread has no other way to
-        // reach.
+        com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value == "YOUTUBE" -> directYouTubeUri()
+        com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality == com.music.dhvani.data.settings.AudioQuality.LOSSLESS ||
+            com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value == "LOSSLESS" ||
+            com.music.dhvani.data.sources.SourceRegistry.configs.value.any { it.id == com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value && it.kind.canServeLossless } ->
+            losslessUri(com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value)
+        com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality == com.music.dhvani.data.settings.AudioQuality.HIGH ||
+            com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value == "JIOSAAVN" -> highQualityUri()
         else -> "flux://watch?v=$videoId${matchQuery()}"
     }
     val finalArtworkUri = Downloads.localCoverUri(videoId) ?: artworkAt(NOTIFICATION_ART_PX)
+    val parsedDurationMs = TrackMatcher.secondsOf(durationText)?.times(1000L)
     return MediaItem.Builder()
         .setMediaId(videoId)
         .setUri(resolvePlaybackUri(uriString, localPath))
@@ -441,6 +462,11 @@ fun Song.toMediaItem(): MediaItem {
                 // screen, the notification and Android Auto draw, all of them
                 // large, and none of them go back for a better copy later.
                 .setArtworkUri(finalArtworkUri?.toUri())
+                .apply {
+                    if (parsedDurationMs != null && parsedDurationMs > 0L) {
+                        setDurationMs(parsedDurationMs)
+                    }
+                }
             // System media surfaces (One UI's Now Bar, Android Auto, Assistant)
             // classify a session by its media type; untyped sessions get treated
             // as generic audio and lose the music-specific card.

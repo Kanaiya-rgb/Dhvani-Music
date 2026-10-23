@@ -26,6 +26,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import com.music.dhvani.data.model.artworkAt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -99,33 +101,37 @@ fun ExploreScreen(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
-    PullToRefresh(
-        refreshing = refreshing,
-        onRefresh = onRefresh,
-        state = pullState,
-        modifier = modifier,
-    ) {
-        LazyColumn(
-            state = listState,
-            contentPadding = contentPadding,
+    val leadThumbnail = (state as? UiState.Success)?.data?.firstOrNull()?.items?.firstOrNull()?.thumbnailUrl
+    val leadMoodTitle = (state as? UiState.Success)?.data?.firstOrNull()?.items?.firstOrNull()?.title
+    val fallbackMoodColor = leadMoodTitle?.let { moodColor(it) } ?: Color(0xFF6C5CE7)
+
+    Box(modifier = modifier.fillMaxSize()) {
+        com.music.dhvani.ui.components.ScreenAmbientBackdrop(
+            artworkUrl = leadThumbnail,
+            fallbackColor = fallbackMoodColor,
+            modifier = Modifier.matchParentSize(),
+        )
+
+        PullToRefresh(
+            refreshing = refreshing,
+            onRefresh = onRefresh,
+            state = pullState,
             modifier = Modifier.fillMaxSize(),
         ) {
-            item {
-                Text(
-                    text = stringResource(R.string.explore),
-                    style = MaterialTheme.typography.displayLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
-                )
-            }
-            when (state) {
-                UiState.Loading -> item { ExploreSkeleton() }
-                is UiState.Error -> item {
-                    MessageState(state.message, actionLabel = stringResource(R.string.retry), onAction = onRetry)
-                }
-                is UiState.Success -> state.data.forEach { section ->
-                    item(key = section.title) {
-                        MoodGenreGrid(section = section, onCategoryClick = onCategoryClick)
+            LazyColumn(
+                state = listState,
+                contentPadding = contentPadding,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                when (state) {
+                    UiState.Loading -> item { ExploreSkeleton() }
+                    is UiState.Error -> item {
+                        MessageState(state.message, actionLabel = stringResource(R.string.retry), onAction = onRetry)
+                    }
+                    is UiState.Success -> state.data.forEach { section ->
+                        item(key = section.title) {
+                            MoodGenreGrid(section = section, onCategoryClick = onCategoryClick)
+                        }
                     }
                 }
             }
@@ -167,22 +173,27 @@ private fun MoodGenreGrid(
 ) {
     Column(Modifier.padding(bottom = 22.dp)) {
         SectionHeader(section.title)
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val cardWidth = (maxWidth - PAGE_GUTTER * 2 - 12.dp) / 2
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(horizontal = PAGE_GUTTER),
-            ) {
-                section.items.chunked(2).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        row.forEach { item ->
-                            MoodGenreCard(
-                                item = item,
-                                onClick = { onCategoryClick(item) },
-                                modifier = Modifier.width(cardWidth),
-                            )
-                        }
-                        if (row.size == 1) Spacer(Modifier.width(cardWidth))
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = PAGE_GUTTER),
+        ) {
+            val chunked = remember(section.items) { section.items.chunked(2) }
+            for (row in chunked) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    for (item in row) {
+                        MoodGenreCard(
+                            item = item,
+                            onClick = { onCategoryClick(item) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (row.size == 1) {
+                        Spacer(Modifier.weight(1f))
                     }
                 }
             }
@@ -241,7 +252,7 @@ private fun MoodGenreCard(
             )
             item.thumbnailUrl?.let { artwork ->
                 AsyncImage(
-                    model = artwork,
+                    model = artwork.artworkAt(com.music.dhvani.data.model.CARD_ART_PX),
                     contentDescription = null,
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),

@@ -5,10 +5,10 @@ import java.text.Normalizer
 import java.util.Locale
 
 enum class CanvasSource(val displayName: String) {
-    SPOTIFY("Spotify"),
-    APPLE_MUSIC("Apple Music"),
-    TIDAL("Tidal"),
-    COMMUNITY("Community"),
+    SPOTIFY("Canvas S"),
+    APPLE_MUSIC("Canvas A"),
+    TIDAL("Canvas T"),
+    COMMUNITY("Canvas Community"),
 }
 
 /**

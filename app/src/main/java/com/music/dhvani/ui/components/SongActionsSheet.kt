@@ -63,6 +63,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistRemove
+import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.ThumbDownOffAlt
@@ -91,6 +92,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.music.dhvani.data.NerdStats
+import com.music.dhvani.data.sources.SourceKind
+import com.music.dhvani.data.sources.SourceRegistry
 import com.music.dhvani.data.model.LikeStatus
 import com.music.dhvani.data.model.ROW_ART_PX
 import com.music.dhvani.data.model.Song
@@ -141,9 +145,10 @@ fun SongActionsSheet(
     likeStatus: LikeStatus,
     onPlayNext: (() -> Unit)? = null,
     onAddToQueue: (() -> Unit)? = null,
+    onStartRadio: (() -> Unit)? = null,
     onDownload: () -> Unit,
-    onToggleLike: () -> Unit,
-    onToggleDislike: () -> Unit,
+    onToggleLike: (() -> Unit)? = null,
+    onToggleDislike: (() -> Unit)? = null,
     onDislikeAndSkip: (() -> Unit)? = null,
     onAddToPlaylist: () -> Unit,
     onOpenAlbum: (String) -> Unit,
@@ -151,17 +156,6 @@ fun SongActionsSheet(
     modifier: Modifier = Modifier,
     onRemoveFromPlaylist: (() -> Unit)? = null,
     showSleepTimer: Boolean = false,
-    /**
-     * Drops any substituted module audio and reopens the current track
-     * through YouTube's original stream instead.
-     */
-    onRollbackToOriginal: (() -> Unit)? = null,
-    /**
-     * Replaces YouTube's stream with higher quality substituted audio (e.g. JioSaavn).
-     */
-    onUpgradeQuality: (() -> Unit)? = null,
-    /** Keeps the upgrade row visible but untappable while its lookup is running. */
-    upgradeQualityInProgress: Boolean = false,
     /** Opens the bottom sheet to select alternate versions or languages for this track. */
     onOpenVersions: (() -> Unit)? = null,
     onOpenAudioQuality: (() -> Unit)? = null,
@@ -203,6 +197,31 @@ fun SongActionsSheet(
     // rate, save, queue into a playlist, fetch again, or share a link for.
     val isOffline = song.localUri != null
 
+    val currentNerdStats by NerdStats.current.collectAsStateWithLifecycle()
+    val preferredPlaybackSource by AppSettings.preferredPlaybackSource.collectAsStateWithLifecycle()
+    val sourceConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
+
+    val audioSourceCompactValue = remember(currentNerdStats, preferredPlaybackSource, sourceConfigs) {
+        val activeSource = when {
+            currentNerdStats?.isLossless == true || preferredPlaybackSource == "LOSSLESS" ||
+                currentNerdStats?.mimeType?.contains("flac", ignoreCase = true) == true -> "Lossless"
+            currentNerdStats?.isHiQuality == true ||
+                preferredPlaybackSource.contains("saavn", ignoreCase = true) ||
+                currentNerdStats?.sourceName?.contains("saavn", ignoreCase = true) == true ||
+                currentNerdStats?.sourceName?.contains("aac", ignoreCase = true) == true -> "High Quality AAC"
+            preferredPlaybackSource.equals("YOUTUBE", ignoreCase = true) ||
+                currentNerdStats?.sourceName?.contains("youtube", ignoreCase = true) == true ||
+                currentNerdStats?.sourceName?.contains("opus", ignoreCase = true) == true -> "Standard Opus"
+            else -> "Lossless"
+        }
+        val losslessCount = sourceConfigs.count { it.kind.canServeLossless && it.isComplete && it.enabled }.coerceAtLeast(1)
+        val jioCount = if (sourceConfigs.none { it.kind == SourceKind.JIOSAAVN && !it.enabled }) 1 else 0
+        val ytCount = 1
+        val totalSources = losslessCount + jioCount + ytCount
+        val otherSources = (totalSources - 1).coerceAtLeast(0)
+        if (otherSources > 0) "$activeSource +$otherSources" else activeSource
+    }
+
     TintedSheet(palette = palette, imageUrl = song.thumbnailUrl, modifier = modifier) {
         if (pickingSleepTimer) {
             SleepTimerPicker(palette = palette, onBack = { pickingSleepTimer = false })
@@ -221,28 +240,15 @@ fun SongActionsSheet(
             // Leads the list whenever it's available (like BitChord):
             // Which recording/quality is playing is the one question that has to be answered
             // before any of the rows below mean anything.
-            if (onRollbackToOriginal != null || onUpgradeQuality != null || onOpenVersions != null) {
-                if (onRollbackToOriginal != null || onUpgradeQuality != null) {
-                    (onRollbackToOriginal ?: onUpgradeQuality)?.let { action ->
-                        ActionRow(
-                            icon = if (onRollbackToOriginal != null) {
-                                Icons.AutoMirrored.Rounded.Undo
-                            } else {
-                                Icons.AutoMirrored.Rounded.Redo
-                            },
-                            label = stringResource(
-                                if (onRollbackToOriginal != null) {
-                                    R.string.revert_to_original
-                                } else {
-                                    R.string.upgrade_quality
-                                },
-                            ),
-                            value = if (onRollbackToOriginal != null) "YouTube" else "320 kbps",
-                            accent = palette.accent,
-                            enabled = onRollbackToOriginal != null || !upgradeQualityInProgress,
-                            onClick = action,
-                        )
-                    }
+            if (onOpenAudioQuality != null || onOpenVersions != null) {
+                if (onOpenAudioQuality != null && !isOffline) {
+                    ActionRow(
+                        icon = Icons.Rounded.GraphicEq,
+                        label = "Audio source",
+                        value = audioSourceCompactValue,
+                        accent = palette.accent,
+                        onClick = onOpenAudioQuality,
+                    )
                 }
                 if (onOpenVersions != null && !isOffline) {
                     val currentLang = remember(song.title, song.artist, song.albumName) {
@@ -256,11 +262,6 @@ fun SongActionsSheet(
                         onClick = onOpenVersions,
                     )
                 }
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 6.dp),
-                    thickness = 0.5.dp,
-                    color = palette.divider,
-                )
             }
 
             onSetAsRingtone?.let { setRingtone ->
@@ -274,32 +275,30 @@ fun SongActionsSheet(
             }
 
             if (!isOffline) {
-                ActionRow(
-                    icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                    label = if (liked) "Remove from Liked Music" else "Like",
-                    tint = if (liked) palette.accent else null,
-                    accent = palette.accent,
-                    onClick = onToggleLike,
-                )
-                ActionRow(
-                    icon = if (disliked) Icons.Rounded.ThumbDown else Icons.Rounded.ThumbDownOffAlt,
-                    label = if (disliked) "Undo dislike" else "Dislike & skip",
-                    tint = if (disliked) palette.accent else null,
-                    accent = palette.accent,
-                    onClick = {
-                        if (!disliked && onDislikeAndSkip != null) {
-                            onDislikeAndSkip()
-                        } else {
-                            onToggleDislike()
-                        }
-                    },
-                )
-                ActionRow(
-                    icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
-                    label = "Add to playlist",
-                    accent = palette.accent,
-                    onClick = onAddToPlaylist,
-                )
+                onToggleLike?.let { toggleLike ->
+                    ActionRow(
+                        icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        label = if (liked) "Remove from Liked Music" else "Like",
+                        tint = if (liked) palette.accent else null,
+                        accent = palette.accent,
+                        onClick = toggleLike,
+                    )
+                }
+                if (onToggleDislike != null || onDislikeAndSkip != null) {
+                    ActionRow(
+                        icon = if (disliked) Icons.Rounded.ThumbDown else Icons.Rounded.ThumbDownOffAlt,
+                        label = if (disliked) "Undo dislike" else if (onDislikeAndSkip != null) "Dislike & skip" else "Dislike",
+                        tint = if (disliked) palette.accent else null,
+                        accent = palette.accent,
+                        onClick = {
+                            if (!disliked && onDislikeAndSkip != null) {
+                                onDislikeAndSkip()
+                            } else {
+                                onToggleDislike?.invoke()
+                            }
+                        },
+                    )
+                }
                 onEnterAmbientCinemaMode?.let { enterCinema ->
                     ActionRow(
                         icon = Icons.Rounded.Fullscreen,
@@ -316,14 +315,17 @@ fun SongActionsSheet(
                         onClick = it,
                     )
                 }
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 6.dp),
-                    thickness = 0.5.dp,
-                    color = palette.divider,
-                )
             }
 
             DownloadRow(song, palette, isOffline, onDownload)
+            if (onStartRadio != null) {
+                ActionRow(
+                    icon = Icons.Rounded.Radio,
+                    label = "Start radio",
+                    accent = palette.accent,
+                    onClick = onStartRadio,
+                )
+            }
             if (onPlayNext != null) {
                 ActionRow(
                     icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
@@ -338,6 +340,14 @@ fun SongActionsSheet(
                     label = "Add to queue",
                     accent = palette.accent,
                     onClick = onAddToQueue,
+                )
+            }
+            if (!isOffline) {
+                ActionRow(
+                    icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                    label = "Add to playlist",
+                    accent = palette.accent,
+                    onClick = onAddToPlaylist,
                 )
             }
             when (val id = song.albumId) {
@@ -373,21 +383,19 @@ fun SongActionsSheet(
                 )
             }
 
+            onOpenDetails?.let {
+                ActionRow(
+                    icon = Icons.Rounded.Info,
+                    label = "Song info",
+                    accent = palette.accent,
+                    onClick = it,
+                )
+            }
+
             if (!isOffline) {
                 onShare?.let {
                     ActionRow(Icons.Rounded.Share, "Share", accent = palette.accent, onClick = it)
                 }
-            }
-            // Last, and only from the player: it is about the track playing right
-            // now rather than about the song as a thing in a library, and it is
-            // the one row here nobody reaches for by accident.
-            onOpenDetails?.let {
-                ActionRow(
-                    icon = Icons.Rounded.Info,
-                    label = "Song details",
-                    accent = palette.accent,
-                    onClick = it,
-                )
             }
             onCopyLog?.let {
                 ActionRow(Icons.Rounded.BugReport, "Copy Log", accent = palette.accent, onClick = it)
@@ -519,15 +527,29 @@ private fun DownloadRow(song: Song, palette: ArtworkPalette, isOffline: Boolean,
             accent = palette.accent,
         ) { Downloads.cancel(song.videoId) }
 
-        is DownloadState.Running -> ActionRow(
-            icon = Icons.Rounded.Downloading,
-            label = "Downloading",
-            // Indeterminate until the first response names a length; a
-            // stuck "0%" reads as broken where a bare label reads as starting.
-            value = if (state.fraction > 0f) "${(state.fraction * 100).toInt()}%" else null,
-            tint = palette.accent,
-            accent = palette.accent,
-        ) { Downloads.cancel(song.videoId) }
+        is DownloadState.Running -> {
+            val progressText = com.music.dhvani.download.DownloadFormatters.formatRunningProgress(
+                fraction = state.fraction,
+                bytesDownloaded = state.bytesDownloaded,
+                totalBytes = state.totalBytes,
+                bytesPerSecond = state.bytesPerSecond,
+                etaSeconds = state.etaSeconds,
+                isFinalizing = state.isFinalizing,
+            )
+            val percentLabel = when {
+                state.isFinalizing -> "100%"
+                state.fraction > 0f -> "${(state.fraction * 100).toInt()}%"
+                else -> null
+            }
+            ActionRow(
+                icon = Icons.Rounded.Downloading,
+                label = if (state.isFinalizing) "Finalizing download" else "Downloading",
+                subtitle = if (state.isFinalizing) "Embedding tags & saving…" else progressText,
+                value = percentLabel,
+                tint = palette.accent,
+                accent = palette.accent,
+            ) { Downloads.cancel(song.videoId) }
+        }
 
         is DownloadState.Failed -> ActionRow(
             icon = Icons.Rounded.ErrorOutline,
@@ -843,6 +865,7 @@ internal fun ActionRow(
     icon: ImageVector,
     label: String,
     value: String? = null,
+    subtitle: String? = null,
     tint: Color? = null,
     accent: Color = MaterialTheme.colorScheme.primary,
     enabled: Boolean = true,
@@ -864,14 +887,37 @@ internal fun ActionRow(
             modifier = Modifier.size(22.dp),
         )
         Spacer(Modifier.width(18.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onBackground.copy(
-                alpha = if (enabled) 1f else 0.4f,
-            ),
-            modifier = Modifier.weight(1f),
-        )
+        if (subtitle != null) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onBackground.copy(
+                        alpha = if (enabled) 1f else 0.4f,
+                    ),
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                        alpha = if (enabled) 1f else 0.4f,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        } else {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground.copy(
+                    alpha = if (enabled) 1f else 0.4f,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
         if (value != null) {
             Spacer(Modifier.width(12.dp))
             Text(

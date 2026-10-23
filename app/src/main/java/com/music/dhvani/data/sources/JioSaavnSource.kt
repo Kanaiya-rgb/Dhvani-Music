@@ -87,7 +87,7 @@ class JioSaavnSource(
             // The rate the URL will really serve, not a flat 320  see
             // [JioSaavnService.bestStream]. `mp4` is the container; the codec
             // inside is AAC, which the decoder reports for itself.
-            format = StreamFormat(codec = "mp4", kbps = stream.kbps),
+            format = StreamFormat(source = displayName, codec = "mp4", kbps = stream.kbps),
         )
     }
 

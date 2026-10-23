@@ -55,50 +55,134 @@ data class PresetAvatar(
 )
 
 val PRESET_AVATARS = listOf(
-    // ── 3D Premium Illustrated Avatars ──
-    PresetAvatar(115, "Neon Panda", listOf(Color(0xFF06B6D4), Color(0xFFD946EF)), Icons.Rounded.Headphones, R.drawable.avatar_neon_panda, "Music & Vibes"),
-    PresetAvatar(116, "Cyber Girl", listOf(Color(0xFF8B5CF6), Color(0xFF06B6D4)), Icons.Rounded.Headphones, R.drawable.avatar_cyber_girl, "3D Characters"),
-    PresetAvatar(117, "Astro Beats", listOf(Color(0xFF38BDF8), Color(0xFF818CF8)), Icons.Rounded.AutoAwesome, R.drawable.avatar_astro_beats, "Cyber & Space"),
-    PresetAvatar(118, "Shiba DJ", listOf(Color(0xFFF97316), Color(0xFFFBBF24)), Icons.Rounded.Headphones, R.drawable.avatar_shiba_dj, "Music & Vibes"),
-    PresetAvatar(101, "Flower Girl", listOf(Color(0xFFEC4899), Color(0xFFF43F5E)), Icons.Rounded.Person, R.drawable.avatar_flower_girl, "3D Characters"),
-    PresetAvatar(102, "Burger Buddy", listOf(Color(0xFFF59E0B), Color(0xFFEF4444)), Icons.Rounded.AutoAwesome, R.drawable.avatar_burger_buddy, "3D Characters"),
-    PresetAvatar(103, "Purple Bass", listOf(Color(0xFF8B5CF6), Color(0xFF6366F1)), Icons.Rounded.MusicNote, R.drawable.avatar_purple_guitar, "Music & Vibes"),
-    PresetAvatar(104, "DJ Kitten", listOf(Color(0xFFFBBF24), Color(0xFFF59E0B)), Icons.Rounded.Headphones, R.drawable.avatar_dj_cat, "Music & Vibes"),
-    PresetAvatar(105, "Mixtape Stereo", listOf(Color(0xFF14B8A6), Color(0xFF06B6D4)), Icons.Rounded.Radio, R.drawable.avatar_boombox, "Music & Vibes"),
-    PresetAvatar(106, "Hipster Lion", listOf(Color(0xFF10B981), Color(0xFF059669)), Icons.Rounded.Person, R.drawable.avatar_hipster_lion, "3D Characters"),
-    PresetAvatar(107, "Rosy Boy", listOf(Color(0xFF6366F1), Color(0xFF8B5CF6)), Icons.Rounded.Person, R.drawable.avatar_rosy_boy, "3D Characters"),
-    PresetAvatar(108, "Cosmic Saturn", listOf(Color(0xFFA855F7), Color(0xFF7C3AED)), Icons.Rounded.AutoAwesome, R.drawable.avatar_cosmic_planet, "Cyber & Space"),
-    PresetAvatar(109, "Retro Polaroid", listOf(Color(0xFFFACC15), Color(0xFFF59E0B)), Icons.Rounded.AutoAwesome, R.drawable.avatar_retro_camera, "Fun & Playful"),
-    PresetAvatar(110, "Woody Bot", listOf(Color(0xFF38BDF8), Color(0xFF0284C7)), Icons.Rounded.AutoAwesome, R.drawable.avatar_woody_bot, "3D Characters"),
-    PresetAvatar(111, "Cyber Sneaker", listOf(Color(0xFFF97316), Color(0xFFEC4899)), Icons.Rounded.AutoAwesome, R.drawable.avatar_cyber_sneaker, "Fun & Playful"),
-    PresetAvatar(112, "Happy Melon", listOf(Color(0xFF34D399), Color(0xFFF43F5E)), Icons.Rounded.AutoAwesome, R.drawable.avatar_happy_watermelon, "Fun & Playful"),
-    PresetAvatar(113, "Red Microbus", listOf(Color(0xFF38BDF8), Color(0xFFEF4444)), Icons.Rounded.AutoAwesome, R.drawable.avatar_red_microbus, "Fun & Playful"),
-    PresetAvatar(114, "Yellow Balloon", listOf(Color(0xFF93C5FD), Color(0xFFFBBF24)), Icons.Rounded.AutoAwesome, R.drawable.avatar_yellow_balloon, "Fun & Playful"),
+    // ── Animals (from Nuvio catalog) ──
+    PresetAvatar(1001, "Bram", listOf(Color(0xFFF45392), Color(0xFFF45392)), Icons.Rounded.Person, R.drawable.avatar_animals_bram, "Animals"),
+    PresetAvatar(1002, "Clover", listOf(Color(0xFF7957BD), Color(0xFF7957BD)), Icons.Rounded.Person, R.drawable.avatar_animals_clover, "Animals"),
+    PresetAvatar(1003, "Pip", listOf(Color(0xFF45B5EE), Color(0xFF45B5EE)), Icons.Rounded.Person, R.drawable.avatar_animals_pip, "Animals"),
+    PresetAvatar(1004, "Otto", listOf(Color(0xFF0BB5AE), Color(0xFF0BB5AE)), Icons.Rounded.Person, R.drawable.avatar_animals_otto, "Animals"),
+    PresetAvatar(1005, "Milo", listOf(Color(0xFFB9E53A), Color(0xFFB9E53A)), Icons.Rounded.Person, R.drawable.avatar_animals_milo, "Animals"),
+    PresetAvatar(1006, "Miso", listOf(Color(0xFFB9E36A), Color(0xFFB9E36A)), Icons.Rounded.Person, R.drawable.avatar_animals_miso, "Animals"),
+    PresetAvatar(1007, "Elio", listOf(Color(0xFFFFD949), Color(0xFFFFD949)), Icons.Rounded.Person, R.drawable.avatar_animals_elio, "Animals"),
+    PresetAvatar(1008, "Finn", listOf(Color(0xFF88DDBB), Color(0xFF88DDBB)), Icons.Rounded.Person, R.drawable.avatar_animals_finn, "Animals"),
+    PresetAvatar(1009, "Poppy", listOf(Color(0xFFF85A49), Color(0xFFF85A49)), Icons.Rounded.Person, R.drawable.avatar_animals_poppy, "Animals"),
+    PresetAvatar(1010, "Bao", listOf(Color(0xFFFF7900), Color(0xFFFF7900)), Icons.Rounded.Person, R.drawable.avatar_animals_bao, "Animals"),
 
-    // ── Classic Neon Glyphs ──
-    PresetAvatar(1, "Neon Beats", listOf(Color(0xFF9333EA), Color(0xFFEC4899)), Icons.Rounded.MusicNote, null, "Neon Glyphs"),
-    PresetAvatar(2, "Cyber Wave", listOf(Color(0xFF06B6D4), Color(0xFF3B82F6)), Icons.Rounded.Headphones, null, "Neon Glyphs"),
-    PresetAvatar(3, "Golden Vinyl", listOf(Color(0xFFF59E0B), Color(0xFFEA580C)), Icons.Rounded.Album, null, "Neon Glyphs"),
-    PresetAvatar(4, "Electro Spark", listOf(Color(0xFF8B5CF6), Color(0xFF06B6D4)), Icons.Rounded.AutoAwesome, null, "Neon Glyphs"),
-    PresetAvatar(5, "Night Pulse", listOf(Color(0xFF6366F1), Color(0xFFA855F7)), Icons.Rounded.GraphicEq, null, "Neon Glyphs"),
-    PresetAvatar(6, "Heart Strings", listOf(Color(0xFFE11D48), Color(0xFFF43F5E)), Icons.Rounded.Favorite, null, "Neon Glyphs"),
-    PresetAvatar(7, "Radio Star", listOf(Color(0xFF10B981), Color(0xFF0284C7)), Icons.Rounded.Radio, null, "Neon Glyphs"),
-    PresetAvatar(8, "Sunset Chill", listOf(Color(0xFFFF5722), Color(0xFFFF9800)), Icons.Rounded.MusicNote, null, "Neon Glyphs"),
+    // ── Minimalist Line Art ──
+    PresetAvatar(1011, "Lin", listOf(Color(0xFF008080), Color(0xFF008080)), Icons.Rounded.Person, R.drawable.avatar_linear_lin, "Minimalist"),
+    PresetAvatar(1012, "Max", listOf(Color(0xFF6B21A8), Color(0xFF6B21A8)), Icons.Rounded.Person, R.drawable.avatar_linear_max, "Minimalist"),
+    PresetAvatar(1013, "Ava", listOf(Color(0xFFE11D48), Color(0xFFE11D48)), Icons.Rounded.Person, R.drawable.avatar_linear_ava, "Minimalist"),
+    PresetAvatar(1014, "Theo", listOf(Color(0xFF1E3A5F), Color(0xFF1E3A5F)), Icons.Rounded.Person, R.drawable.avatar_linear_theo, "Minimalist"),
+    PresetAvatar(1015, "Zara", listOf(Color(0xFFD97706), Color(0xFFD97706)), Icons.Rounded.Person, R.drawable.avatar_linear_zara, "Minimalist"),
+    PresetAvatar(1016, "Kai", listOf(Color(0xFF065F46), Color(0xFF065F46)), Icons.Rounded.Person, R.drawable.avatar_linear_kai, "Minimalist"),
+    PresetAvatar(1017, "Nova", listOf(Color(0xFFBE185D), Color(0xFFBE185D)), Icons.Rounded.Person, R.drawable.avatar_linear_nova, "Minimalist"),
+
+    // ── Characters & Heroes ──
+    PresetAvatar(1018, "Astro Nova", listOf(Color(0xFF6F8EAA), Color(0xFF6F8EAA)), Icons.Rounded.Person, R.drawable.avatar_originals_nova, "Characters"),
+    PresetAvatar(1019, "Bolt", listOf(Color(0xFF6F8EAA), Color(0xFF6F8EAA)), Icons.Rounded.Person, R.drawable.avatar_originals_bolt, "Characters"),
+    PresetAvatar(1020, "Marina", listOf(Color(0xFF6F8EAA), Color(0xFF6F8EAA)), Icons.Rounded.Person, R.drawable.avatar_originals_marina, "Characters"),
+    PresetAvatar(1021, "Shadow", listOf(Color(0xFF6F8EAA), Color(0xFF6F8EAA)), Icons.Rounded.Person, R.drawable.avatar_originals_shadow, "Characters"),
+    PresetAvatar(1022, "Rook", listOf(Color(0xFF6F8EAA), Color(0xFF6F8EAA)), Icons.Rounded.Person, R.drawable.avatar_originals_rook, "Characters"),
+    PresetAvatar(1023, "Riff", listOf(Color(0xFF6F8EAA), Color(0xFF6F8EAA)), Icons.Rounded.Person, R.drawable.avatar_originals_riff, "Characters"),
+    PresetAvatar(1024, "Clue", listOf(Color(0xFF6F8EAA), Color(0xFF6F8EAA)), Icons.Rounded.Person, R.drawable.avatar_originals_clue, "Characters"),
+    PresetAvatar(1025, "Cedar", listOf(Color(0xFF6F8EAA), Color(0xFF6F8EAA)), Icons.Rounded.Person, R.drawable.avatar_originals_cedar, "Characters"),
+    PresetAvatar(1026, "Ruby", listOf(Color(0xFF6F8EAA), Color(0xFF6F8EAA)), Icons.Rounded.Person, R.drawable.avatar_originals_ruby, "Characters"),
+    PresetAvatar(1027, "Sage", listOf(Color(0xFF6F8EAA), Color(0xFF6F8EAA)), Icons.Rounded.Person, R.drawable.avatar_originals_sage, "Characters"),
+
+    // ── Illustrated Portraits ──
+    PresetAvatar(1028, "Quinn", listOf(Color(0xFFE9E8F2), Color(0xFFE9E8F2)), Icons.Rounded.Person, R.drawable.avatar_portraits_quinn, "Portraits"),
+    PresetAvatar(1029, "Iris", listOf(Color(0xFFE9E8F2), Color(0xFFE9E8F2)), Icons.Rounded.Person, R.drawable.avatar_portraits_iris, "Portraits"),
+    PresetAvatar(1030, "Ari", listOf(Color(0xFFE9E8F2), Color(0xFFE9E8F2)), Icons.Rounded.Person, R.drawable.avatar_portraits_ari, "Portraits"),
+    PresetAvatar(1031, "Hugo", listOf(Color(0xFFE9E8F2), Color(0xFFE9E8F2)), Icons.Rounded.Person, R.drawable.avatar_portraits_hugo, "Portraits"),
+    PresetAvatar(1032, "Skye", listOf(Color(0xFFE9E8F2), Color(0xFFE9E8F2)), Icons.Rounded.Person, R.drawable.avatar_portraits_skye, "Portraits"),
+    PresetAvatar(1033, "Maya", listOf(Color(0xFFE9E8F2), Color(0xFFE9E8F2)), Icons.Rounded.Person, R.drawable.avatar_portraits_maya, "Portraits"),
+    PresetAvatar(1034, "Drew", listOf(Color(0xFFE9E8F2), Color(0xFFE9E8F2)), Icons.Rounded.Person, R.drawable.avatar_portraits_drew, "Portraits"),
+    PresetAvatar(1035, "Leo", listOf(Color(0xFFE9E8F2), Color(0xFFE9E8F2)), Icons.Rounded.Person, R.drawable.avatar_portraits_leo, "Portraits"),
+    PresetAvatar(1036, "Zia", listOf(Color(0xFFE9E8F2), Color(0xFFE9E8F2)), Icons.Rounded.Person, R.drawable.avatar_portraits_zia, "Portraits"),
+    PresetAvatar(1037, "Elle", listOf(Color(0xFFE9E8F2), Color(0xFFE9E8F2)), Icons.Rounded.Person, R.drawable.avatar_portraits_elle, "Portraits"),
+
+    // ── Sketches & Manga ──
+    PresetAvatar(1038, "Rowan", listOf(Color(0xFF699B99), Color(0xFF699B99)), Icons.Rounded.Person, R.drawable.avatar_sketches_rowan, "Sketches"),
+    PresetAvatar(1039, "Silas", listOf(Color(0xFFF37C2F), Color(0xFFF37C2F)), Icons.Rounded.Person, R.drawable.avatar_sketches_silas, "Sketches"),
+    PresetAvatar(1040, "Nico", listOf(Color(0xFF9D3E68), Color(0xFF9D3E68)), Icons.Rounded.Person, R.drawable.avatar_sketches_nico, "Sketches"),
+    PresetAvatar(1041, "Violet", listOf(Color(0xFFD47AC8), Color(0xFFD47AC8)), Icons.Rounded.Person, R.drawable.avatar_sketches_violet, "Sketches"),
+    PresetAvatar(1042, "Moss", listOf(Color(0xFF8CB476), Color(0xFF8CB476)), Icons.Rounded.Person, R.drawable.avatar_sketches_moss, "Sketches"),
 )
 
 fun getPresetAvatar(id: Int): PresetAvatar {
-    return PRESET_AVATARS.firstOrNull { it.id == id } ?: PRESET_AVATARS[0]
+    // 1. Direct match in current catalog (1001..1042)
+    val exact = PRESET_AVATARS.firstOrNull { it.id == id }
+    if (exact != null) return exact
+
+    // 2. Backward compatibility for legacy neon presets (v2.3.0 IDs 1..8) & legacy defaults
+    val mappedId = when (id) {
+        1 -> 1001 // Neon Beats -> Bram
+        2 -> 1003 // Cyber Wave -> Pip
+        3 -> 1010 // Golden Vinyl -> Bao
+        4 -> 1002 // Electro Spark -> Clover
+        5 -> 1014 // Night Pulse -> Theo
+        6 -> 1009 // Heart Strings -> Poppy
+        7 -> 1004 // Radio Star -> Otto
+        8 -> 1007 // Sunset Chill -> Elio
+        else -> 1001 // Default fallback to Bram
+    }
+    return PRESET_AVATARS.firstOrNull { it.id == mappedId } ?: PRESET_AVATARS[0]
+}
+
+/**
+ * Dedicated composable to render the inner content of a [PresetAvatar],
+ * whether it is an illustrated drawable or a styled glyph.
+ */
+@Composable
+fun PresetAvatarContent(
+    preset: PresetAvatar,
+    size: Dp,
+    modifier: Modifier = Modifier,
+) {
+    if (preset.drawableRes != null) {
+        Box(
+            modifier = modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(preset.colors.first()),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(preset.drawableRes),
+                contentDescription = preset.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(size)
+                    .clip(CircleShape),
+            )
+        }
+    } else {
+        Box(
+            modifier = modifier
+                .size(size)
+                .background(Brush.linearGradient(preset.colors)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = preset.icon,
+                contentDescription = preset.name,
+                tint = Color.White,
+                modifier = Modifier.size(size * 0.54f),
+            )
+        }
+    }
 }
 
 /**
  * Universal User Avatar composable that renders:
- * 1. Custom photo from user's gallery (if uploaded and file exists)
- * 2. Selected curated neon preset avatar
- * 3. Fallback stylish initial letter of user's name
+ * 1. An explicitly provided [PresetAvatar] if given
+ * 2. Custom photo from user's gallery (if uploaded and file exists)
+ * 3. Selected curated neon preset avatar from AppSettings
+ * 4. Fallback stylish initial letter of user's name
  */
 @Composable
 fun UserAvatar(
     modifier: Modifier = Modifier,
+    preset: PresetAvatar? = null,
     size: Dp = 36.dp,
     borderWidth: Dp = 1.dp,
     borderColor: Color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
@@ -127,6 +211,11 @@ fun UserAvatar(
         contentAlignment = Alignment.Center,
     ) {
         when {
+            // Explicitly passed preset (e.g. preview card, selection item)
+            preset != null -> {
+                PresetAvatarContent(preset = preset, size = size)
+            }
+
             // 1. Custom uploaded photo
             avatarType == "CUSTOM" && hasValidCustomFile -> {
                 AsyncImage(
@@ -144,31 +233,8 @@ fun UserAvatar(
 
             // 2. Preset Avatars (3D Illustrated & Neon Glyphs)
             avatarType == "PRESET" -> {
-                val preset = getPresetAvatar(presetId)
-                if (preset.drawableRes != null) {
-                    Image(
-                        painter = painterResource(preset.drawableRes),
-                        contentDescription = preset.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(size)
-                            .clip(CircleShape),
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(size)
-                            .background(Brush.linearGradient(preset.colors)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = preset.icon,
-                            contentDescription = preset.name,
-                            tint = Color.White,
-                            modifier = Modifier.size(size * 0.54f),
-                        )
-                    }
-                }
+                val currentPreset = getPresetAvatar(presetId)
+                PresetAvatarContent(preset = currentPreset, size = size)
             }
 
             // 3. Fallback: User Name Initial with Neon Gradient

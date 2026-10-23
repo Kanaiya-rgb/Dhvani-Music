@@ -68,6 +68,15 @@ AGENTS.md
 apk/
 bundle/
 screen_*.png
+emulator_*.png
+current_*.png
+scratch_*.png
+*dump*.xml
+*.dump.xml
+scratch/
+check_dump.py
+check_firestore.py
+scratch_print.py
 *_PROMPT.md
 desktop.ini
 test_*.py

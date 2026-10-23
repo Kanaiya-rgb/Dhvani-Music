@@ -43,24 +43,39 @@ class ModuleSource(
      * call for a result it returned.
      */
     private val manager = ModuleManager()
+    private val httpAddon = HttpAddonSource(config)
+    @Volatile
+    private var isHttpAddon: Boolean? = null
 
     // -- Health ------------------------------------------------------------
 
     override suspend fun health(): SourceHealth = withContext(Dispatchers.IO) {
         if (config.baseUrl.isBlank()) {
-            return@withContext SourceHealth.Rejected("A module index URL is required")
+            return@withContext SourceHealth.Rejected("A module index or addon URL is required")
         }
+
+        // 1. First probe as an HTTP Addon (BitChord / Eclipse HTTP JSON v1 protocol)
+        val addonHealth = httpAddon.health()
+        if (addonHealth.isOk) {
+            isHttpAddon = true
+            return@withContext addonHealth
+        }
+
+        // 2. Otherwise probe as a SpineModule index (QuickJS JS plugins)
         try {
             val modules = manager.fetchIndex(config.baseUrl).getOrThrow()
             when {
                 modules.isEmpty() -> SourceHealth.Rejected(
-                    "The index answered but listed no modules  check the URL"
+                    "The index answered but listed no modules or addon manifest — check the URL"
                 )
-                else -> SourceHealth.Ok("${modules.size} module${if (modules.size == 1) "" else "s"}")
+                else -> {
+                    isHttpAddon = false
+                    SourceHealth.Ok("${modules.size} module${if (modules.size == 1) "" else "s"}")
+                }
             }
         } catch (e: Exception) {
             TrackLog.w(TAG, "module index fetch failed for ${config.displayName}: ${e.message}")
-            SourceHealth.Unreachable(e.message ?: "Could not reach the module index")
+            SourceHealth.Unreachable(e.message ?: "Could not reach the module index or addon")
         }
     }
 
@@ -96,6 +111,14 @@ class ModuleSource(
     override suspend fun search(query: String, limit: Int, waitForAll: Boolean): List<Song> =
         withContext(Dispatchers.IO) {
             if (query.isBlank()) return@withContext emptyList()
+
+            if (isHttpAddon == null) {
+                isHttpAddon = httpAddon.health().isOk
+            }
+            if (isHttpAddon == true) {
+                return@withContext httpAddon.search(query, limit, waitForAll)
+            }
+
             val indexUrl = config.baseUrl
             val baseUrl = indexUrl.substringBeforeLast("/")
 
@@ -188,11 +211,19 @@ class ModuleSource(
      * possibilities only when nothing was stated  otherwise every row from
      * that module claims the top tier and the ordering it feeds is noise.
      */
-    private fun rowTier(track: ModuleSearchResult): String? =
-        qualityTier("${track.audioQuality} ${track.format}")
-            ?: track.availableQualities
+    private fun rowTier(track: ModuleSearchResult): String? {
+        val stated = "${track.audioQuality} ${track.format}".uppercase(Locale.ROOT)
+        return when {
+            stated.contains("HI-RES") || stated.contains("HI_RES") || stated.contains("HIRES") || stated.contains("24-BIT") -> "Hi-Res"
+            stated.contains("FLAC") -> "FLAC"
+            stated.contains("LOSSLESS") || stated.contains("ALAC") || stated.contains("WAV") -> "Lossless"
+            stated.contains("HIGH") || stated.contains("320") -> HIGH
+            stated.contains("LOW") || stated.contains("128") -> LOW
+            else -> track.availableQualities
                 .maxByOrNull { TIERS.indexOf(qualityTier(it)) }
                 ?.let(::qualityTier)
+        }
+    }
 
     /** First of each, then second of each: nth place everywhere beats second place anywhere. */
     private fun interleave(lists: List<List<Song>>): List<Song> {
@@ -209,6 +240,10 @@ class ModuleSource(
 
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? =
         withContext(Dispatchers.IO) {
+            if (isHttpAddon == true || !trackId.contains(MOD_SEPARATOR)) {
+                return@withContext httpAddon.stream(trackId, request)
+            }
+
             // trackId is "<moduleId>::<upstreamId>"
             val cut = trackId.indexOf(MOD_SEPARATOR)
             if (cut < 0) {

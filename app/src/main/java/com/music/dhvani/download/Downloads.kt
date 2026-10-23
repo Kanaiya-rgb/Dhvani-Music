@@ -16,6 +16,8 @@ import com.music.dhvani.data.settings.DownloadQuality
 import com.music.dhvani.data.sources.SourceResolver
 import com.music.dhvani.data.sources.SourceStream
 import com.music.dhvani.data.sources.TrackMatcher
+import com.music.dhvani.playback.QualityUpgrade
+import com.music.dhvani.playback.StreamChoice
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -45,7 +47,14 @@ sealed interface DownloadState {
     data object Queued : DownloadState
 
     /** [fraction] is 0f until the length is known, which is the first thing asked for. */
-    data class Running(val fraction: Float) : DownloadState
+    data class Running(
+        val fraction: Float,
+        val bytesDownloaded: Long = 0L,
+        val totalBytes: Long = 0L,
+        val bytesPerSecond: Long = 0L,
+        val etaSeconds: Long? = null,
+        val isFinalizing: Boolean = false,
+    ) : DownloadState
 
     data class Failed(val reason: String) : DownloadState
 }
@@ -146,6 +155,12 @@ object Downloads {
      */
     private val running = LinkedHashMap<String, Job?>()
 
+    /** Active file destinations currently being written to by workers. */
+    private val pendingDestinations = java.util.concurrent.ConcurrentHashMap<String, DownloadStore.Pending>()
+
+    /** In-memory cache of recently resolved download streams to eliminate redundant 20s searches. */
+    private val downloadSourceCache = java.util.concurrent.ConcurrentHashMap<String, Pair<SourceStream, Long>>()
+
     fun init(context: Context) {
         appContext = context.applicationContext
         prefs = context.getSharedPreferences("flux_settings", Context.MODE_PRIVATE)
@@ -236,6 +251,7 @@ object Downloads {
             running.remove(videoId)
         }
         job?.cancel()
+        pendingDestinations.remove(videoId)?.abort()
         clear(videoId)
         // A download the user called off is not something they need reminding to
         // check on, so it leaves the manager rather than sitting in it as a
@@ -322,10 +338,18 @@ object Downloads {
         val track = _savedMetadata.value[videoId]?.let {
             Song(videoId = it.videoId, title = it.title, artist = it.artist, thumbnailUrl = it.thumbnailUrl)
         }
+        val targetUri = _saved.value[videoId]
+        val idsToForget = if (targetUri != null) {
+            _saved.value.filterValues { it == targetUri }.keys + videoId
+        } else {
+            setOf(videoId)
+        }
         val deleted = DownloadStore.delete(context, uri)
-        DownloadStore.deleteLyrics(context, videoId, track)
-        DownloadStore.deleteCover(context, videoId)
-        DownloadStore.deleteCanvas(context, videoId)
+        idsToForget.forEach { id ->
+            DownloadStore.deleteLyrics(context, id, track)
+            DownloadStore.deleteCover(context, id)
+            DownloadStore.deleteCanvas(context, id)
+        }
         forget(videoId)
         deleted
     }
@@ -633,6 +657,11 @@ object Downloads {
                 saved = { it - missingIds },
                 meta = { it - missingIds },
             )
+            missingIds.forEach { id ->
+                DownloadStore.deleteLyrics(context, id)
+                DownloadStore.deleteCover(context, id)
+                DownloadStore.deleteCanvas(context, id)
+            }
             val survivingSaved = _saved.value
             val currentCollections = _collections.value
             val emptyCollections = currentCollections.filterValues { coll ->
@@ -898,7 +927,7 @@ object Downloads {
                 // commit, [pending] is null and a cancellation there would abandon a
                 // finished file that nothing has recorded yet. Awaited below while
                 // there is still a pending destination to abort.
-                if (MediaTagger.carriesTags(route.extension)) {
+                if (AppSettings.syncedLyrics.value) {
                     lyrics = async { LyricsTag.forTrack(track) }
                 }
                 coverJob = async {
@@ -930,9 +959,9 @@ object Downloads {
                 val alreadyThere = DownloadStore.existing(context, name)
                 if (alreadyThere != null) {
                     Log.d(TAG, "$name is already in Music; adopting it")
-                    val words = lyrics?.await()
-                    val coverBytes = coverJob?.await()
-                    val canvas = canvasJob?.await()
+                    val words = runCatching { lyrics?.await() }.getOrNull()
+                    val coverBytes = runCatching { coverJob.await() }.getOrNull()
+                    val canvas = runCatching { canvasJob?.await() }.getOrNull()
                     if (coverBytes != null) {
                         DownloadStore.saveCover(context, song.videoId, coverBytes)
                         DownloadStore.saveCover(context, track.videoId, coverBytes)
@@ -941,6 +970,9 @@ object Downloads {
                         DownloadStore.saveCanvasVideo(context, song.videoId, track.videoId, canvas)
                     }
                     DownloadStore.saveLyrics(context, song.videoId, track, words)
+                    if (track.videoId != song.videoId) {
+                        DownloadStore.saveLyrics(context, track.videoId, track, words)
+                    }
                     remember(context, song, track, alreadyThere)
                     DownloadSession.done(id)
                     clear(id)
@@ -949,16 +981,66 @@ object Downloads {
 
                 val destination = DownloadStore.begin(context, name, route.mimeType)
                 pending = destination
-                destination.openStream().use { sink ->
-                    route.write(sink) { written, total ->
-                        val fraction = written.toFloat() / total
-                        _active.update { it + (id to DownloadState.Running(fraction)) }
-                        DownloadSession.running(id, fraction)
+                pendingDestinations[id] = destination
+                var finalWritten = 0L
+                var finalTotal = 0L
+                route.write(destination) { written, total, speed, eta ->
+                    finalWritten = written
+                    finalTotal = total
+                    val fraction = if (total > 0L) (written.toFloat() / total).coerceIn(0f, 1f) else 0f
+                    _active.update {
+                        it + (id to DownloadState.Running(
+                            fraction = fraction,
+                            bytesDownloaded = written,
+                            totalBytes = total,
+                            bytesPerSecond = speed,
+                            etaSeconds = eta,
+                            isFinalizing = false,
+                        ))
                     }
+                    DownloadSession.running(
+                        videoId = id,
+                        fraction = fraction,
+                        bytesDownloaded = written,
+                        totalBytes = total,
+                        bytesPerSecond = speed,
+                        etaSeconds = eta,
+                        isFinalizing = false,
+                    )
                 }
-                val words = lyrics?.await()
-                val coverBytes = coverJob?.await()
-                val canvas = canvasJob?.await()
+                pendingDestinations.remove(id)
+
+                // Byte transfer complete: set state to Finalizing
+                _active.update {
+                    it + (id to DownloadState.Running(
+                        fraction = 1f,
+                        bytesDownloaded = finalWritten,
+                        totalBytes = finalTotal,
+                        bytesPerSecond = 0L,
+                        etaSeconds = 0L,
+                        isFinalizing = true,
+                    ))
+                }
+                DownloadSession.running(
+                    videoId = id,
+                    fraction = 1f,
+                    bytesDownloaded = finalWritten,
+                    totalBytes = finalTotal,
+                    bytesPerSecond = 0L,
+                    etaSeconds = 0L,
+                    isFinalizing = true,
+                )
+
+                // Secondary metadata tasks should never fail a completed audio download
+                val words = runCatching { lyrics?.await() }.onFailure {
+                    Log.w(TAG, "lyrics fetch failed for $id: ${it.message}")
+                }.getOrNull()
+
+                val coverBytes = runCatching { coverJob.await() }.onFailure {
+                    Log.w(TAG, "cover fetch failed for $id: ${it.message}")
+                }.getOrNull()
+
+                val canvas = runCatching { canvasJob?.await() }.getOrNull()
 
                 if (coverBytes != null) {
                     DownloadStore.saveCover(context, song.videoId, coverBytes)
@@ -970,6 +1052,9 @@ object Downloads {
 
                 // Save companion LRC file & offline cache immediately
                 DownloadStore.saveLyrics(context, song.videoId, track, words)
+                if (track.videoId != song.videoId) {
+                    DownloadStore.saveLyrics(context, track.videoId, track, words)
+                }
 
                 // Embed tags before commit while file is still pending in MediaStore (full write access)
                 runCatching {
@@ -982,7 +1067,7 @@ object Downloads {
                 // Also attempt post-commit tagging if needed
                 runCatching {
                     MediaTagger.embed(context, savedUri, track, route.extension, words, coverBytes)
-                }
+                }.onFailure { Log.w(TAG, "post-commit tagging failed for $id: ${it.message}") }
 
                 remember(context, song, track, savedUri)
                 DownloadSession.done(id)
@@ -990,7 +1075,8 @@ object Downloads {
                 Log.d(TAG, "saved $name")
             }
         } catch (e: Throwable) {
-            pending?.abort()
+            pendingDestinations.remove(id)
+            // Preserve partial download so interrupted files can resume instead of restarting from 0.
             throw e
         } finally {
             lyrics?.cancel()
@@ -1015,7 +1101,10 @@ object Downloads {
         /** For the log line, so a download's provenance is on the record. */
         val describe: String,
         val durationMs: Long = 0L,
-        val write: suspend (OutputStream, (written: Long, total: Long) -> Unit) -> Unit,
+        val write: suspend (
+            destination: DownloadStore.Pending,
+            onProgress: (written: Long, total: Long, bytesPerSec: Long, etaSeconds: Long?) -> Unit,
+        ) -> Long,
     )
 
     /**
@@ -1037,8 +1126,8 @@ object Downloads {
                 mimeType = storable.mimeType,
                 describe = stream.format.summary,
                 durationMs = 0L,
-                write = { sink, onProgress ->
-                    Downloader.fetchDirect(stream.url, stream.headers, sink, onProgress)
+                write = { destination, onProgress ->
+                    Downloader.fetchDirect(stream.url, stream.headers, destination, onProgress)
                 },
             )
         }
@@ -1048,8 +1137,8 @@ object Downloads {
             mimeType = stream.downloadMimeType,
             describe = "${stream.kbps}kbps ${stream.mimeType}",
             durationMs = stream.durationMs,
-            write = { sink, onProgress ->
-                Downloader.fetch(track.videoId, stream, quality.maxKbps, sink, onProgress)
+            write = { destination, onProgress ->
+                Downloader.fetch(track.videoId, stream, quality.maxKbps, destination, onProgress)
             },
         )
     }
@@ -1084,6 +1173,37 @@ object Downloads {
         track: Song,
         quality: DownloadQuality,
     ): Pair<SourceStream, DownloadStore.Storable>? {
+        // 1. Avoid redundant 20s search if track is already playing or shelved in StreamChoice / QualityUpgrade
+        val activeOrShelved = StreamChoice.of(track.videoId) ?: QualityUpgrade.shelvedFor(track.videoId)
+        if (activeOrShelved != null) {
+            val storable = DownloadStore.storable(activeOrShelved.format.codec)
+            if (storable != null) {
+                if (quality.keepsLossless && activeOrShelved.format.isLossless == true) {
+                    Log.d(TAG, "reusing already playing/shelved lossless stream for ${track.videoId} (${activeOrShelved.format.summary})")
+                    return activeOrShelved to storable
+                } else if (!quality.keepsLossless && (activeOrShelved.format.kbps ?: 0) >= 320) {
+                    Log.d(TAG, "reusing already playing/shelved 320k stream for ${track.videoId}")
+                    return activeOrShelved to storable
+                }
+            }
+        }
+
+        // 2. Check recently resolved download streams cache (15 min TTL)
+        val cached = downloadSourceCache[track.videoId]
+        if (cached != null && System.currentTimeMillis() - cached.second < 15 * 60 * 1000L) {
+            val stream = cached.first
+            val storable = DownloadStore.storable(stream.format.codec)
+            if (storable != null) {
+                if (quality.keepsLossless && stream.format.isLossless == true) {
+                    Log.d(TAG, "reusing cached resolved lossless stream for ${track.videoId} (${stream.format.summary})")
+                    return stream to storable
+                } else if (!quality.keepsLossless && (stream.format.kbps ?: 0) >= 320) {
+                    return stream to storable
+                }
+            }
+        }
+
+        // 3. Otherwise perform module source search
         val stream = withTimeoutOrNull(SOURCE_LOOKUP_MS) {
             try {
                 SourceResolver.forDownload(
@@ -1103,6 +1223,7 @@ object Downloads {
             Log.d(TAG, "nothing to file a '${stream.format.codec}' as; taking YouTube for ${track.videoId}")
             return null
         }
+        downloadSourceCache[track.videoId] = stream to System.currentTimeMillis()
         return stream to storable
     }
 
@@ -1131,6 +1252,13 @@ object Downloads {
     private fun Exception.friendly(): String = when {
         (this is IllegalStateException || this is IllegalArgumentException) &&
             !message.isNullOrBlank() -> message!!
+        this is java.io.FileNotFoundException -> "Storage or file unavailable"
+        this is java.io.IOException && message?.contains("ENOSPC", ignoreCase = true) == true -> "Device storage is full"
+        this is java.io.IOException && message?.contains("No space", ignoreCase = true) == true -> "Device storage is full"
+        !message.isNullOrBlank() && (message!!.contains("HTTP 4", ignoreCase = true) || message!!.contains("HTTP 5", ignoreCase = true)) -> message!!
+        !message.isNullOrBlank() && message!!.contains("stalled", ignoreCase = true) -> message!!
+        !message.isNullOrBlank() && message!!.contains("stopped at", ignoreCase = true) -> message!!
+        !message.isNullOrBlank() && message!!.contains("refused", ignoreCase = true) -> message!!
         else -> "Download failed — check your connection"
     }
 

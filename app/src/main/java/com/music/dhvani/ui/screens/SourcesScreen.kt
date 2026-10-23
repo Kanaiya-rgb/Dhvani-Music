@@ -1,30 +1,46 @@
 package com.music.dhvani.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DragHandle
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -32,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,9 +57,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.dhvani.R
 import com.music.dhvani.data.settings.AppSettings
@@ -54,27 +79,18 @@ import com.music.dhvani.data.sources.SourceRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Locale
 
 /**
  * Where the app is allowed to get audio from.
  *
- * The order is fixed rather than something to argue with: a module source,
- * when one is configured, is tried first — it's the one the user pointed at
- * on purpose — and YouTube Music is tried second, since it needs no setup and
- * has the full catalogue behind it. Nothing on this screen downloads code,
- * and nothing on it can teach the app a new way to behave after it has
- * shipped — a module supplies audio, not instructions.
+ * Dhvani prioritizes sources from top to bottom: high-resolution modular addons
+ * and bit-exact studio sources are queried first, followed by high-quality AAC,
+ * and finally Standard Opus as the universal fallback.
  */
 @Composable
 fun SourcesScreen(
     contentPadding: PaddingValues,
-    /**
-     * Asks the activity to put the custom-module alert up. Raised rather than
-     * shown here so its scrim covers the tab bar and the mini player, the same
-     * way every other alert in the app is hosted — see [DiscordDialogHost].
-     */
-    onEditCustomModule: () -> Unit,
+    onEditCustomModule: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -88,14 +104,8 @@ fun SourcesScreen(
     var editing by remember { mutableStateOf<SourceConfig?>(null) }
     val scope = rememberCoroutineScope()
 
-    // Only still singled out because it is the one kind that can be *added* —
-    // every other use of it below now goes through the list as a whole.
-    val module = configs.firstOrNull { it.kind == SourceKind.MODULE }
-    val custom = configs.firstOrNull { it.kind == SourceKind.CUSTOM_MODULE }
-
     // Every source that has a server to reach is probed, not just the built-in
-    // module, so a custom index gets the same reachability line — which is the
-    // only feedback that a URL just typed in was any good.
+    // module, so a custom index gets the same reachability line.
     val probeKey = configs.filter { it.kind.needsServer }.joinToString { "${it.id}@${it.baseUrl}" }
     LaunchedEffect(probeKey) {
         configs.filter { it.kind.needsServer && it.isComplete }.forEach { config ->
@@ -109,9 +119,6 @@ fun SourcesScreen(
 
     /** Whether the ceiling in force right now would cap a lossless stream anyway. */
     val cappedByQuality = (if (metered == true) cellularQuality else wifiQuality) != AudioQuality.HIGH
-    // Asked of the kinds themselves rather than of the module specifically, so
-    // a source added later answers this on its own terms instead of being
-    // invisible to it.
     val anyLosslessSource = configs.any { it.enabled && it.isComplete && it.kind.canServeLossless }
 
     Column(
@@ -120,88 +127,296 @@ fun SourcesScreen(
             .verticalScroll(rememberScrollState())
             .padding(contentPadding),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        // Screen Header & Priority Explanation
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = if (onBack != null) 4.dp else 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
+                .padding(horizontal = GROUP_INSET + 2.dp, vertical = 10.dp),
         ) {
-            if (onBack != null) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Back",
-                        tint = MaterialTheme.colorScheme.onBackground,
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-            }
             Text(
                 text = "Sources & Modules",
-                style = MaterialTheme.typography.displayLarge,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 24.sp,
+                ),
                 color = MaterialTheme.colorScheme.onBackground,
             )
-        }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Dhvani queries enabled streaming sources in priority order from top to bottom. Drag handles (≡) to adjust playback priority. If a source lacks a song or is unreachable, playback seamlessly steps down to the next source.",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 13.sp,
+                    lineHeight = 18.5.sp,
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+            )
 
-        SettingsGroup(
-            header = "Sources — tried in this order",
-            footer = buildString {
-                append(
-                    "A source that doesn't have the track, or can't be reached, is " +
-                        "stepped over rather than failing playback — the next one down plays it " +
-                        "instead. Anything ranked above YouTube is offered a YouTube track's " +
-                        "recording first, and keeps it if what it returns is better than what " +
-                        "YouTube would have served.",
-                )
-                if (cappedByQuality) {
-                    append(
-                        "\n\nThe quality ceiling for this connection is set below High, so " +
-                            "everything is being transcoded to fit it — lossless is not being " +
-                            "asked for. Downloads are unaffected.",
-                    )
-                } else if (!anyLosslessSource) {
-                    append(
-                        "\n\nNothing enabled here can serve lossless. Add a custom module below " +
-                            "and tracks it holds a lossless rendition of will play as the file " +
-                            "itself rather than as a transcode.",
+            Spacer(Modifier.height(14.dp))
+
+            // Quick status pills
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // Active count pill
+                val enabledCount = configs.count { it.enabled }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                ) {
+                    Text(
+                        text = "$enabledCount of ${configs.size} Sources Active",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                     )
                 }
-            },
-        ) {
-            // One loop over the configured sources in the order they are
-            // actually tried, rather than a row per kind with its position
-            // worked out by hand. Every source is listed, numbered, probed and
-            // toggled on identical terms; a kind added later appears here
-            // without this block having to learn about it.
-            val ordered = configs.sortedBy { it.kind.ordinal }
-            ordered.forEachIndexed { index, config ->
-                if (index > 0) RowDivider()
-                SourceRow(
-                    position = index + 1,
-                    config = config,
-                    health = health[config.id],
-                    // Only a source with a server to point at has anything to
-                    // edit — see [SourceKind.needsServer].
-                    onClick = if (config.kind.needsServer) ({ editing = config }) else null,
-                    // YouTube gets no switch at all — see
-                    // [SourceRegistry.setEnabled] for why one would be a lie.
-                    onToggle = if (config.kind == SourceKind.YOUTUBE) {
-                        null
-                    } else {
-                        ({ SourceRegistry.setEnabled(config.id, it) })
-                    },
-                )
+
+                // Lossless capability pill
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (anyLosslessSource && !cappedByQuality) Color(0xFF10B981).copy(alpha = 0.12f) else Color.White.copy(alpha = 0.06f),
+                    border = BorderStroke(0.6.dp, if (anyLosslessSource && !cappedByQuality) Color(0xFF10B981).copy(alpha = 0.35f) else Color.White.copy(alpha = 0.12f)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (anyLosslessSource && !cappedByQuality) Color(0xFF34D399) else Color(0xFFFBBF24)),
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = when {
+                                cappedByQuality -> "Quality Capped"
+                                anyLosslessSource -> "Hi-Res Available"
+                                else -> "Standard Catalog"
+                            },
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                            color = if (anyLosslessSource && !cappedByQuality) Color(0xFF34D399) else Color(0xFFFBBF24),
+                        )
+                    }
+                }
             }
-            if (ordered.isNotEmpty()) RowDivider()
-            SettingsRow(
-                icon = Icons.Rounded.Add,
-                title = if (custom == null) "Add custom module" else "Replace custom module",
-                subtitle = custom?.baseUrl ?: SourceKind.CUSTOM_MODULE.detail,
-                onClick = onEditCustomModule,
+        }
+
+        // Section header
+        Text(
+            text = "SOURCES — TRIED IN THIS ORDER",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                letterSpacing = 0.8.sp,
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.70f),
+            modifier = Modifier.padding(
+                start = GROUP_INSET + 4.dp,
+                end = GROUP_INSET,
+                top = 18.dp,
+                bottom = 8.dp,
+            ),
+        )
+
+        // Sources List Card Container
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+            border = BorderStroke(0.6.dp, Color.White.copy(alpha = 0.08f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = GROUP_INSET),
+        ) {
+            ReorderableSourceList(
+                configs = configs,
+                health = health,
+                onReorder = { newOrder ->
+                    SourceRegistry.reorder(newOrder)
+                },
+                onEdit = { config ->
+                    editing = config
+                },
+                onToggle = { configId, enabled ->
+                    SourceRegistry.setEnabled(configId, enabled)
+                },
             )
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(14.dp))
+
+        // Prominent "Add streaming addon or module" Action Card
+        Surface(
+            onClick = {
+                editing = SourceConfig(kind = SourceKind.CUSTOM_MODULE)
+            },
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f),
+            border = BorderStroke(0.9.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = GROUP_INSET),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = "Add source",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "Add Streaming Addon or Module",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                        ),
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "Connect Eclipse Addon (manifest.json) or custom modular index URL",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // Structured "How Fallback & Audio Quality Work" Info Card
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = Color.White.copy(alpha = 0.035f),
+            border = BorderStroke(0.6.dp, Color.White.copy(alpha = 0.08f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = GROUP_INSET),
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "How Fallback & Quality Work",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                        ),
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                FallbackRuleItem(
+                    number = "1",
+                    title = "Strict Priority Cascade",
+                    detail = "Sources are queried in order from top to bottom. Drag handles (≡) on any row to elevate your preferred streaming source.",
+                )
+
+                Spacer(Modifier.height(10.dp))
+
+                FallbackRuleItem(
+                    number = "2",
+                    title = "Fault-Tolerant Playback",
+                    detail = "If a higher-ranked source doesn't have the song or its server is temporarily unreachable, Dhvani instantly falls through to the next source without pausing.",
+                )
+
+                Spacer(Modifier.height(10.dp))
+
+                FallbackRuleItem(
+                    number = "3",
+                    title = "Seamless Lossless Upgrade",
+                    detail = "Playback starts instantly from fast sources like Standard Opus, then silently swaps to lossless studio masters in the background when available.",
+                )
+
+                if (cappedByQuality) {
+                    Spacer(Modifier.height(14.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFFBBF24).copy(alpha = 0.10f),
+                        border = BorderStroke(0.6.dp, Color(0xFFFBBF24).copy(alpha = 0.30f)),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = "Note: Your current audio quality setting is set below High. All incoming audio will be transcoded to conserve data.",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.5.sp,
+                                lineHeight = 16.sp,
+                            ),
+                            color = Color(0xFFFBBF24),
+                            modifier = Modifier.padding(10.dp),
+                        )
+                    }
+                } else if (!anyLosslessSource) {
+                    Spacer(Modifier.height(14.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                        border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = "Tip: None of your enabled sources currently supply bit-exact FLAC audio. Add a custom module or Eclipse addon above to stream lossless audio.",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.5.sp,
+                                lineHeight = 16.sp,
+                            ),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(10.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        // Ample bottom spacer ensuring full clearance above mini-player and nav bar
+        Spacer(Modifier.height(110.dp))
     }
 
     editing?.let { config ->
@@ -209,10 +424,17 @@ fun SourcesScreen(
             config = config,
             onDismiss = { editing = null },
             onSave = { saved ->
-                if (SourceRegistry.config(saved.id) == null) {
-                    SourceRegistry.add(saved)
+                val autoLabeled = if (saved.label.isBlank()) {
+                    val friendly = SourceRegistry.friendlyAddonName(saved.baseUrl)
+                    if (friendly.isNotBlank()) saved.copy(label = friendly)
+                    else if (SourceRegistry.isAddonUrl(saved.baseUrl)) saved.copy(label = "Custom Addon")
+                    else saved
+                } else saved
+
+                if (SourceRegistry.config(autoLabeled.id) == null) {
+                    SourceRegistry.add(autoLabeled)
                 } else {
-                    SourceRegistry.update(saved)
+                    SourceRegistry.update(autoLabeled)
                 }
                 editing = null
             },
@@ -222,10 +444,6 @@ fun SourcesScreen(
                 editing = null
             },
             probe = { candidate ->
-                // Probed through a throwaway instance rather than the stored
-                // one: the point of Test is to check what has been *typed*,
-                // which is not yet what is saved, and testing the saved copy
-                // would cheerfully report success for the old URL.
                 withContext(Dispatchers.IO) {
                     runCatching { SourceRegistry.probeCandidate(candidate) }
                         .getOrElse { SourceHealth.Unreachable(it.message ?: "Failed") }
@@ -234,82 +452,440 @@ fun SourcesScreen(
             scope = scope,
         )
     }
-
 }
+
+@Composable
+private fun FallbackRuleItem(
+    number: String,
+    title: String,
+    detail: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.08f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = number,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                ),
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Spacer(Modifier.height(1.dp))
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp,
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+            )
+        }
+    }
+}
+
+private const val SWAP_THRESHOLD = 0.6f
+
+@Composable
+private fun ReorderableSourceList(
+    configs: List<SourceConfig>,
+    health: Map<String, SourceHealth>,
+    onReorder: (List<SourceConfig>) -> Unit,
+    onEdit: (SourceConfig) -> Unit,
+    onToggle: (String, Boolean) -> Unit,
+) {
+    var liveOrder by remember(configs) { mutableStateOf(configs) }
+    var draggedConfig by remember { mutableStateOf<SourceConfig?>(null) }
+    var totalDrag by remember { mutableStateOf(0f) }
+    var startIndex by remember { mutableStateOf(0) }
+    var pitchPx by remember { mutableStateOf(0f) }
+    var lockedPitchPx by remember { mutableStateOf(0f) }
+
+    Column {
+        liveOrder.forEachIndexed { index, config ->
+            key(config.id) {
+                val dragging = config == draggedConfig
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .zIndex(if (dragging) 2f else 0f)
+                        .onSizeChanged { pitchPx = it.height.toFloat() }
+                        .graphicsLayer {
+                            translationY = if (dragging) {
+                                totalDrag - (liveOrder.indexOf(config) - startIndex) * lockedPitchPx
+                            } else {
+                                0f
+                            }
+                        },
+                ) {
+                    if (index > 0) {
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.06f),
+                            thickness = 0.6.dp,
+                        )
+                    }
+                    SourceRow(
+                        position = liveOrder.indexOf(config) + 1,
+                        config = config,
+                        health = health[config.id],
+                        isDragging = dragging,
+                        onClick = if (config.kind.needsServer) ({ onEdit(config) }) else null,
+                        onToggle = if (config.kind == SourceKind.YOUTUBE) {
+                            null
+                        } else {
+                            ({ onToggle(config.id, it) })
+                        },
+                        onDragHandlePointerInput = Modifier.pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = {
+                                    draggedConfig = config
+                                    totalDrag = 0f
+                                    startIndex = liveOrder.indexOf(config)
+                                    lockedPitchPx = pitchPx
+                                },
+                                onDrag = { change, delta ->
+                                    change.consume()
+                                    val pitch = lockedPitchPx
+                                    if (pitch <= 0f) return@detectDragGestures
+                                    var currIdx = liveOrder.indexOf(config)
+                                    if (currIdx < 0) return@detectDragGestures
+
+                                    totalDrag = (totalDrag + delta.y).coerceIn(
+                                        -startIndex * pitch,
+                                        (liveOrder.lastIndex - startIndex) * pitch,
+                                    )
+
+                                    while (true) {
+                                        val travelled = totalDrag / pitch
+                                        val moved = (currIdx - startIndex).toFloat()
+                                        if (travelled > moved + SWAP_THRESHOLD && currIdx < liveOrder.lastIndex) {
+                                            liveOrder = liveOrder.toMutableList().apply {
+                                                add(currIdx + 1, removeAt(currIdx))
+                                            }
+                                            currIdx++
+                                        } else if (travelled < moved - SWAP_THRESHOLD && currIdx > 0) {
+                                            liveOrder = liveOrder.toMutableList().apply {
+                                                add(currIdx - 1, removeAt(currIdx))
+                                            }
+                                            currIdx--
+                                        } else {
+                                            break
+                                        }
+                                    }
+                                },
+                                onDragEnd = {
+                                    draggedConfig = null
+                                    totalDrag = 0f
+                                    onReorder(liveOrder)
+                                },
+                                onDragCancel = {
+                                    draggedConfig = null
+                                    totalDrag = 0f
+                                    liveOrder = configs
+                                },
+                            )
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class SourceStatusDisplay(
+    val text: String,
+    val color: Color,
+    val showSpinner: Boolean = false,
+    val isError: Boolean = false,
+)
 
 @Composable
 private fun SourceRow(
     position: Int,
     config: SourceConfig,
     health: SourceHealth?,
+    isDragging: Boolean = false,
     onClick: (() -> Unit)?,
-    /** Null for a source that cannot be switched off, which gets a label instead. */
+    /** Null for a source that cannot be switched off, which gets an "Always on" label instead. */
     onToggle: ((Boolean) -> Unit)?,
+    onDragHandlePointerInput: Modifier = Modifier,
 ) {
+    val isEnabled = config.enabled
+    val isBuiltin = !config.kind.needsServer
+
+    val statusInfo = remember(health, config) {
+        when {
+            !config.isComplete -> SourceStatusDisplay("Tap to finish setting up", Color(0xFFFBBF24), isError = true)
+            health is SourceHealth.Ok -> {
+                val rawDetail = health.detail.orEmpty().trim()
+                val cleanDetail = if (rawDetail.startsWith(config.displayName, ignoreCase = true)) {
+                    rawDetail.removePrefix(config.displayName).trim().removePrefix("-").removePrefix("—").trim()
+                } else rawDetail
+
+                val labelStr = config.kind.labels.take(3).joinToString(" • ")
+                val text = when {
+                    cleanDetail.isNotBlank() && labelStr.isNotBlank() -> "$cleanDetail • $labelStr"
+                    cleanDetail.isNotBlank() -> cleanDetail
+                    else -> labelStr
+                }
+                SourceStatusDisplay(text, Color.White.copy(alpha = 0.65f))
+            }
+            health is SourceHealth.Rejected -> SourceStatusDisplay("Error: ${health.reason}", Color(0xFFF87171), isError = true)
+            health is SourceHealth.Unreachable -> SourceStatusDisplay("Offline: ${health.reason}", Color(0xFFF87171).copy(alpha = 0.85f), isError = true)
+            config.kind.needsServer -> SourceStatusDisplay("Checking status…", Color.White.copy(alpha = 0.45f), showSpinner = true)
+            else -> SourceStatusDisplay(config.kind.labels.take(3).joinToString(" • "), Color.White.copy(alpha = 0.55f))
+        }
+    }
+
+    val iconBgColor = when (config.kind) {
+        SourceKind.MONOCHROME -> Color(0xFF10B981).copy(alpha = 0.16f)
+        SourceKind.JIOSAAVN -> Color(0xFF0EA5E9).copy(alpha = 0.16f)
+        SourceKind.YOUTUBE -> Color(0xFFF59E0B).copy(alpha = 0.16f)
+        SourceKind.CUSTOM_MODULE, SourceKind.MODULE -> Color(0xFF8B5CF6).copy(alpha = 0.16f)
+    }
+    val iconTint = when (config.kind) {
+        SourceKind.MONOCHROME -> Color(0xFF34D399)
+        SourceKind.JIOSAAVN -> Color(0xFF38BDF8)
+        SourceKind.YOUTUBE -> Color(0xFFFBBF24)
+        SourceKind.CUSTOM_MODULE, SourceKind.MODULE -> Color(0xFFA78BFA)
+    }
+    val sourceIcon = when (config.kind) {
+        SourceKind.CUSTOM_MODULE, SourceKind.MODULE -> {
+            if (SourceRegistry.isAddonUrl(config.baseUrl)) Icons.Rounded.Waves else Icons.Rounded.Extension
+        }
+        SourceKind.MONOCHROME -> Icons.Rounded.Waves
+        SourceKind.JIOSAAVN -> Icons.Rounded.GraphicEq
+        SourceKind.YOUTUBE -> Icons.Rounded.PlayCircle
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (isDragging) {
+                    Modifier
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f))
+                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+                } else {
+                    Modifier
+                }
+            )
             .clickable(enabled = onClick != null) { onClick?.invoke() }
-            .heightIn(min = 60.dp)
-            .padding(horizontal = ROW_INSET, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "$position",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // Drag Handle Touch Target
+        Box(
             modifier = Modifier
-                .width(18.dp)
-                .alpha(if (config.enabled) 1f else 0.4f),
-        )
-        Spacer(Modifier.width(6.dp))
-        Icon(
-            imageVector = when (config.kind) {
-                SourceKind.CUSTOM_MODULE -> Icons.Rounded.Extension
-                SourceKind.MODULE -> Icons.Rounded.Extension
-                SourceKind.JIOSAAVN -> Icons.Rounded.GraphicEq
-                SourceKind.YOUTUBE -> Icons.Rounded.PlayCircle
-            },
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier
-                .size(ICON_SIZE)
-                .alpha(if (config.enabled) 1f else 0.4f),
-        )
-        Spacer(Modifier.width(ICON_GAP))
-        Column(
-            Modifier
-                .weight(1f)
-                .alpha(if (config.enabled) 1f else 0.4f),
+                .size(36.dp)
+                .then(onDragHandlePointerInput),
+            contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = config.displayName,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = config.statusLine(health),
-                style = MaterialTheme.typography.bodyMedium,
-                color = when (health) {
-                    // Only a rejection is coloured. A server that is merely
-                    // down will be up again without anyone doing anything,
-                    // and painting that red trains people to ignore the
-                    // colour by the time it means something.
-                    is SourceHealth.Rejected -> MaterialTheme.colorScheme.error
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                maxLines = 2,
+            Icon(
+                imageVector = Icons.Rounded.DragHandle,
+                contentDescription = "Drag to reorder source $position",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isEnabled) 0.55f else 0.25f),
+                modifier = Modifier.size(20.dp),
             )
         }
-        Spacer(Modifier.width(8.dp))
-        if (onToggle == null) {
+
+        Spacer(Modifier.width(4.dp))
+
+        // Position Badge
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = if (isEnabled) 0.08f else 0.03f)),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
-                text = "Always on",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = "$position",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isEnabled) 0.85f else 0.35f),
             )
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        // Source Icon Container
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (isEnabled) iconBgColor else Color.White.copy(alpha = 0.04f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = sourceIcon,
+                contentDescription = null,
+                tint = if (isEnabled) iconTint else Color.White.copy(alpha = 0.30f),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        // Middle: Title + Tag pill, and Status line
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .alpha(if (isEnabled) 1f else 0.45f),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = config.displayName,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                    ),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+
+                Spacer(Modifier.width(6.dp))
+
+                // Kind Badge
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (isBuiltin) Color.White.copy(alpha = 0.07f) else Color(0xFF8B5CF6).copy(alpha = 0.14f),
+                    border = BorderStroke(0.5.dp, if (isBuiltin) Color.White.copy(alpha = 0.12f) else Color(0xFF8B5CF6).copy(alpha = 0.35f)),
+                ) {
+                    Text(
+                        text = if (isBuiltin) "BUILT-IN" else "ADDON",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = if (isBuiltin) Color.White.copy(alpha = 0.65f) else Color(0xFFA78BFA),
+                        modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.5.dp),
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(3.dp))
+
+            // Status & Format info line
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (statusInfo.showSpinner) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(9.dp),
+                        strokeWidth = 1.3.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(5.dp))
+                } else if (statusInfo.isError) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(statusInfo.color),
+                    )
+                    Spacer(Modifier.width(5.dp))
+                } else if (health is SourceHealth.Ok) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF34D399)),
+                    )
+                    Spacer(Modifier.width(5.dp))
+                }
+
+                Text(
+                    text = statusInfo.text,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 11.5.sp,
+                        lineHeight = 15.sp,
+                    ),
+                    color = statusInfo.color,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        Spacer(Modifier.width(8.dp))
+
+        // Action: Edit button for modular sources
+        if (config.kind.needsServer) {
+            IconButton(
+                onClick = { onClick?.invoke() },
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.05f)),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Edit,
+                    contentDescription = "Edit or configure ${config.displayName}",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+        }
+
+        // Action: Always-on chip or Switch
+        if (onToggle == null) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color.White.copy(alpha = 0.08f),
+                border = BorderStroke(0.6.dp, Color.White.copy(alpha = 0.12f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Lock,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.65f),
+                        modifier = Modifier.size(11.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "Always on",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                        color = Color.White.copy(alpha = 0.70f),
+                    )
+                }
+            }
         } else {
             Switch(
                 checked = config.enabled,
@@ -321,19 +897,6 @@ private fun SourceRow(
             )
         }
     }
-}
-
-/** The second line of a row: what this source is, or what is wrong with it. */
-private fun SourceConfig.statusLine(health: SourceHealth?): String = when {
-    !isComplete -> "Tap to finish setting up"
-    health is SourceHealth.Ok -> listOfNotNull(
-        health.detail,
-        kind.labels.take(3).joinToString(" · "),
-    ).joinToString(" — ")
-    health is SourceHealth.Rejected -> health.reason
-    health is SourceHealth.Unreachable -> "Can't reach it right now — ${health.reason}"
-    kind.needsServer -> "Checking…"
-    else -> kind.labels.take(3).joinToString(" · ")
 }
 
 /**
@@ -362,24 +925,64 @@ private fun ServerEditorDialog(
 
     AlertDialog(
         onDismissRequest = { if (!testing) onDismiss() },
-        title = { Text(if (isNew) "Add ${config.kind.label.lowercase(Locale.ROOT)}" else config.displayName) },
+        title = { Text(if (isNew) "Add streaming addon or module" else config.displayName) },
         text = {
             Column {
+                if (isNew) {
+                    Text(
+                        text = "POPULAR ADDONS (1-TAP CONNECT)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SourceRegistry.COMMUNITY_ADDON_PRESETS.forEach { preset ->
+                            FilterChip(
+                                selected = baseUrl.trimEnd('/') == preset.url.trimEnd('/'),
+                                onClick = {
+                                    baseUrl = preset.url
+                                    label = preset.name
+                                    result = null
+                                    scope.launch {
+                                        testing = true
+                                        result = probe(config.copy(label = preset.name, baseUrl = preset.url))
+                                        testing = false
+                                    }
+                                },
+                                label = {
+                                    Text(preset.name, style = MaterialTheme.typography.bodySmall)
+                                },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
+
                 OutlinedTextField(
                     value = baseUrl,
-                    onValueChange = { baseUrl = it; result = null },
+                    onValueChange = {
+                        baseUrl = it
+                        result = null
+                        if (label.isBlank()) {
+                            val friendly = SourceRegistry.friendlyAddonName(it)
+                            if (friendly.isNotBlank()) label = friendly
+                        }
+                    },
                     label = { Text(stringResource(R.string.link)) },
                     placeholder = {
-                        Text("https://example.com/modules/index.json")
+                        Text("https://example.com/manifest.json")
                     },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Paste the URL of a compatible module index JSON. The index " +
-                        "lists JS plugins that can search and stream from services like Tidal, " +
-                        "Qobuz, Apple Music and more.",
+                    text = "Paste the URL of a compatible module index (index.json) or plugin manifest.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -425,7 +1028,14 @@ private fun ServerEditorDialog(
                         testing = true
                         result = null
                         scope.launch {
-                            result = probe(candidate)
+                            val probeResult = probe(candidate)
+                            result = probeResult
+                            if (probeResult is SourceHealth.Ok && label.isBlank()) {
+                                val auto = probeResult.detail?.substringBefore(" v")?.trim().orEmpty()
+                                if (auto.isNotBlank()) {
+                                    label = auto
+                                }
+                            }
                             testing = false
                         }
                     },

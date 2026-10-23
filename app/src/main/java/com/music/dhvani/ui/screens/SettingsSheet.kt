@@ -885,7 +885,7 @@ fun SettingsScreen(
             ),
             SearchableSettingItem(
                 title = "About Dhvani Music",
-                subtitle = "Developer credits, GitHub repository, and Telegram community",
+                subtitle = "Installed version, updates, and system diagnostics",
                 category = "About & Updates",
                 icon = Icons.Rounded.Info,
                 onClick = { currentSubScreen = SettingsSubScreen.ABOUT },
@@ -1145,31 +1145,11 @@ fun SettingsScreen(
                     ),
                 )
 
-                // Footer with only GitHub and Telegram
+                // Footer
                 Text(
-                    text = buildAnnotatedString {
-                        append("Dhvani Music $version\n")
-                        val linkStyles = TextLinkStyles(
-                            style = SpanStyle(
-                                color = MaterialTheme.colorScheme.primary,
-                                textDecoration = TextDecoration.Underline,
-                            ),
-                        )
-                        withLink(LinkAnnotation.Url("https://github.com/Kanaiya-rgb/Dhvani-Music", linkStyles)) {
-                            append("GitHub")
-                        }
-                        append("   •   ")
-                        withLink(LinkAnnotation.Url("https://discord.gg/cQkNcqCwkA", linkStyles)) {
-                            append("Discord")
-                        }
-                        append("   •   ")
-                        withLink(LinkAnnotation.Url("https://t.me/DhvaniMusicApp", linkStyles)) {
-                            append("Telegram")
-                        }
-                        append("\n~YouTube Music Backend")
-                    },
+                    text = "Dhvani Music v$version\nOpen-source audio player",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1192,7 +1172,7 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.Rounded.Storage,
                             title = "Audio sources & priority order",
-                            subtitle = if (moduleEnabled) "Active: Modular FLAC/ALAC plugins, JioSaavn & YouTube fallback" else "Configure stream sources & modular lossless plugins",
+                            subtitle = if (moduleEnabled) "Active: Modular FLAC/ALAC plugins, High Quality AAC & Standard Opus fallback" else "Configure stream sources & modular lossless plugins",
                             trailing = { Chevron() },
                             onClick = onSources,
                         )
@@ -1986,8 +1966,8 @@ fun SettingsScreen(
 
                 SettingsSubScreen.CHANGELOG -> {
                     val releases = changelogReleases.ifEmpty { ChangelogRepository.FALLBACK_RELEASES }
-                    val latestRelease = releases.firstOrNull { it.isLatest } ?: releases.first()
-                    val pastReleases = releases.filter { it != latestRelease }
+                    val latestRelease = releases.firstOrNull { it.isLatest } ?: releases.firstOrNull()
+                    val pastReleases = if (latestRelease != null) releases.filter { it != latestRelease } else emptyList()
 
                     // Header row with Live status & Manual Refresh button
                     Row(
@@ -2052,64 +2032,95 @@ fun SettingsScreen(
                         Spacer(Modifier.height(4.dp))
                     }
 
-                    // 1. Top Featured Latest Release
-                    SettingsGroup(header = "Latest Release") {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                    if (latestRelease != null) {
+                        // 1. Top Featured Latest Release
+                        SettingsGroup(header = "Latest Release") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
                             ) {
-                                Text(
-                                    text = "Dhvani Music ${latestRelease.version}",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
-                                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
                                     Text(
-                                        text = "LATEST",
-                                        style = MaterialTheme.typography.labelSmall,
+                                        text = "Dhvani Music ${latestRelease.version}",
+                                        style = MaterialTheme.typography.titleLarge,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary,
                                     )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+                                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                                    ) {
+                                        Text(
+                                            text = "LATEST",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "${latestRelease.summary} • ${latestRelease.date}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.height(14.dp))
+                                latestRelease.items.forEach { item ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.Top,
+                                    ) {
+                                        Text(
+                                            text = "•",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(end = 8.dp),
+                                        )
+                                        Text(
+                                            text = item,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    }
                                 }
                             }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = "${latestRelease.summary} • ${latestRelease.date}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.height(14.dp))
-                            latestRelease.items.forEach { item ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    verticalAlignment = Alignment.Top,
-                                ) {
-                                    Text(
-                                        text = "•",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(end = 8.dp),
-                                    )
-                                    Text(
-                                        text = item,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                }
+                        }
+                    } else if (!isChangelogLoading) {
+                        SettingsGroup(header = "Changelog") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(36.dp),
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = "No changelog cached",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "Connect to the internet and tap refresh to fetch the latest release notes from GitHub.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                )
                             }
                         }
                     }
@@ -2209,214 +2220,11 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.height(16.dp))
                             Text(
-                                text = "A private, high-fidelity music streaming player with YouTube Music backend and Material 3 design.",
+                                text = "A modern, high-fidelity audio player with 32-bit DSP, lossless playback, and Material 3 design.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,
                             )
-                        }
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    // Developer & Creator Card
-                    SettingsGroup(header = "Developer & Creator") {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(64.dp)
-                                        .clip(CircleShape)
-                                        .border(
-                                            width = 2.dp,
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                            shape = CircleShape,
-                                        )
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    AsyncImage(
-                                        model = "https://avatars.githubusercontent.com/u/176733324?v=4",
-                                        contentDescription = "Kanaiya Soni",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                }
-
-                                Spacer(Modifier.width(14.dp))
-
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Kanaiya Soni",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                    Spacer(Modifier.height(4.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                                    ) {
-                                        Text(
-                                            text = "Creator & Lead Developer",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                        )
-                                    }
-                                    Spacer(Modifier.height(3.dp))
-                                    Text(
-                                        text = "@Kanaiya-rgb",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-
-                            Spacer(Modifier.height(14.dp))
-
-                            Text(
-                                text = "Passionate indie developer building Dhvani Music — dedicated to crafting high-fidelity audio, aesthetic futuristic UI, and a private, ad-free streaming experience.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                lineHeight = 20.sp,
-                            )
-
-                            Spacer(Modifier.height(14.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                // GitHub Chip Button
-                                Surface(
-                                    onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW, "https://github.com/Kanaiya-rgb".toUri()).apply {
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        runCatching { context.startActivity(intent) }
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                                    modifier = Modifier.weight(1f),
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Person,
-                                            contentDescription = "GitHub",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            text = "GitHub",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                        )
-                                        Spacer(Modifier.width(4.dp))
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                            modifier = Modifier.size(12.dp),
-                                        )
-                                    }
-                                }
-
-                                // Discord Community Chip Button
-                                Surface(
-                                    onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW, "https://discord.gg/cQkNcqCwkA".toUri()).apply {
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        runCatching { context.startActivity(intent) }
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                                    modifier = Modifier.weight(1f),
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_discord),
-                                            contentDescription = "Discord",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(
-                                            text = "Discord",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                        )
-                                        Spacer(Modifier.width(3.dp))
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                            modifier = Modifier.size(12.dp),
-                                        )
-                                    }
-                                }
-
-                                // Telegram Channel Chip Button
-                                Surface(
-                                    onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW, "https://t.me/DhvaniMusicApp".toUri()).apply {
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        runCatching { context.startActivity(intent) }
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                                    modifier = Modifier.weight(1f),
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Link,
-                                            contentDescription = "Telegram",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(
-                                            text = "Telegram",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                        )
-                                        Spacer(Modifier.width(3.dp))
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                            modifier = Modifier.size(12.dp),
-                                        )
-                                    }
-                                }
-                            }
                         }
                     }
 
@@ -2505,33 +2313,6 @@ fun SettingsScreen(
                         )
                     }
 
-                    Spacer(Modifier.height(8.dp))
-
-                    SettingsGroup(header = "Links & Community") {
-                        SettingsRow(
-                            icon = Icons.Rounded.Link,
-                            title = "GitHub Repository",
-                            subtitle = "https://github.com/Kanaiya-rgb/Dhvani-Music",
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, "https://github.com/Kanaiya-rgb/Dhvani-Music".toUri()).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                runCatching { context.startActivity(intent) }
-                            },
-                        )
-                        RowDivider()
-                        SettingsRow(
-                            icon = Icons.Rounded.Link,
-                            title = "Telegram Channel",
-                            subtitle = "https://t.me/DhvaniMusicApp",
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, "https://t.me/DhvaniMusicApp".toUri()).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                runCatching { context.startActivity(intent) }
-                            },
-                        )
-                    }
                 }
             }
         }
@@ -2718,280 +2499,18 @@ fun SettingsScreen(
 
 
     if (showProfileCustomizationDialog || showEditUserNameDialog) {
-        var nameInput by remember { mutableStateOf(listenerName) }
-        var cityInput by remember { mutableStateOf(AppSettings.userCity.value) }
-        val avatarType by AppSettings.userAvatarType.collectAsStateWithLifecycle()
-        val presetId by AppSettings.userPresetAvatarId.collectAsStateWithLifecycle()
-
-        val photoPickerLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.PickVisualMedia(),
-        ) { uri ->
-            if (uri != null) {
-                runCatching {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        val avatarFile = java.io.File(context.filesDir, "dhvani_user_avatar.jpg")
-                        avatarFile.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                        AppSettings.setUserCustomAvatar(avatarFile.absolutePath)
-                        Toast.makeText(context, "Profile photo updated!", Toast.LENGTH_SHORT).show()
-                    }
-                }.onFailure {
-                    Toast.makeText(context, "Failed to load photo: ${it.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-
-        AlertDialog(
-            onDismissRequest = {
+        com.music.dhvani.ui.components.WelcomeNameDialog(
+            initialName = listenerName,
+            initialAvatarId = AppSettings.userPresetAvatarId.value,
+            isInitialSetup = false,
+            title = "Customize Profile",
+            onDismiss = {
                 showProfileCustomizationDialog = false
                 showEditUserNameDialog = false
             },
-            title = {
-                Text(
-                    "Customize Profile",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    // Central Avatar Preview with Edit Overlay
-                    Box(
-                        contentAlignment = Alignment.BottomEnd,
-                        modifier = Modifier.padding(top = 8.dp),
-                    ) {
-                        com.music.dhvani.ui.components.UserAvatar(
-                            size = 80.dp,
-                            borderWidth = 2.5.dp,
-                            borderColor = MaterialTheme.colorScheme.primary,
-                            onClick = {
-                                photoPickerLauncher.launch(
-                                    androidx.activity.result.PickVisualMediaRequest(
-                                        ActivityResultContracts.PickVisualMedia.ImageOnly
-                                    )
-                                )
-                            },
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                                .clickable {
-                                    photoPickerLauncher.launch(
-                                        androidx.activity.result.PickVisualMediaRequest(
-                                            ActivityResultContracts.PickVisualMedia.ImageOnly
-                                        )
-                                    )
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Rounded.Edit,
-                                contentDescription = "Change Photo",
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
-
-                    // Gallery upload / reset button
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        androidx.compose.material3.FilledTonalButton(
-                            onClick = {
-                                photoPickerLauncher.launch(
-                                    androidx.activity.result.PickVisualMediaRequest(
-                                        ActivityResultContracts.PickVisualMedia.ImageOnly
-                                    )
-                                )
-                            },
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        ) {
-                            Icon(Icons.Rounded.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Upload from Gallery", style = MaterialTheme.typography.labelMedium)
-                        }
-
-                        if (avatarType == "CUSTOM") {
-                            TextButton(
-                                onClick = {
-                                    AppSettings.clearUserAvatar()
-                                    Toast.makeText(context, "Switched to preset avatar", Toast.LENGTH_SHORT).show()
-                                },
-                            ) {
-                                Text("Reset", style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    }
-
-                    // Curated Music Avatars Section
-                    var selectedCategory by remember { mutableStateOf("All") }
-                    val categories = listOf("All", "3D Characters", "Music & Vibes", "Cyber & Space", "Fun & Playful", "Neon Glyphs")
-                    val filteredPresets = remember(selectedCategory) {
-                        if (selectedCategory == "All") {
-                            com.music.dhvani.ui.components.PRESET_AVATARS
-                        } else {
-                            com.music.dhvani.ui.components.PRESET_AVATARS.filter { it.category == selectedCategory }
-                        }
-                    }
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.Start,
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "Or Choose an Avatar",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                text = "${filteredPresets.size} styles",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            )
-                        }
-
-                        // Category Filter Chips
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(bottom = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            categories.forEach { cat ->
-                                val isCatSelected = selectedCategory == cat
-                                androidx.compose.material3.FilterChip(
-                                    selected = isCatSelected,
-                                    onClick = { selectedCategory = cat },
-                                    label = { Text(cat, style = MaterialTheme.typography.labelSmall) },
-                                )
-                            }
-                        }
-
-                        filteredPresets.chunked(4).forEach { rowPresets ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceAround,
-                            ) {
-                                rowPresets.forEach { preset ->
-                                    val isSelected = avatarType == "PRESET" && presetId == preset.id
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier
-                                            .size(50.dp)
-                                            .clip(CircleShape)
-                                            .border(
-                                                width = if (isSelected) 3.dp else 1.dp,
-                                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                                shape = CircleShape,
-                                            )
-                                            .padding(3.dp)
-                                            .clip(CircleShape)
-                                            .background(androidx.compose.ui.graphics.Brush.linearGradient(preset.colors))
-                                            .clickable {
-                                                AppSettings.setUserAvatarPreset(preset.id)
-                                            },
-                                    ) {
-                                        if (preset.drawableRes != null) {
-                                            Image(
-                                                painter = painterResource(preset.drawableRes),
-                                                contentDescription = preset.name,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .clip(CircleShape),
-                                            )
-                                        } else {
-                                            Icon(
-                                                imageVector = preset.icon,
-                                                contentDescription = preset.name,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(22.dp),
-                                            )
-                                        }
-
-                                        if (isSelected) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .background(Color.Black.copy(alpha = 0.35f)),
-                                                contentAlignment = Alignment.Center,
-                                            ) {
-                                                Icon(
-                                                    Icons.Rounded.Check,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(18.dp),
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Name Input
-                    OutlinedTextField(
-                        value = nameInput,
-                        onValueChange = { nameInput = it },
-                        label = { Text("Your Name or Nickname") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-
-                    // City Input (Optional override)
-                    val detectedCity = com.music.dhvani.data.telemetry.TelemetryManager.getDetectedCity()
-                    OutlinedTextField(
-                        value = cityInput,
-                        onValueChange = { cityInput = it },
-                        label = { Text("City (Optional)") },
-                        placeholder = { Text(if (detectedCity.isNotBlank()) "Auto: $detectedCity" else "e.g. Surat, Mumbai, Delhi") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            },
-            confirmButton = {
-                androidx.compose.material3.Button(
-                    onClick = {
-                        val trimmed = nameInput.trim().ifBlank { "Dhvani Listener" }
-                        AppSettings.setUserName(trimmed)
-                        AppSettings.setUserLocation(cityInput.trim())
-                        showProfileCustomizationDialog = false
-                        showEditUserNameDialog = false
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Text("Save Profile")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showProfileCustomizationDialog = false
-                    showEditUserNameDialog = false
-                }) {
-                    Text("Cancel")
-                }
+            onDismissOrCompleted = {
+                showProfileCustomizationDialog = false
+                showEditUserNameDialog = false
             },
         )
     }

@@ -19,6 +19,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -47,7 +49,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsTopHeight
@@ -89,6 +93,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -160,6 +165,7 @@ import com.music.dhvani.ui.components.PlaylistPickerSheet
 import com.music.dhvani.ui.components.SongActionsSheet
 import com.music.dhvani.ui.components.SongVersionsSheet
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.music.dhvani.playback.changeAudioTrack
 import com.music.dhvani.playback.rememberMediaController
 import com.music.dhvani.playback.rememberPlayerState
@@ -170,16 +176,30 @@ import com.music.dhvani.ui.components.BottomTab
 import com.music.dhvani.ui.components.FLOATING_BAR_MAX_WIDTH
 import com.music.dhvani.ui.components.FloatingBottomBar
 import com.music.dhvani.ui.components.FrostedTopBar
+import com.music.dhvani.ui.components.GlassNavBar
+import com.music.dhvani.ui.components.floatingtabbar.rememberFloatingTabBarScrollConnection
+import com.music.dhvani.ui.components.LocalAppBackdrop
+import com.music.dhvani.ui.components.LocalLiquidGlassEnabled
+import com.music.dhvani.ui.components.backdrop.backdrops.LayerBackdrop
+import com.music.dhvani.ui.components.backdrop.backdrops.layerBackdrop
+import com.music.dhvani.ui.components.backdrop.backdrops.rememberLayerBackdrop
+import com.music.dhvani.ui.components.isGlassSupported
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.music.dhvani.ui.components.LastfmLoginAlert
 import com.music.dhvani.data.sources.SourceRegistry
 import com.music.dhvani.ui.components.ListenBrainzTokenAlert
 import com.music.dhvani.ui.components.TextValueAlert
 import com.music.dhvani.ui.components.MiniPlayer
-import com.music.dhvani.ui.components.DynamicIslandPlayer
 import com.music.dhvani.ui.components.TopBarAccountButton
 import com.music.dhvani.ui.components.TopBarDownloadButton
 import com.music.dhvani.ui.components.TopFadeBlur
 import com.music.dhvani.ui.components.topBarContentPadding
+import com.music.dhvani.ui.components.topBarHeight
 import com.music.dhvani.ui.components.AppLanguageDialog
 import com.music.dhvani.ui.components.LyricsSourcesDialog
 import com.music.dhvani.ui.components.TranslationLanguageDialog
@@ -252,9 +272,11 @@ class MainActivity : AppCompatActivity() {
                         val maxMode = modes.maxByOrNull { it.refreshRate }
                         if (maxMode != null && maxMode.refreshRate > 60f) {
                             params.preferredDisplayModeId = maxMode.modeId
+                            params.preferredRefreshRate = maxMode.refreshRate
                         }
                     } else {
                         params.preferredDisplayModeId = 0
+                        params.preferredRefreshRate = 0f
                     }
                     window.attributes = params
                 }
@@ -273,11 +295,23 @@ class MainActivity : AppCompatActivity() {
                         fontScale = currentDensity.fontScale,
                     )
                 }
+                val windowBackground = MaterialTheme.colorScheme.background
+                val paintBackdrop: androidx.compose.ui.graphics.drawscope.ContentDrawScope.() -> Unit = androidx.compose.runtime.remember(windowBackground) {
+                    {
+                        drawRect(windowBackground)
+                        drawContent()
+                    }
+                }
+                val appBackdrop = rememberLayerBackdrop(onDraw = paintBackdrop)
+                val liquidGlassEnabled by AppSettings.liquidGlass.collectAsStateWithLifecycle()
+
                 androidx.compose.runtime.CompositionLocalProvider(
                     androidx.compose.ui.platform.LocalDensity provides scaledDensity,
+                    LocalLiquidGlassEnabled provides liquidGlassEnabled,
+                    LocalAppBackdrop provides appBackdrop,
                 ) {
                     BoxWithConstraints(Modifier.fillMaxSize()) {
-                        DhvaniApp(darkTheme = darkTheme, windowWidth = maxWidth)
+                        DhvaniApp(darkTheme = darkTheme, windowWidth = maxWidth, appBackdrop = appBackdrop)
                     }
                 }
             }
@@ -359,11 +393,35 @@ private fun DhvaniApp(
     darkTheme: Boolean,
     /** The width of the window this is laid out in — see the call site. */
     windowWidth: Dp,
+    appBackdrop: LayerBackdrop,
     viewModel: MainViewModel = viewModel(),
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val hazeState = remember { HazeState() }
+    val liquidGlassEnabled by AppSettings.liquidGlass.collectAsStateWithLifecycle()
+    val glassActive = liquidGlassEnabled && isGlassSupported()
+    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val glassSamplesBackdrop = glassActive && !reduceDynamicBlur
+    val navBarScroll = rememberFloatingTabBarScrollConnection()
+    var isTopBarVisible by rememberSaveable { mutableStateOf(true) }
+    val topBarScrollConnection = remember {
+        object : NestedScrollConnection {
+            var accumulatedDelta = 0f
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                accumulatedDelta += delta
+                if (accumulatedDelta < -48f) {
+                    if (isTopBarVisible) isTopBarVisible = false
+                    accumulatedDelta = 0f
+                } else if (accumulatedDelta > 48f) {
+                    if (!isTopBarVisible) isTopBarVisible = true
+                    accumulatedDelta = 0f
+                }
+                return Offset.Zero
+            }
+        }
+    }
     val notifyPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { /* handled */ }
@@ -371,7 +429,6 @@ private fun DhvaniApp(
     var showFloatingIslandPermissionDialog by rememberSaveable { mutableStateOf(false) }
     val hasPromptedUserName by AppSettings.hasPromptedUserName.collectAsStateWithLifecycle()
     val hasPromptedAutoDownloadNotice by AppSettings.hasPromptedAutoDownloadNotice.collectAsStateWithLifecycle()
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
 
     if (!hasPromptedUserName) {
         com.music.dhvani.ui.components.WelcomeNameDialog(
@@ -534,7 +591,6 @@ private fun DhvaniApp(
     // page's own overflow — because only one of them can be held at a time.
     var browseActions by remember { mutableStateOf<BrowseTarget?>(null) }
     val autoplay by AppSettings.autoplay.collectAsStateWithLifecycle()
-    val dynamicIslandEnabled by AppSettings.dynamicIslandEnabled.collectAsStateWithLifecycle()
     val listenBrainzToken by AppSettings.listenBrainzToken.collectAsStateWithLifecycle()
     // Incremented each time the search tab is re-tapped while already selected,
     // which SearchScreen uses as a signal to focus the input field.
@@ -667,7 +723,7 @@ private fun DhvaniApp(
 
     val controller = rememberMediaController()
     val player = rememberPlayerState(controller)
-    val listenTogetherManager = remember { ListenTogetherManager.getInstance() }
+    val listenTogetherManager = remember { ListenTogetherManager.init(context) }
     LaunchedEffect(controller) {
         listenTogetherManager.setMediaController(controller)
     }
@@ -753,6 +809,28 @@ private fun DhvaniApp(
         }
     }
 
+    LaunchedEffect(currentListState) {
+        snapshotFlow {
+            currentListState.firstVisibleItemIndex == 0 &&
+                currentListState.firstVisibleItemScrollOffset <= 24
+        }
+            .distinctUntilChanged()
+            .collect { atTop ->
+                if (atTop) isTopBarVisible = true
+            }
+    }
+
+    LaunchedEffect(selectedTab) {
+        isTopBarVisible = true
+    }
+
+    val currentPullFraction = currentPull?.distanceFraction ?: 0f
+    LaunchedEffect(currentPullFraction) {
+        if (currentPullFraction > 0.01f) {
+            isTopBarVisible = true
+        }
+    }
+
     // A pushed album/artist/playlist page has a large header of its own — the
     // sleeve, or an artist's photo running edge to edge — which owns the title
     // until it is scrolled away, exactly as a tab's big heading does. The state
@@ -800,8 +878,8 @@ private fun DhvaniApp(
     val tabs = listOf(
         BottomTab(tabSuno, DhvaniIcons.Play),
         BottomTab(tabExplore, DhvaniIcons.Explore),
-        BottomTab(tabSearch, DhvaniIcons.Search),
         BottomTab(tabLibrary, DhvaniIcons.Library),
+        BottomTab(tabSearch, DhvaniIcons.Search),
     )
 
     val scope = rememberCoroutineScope()
@@ -1366,11 +1444,16 @@ private fun DhvaniApp(
     // The top is measured off the bar rather than guessed at: the bar is pinned
     // under the status bar inset, and that inset varies by device and by window,
     // so a fixed number only ever lines up on the one device it was picked on.
-    // See [topBarContentPadding].
-    val listPadding = PaddingValues(
-        top = topBarContentPadding(),
-        bottom = if (player.song != null && !playerDocked) 210.dp else 140.dp,
-    )
+    val topPadding = topBarContentPadding()
+    val hasSong = player.song != null
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val listPadding = remember(topPadding, hasSong, playerDocked, navBarBottom) {
+        val baseBottom = if (hasSong && !playerDocked) 220.dp else 145.dp
+        PaddingValues(
+            top = topPadding,
+            bottom = baseBottom + navBarBottom + 20.dp,
+        )
+    }
 
     // What colour the page currently under the bars is. The fades either end
     // of the screen are flat colour wherever their blur has least to say, so
@@ -1688,6 +1771,34 @@ private fun DhvaniApp(
         // straight to Library. See [onLibraryItemClick].
         BackHandler(enabled = libraryShowAll != null && detail == null) { libraryShowAll = null }
 
+        val onHomeItemClick: (ShelfItem) -> Unit = remember(playRadio, viewModel) {
+            { item ->
+                when {
+                    item.videoId != null -> playRadio(
+                        Song(
+                            videoId = item.videoId,
+                            title = item.title,
+                            artist = InnertubeParser.artistFromSubtitle(item.subtitle),
+                            thumbnailUrl = item.thumbnailUrl,
+                        ),
+                    )
+                    item.browseId != null -> viewModel.openDetail(
+                        browseId = item.browseId,
+                        title = item.title,
+                        subtitle = item.subtitle,
+                        thumbnailUrl = item.thumbnailUrl,
+                    )
+                }
+            }
+        }
+        val onHomeRefresh: () -> Unit = remember(viewModel) {
+            { viewModel.refresh(MainViewModel.Feed.HOME) }
+        }
+        val onOpenReplayAction: () -> Unit = remember {
+            { showReplay = true }
+        }
+        val onSignInAction: () -> Unit = remember { {} }
+
         // On a tablet the page and the player stand side by side rather than
         // one over the other: everything a phone stacks in a single column —
         // the feed, the frosted bars, the tab row — becomes the left half of
@@ -1748,7 +1859,23 @@ private fun DhvaniApp(
                             fadeIn(tween(180)) togetherWith fadeOut(tween(180))
                         }
                     },
-                    modifier = if (!reduceDynamicBlur && !AppSettings.isLowEndDevice()) Modifier.hazeSource(hazeState) else Modifier,
+                    modifier = (if (!reduceDynamicBlur && !AppSettings.isLowEndDevice()) Modifier.hazeSource(hazeState) else Modifier)
+                        .nestedScroll(topBarScrollConnection)
+                        .then(
+                            if (glassActive) {
+                                Modifier
+                                    .then(
+                                        if (glassSamplesBackdrop) {
+                                            Modifier.layerBackdrop(appBackdrop)
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
+                                    .nestedScroll(navBarScroll)
+                            } else {
+                                Modifier
+                            },
+                        ),
                     label = "content",
                 ) { key ->
                     // Every branch below reads `key` rather than the state that
@@ -2087,36 +2214,14 @@ private fun DhvaniApp(
                             state = homeState,
                             listState = homeListState,
                             signedIn = signedIn,
-                            onSignIn = {},
+                            onSignIn = onSignInAction,
                             replayCard = replayCards.firstOrNull(),
-                            onOpenReplay = { showReplay = true },
-                            onItemClick = { item ->
-                                when {
-                                    item.videoId != null -> playRadio(
-                                        Song(
-                                            videoId = item.videoId,
-                                            title = item.title,
-                                            // The card's own subtitle is billed
-                                            // as "Song • Chelsea Wolfe"; only
-                                            // the credit belongs in the field
-                                            // the player, mini player and
-                                            // everything downstream read.
-                                            artist = InnertubeParser.artistFromSubtitle(item.subtitle),
-                                            thumbnailUrl = item.thumbnailUrl,
-                                        ),
-                                    )
-                                    item.browseId != null -> viewModel.openDetail(
-                                        browseId = item.browseId,
-                                        title = item.title,
-                                        subtitle = item.subtitle,
-                                        thumbnailUrl = item.thumbnailUrl,
-                                    )
-                                }
-                            },
+                            onOpenReplay = onOpenReplayAction,
+                            onItemClick = onHomeItemClick,
                             onItemLongPress = onBrowseLongPress,
                             onRetry = viewModel::loadHome,
                             refreshing = MainViewModel.Feed.HOME in refreshing,
-                            onRefresh = { viewModel.refresh(MainViewModel.Feed.HOME) },
+                            onRefresh = onHomeRefresh,
                             pullState = homePull,
                             contentPadding = listPadding,
                             onLoadMore = viewModel::loadMoreHome,
@@ -2182,6 +2287,34 @@ private fun DhvaniApp(
                             },
                             onSongLongPress = openSongMenu,
                             onSongSwipe = onSongSwipe,
+                            onPlayNext = { song ->
+                                if (song.videoId.isBlank()) {
+                                    Toast.makeText(context, "Track unavailable", Toast.LENGTH_SHORT).show()
+                                } else if (controller?.currentMediaItem?.mediaId == song.videoId) {
+                                    Toast.makeText(context, "Already playing · ${song.title}", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    playNext(song)
+                                    Toast.makeText(context, "Playing next · ${song.title}", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onAddToQueue = { song ->
+                                if (song.videoId.isBlank()) {
+                                    Toast.makeText(context, "Track unavailable", Toast.LENGTH_SHORT).show()
+                                } else if (controller?.currentMediaItem?.mediaId == song.videoId) {
+                                    Toast.makeText(context, "Already playing · ${song.title}", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    addToQueue(song)
+                                    Toast.makeText(context, "Added to queue · ${song.title}", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onAddToPlaylist = { song ->
+                                if (song.videoId.isBlank()) {
+                                    Toast.makeText(context, "Track unavailable", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    viewModel.loadPlaylists()
+                                    playlistTarget = song
+                                }
+                            },
                             onBrowseClick = { item ->
                                 viewModel.recordSearch()
                                 viewModel.openDetail(
@@ -2257,6 +2390,32 @@ private fun DhvaniApp(
                 val isDetailVisible = detail != null && !isLocalDetail && !showSettings &&
                     !showAccountScrobbling && !showSources && !showReplay
                 if (!isSearchTab) {
+                    val isTopScrolled = when {
+                        showSettings || showAccountScrobbling || showSources || showAppearanceSettings ||
+                            settingsSubScreenTitle != null || showDiscord || showHistory ||
+                            (libraryShowAll != null && detail == null) -> true
+                        // The page leads with its own large "Replay", so the bar
+                        // stays out of the way until that has been scrolled off.
+                        showReplay -> replayScrolled
+                        detail != null -> detailScrolled
+                        selectedTab == TAB_SEARCH -> false
+                        else -> scrolled
+                    }
+
+                    val isSubScreen = showSettings || showAccountScrobbling || showSources || showAppearanceSettings ||
+                        settingsSubScreenTitle != null || showDiscord || showHistory ||
+                        (libraryShowAll != null && detail == null) || detail != null || showReplay
+                    val shouldShowTopBar = isTopBarVisible || isSubScreen
+
+                    val topBarSlideAnim = remember { androidx.compose.animation.core.Animatable(if (shouldShowTopBar) 0f else -1f) }
+                    LaunchedEffect(shouldShowTopBar) {
+                        topBarSlideAnim.animateTo(
+                            targetValue = if (shouldShowTopBar) 0f else -1f,
+                            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                        )
+                    }
+                    val topBarHideDistancePx = with(LocalDensity.current) { (topBarHeight() + 16.dp).toPx() }
+
                     TopFadeBlur(
                         hazeState = hazeState,
                         // Replay paints its own full-bleed black backdrop up under the
@@ -2271,39 +2430,39 @@ private fun DhvaniApp(
                             isDetailVisible -> detailPalette.background
                             else -> MaterialTheme.colorScheme.background
                         },
-                        modifier = Modifier.align(Alignment.TopCenter),
+                        scrolled = isTopScrolled,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .graphicsLayer {
+                                val fraction = topBarSlideAnim.value
+                                translationY = topBarHideDistancePx * fraction
+                                alpha = (1f + fraction).coerceIn(0f, 1f)
+                            },
                     )
 
                     FrostedTopBar(
-                    title = when {
-                        showDiscord -> "Discord"
-                        showHistory -> "History"
-                        libraryShowAll != null && detail == null -> libraryShowAll?.title.orEmpty()
-                        showAccountScrobbling -> "Account & scrobbling"
-                        showSources -> "Sources"
-                        showAppearanceSettings -> stringResource(R.string.appearance)
-                        settingsSubScreenTitle != null -> settingsSubScreenTitle.orEmpty()
-                        showSettings -> "Settings"
-                        showReplay -> "Replay"
-                        detail != null -> detail.title
-                        selectedTab == TAB_SEARCH || selectedTab == TAB_LIBRARY -> ""
-                        else -> tabs[selectedTab].let {
-                            if (it.label == "Play") "Listen Now" else it.label
-                        }
-                    },
-                    scrolled = when {
-                        showSettings || showAccountScrobbling || showSources || showAppearanceSettings ||
-                            settingsSubScreenTitle != null || showDiscord || showHistory ||
-                            (libraryShowAll != null && detail == null) -> true
-                        // The page leads with its own large "Replay", so the bar
-                        // stays out of the way until that has been scrolled off.
-                        showReplay -> replayScrolled
-                        detail != null -> detailScrolled
-                        selectedTab == TAB_SEARCH -> false
-                        else -> scrolled
-                    },
-                    refreshing = currentFeed != null && currentFeed in refreshing,
-                    pullFraction = { currentPull?.distanceFraction ?: 0f },
+                        isHome = selectedTab == TAB_HOME && !isSubScreen,
+                        title = when {
+                            showDiscord -> "Discord"
+                            showHistory -> "History"
+                            libraryShowAll != null && detail == null -> libraryShowAll?.title.orEmpty()
+                            showAccountScrobbling -> "Account & scrobbling"
+                            showSources -> "Sources & Modules"
+                            showAppearanceSettings -> stringResource(R.string.appearance)
+                            settingsSubScreenTitle != null -> settingsSubScreenTitle.orEmpty()
+                            showSettings -> "Settings"
+                            showReplay -> "Replay"
+                            detail != null -> detail.title
+                            selectedTab == TAB_SEARCH -> ""
+                            selectedTab == TAB_LIBRARY -> stringResource(R.string.library)
+                            selectedTab == TAB_EXPLORE -> stringResource(R.string.explore)
+                            else -> tabs[selectedTab].let {
+                                if (it.label == "Play") "Listen Now" else it.label
+                            }
+                        },
+                        scrolled = isTopScrolled,
+                        refreshing = currentFeed != null && currentFeed in refreshing,
+                        pullFraction = { currentPull?.distanceFraction ?: 0f },
                     onBack = when {
                         showDiscord -> ({ showDiscord = false })
                         showHistory -> ({ showHistory = false })
@@ -2324,7 +2483,13 @@ private fun DhvaniApp(
                         else -> null
                     },
                     onLanguageClick = { showAppLanguage = true },
-                    modifier = Modifier.align(Alignment.TopCenter),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .graphicsLayer {
+                            val fraction = topBarSlideAnim.value
+                            translationY = topBarHideDistancePx * fraction
+                            alpha = (1f + fraction).coerceIn(0f, 1f)
+                        },
                     actions = {
                         // Only worth surfacing where there's room for it and it won't
                         // be mistaken for a per-page action — Home, at rest.
@@ -2404,105 +2569,108 @@ private fun DhvaniApp(
                     )
                 }
 
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        // Capped and centred rather than run to the page's edges
-                        // — see [FLOATING_BAR_MAX_WIDTH]. It sits on the Column
-                        // rather than on each bar so the two are held to the same
-                        // width and keep the shared left and right edge they have
-                        // on a phone. Before fillMaxWidth, so the fill has
-                        // already been bounded by the time it is applied.
-                        .widthIn(max = FLOATING_BAR_MAX_WIDTH)
-                        .fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    // Only where the player isn't already open beside the page:
-                    // a bar whose whole job is to stand in for the player, next
-                    // to the player, is a second copy of what is already there.
-                    player.song?.takeUnless { playerDocked }?.let { song ->
-                        MiniPlayer(
-                            song = song,
-                            isPlaying = player.isPlaying,
-                            isLoading = player.isLoading,
-                            hazeState = hazeState,
-                            onPlayPause = {
-                                controller?.let { if (it.isPlaying) it.pause() else it.play() }
-                            },
-                            onNext = { controller?.seekToNextMediaItem() },
-                            onExpand = { showNowPlaying = true },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .then(
-                                    if (hideBottomBar) Modifier
-                                        .navigationBarsPadding()
-                                        .padding(bottom = 12.dp)
-                                    else Modifier
-                                ),
-                            position = player.position,
-                            durationMs = player.durationMs,
-                        )
+                val onTabSelected: (Int) -> Unit = onTabSelected@{ index ->
+                    // Only re-tapping the search tab while already on it focuses the input field or clears query
+                    if (index == TAB_SEARCH) {
+                        if (selectedTab == TAB_SEARCH) {
+                            searchFocusTrigger++
+                            if (query.isNotEmpty()) {
+                                viewModel.onQueryChange("")
+                            }
+                            return@onTabSelected
+                        }
+                    } else {
+                        searchFocusTrigger = 0
                     }
-                    AnimatedVisibility(
-                        visible = !hideBottomBar,
-                        enter = slideInVertically(tween(durationMillis = 280)) { it } + fadeIn(tween(durationMillis = 200)),
-                        exit = slideOutVertically(tween(durationMillis = 240)) { it } + fadeOut(tween(durationMillis = 180)),
-                    ) {
-                        FloatingBottomBar(
-                            tabs = tabs,
-                            selectedIndex = selectedTab,
-                            hazeState = hazeState,
-                            onTabSelected = { index ->
-                                // Only re-tapping the search tab while already on it focuses the input field or clears query
-                                if (index == TAB_SEARCH) {
-                                    if (selectedTab == TAB_SEARCH) {
-                                        searchFocusTrigger++
-                                        if (query.isNotEmpty()) {
-                                            viewModel.onQueryChange("")
-                                        }
-                                        return@FloatingBottomBar
-                                    }
-                                } else {
-                                    searchFocusTrigger = 0
-                                }
-                                viewModel.clearDetail()
-                                showSettings = false
-                                showAppearanceSettings = false
-                                showSources = false
-                                showAccountScrobbling = false
-                                accountScrobblingFromListenTogether = false
-                                showDiscord = false
-                                showListenTogether = false
-                                showReplay = false
-                                showHistory = false
-                                libraryShowAll = null
-                                selectedTab = index
-                            },
-                        )
-                    }
+                    viewModel.clearDetail()
+                    showSettings = false
+                    showAppearanceSettings = false
+                    showSources = false
+                    showAccountScrobbling = false
+                    accountScrobblingFromListenTogether = false
+                    showDiscord = false
+                    showListenTogether = false
+                    showReplay = false
+                    showHistory = false
+                    libraryShowAll = null
+                    selectedTab = index
                 }
 
-                DynamicIslandPlayer(
-                    song = player.song,
-                    isPlaying = player.isPlaying,
-                    isLoading = player.isLoading,
-                    position = player.position,
-                    durationMs = player.durationMs,
-                    visible = dynamicIslandEnabled &&
-                        player.isPlaying &&
-                        player.song != null &&
-                        !showNowPlaying &&
-                        !playerDocked &&
-                        replayStory == null,
-                    onPlayPause = {
-                        controller?.let { if (it.isPlaying) it.pause() else it.play() }
-                    },
-                    onNext = { controller?.seekToNextMediaItem() },
-                    onPrevious = { controller?.seekToPreviousMediaItem() },
-                    onOpenFullPlayer = { showNowPlaying = true },
-                    modifier = Modifier.align(Alignment.TopCenter),
-                )
+                if (glassActive && !hideBottomBar) {
+                    GlassNavBar(
+                        tabs = tabs,
+                        selectedIndex = selectedTab,
+                        onTabSelected = onTabSelected,
+                        scrollConnection = navBarScroll,
+                        song = player.song?.takeUnless { playerDocked },
+                        isPlaying = player.isPlaying,
+                        isLoading = player.isLoading,
+                        onPlayPause = {
+                            controller?.let { if (it.isPlaying) it.pause() else it.play() }
+                        },
+                        onNext = { controller?.seekToNextMediaItem() },
+                        onPrevious = { controller?.seekToPrevious() },
+                        onExpand = { showNowPlaying = true },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .widthIn(max = FLOATING_BAR_MAX_WIDTH)
+                            .fillMaxWidth(),
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            // Capped and centred rather than run to the page's edges
+                            // — see [FLOATING_BAR_MAX_WIDTH]. It sits on the Column
+                            // rather than on each bar so the two are held to the same
+                            // width and keep the shared left and right edge they have
+                            // on a phone. Before fillMaxWidth, so the fill has
+                            // already been bounded by the time it is applied.
+                            .widthIn(max = FLOATING_BAR_MAX_WIDTH)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        // Only where the player isn't already open beside the page:
+                        // a bar whose whole job is to stand in for the player, next
+                        // to the player, is a second copy of what is already there.
+                        player.song?.takeUnless { playerDocked }?.let { song ->
+                            MiniPlayer(
+                                song = song,
+                                isPlaying = player.isPlaying,
+                                isLoading = player.isLoading,
+                                hazeState = hazeState,
+                                onPlayPause = {
+                                    controller?.let { if (it.isPlaying) it.pause() else it.play() }
+                                },
+                                onNext = { controller?.seekToNextMediaItem() },
+                                onExpand = { showNowPlaying = true },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (hideBottomBar) Modifier
+                                            .navigationBarsPadding()
+                                            .padding(bottom = 12.dp)
+                                        else Modifier
+                                    ),
+                                position = player.position,
+                                durationMs = player.durationMs,
+                            )
+                        }
+                        AnimatedVisibility(
+                            visible = !hideBottomBar,
+                            enter = slideInVertically(tween(durationMillis = 280)) { it } + fadeIn(tween(durationMillis = 200)),
+                            exit = slideOutVertically(tween(durationMillis = 240)) { it } + fadeOut(tween(durationMillis = 180)),
+                        ) {
+                            FloatingBottomBar(
+                                tabs = tabs,
+                                selectedIndex = selectedTab,
+                                hazeState = hazeState,
+                                onTabSelected = onTabSelected,
+                            )
+                        }
+                    }
+                }
 
                 // Floating Quick Shuffle Button (Positioned at bottom-right right above Mini Player)
                 val showFloatingShuffle = showPlayRandomButton &&
@@ -2516,15 +2684,20 @@ private fun DhvaniApp(
                     !showHistory &&
                     !showDiscord &&
                     !showReplay
-                if (showFloatingShuffle) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showFloatingShuffle && isTopBarVisible,
+                    enter = scaleIn(tween(220, easing = FastOutSlowInEasing)) + fadeIn(tween(180)) + slideInVertically(tween(240)) { it / 2 },
+                    exit = scaleOut(tween(180, easing = FastOutSlowInEasing)) + fadeOut(tween(150)) + slideOutVertically(tween(200)) { it / 2 },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .navigationBarsPadding()
+                        .padding(
+                            end = 18.dp,
+                            bottom = if (player.song != null && !playerDocked) 152.dp else 84.dp,
+                        ),
+                ) {
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .navigationBarsPadding()
-                            .padding(
-                                end = 18.dp,
-                                bottom = if (player.song != null && !playerDocked) 152.dp else 84.dp,
-                            )
                             .size(52.dp)
                             .shadow(
                                 elevation = 12.dp,
@@ -2666,27 +2839,6 @@ private fun DhvaniApp(
             val editable = viewModel.editablePlaylist(detail?.browseId)
                 ?.takeIf { !fromPlayer && song.setVideoId != null }
 
-            val currentNerdStatsSnapshot by com.music.dhvani.data.NerdStats.current.collectAsStateWithLifecycle()
-            val isPinnedToOriginal = com.music.dhvani.playback.OriginalVersion.isPinned(song.videoId)
-            val isPlayingHighQuality = !isPinnedToOriginal && (
-                currentNerdStatsSnapshot?.isHiQuality == true ||
-                currentNerdStatsSnapshot?.isLossless == true ||
-                currentNerdStatsSnapshot?.sourceName?.contains("saavn", ignoreCase = true) == true ||
-                currentNerdStatsSnapshot?.sourceName?.contains("tidal", ignoreCase = true) == true ||
-                (currentNerdStatsSnapshot == null && song.sourceQuality == "HIGH")
-            )
-
-            val performQualitySwitch: (Boolean) -> Unit = { toHighQuality ->
-                val s = player.song ?: song
-                if (toHighQuality) {
-                    com.music.dhvani.playback.OriginalVersion.unpin(s.videoId)
-                    com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource("JIOSAAVN")
-                } else {
-                    com.music.dhvani.playback.OriginalVersion.pin(s.videoId)
-                    com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource("YOUTUBE")
-                }
-                controller?.swapQuality(toHighQuality)
-            }
             val isCurrentPlayingTrack = fromPlayer ||
                 (player.song?.videoId == song.videoId) ||
                 (controller?.currentMediaItem?.mediaId == song.videoId)
@@ -2703,14 +2855,18 @@ private fun DhvaniApp(
                     song = song,
                     signedIn = signedIn,
                     likeStatus = likeStatuses[song.videoId] ?: LikeStatus.INDIFFERENT,
-                    onPlayNext = if (!isCurrentPlayingTrack) {
+                    onStartRadio = {
+                        songActions = null
+                        playRadio(song)
+                    },
+                    onPlayNext = if (!fromPlayer || !isCurrentPlayingTrack) {
                         {
                             playNext(song)
                             songActions = null
                             Toast.makeText(context, "Playing next · ${song.title}", Toast.LENGTH_SHORT).show()
                         }
                     } else null,
-                    onAddToQueue = if (!isCurrentPlayingTrack) {
+                    onAddToQueue = if (!fromPlayer || !isCurrentPlayingTrack) {
                         {
                             addToQueue(song)
                             songActions = null
@@ -2721,17 +2877,11 @@ private fun DhvaniApp(
                     // progress, and closing the sheet would hide the only
                     // answer to "did that work?".
                     onDownload = { downloadSong(song) },
-                    // The sheet stays up for a rating: it shows the new state
-                    // in place, and people often thumb a song and then queue it.
-                    onToggleLike = { viewModel.toggleLike(song.videoId, song) },
-                    onToggleDislike = { viewModel.toggleDislike(song.videoId) },
-                    onDislikeAndSkip = {
-                        viewModel.dislikeAndSkipCurrentTrack(
-                            videoId = song.videoId,
-                            controller = if (song.videoId == player.song?.videoId) controller else null,
-                        )
-                        Toast.makeText(context, "Disliked track — skipping to next track", Toast.LENGTH_SHORT).show()
-                    },
+                    onToggleLike = if (fromPlayer) {
+                        { viewModel.toggleLike(song.videoId, song) }
+                    } else null,
+                    onToggleDislike = null,
+                    onDislikeAndSkip = null,
                     onAddToPlaylist = {
                         songActions = null
                         viewModel.loadPlaylists()
@@ -2759,19 +2909,13 @@ private fun DhvaniApp(
                     // whatever ids it's ever going to have.
                     resolvingLinks = fromPlayer && linksLoading,
                     showSleepTimer = fromPlayer,
-                    onRollbackToOriginal = if ((fromPlayer || isCurrentPlayingTrack) && isPlayingHighQuality && song.localUri == null && controller?.currentMediaItem?.mediaId == song.videoId) {
+                    onOpenAudioQuality = if (fromPlayer && song.localUri == null) {
                         {
                             songActions = null
-                            performQualitySwitch(false)
+                            showAudioQualitySheet = true
                         }
                     } else null,
-                    onUpgradeQuality = if ((fromPlayer || isCurrentPlayingTrack) && !isPlayingHighQuality && song.localUri == null && controller?.currentMediaItem?.mediaId == song.videoId) {
-                        {
-                            songActions = null
-                            performQualitySwitch(true)
-                        }
-                    } else null,
-                    onOpenVersions = if (song.localUri == null) {
+                    onOpenVersions = if (fromPlayer && song.localUri == null) {
                         {
                             val target = song
                             songActions = null
@@ -2779,30 +2923,36 @@ private fun DhvaniApp(
                             viewModel.loadSongVersions(target)
                         }
                     } else null,
-                    onOpenEqualizer = {
-                        songActions = null
-                        showEqualizerSheet = true
-                    },
-                    onOpenAudioEffects = {
-                        songActions = null
-                        showAudioEffectsSheet = true
-                    },
+                    onOpenEqualizer = if (fromPlayer) {
+                        {
+                            songActions = null
+                            showEqualizerSheet = true
+                        }
+                    } else null,
+                    onOpenAudioEffects = if (fromPlayer) {
+                        {
+                            songActions = null
+                            showAudioEffectsSheet = true
+                        }
+                    } else null,
                     onEnterAmbientCinemaMode = if (fromPlayer) {
                         {
                             songActions = null
                             showAmbientCinemaMode = true
                         }
                     } else null,
-                    onSetAsRingtone = {
-                        val target = song
-                        songActions = null
-                        ringtoneInitialPos = if (player.song?.videoId == target.videoId) {
-                            (controller?.currentPosition ?: 0L).coerceAtLeast(0L)
-                        } else 0L
-                        wasPlayingBeforeRingtone = controller?.isPlaying == true
-                        controller?.pause()
-                        ringtoneTarget = target
-                    },
+                    onSetAsRingtone = if (fromPlayer) {
+                        {
+                            val target = song
+                            songActions = null
+                            ringtoneInitialPos = if (player.song?.videoId == target.videoId) {
+                                (controller?.currentPosition ?: 0L).coerceAtLeast(0L)
+                            } else 0L
+                            wasPlayingBeforeRingtone = controller?.isPlaying == true
+                            controller?.pause()
+                            ringtoneTarget = target
+                        }
+                    } else null,
                     // Hidden outright when there's no real YouTube id behind
                     // this row to build a link from — SongActionsSheet already
                     // drops it for a local file via `isOffline`, this catches
@@ -2828,14 +2978,10 @@ private fun DhvaniApp(
                     } else {
                         null
                     },
-                    onOpenDetails = if (fromPlayer) {
-                        {
-                            detailsSong = song
-                            songActions = null
-                            showSongDetails = true
-                        }
-                    } else {
-                        null
+                    onOpenDetails = {
+                        detailsSong = song
+                        songActions = null
+                        showSongDetails = true
                     },
                 )
             }
@@ -2937,37 +3083,49 @@ private fun DhvaniApp(
             val currentNerdStats by com.music.dhvani.data.NerdStats.current.collectAsStateWithLifecycle()
             val preferredSource by com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.collectAsStateWithLifecycle()
             val sourceConfigs by com.music.dhvani.data.sources.SourceRegistry.configs.collectAsStateWithLifecycle()
-            val hasLosslessModule = sourceConfigs.any { it.kind.canServeLossless && it.enabled && it.isComplete }
 
             com.music.dhvani.ui.player.AudioQualityPickerSheet(
                 song = player.song,
                 nerdStats = currentNerdStats,
                 preferredSource = preferredSource,
-                hasLosslessModule = hasLosslessModule,
-                onSelectQuality = { mode ->
+                sourceConfigs = sourceConfigs,
+                onSelectSource = { option ->
                     showAudioQualitySheet = false
                     val s = player.song
                     if (s != null) {
-                        when (mode) {
-                            com.music.dhvani.ui.player.PlaybackQualityMode.ORIGINAL_YT -> {
+                        when {
+                            option.id == "YOUTUBE" -> {
                                 com.music.dhvani.playback.OriginalVersion.pin(s.videoId)
                                 com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource("YOUTUBE")
+                                controller?.swapQuality("YOUTUBE")
                             }
-                            com.music.dhvani.ui.player.PlaybackQualityMode.HIGH_QUALITY -> {
+                            option.id == "JIOSAAVN" -> {
                                 com.music.dhvani.playback.OriginalVersion.unpin(s.videoId)
                                 com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource("JIOSAAVN")
+                                controller?.swapQuality("JIOSAAVN")
                             }
-                            com.music.dhvani.ui.player.PlaybackQualityMode.LOSSLESS -> {
+                            option.isLossless || option.id == "LOSSLESS" || option.sourceConfig?.kind?.canServeLossless == true -> {
                                 com.music.dhvani.playback.OriginalVersion.unpin(s.videoId)
-                                com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource("LOSSLESS")
-                                com.music.dhvani.data.settings.AppSettings.audioQualityWifi.value = com.music.dhvani.data.settings.AudioQuality.LOSSLESS
-                                com.music.dhvani.data.settings.AppSettings.audioQualityCellular.value = com.music.dhvani.data.settings.AudioQuality.LOSSLESS
+                                com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource(option.id)
+                                com.music.dhvani.data.settings.AppSettings.setAudioQualityWifi(com.music.dhvani.data.settings.AudioQuality.LOSSLESS)
+                                com.music.dhvani.data.settings.AppSettings.setAudioQualityCellular(com.music.dhvani.data.settings.AudioQuality.LOSSLESS)
+                                option.sourceConfig?.let { cfg ->
+                                    if (!cfg.enabled) com.music.dhvani.data.sources.SourceRegistry.setEnabled(cfg.id, true)
+                                }
+                                controller?.swapQuality(option.id)
+                            }
+                            else -> {
+                                com.music.dhvani.playback.OriginalVersion.unpin(s.videoId)
+                                com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource(option.id)
+                                controller?.swapQuality(option.id)
                             }
                         }
-                        controller?.swapQuality(mode.name)
                     }
                 },
-
+                onConfigureSources = {
+                    showAudioQualitySheet = false
+                    showSources = true
+                },
                 onDismiss = { showAudioQualitySheet = false },
             )
         }
@@ -3494,10 +3652,10 @@ private fun DhvaniApp(
             val existing = SourceRegistry.customModule()
             TextValueAlert(
                 hazeState = hazeState,
-                title = "Custom module",
-                message = "A compatible module index, tried ahead of the built-in one. " +
-                    "Only one at a time — saving replaces the current one.",
-                placeholder = "Module index URL",
+                title = "Custom module or addon",
+                message = "Enter a compatible module index (index.json) or streaming plugin URL (manifest.json). " +
+                    "Tried ahead of built-in sources for 24-bit Hi-Res FLAC streaming.",
+                placeholder = "https://.../manifest.json",
                 value = customModuleInput,
                 onValueChange = { customModuleInput = it },
                 saveEnabled = customModuleInput.isNotBlank(),
@@ -3523,7 +3681,9 @@ private fun DhvaniApp(
             com.music.dhvani.ui.player.AmbientCinemaLandscapeOverlay(
                 song = cinemaSong,
                 isPlaying = player.isPlaying,
+                isLoading = player.isLoading,
                 positionMs = player.position.positionMs,
+                bufferedPositionMs = player.position.bufferedPositionMs,
                 durationMs = player.durationMs,
                 lyrics = lyrics,
                 queue = player.queue,
@@ -3674,8 +3834,8 @@ private val DETAIL_TITLE_DROP = 320.dp
 private const val TAB_HOME = 0
 private const val TAB_EXPLORE = 1
 private const val TAB_CATEGORY = 1
-private const val TAB_SEARCH = 2
-private const val TAB_LIBRARY = 3
+private const val TAB_LIBRARY = 2
+private const val TAB_SEARCH = 3
 
 /**
  * What a tab's key is prefixed with in the content switcher above.

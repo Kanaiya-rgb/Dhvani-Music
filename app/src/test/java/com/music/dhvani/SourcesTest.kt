@@ -74,10 +74,10 @@ class SourcesTest {
     @Test
     fun `summary states depth and rate and drops bitrate when lossless`() {
         val hiRes = StreamFormat(codec = "flac", kbps = 4608, sampleRateHz = 192_000, bitDepth = 24)
-        assertEquals("FLAC · 24-bit · 192 kHz", hiRes.summary)
+        assertEquals("FLAC Â· 24-bit Â· 192 kHz", hiRes.summary)
 
         val lossy = StreamFormat(codec = "mp3", kbps = 320, sampleRateHz = 44_100)
-        assertEquals("MP3 · 44.1 kHz · 320 kbps", lossy.summary)
+        assertEquals("MP3 Â· 44.1 kHz Â· 320 kbps", lossy.summary)
 
         assertEquals("Unknown format", StreamFormat().summary)
     }
@@ -85,7 +85,7 @@ class SourcesTest {
     /**
      * The badge tiers. "Hi-Quality" exists to separate a module's 320kbps
      * stream from YouTube's 160kbps Opus, which the screen otherwise renders
-     * identically — as nothing at all.
+     * identically Â— as nothing at all.
      */
     @Test
     fun `names a high-bitrate lossy stream without calling it lossless`() {
@@ -214,7 +214,7 @@ class SourcesTest {
 
     /**
      * The dangerous case: same title, different artist. A cover, a tribute
-     * album, or a completely unrelated song that happens to share a name — all
+     * album, or a completely unrelated song that happens to share a name Â— all
      * of which a loose matcher would happily play instead.
      */
     @Test
@@ -311,7 +311,7 @@ class SourcesTest {
         assertFalse(matches(song("Creep (Live)", "Radiohead"), "Creep", "Radiohead"))
         assertFalse(matches(song("Faded", "Alan Walker"), "Faded (Slowed + Reverb)", "Alan Walker"))
         // A stem carries the right title and the right artist and is not the
-        // song — this one was one candidate away from playing.
+        // song Â— this one was one candidate away from playing.
         assertFalse(
             matches(
                 song("Apna Bana Le - Arijit Singh Vocals Only", "Arijit Singh, Sachin-Jigar"),
@@ -376,7 +376,7 @@ class SourcesTest {
 
     /**
      * A declared tier is a reason to prefer one copy of a recording over
-     * another. It is not a reason to play a different recording — the DJ edit
+     * another. It is not a reason to play a different recording Â— the DJ edit
      * on a compilation carries the right title and the right artist, and only
      * its runtime gives it away.
      */
@@ -415,7 +415,7 @@ class SourcesTest {
     // ---- Deciding whether an upgrade is worth the seam -----------------------
 
     /**
-     * Lossless is always worth it — it is what was asked for, and the reason
+     * Lossless is always worth it Â— it is what was asked for, and the reason
      * the second look happens at all.
      */
     @Test
@@ -478,7 +478,7 @@ class SourcesTest {
      * ranked above JioSaavn offered 128kbps and JioSaavn held 320kbps, and the
      * walk has to be able to say which of those it would rather have.
      *
-     * Note this is a different question from [SourceResolver.worthSwapping] —
+     * Note this is a different question from [SourceResolver.worthSwapping] Â—
      * that one asks whether a difference earns a break in the audio, this one
      * only asks which is better.
      */
@@ -516,7 +516,7 @@ class SourcesTest {
     }
 
     /**
-     * Nothing to compare against is beaten by anything — this is what makes the
+     * Nothing to compare against is beaten by anything Â— this is what makes the
      * first source's answer the floor rather than a special case.
      */
     @Test
@@ -545,7 +545,7 @@ class SourcesTest {
     /**
      * An unstated bitrate ranks as nothing rather than as a win. A source that
      * declines to describe its stream should not be able to displace one that
-     * has stated a good rate — see [StreamFormat] on why null means "not
+     * has stated a good rate Â— see [StreamFormat] on why null means "not
      * stated" and is never inferred.
      */
     @Test
@@ -579,7 +579,7 @@ class SourcesTest {
 
     /**
      * Below the top of YouTube's own ladder, a source's copy is trading one
-     * lossy file for another and giving up the more reliable fetch to do it —
+     * lossy file for another and giving up the more reliable fetch to do it Â—
      * including at 256, where the two are a wash and the tie goes to YouTube.
      */
     @Test
@@ -591,7 +591,7 @@ class SourcesTest {
 
     /**
      * A download has to name the file before the first byte lands, so a source
-     * that described its rendition as nothing has said nothing worth keeping —
+     * that described its rendition as nothing has said nothing worth keeping Â—
      * unlike playback, which can hand the URL to the decoder and find out.
      */
     @Test
@@ -605,7 +605,7 @@ class SourcesTest {
     /**
      * Read-ahead resolves the track *after* the one playing, so a source that
      * needs ten seconds to answer is usually still answering when the listener
-     * arrives — and a wasted module resolve costs a QuickJS engine and several
+     * arrives Â— and a wasted module resolve costs a QuickJS engine and several
      * backend searches, where a wasted JioSaavn one costs a round trip. Only
      * JioSaavn earns the speculative ask.
      */
@@ -633,7 +633,7 @@ class SourcesTest {
      * with nothing at all when [format] is null.
      *
      * [asked] records that it was reached, which is how the tests below tell a
-     * source that was beaten from one that was never asked — the distinction
+     * source that was beaten from one that was never asked Â— the distinction
      * the whole '9:45' investigation turned on.
      */
     private class FakeSource(
@@ -682,7 +682,7 @@ class SourcesTest {
      * JioSaavn answered in ~0.4s and the module in ~13.5s. Walked in rank order
      * the module's slowness was JioSaavn's too, so the whole lookup lost the
      * race against YouTube and the listener got 160kbps Opus. Raced, the quick
-     * answer is the one that starts the track — and the slow source is left to
+     * answer is the one that starts the track Â— and the slow source is left to
      * [SourceResolver.upgradeFor], which judges it against what is playing.
      */
     @Test
@@ -698,7 +698,7 @@ class SourcesTest {
         }
         // Nowhere near the slow source's two seconds.
         assertTrue("took ${elapsed}ms, so it waited for the slow source", elapsed < 1_000)
-        // Asked, though — being beaten is not the same as being skipped, and
+        // Asked, though Â— being beaten is not the same as being skipped, and
         // skipping is the bug this replaced.
         assertTrue(slow.asked)
     }
@@ -760,8 +760,8 @@ class SourcesTest {
      * The 'Bounce' case: a source whose answer is *refused* must not hold up one
      * whose answer is taken.
      *
-     * This is the upgrade path's shape — [SourceResolver.upgradeFor] passes a
-     * predicate that drops anything [SourceResolver.worthSwapping] rejects — and
+     * This is the upgrade path's shape Â— [SourceResolver.upgradeFor] passes a
+     * predicate that drops anything [SourceResolver.worthSwapping] rejects Â— and
      * it went wrong differently from the '9:45' case. Nothing was skipped here:
      * the slow module was asked, answered 128kbps, and was correctly refused.
      * The cost was that it was asked *first and alone*, so the 320kbps answer
@@ -783,7 +783,7 @@ class SourcesTest {
             assertEquals("JioSaavn", source.displayName)
             assertEquals(320, stream.format.kbps)
         }
-        assertTrue("took ${elapsed}ms — it waited for the refused answer", elapsed < 1_000)
+        assertTrue("took ${elapsed}ms Â— it waited for the refused answer", elapsed < 1_000)
     }
 
     /**
@@ -886,7 +886,7 @@ class SourcesTest {
     }
 
     /**
-     * Two schemes in a URL is not the fault — handing a proxy its target is a
+     * Two schemes in a URL is not the fault Â— handing a proxy its target is a
      * legitimate thing for a module to do, in the query or in the path, and
      * refusing those would take working catalogues offline.
      */

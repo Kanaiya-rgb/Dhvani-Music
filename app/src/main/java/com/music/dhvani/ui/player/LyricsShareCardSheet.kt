@@ -39,12 +39,22 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import android.content.res.Configuration
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -59,8 +69,12 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FormatQuote
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -147,6 +161,7 @@ private const val MAX_SHARE_LINES = 7
  * preview the card live, and share directly to Instagram Stories, WhatsApp,
  * System Share, or save directly as image to device Gallery.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LyricsShareCardSheet(
     song: Song,
@@ -157,8 +172,8 @@ fun LyricsShareCardSheet(
     val context = LocalContext.current
     val haptics = rememberHaptics()
     val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var isVisible by remember { mutableStateOf(false) }
     var selectedTheme by remember { mutableStateOf(LyricsCardTheme.ARTWORK) }
     var selectedFormat by remember { mutableStateOf(LyricsCardFormat.COMPACT) }
     var activeTab by remember { mutableStateOf(0) } // 0 = Choose Lines, 1 = Themes & Format
@@ -196,16 +211,11 @@ fun LyricsShareCardSheet(
     }
 
     val dismissSmoothly = {
-        if (isVisible) {
-            isVisible = false
-            scope.launch {
-                delay(220)
-                onDismiss()
-            }
+        scope.launch {
+            sheetState.hide()
+            onDismiss()
         }
     }
-
-    LaunchedEffect(Unit) { isVisible = true }
 
     // Export & Share logic
     fun executeShare(
@@ -244,72 +254,45 @@ fun LyricsShareCardSheet(
         }
     }
 
-    Dialog(
-        onDismissRequest = { dismissSmoothly() },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val cardPreviewHeight = when {
+        isLandscape -> 130.dp
+        screenHeight < 640 -> 160.dp
+        screenHeight < 740 -> 195.dp
+        screenHeight < 840 -> 225.dp
+        else -> 245.dp
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF13161F),
+        contentColor = Color.White,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 10.dp, bottom = 4.dp)
+                    .width(40.dp)
+                    .height(4.5.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.28f)),
+            )
+        },
     ) {
-        val scrimAlpha by animateFloatAsState(
-            targetValue = if (isVisible) 0.65f else 0f,
-            animationSpec = tween(durationMillis = 240),
-            label = "scrim",
-        )
-
-        Box(
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = scrimAlpha))
-                .clickable { dismissSmoothly() },
-            contentAlignment = Alignment.BottomCenter,
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            AnimatedVisibility(
-                visible = isVisible,
-                enter = androidx.compose.animation.slideInVertically(
-                    initialOffsetY = { it },
-                    animationSpec = tween(durationMillis = 280, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                ) + androidx.compose.animation.fadeIn(tween(200)),
-                exit = androidx.compose.animation.slideOutVertically(
-                    targetOffsetY = { it },
-                    animationSpec = tween(durationMillis = 220, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                ) + androidx.compose.animation.fadeOut(tween(180)),
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                    color = Color(0xFF13161F),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-                    shadowElevation = 24.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.92f)
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null,
-                        ) {},
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = 10.dp, bottom = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        // Top drag handle
-                        Box(
-                            modifier = Modifier
-                                .width(40.dp)
-                                .height(4.5.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.28f)),
-                        )
-
-                        Spacer(Modifier.height(10.dp))
-
-                        // Header row
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 20.dp),
+            // Header row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
@@ -372,7 +355,7 @@ fun LyricsShareCardSheet(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(295.dp)
+                                .height(cardPreviewHeight)
                                 .padding(horizontal = 16.dp, vertical = 2.dp),
                         ) {
                             // Ambient diffuse backlight halo
@@ -520,6 +503,7 @@ fun LyricsShareCardSheet(
                                     LazyColumn(
                                         modifier = Modifier.fillMaxSize(),
                                         verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp),
                                     ) {
                                         items(selectableLines) { line ->
                                             val isSelected = selectedLines.contains(line)
@@ -596,7 +580,8 @@ fun LyricsShareCardSheet(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .verticalScroll(rememberScrollState()),
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(bottom = 24.dp),
                                     verticalArrangement = Arrangement.spacedBy(14.dp),
                                 ) {
                                     // 1. Format Switcher
@@ -727,7 +712,9 @@ fun LyricsShareCardSheet(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
+                                .padding(horizontal = 16.dp)
+                                .navigationBarsPadding()
+                                .padding(top = 8.dp, bottom = 16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             if (isExporting) {
@@ -907,10 +894,7 @@ fun LyricsShareCardSheet(
                         }
                     }
                 }
-            }
-        }
     }
-}
 
 /**
  * Beautiful Spotify / Apple Music style live preview card in Compose.

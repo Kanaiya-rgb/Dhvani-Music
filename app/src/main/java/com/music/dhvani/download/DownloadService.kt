@@ -197,15 +197,31 @@ class DownloadService : Service() {
             ?: 0
 
         val song = current
+        val single = runningStates.singleOrNull()
+        val singleSpeed = single?.let { DownloadFormatters.formatSpeed(it.bytesPerSecond) }
+        val singleEta = single?.let { if (it.totalBytes > 0) DownloadFormatters.formatEta(it.etaSeconds) else null }
+        val isFinalizing = single?.isFinalizing == true
+
         val title = when {
             runningStates.size > 1 -> "Downloading ${runningStates.size} songs"
+            isFinalizing -> song?.title ?: "Finalizing download"
             else -> song?.title ?: "Downloading"
         }
         val text = when {
             runningStates.size > 1 && waiting > 0 -> "$waiting more queued"
             runningStates.size > 1 -> song?.title.orEmpty()
-            song == null -> "Starting"
-            waiting > 0 -> "${song.artist} · $waiting more queued"
+            song == null -> "Starting…"
+            isFinalizing -> "${song.artist} · Finalizing…"
+            singleSpeed != null && singleEta != null && waiting > 0 ->
+                "${song.artist} · $singleSpeed · $singleEta · $waiting more queued"
+            singleSpeed != null && singleEta != null ->
+                "${song.artist} · $singleSpeed · $singleEta"
+            singleSpeed != null && waiting > 0 ->
+                "${song.artist} · $singleSpeed · $waiting more queued"
+            singleSpeed != null ->
+                "${song.artist} · $singleSpeed"
+            waiting > 0 ->
+                "${song.artist} · $waiting more queued"
             else -> song.artist
         }
 
@@ -245,6 +261,14 @@ class DownloadService : Service() {
                 setShowBadge(false)
             },
         )
+    }
+
+    private fun formatSpeed(bytesPerSec: Long): String {
+        return when {
+            bytesPerSec < 1024 -> "$bytesPerSec B/s"
+            bytesPerSec < 1024 * 1024 -> "${"%.1f".format(java.util.Locale.US, bytesPerSec / 1024.0)} KB/s"
+            else -> "${"%.1f".format(java.util.Locale.US, bytesPerSec / (1024.0 * 1024.0))} MB/s"
+        }
     }
 
     private companion object {

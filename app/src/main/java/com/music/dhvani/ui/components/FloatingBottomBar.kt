@@ -2,7 +2,6 @@ package com.music.dhvani.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.AnimationSpec
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -39,7 +38,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -47,16 +45,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.ui.haptics.Haptic
 import com.music.dhvani.ui.haptics.rememberHaptics
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlin.math.abs
@@ -73,8 +68,11 @@ data class BottomTab(
  * Tighter than the 8 it was, which shows up as a selection indicator reaching
  * closer to the edge on all four sides rather than floating in the middle of a
  * wide margin.
+ *
+ * Shared with [GlassNavBar], which is meant to measure the same as this bar
+ * rather than merely near it.
  */
-private val PILL_INSET = 6.dp
+internal val PILL_INSET = 6.dp
 
 /**
  * Each tab's own vertical padding, and the counterweight to [PILL_INSET].
@@ -86,7 +84,10 @@ private val PILL_INSET = 6.dp
  * numbers are a pair: change one and the bar's height moves unless the other
  * moves against it.
  */
-private val TAB_VERTICAL_PADDING = 9.dp
+internal val TAB_VERTICAL_PADDING = 9.dp
+
+/** The gap between a tab's glyph and its label, in both bars. */
+internal val TAB_ICON_LABEL_GAP = 2.dp
 
 /**
  * The spring the selection indicator and the tab glyphs both travel on.
@@ -100,7 +101,7 @@ private val TAB_VERTICAL_PADDING = 9.dp
  * Stiffness 320 puts the whole movement at roughly a third of a second, quick
  * enough that the tap and the arrival feel like one event.
  */
-private val GlassSpring = spring<Float>(dampingRatio = 0.72f, stiffness = 320f)
+internal val GlassSpring = spring<Float>(dampingRatio = 0.72f, stiffness = 320f)
 
 /**
  * How far the indicator elongates along its travel, at full stride.
@@ -116,7 +117,7 @@ private val GlassSpring = spring<Float>(dampingRatio = 0.72f, stiffness = 320f)
  * Sixteen percent is enough to be felt and not enough to be caught at: past
  * about a fifth the pill starts reading as a stretched image of itself.
  */
-private const val STRETCH = 0.16f
+internal const val STRETCH = 0.16f
 
 /**
  * How much of the stretch is taken back out of the indicator's height.
@@ -127,7 +128,7 @@ private const val STRETCH = 0.16f
  * than drawn. Half keeps the sense of something with a volume to redistribute
  * while leaving the glyph its ground.
  */
-private const val SQUASH = 0.5f
+internal const val SQUASH = 0.5f
 
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
@@ -141,25 +142,9 @@ fun FloatingBottomBar(
     val pillShape = RoundedCornerShape(percent = 50)
     val container = MaterialTheme.colorScheme.surface
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val useGlass = LocalLiquidGlassEnabled.current && isGlassSupported()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
-    val slimNavBar by AppSettings.slimNavBar.collectAsStateWithLifecycle()
-
-    val pillVerticalInset by animateDpAsState(
-        targetValue = if (slimNavBar) 3.dp else PILL_INSET,
-        animationSpec = if (reduceAnimation) snap() else tween(200),
-        label = "pillVerticalInset",
-    )
-    val tabVerticalPadding by animateDpAsState(
-        targetValue = if (slimNavBar) 4.dp else TAB_VERTICAL_PADDING,
-        animationSpec = if (reduceAnimation) snap() else tween(200),
-        label = "tabVerticalPadding",
-    )
-    val iconSize by animateDpAsState(
-        targetValue = if (slimNavBar) 20.dp else 25.dp,
-        animationSpec = if (reduceAnimation) snap() else tween(200),
-        label = "iconSize",
-    )
-    // The liquid settle is exactly the motion "reduce animation" promises to
+    // The glass settle is exactly the motion "reduce animation" promises to
     // drop — snapping both the indicator's travel and the glyph's pop to
     // their target leaves the tap itself instant rather than eased.
     val glassSpec: AnimationSpec<Float> = if (reduceAnimation) snap() else GlassSpring
@@ -208,73 +193,18 @@ fun FloatingBottomBar(
 
     LaunchedEffect(selectedIndex) { dragOffset = 0f }
 
-    val uiStyle = com.music.dhvani.ui.theme.LocalUiDesignStyle.current
-    val barElevation = when (uiStyle) {
-        com.music.dhvani.data.settings.UiDesignStyle.MINIMALISM -> 0.dp
-        com.music.dhvani.data.settings.UiDesignStyle.GLASSMORPHISM -> 6.dp
-        com.music.dhvani.data.settings.UiDesignStyle.NEUMORPHISM -> 8.dp
-        com.music.dhvani.data.settings.UiDesignStyle.CLAYMORPHISM -> 14.dp
-        com.music.dhvani.data.settings.UiDesignStyle.SPATIAL_UI -> 16.dp
-        else -> 12.dp
-    }
-    val barSpotColor = when (uiStyle) {
-        com.music.dhvani.data.settings.UiDesignStyle.SPATIAL_UI -> Color(0xFF00E5FF).copy(alpha = 0.50f)
-        com.music.dhvani.data.settings.UiDesignStyle.LIQUID_GLASS -> Color(0xFF80D0C7).copy(alpha = 0.35f)
-        com.music.dhvani.data.settings.UiDesignStyle.CLAYMORPHISM -> MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
-        com.music.dhvani.data.settings.UiDesignStyle.NEUMORPHISM -> Color.Black.copy(alpha = 0.85f)
-        com.music.dhvani.data.settings.UiDesignStyle.MINIMALISM -> Color.Transparent
-        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-    }
-    val barBorderBrush = when (uiStyle) {
-        com.music.dhvani.data.settings.UiDesignStyle.SPATIAL_UI -> androidx.compose.ui.graphics.Brush.sweepGradient(
-            listOf(Color(0xFF00E5FF).copy(alpha = 0.5f), Color(0xFFFF4081).copy(alpha = 0.4f), Color(0xFF7C4DFF).copy(alpha = 0.5f), Color(0xFF00E5FF).copy(alpha = 0.5f))
-        )
-        com.music.dhvani.data.settings.UiDesignStyle.LIQUID_GLASS -> androidx.compose.ui.graphics.Brush.linearGradient(
-            listOf(Color(0xFF80D0C7).copy(alpha = 0.7f), Color(0xFFFF8A3D).copy(alpha = 0.6f), Color(0xFF9B51E0).copy(alpha = 0.7f))
-        )
-        com.music.dhvani.data.settings.UiDesignStyle.GLASSMORPHISM -> androidx.compose.ui.graphics.Brush.linearGradient(
-            listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.10f))
-        )
-        com.music.dhvani.data.settings.UiDesignStyle.SKEUOMORPHISM -> androidx.compose.ui.graphics.Brush.verticalGradient(
-            listOf(Color.White.copy(alpha = 0.40f), Color.Black.copy(alpha = 0.65f))
-        )
-        com.music.dhvani.data.settings.UiDesignStyle.NEUMORPHISM -> androidx.compose.ui.graphics.Brush.linearGradient(
-            listOf(Color.White.copy(alpha = 0.18f), Color.Black.copy(alpha = 0.55f))
-        )
-        com.music.dhvani.data.settings.UiDesignStyle.MINIMALISM -> androidx.compose.ui.graphics.Brush.linearGradient(
-            listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.20f))
-        )
-        com.music.dhvani.data.settings.UiDesignStyle.BENTO_GRID -> androidx.compose.ui.graphics.Brush.verticalGradient(
-            listOf(Color.White.copy(alpha = 0.25f), Color.White.copy(alpha = 0.08f))
-        )
-        com.music.dhvani.data.settings.UiDesignStyle.CLAYMORPHISM -> androidx.compose.ui.graphics.Brush.verticalGradient(
-            listOf(Color.White.copy(alpha = 0.32f), Color.White.copy(alpha = 0.08f))
-        )
-        com.music.dhvani.data.settings.UiDesignStyle.DEFAULT -> androidx.compose.ui.graphics.Brush.verticalGradient(
-            listOf(
-                Color.White.copy(alpha = 0.25f),
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
-                Color.White.copy(alpha = 0.06f),
-            )
-        )
-    }
-
     Box(
         modifier = modifier
             .navigationBarsPadding()
             .padding(horizontal = PAGE_GUTTER)
             .padding(bottom = 2.dp)
             .fillMaxWidth()
-            .shadow(
-                elevation = barElevation,
-                shape = pillShape,
-                spotColor = barSpotColor,
-                ambientColor = Color.Black.copy(alpha = 0.45f),
-            )
             .clip(pillShape)
             .then(
                 if (reduceDynamicBlur) {
                     Modifier.background(container)
+                } else if (useGlass) {
+                    Modifier.liquidGlass(shape = pillShape)
                 } else {
                     Modifier.optimizedHazeEffect(
                         state = hazeState,
@@ -282,12 +212,8 @@ fun FloatingBottomBar(
                     )
                 },
             )
-            .border(
-                1.dp,
-                barBorderBrush,
-                pillShape,
-            )
-            .padding(horizontal = PILL_INSET, vertical = pillVerticalInset),
+            .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, pillShape)
+            .padding(horizontal = PILL_INSET, vertical = PILL_INSET),
     ) {
         if (tabWidthPx > 0f) {
             Box(
@@ -296,28 +222,16 @@ fun FloatingBottomBar(
                     .height(with(density) { rowSize.height.toDp() })
                     .graphicsLayer {
                         translationX = animatedPillOffset
+                        // Around its own centre, so the indicator draws out
+                        // both ways rather than growing a tail off one edge —
+                        // a leading edge that ran ahead of the glyph it is
+                        // meant to be behind would read as two things moving,
+                        // not one thing stretching.
                         scaleX = 1f + lag * STRETCH
                         scaleY = 1f - lag * STRETCH * SQUASH
                     }
                     .clip(pillShape)
-                    .background(
-                        androidx.compose.ui.graphics.Brush.verticalGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
-                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.16f),
-                            )
-                        )
-                    )
-                    .border(
-                        1.dp,
-                        androidx.compose.ui.graphics.Brush.verticalGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0.35f),
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.40f),
-                            )
-                        ),
-                        pillShape,
-                    ),
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
             )
         }
 
@@ -370,14 +284,20 @@ fun FloatingBottomBar(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // A real glass pill samples whatever artwork is behind it, not the
+            // theme's surface color, so a fixed onSurfaceVariant gray can lose
+            // contrast against it. Glass mode reads luminance off the surface
+            // color instead and picks pure black or white, same as the tint
+            // Echo's floating nav bar uses for its own liquid glass.
+            val glassTint = glassContentColor()
+            val adaptiveTint = if (useGlass) glassTint else null
             tabs.forEachIndexed { index, tab ->
                 BottomBarItem(
                     tab = tab,
                     selected = index == selectedIndex,
                     glassSpec = glassSpec,
-                    verticalPadding = tabVerticalPadding,
-                    iconSize = iconSize,
-                    isSlim = slimNavBar,
+                    selectedTint = adaptiveTint,
+                    unselectedTint = adaptiveTint?.copy(alpha = 0.65f),
                     onClick = { onTabSelected(index) },
                     modifier = Modifier.weight(1f),
                 )
@@ -391,11 +311,11 @@ private fun BottomBarItem(
     tab: BottomTab,
     selected: Boolean,
     glassSpec: AnimationSpec<Float>,
-    verticalPadding: Dp,
-    iconSize: Dp,
-    isSlim: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Overrides the theme's primary/onSurfaceVariant tint — see the glass branch above. */
+    selectedTint: Color? = null,
+    unselectedTint: Color? = null,
 ) {
     // The same spring the indicator rides, so the glyph arriving and the glass
     // arriving are one movement rather than two that nearly agree.
@@ -407,9 +327,9 @@ private fun BottomBarItem(
     val haptics = rememberHaptics()
     val tint by animateColorAsState(
         targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary
+            selectedTint ?: MaterialTheme.colorScheme.primary
         } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
+            unselectedTint ?: MaterialTheme.colorScheme.onSurfaceVariant
         },
         animationSpec = tween(200),
         label = "tabTint",
@@ -426,23 +346,23 @@ private fun BottomBarItem(
                 if (!selected) haptics.play(Haptic.Select)
                 onClick()
             }
-            .padding(vertical = verticalPadding),
+            .padding(vertical = TAB_VERTICAL_PADDING),
     ) {
         Icon(
             imageVector = tab.icon,
             contentDescription = tab.label,
             tint = tint,
             modifier = Modifier
-                .size(iconSize)
+                .size(25.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
                 },
         )
-        Spacer(Modifier.height(if (isSlim) 1.dp else 2.dp))
+        Spacer(Modifier.height(TAB_ICON_LABEL_GAP))
         Text(
             text = tab.label,
-            style = if (isSlim) MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp) else MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelSmall,
             color = tint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

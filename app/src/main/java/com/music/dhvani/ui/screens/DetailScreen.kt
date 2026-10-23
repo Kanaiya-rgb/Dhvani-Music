@@ -1,6 +1,13 @@
 package com.music.dhvani.ui.screens
 
+import android.util.Log
+
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +28,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -50,12 +58,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -87,6 +98,7 @@ import com.music.dhvani.data.model.ShelfItem
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.UiState
 import com.music.dhvani.data.model.artworkAt
+import com.music.dhvani.data.artist.ArtistSignatureRepository
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.ui.components.ArtworkWash
 import com.music.dhvani.ui.components.DownloadedBadge
@@ -774,22 +786,151 @@ private fun List<Song>.matching(query: String): List<IndexedValue<Song>> {
  */
 @Composable
 private fun ArtistHeader(page: DetailPage, palette: ArtworkPalette, artHeight: Dp) {
+    var signatureUrl by remember(page.title) { mutableStateOf<String?>(null) }
+    var isSignatureLoaded by remember(page.title) { mutableStateOf(false) }
+    val signaturesEnabled by AppSettings.artistSignaturesEnabled.collectAsStateWithLifecycle()
+
+    LaunchedEffect(page.title, signaturesEnabled) {
+        if (signaturesEnabled) {
+            isSignatureLoaded = false
+            signatureUrl = ArtistSignatureRepository.getSignature(page.title)
+        } else {
+            signatureUrl = null
+            isSignatureLoaded = false
+        }
+    }
+
     Box(Modifier.fillMaxWidth()) {
         Spacer(Modifier.fillMaxWidth().height(artHeight + HEADER_DROP))
-        Text(
-            text = page.title,
-            style = MaterialTheme.typography.displayLarge,
-            color = palette.onBackground,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 // Bottom is half the top inset — the stats pills (or, absent
                 // those, the action row) sit closer under the name than the
                 // name sits under the artwork.
                 .padding(start = HEADER_GUTTER, end = HEADER_GUTTER, top = 14.dp, bottom = 7.dp),
-        )
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (signatureUrl != null) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .padding(bottom = 10.dp)
+                        .animateContentSize(),
+                ) {
+                    val isVectorOrTransparent = remember(signatureUrl) {
+                        signatureUrl?.let {
+                            !it.contains(".jpg", ignoreCase = true) && !it.contains(".jpeg", ignoreCase = true)
+                        } ?: true
+                    }
+                    val inkFilter = remember(isVectorOrTransparent) {
+                        if (isVectorOrTransparent) {
+                            ColorFilter.tint(Color.White)
+                        } else {
+                            // Scanned paper autographs (e.g. IndianAutographs JPEGs):
+                            // Hardware-accelerated GPU inversion & luminance-to-alpha extraction
+                            // Turns paper white (255) to transparent (0 alpha), and black ink (0) to crisp white ink (255)
+                            ColorFilter.colorMatrix(
+                                ColorMatrix(
+                                    floatArrayOf(
+                                        0f, 0f, 0f, 0f, 255f,
+                                        0f, 0f, 0f, 0f, 255f,
+                                        0f, 0f, 0f, 0f, 255f,
+                                        -0.45f, -0.45f, -0.45f, 0f, 255f,
+                                    )
+                                )
+                            )
+                        }
+                    }
+                    val shadowFilter = remember(isVectorOrTransparent) {
+                        if (isVectorOrTransparent) {
+                            ColorFilter.tint(Color.Black.copy(alpha = 0.55f))
+                        } else {
+                            ColorFilter.colorMatrix(
+                                ColorMatrix(
+                                    floatArrayOf(
+                                        0f, 0f, 0f, 0f, 0f,
+                                        0f, 0f, 0f, 0f, 0f,
+                                        0f, 0f, 0f, 0f, 0f,
+                                        -0.25f, -0.25f, -0.25f, 0f, 140f,
+                                    )
+                                )
+                            )
+                        }
+                    }
+
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .height(64.dp)
+                            .fillMaxWidth(),
+                    ) {
+                        // Subtle drop-shadow silhouette in translucent black so white ink pops against bright backgrounds
+                        AsyncImage(
+                            model = signatureUrl,
+                            contentDescription = null,
+                            colorFilter = shadowFilter,
+                            modifier = Modifier
+                                .height(64.dp)
+                                .widthIn(max = 240.dp)
+                                .offset(x = 1.dp, y = 1.5.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                        // Pure white ink signature
+                        AsyncImage(
+                            model = signatureUrl,
+                            contentDescription = "Signature of ${page.title}",
+                            colorFilter = inkFilter,
+                            onSuccess = {
+                                Log.d("ArtistSignature", "Signature loaded successfully for ${page.title}")
+                                isSignatureLoaded = true
+                            },
+                            onError = { state ->
+                                Log.w("ArtistSignature", "Signature failed to load for ${page.title}: ${state.result.throwable.message}")
+                                isSignatureLoaded = false
+                            },
+                            modifier = Modifier
+                                .height(64.dp)
+                                .widthIn(max = 240.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                    if (isSignatureLoaded) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(top = 4.dp),
+                        ) {
+                            Text(
+                                text = "Signed by ",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Normal,
+                                    letterSpacing = 0.5.sp,
+                                ),
+                                color = Color.White.copy(alpha = 0.85f),
+                            )
+                            Text(
+                                text = page.title.uppercase(),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.8.sp,
+                                ),
+                                color = Color.White,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Text(
+                text = page.title,
+                style = MaterialTheme.typography.displayLarge,
+                color = palette.onBackground,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

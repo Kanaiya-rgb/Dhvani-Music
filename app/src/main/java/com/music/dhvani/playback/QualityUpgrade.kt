@@ -248,15 +248,34 @@ object QualityUpgrade {
      * the decoder to settle first. Everything here is a fact about the queue
      * entry and the settings; nothing here touches the network.
      */
-    fun couldStillUpgrade(mediaId: String, uri: Uri?): Boolean {
+    fun couldStillUpgrade(mediaId: String, uri: Uri?, isDowngraded: Boolean = false): Boolean {
         if (uri == null || uri.getQueryParameter("v") == null) return false
-        // Already upgraded: this *is* the better copy.
-        if (uri.getQueryParameter(MARKER) != null) return false
-        if (mediaId in asked || mediaId in refused || pending.containsKey(mediaId)) return false
-        // Not gated on lossless mode — a source ranked above YouTube (e.g. JioSaavn 320 kbps)
-        // is worth upgrading to on bitrate alone. [SourceResolver.worthSwapping] applies the
-        // real quality bar; restricting here meant 320 kbps upgrades never fired unless the
-        // listener had explicitly switched to Lossless mode.
+        if (mediaId in refused || pending.containsKey(mediaId)) return false
+        if (isDowngraded) {
+            // Source promised 24-bit Hi-Res but active player reported 16-bit:
+            // continue checking other enabled sources for a true Hi-Res version.
+            return SourceResolver.canSubstituteForYouTube()
+        }
+        // Already upgraded: check if we are playing 16-bit lossless but user wanted 24-bit Hi-Res
+        if (uri.getQueryParameter(MARKER) != null) {
+            val wantsHiRes = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality == com.music.dhvani.data.settings.AudioQuality.LOSSLESS
+            val currentStats = NerdStats.current.value
+            val isPlaying16BitLossless = currentStats?.isLossless == true && !currentStats.isHiRes
+            if (wantsHiRes && isPlaying16BitLossless) {
+                return SourceResolver.canSubstituteForYouTube()
+            }
+            return false
+        }
+        if (mediaId in asked) return false
+        val ceiling = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality
+        if (ceiling != com.music.dhvani.data.settings.AudioQuality.LOSSLESS) {
+            val stats = NerdStats.current.value
+            val currentKbps = stats?.bitrateKbps ?: stats?.claimed?.kbps
+            // If already playing lossless or at or above connection ceiling bitrate, no further upgrade needed
+            if (stats?.isLossless == true || (currentKbps != null && currentKbps >= ceiling.maxKbps)) {
+                return false
+            }
+        }
         return SourceResolver.canSubstituteForYouTube()
     }
 
@@ -317,8 +336,9 @@ object QualityUpgrade {
         target: TrackMatcher.Target,
         playingMime: String?,
         playing: StreamFormat?,
+        isDowngraded: Boolean = false,
     ): Boolean {
-        if (!couldStillUpgrade(mediaId, uri)) return false
+        if (!couldStillUpgrade(mediaId, uri, isDowngraded)) return false
         // [asked] is set only on the two *verdicts* below, not on adoption.
         // Both are facts about the bytes on disk and the row that queued them,
         // neither changes while the track plays, and neither is worth
@@ -326,18 +346,17 @@ object QualityUpgrade {
         // entry here at all: [pending] keeps [couldStillUpgrade] off it for
         // exactly as long as the question is genuinely open, and marking it
         // answered before it has been asked is what made a skip permanent.
-        if (NerdStats.isLosslessMime(playingMime)) {
-            asked += mediaId
-            // The codec is named because this line is a dead end  the track is
-            // in [asked] by now and will never be offered an upgrade again  and
-            // without it there is no way to tell a correct verdict from one
-            // reached on the previous track's format.
-            TrackLog.d(
-                TAG,
-                "'${target.title}' is already playing $playingMime from cache; no second look needed",
-                about = mediaId,
-            )
-            return false
+        if (NerdStats.isLosslessMime(playingMime) && !isDowngraded) {
+            val isHiRes = (playing?.bitDepth ?: 0) > 16 || (playing?.sampleRateHz ?: 0) > 48_000
+            if (isHiRes) {
+                asked += mediaId
+                TrackLog.d(
+                    TAG,
+                    "'${target.title}' is already playing verified Hi-Res $playingMime from cache; no second look needed",
+                    about = mediaId,
+                )
+                return false
+            }
         }
         if (target.title.isBlank()) {
             asked += mediaId

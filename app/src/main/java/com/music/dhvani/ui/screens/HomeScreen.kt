@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,11 +84,40 @@ import com.music.dhvani.ui.components.SHELF_CARD_WIDTH
 import com.music.dhvani.ui.components.SignInBanner
 import com.music.dhvani.ui.components.feedMoreSkeleton
 import com.music.dhvani.ui.components.feedSkeleton
+import android.os.Build
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import com.music.dhvani.data.settings.AppSettings
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.palette.graphics.Palette
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.toBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.Immutable
 import com.music.dhvani.ui.components.heroCardWidth
 import com.music.dhvani.ui.components.thumbnailBorder
 import com.music.dhvani.ui.player.MeshGradientBackground
 import com.music.dhvani.ui.player.MeshPalette
 import com.music.dhvani.data.YtMusicRepository
+
+private val RowCardShape = RoundedCornerShape(10.dp)
+private val RowThumbnailShape = RoundedCornerShape(8.dp)
+private val ShelfCardShape = RoundedCornerShape(16.dp)
+private val LibraryCardShape = RoundedCornerShape(12.dp)
+private val HeroCardShape = RoundedCornerShape(22.dp)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -122,48 +152,79 @@ fun HomeScreen(
     val visibleShelves = remember(state) {
         (state as? UiState.Success)?.data?.filterNot { YtMusicRepository.isExcludedHomeShelf(it) }.orEmpty()
     }
+    val homeArtworkUrls = remember(visibleShelves, replayCard) {
+        val urls = mutableListOf<String>()
+        replayCard?.artworkUrl?.takeIf { it.isNotBlank() }?.let { urls.add(it) }
+        for (shelf in visibleShelves) {
+            for (item in shelf.items) {
+                val url = item.thumbnailUrl?.takeIf { it.isNotBlank() } ?: item.mosaicUrls.firstOrNull()
+                if (url != null && !urls.contains(url)) {
+                    urls.add(url)
+                    if (urls.size >= 2) break
+                }
+            }
+            if (urls.size >= 2) break
+        }
+        urls
+    }
+    val primaryArtworkUrl = homeArtworkUrls.firstOrNull()
+    val secondaryArtworkUrl = homeArtworkUrls.getOrNull(1)
 
-    PullToRefresh(
-        refreshing = refreshing,
-        onRefresh = onRefresh,
-        state = pullState,
-        modifier = modifier,
-    ) {
-        LazyColumn(
-            state = listState,
+    Box(modifier = modifier.fillMaxSize()) {
+        HomeAmbientBackdrop(
+            primaryArtworkUrl = primaryArtworkUrl,
+            secondaryArtworkUrl = secondaryArtworkUrl,
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer(),
+        )
+
+        PullToRefresh(
+            refreshing = refreshing,
+            onRefresh = onRefresh,
+            state = pullState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = contentPadding,
         ) {
-            item(key = "home_title") {
-                Column {
-                    // ── Dhvani Stitch Home: Greeting + Language Filter Rail ──────────────
-                    DhvaniHomeHeader(onPlayRandom = onPlayRandom)
-                    MoodGenreChips(
-                        selectedChip = selectedCategory,
-                        onChipSelect = { chip ->
-                            onCategorySelected?.invoke(chip)
-                        },
-                    )
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = contentPadding,
+            ) {
+                item(key = "home_title", contentType = "home_title") {
+                    Column {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.displayLarge,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+                        )
+                        MoodGenreChips(
+                            selectedChip = selectedCategory,
+                            onChipSelect = { chip ->
+                                onCategorySelected?.invoke(chip)
+                            },
+                        )
+                    }
                 }
-            }
 
-            if (replayCard != null && onOpenReplay != null) {
-                item(key = "home_wrapped_banner") {
-                    HomeReplayBanner(
-                        card = replayCard,
-                        onClick = onOpenReplay,
-                    )
+                if (replayCard != null && onOpenReplay != null) {
+                    item(key = "home_wrapped_banner", contentType = "home_replay_banner") {
+                        HomeReplayBanner(
+                            card = replayCard,
+                            onClick = onOpenReplay,
+                        )
+                    }
                 }
-            }
 
-            when (state) {
-                is UiState.Loading -> feedSkeleton()
-                is UiState.Error -> item {
-                    MessageState(state.message, actionLabel = "Retry", onAction = onRetry)
-                }
-                is UiState.Success -> {
-                    itemsIndexedShelves(visibleShelves, onItemClick, onItemLongPress)
-                    if (loadingMore) feedMoreSkeleton()
+                when (state) {
+                    is UiState.Loading -> feedSkeleton()
+                    is UiState.Error -> item {
+                        MessageState(state.message, actionLabel = "Retry", onAction = onRetry)
+                    }
+                    is UiState.Success -> {
+                        itemsIndexedShelves(visibleShelves, onItemClick, onItemLongPress)
+                        if (loadingMore) feedMoreSkeleton()
+                    }
                 }
             }
         }
@@ -180,6 +241,229 @@ fun HomeScreen(
                 .collect { nearEnd ->
                     if (nearEnd && !loadingMore) onLoadMore()
                 }
+        }
+    }
+}
+
+@Immutable
+private data class HomeAmbientPalette(
+    val dominant: Color,
+    val vibrant: Color,
+    val secondary: Color,
+)
+
+/**
+ * Extracts real dominant & vibrant ambient colors directly from the visible Home feed album artwork.
+ * Decodes off-thread on Dispatchers.IO via Coil and AndroidX Palette.
+ *
+ * Remains completely stable across scroll events because URLs are anchored to the top feed items.
+ * Returns null during loading or error states so the existing dark theme background remains fallback.
+ */
+@Composable
+private fun rememberHomeAmbientColors(
+    primaryUrl: String?,
+    secondaryUrl: String? = null,
+): HomeAmbientPalette? {
+    val context = LocalContext.current
+    var ambientPalette by remember(primaryUrl, secondaryUrl) {
+        mutableStateOf<HomeAmbientPalette?>(null)
+    }
+
+    LaunchedEffect(primaryUrl, secondaryUrl) {
+        if (primaryUrl.isNullOrBlank()) {
+            ambientPalette = null
+            return@LaunchedEffect
+        }
+        withContext(Dispatchers.IO) {
+            try {
+                val imageLoader = SingletonImageLoader.get(context)
+                val request = ImageRequest.Builder(context)
+                    .data(primaryUrl.artworkAt(ROW_ART_PX))
+                    .size(96)
+                    .allowHardware(false)
+                    .build()
+                val result = imageLoader.execute(request)
+                val bitmap = (result as? SuccessResult)?.image?.toBitmap()
+                if (bitmap != null) {
+                    val palette = Palette.from(bitmap).maximumColorCount(24).generate()
+                    val swatches = palette.swatches.sortedByDescending { it.population }
+
+                    val dominant = palette.dominantSwatch?.rgb?.let { Color(it) }
+                        ?: swatches.firstOrNull()?.rgb?.let { Color(it) }
+
+                    val vibrant = palette.vibrantSwatch?.rgb?.let { Color(it) }
+                        ?: palette.lightVibrantSwatch?.rgb?.let { Color(it) }
+                        ?: palette.darkVibrantSwatch?.rgb?.let { Color(it) }
+                        ?: swatches.getOrNull(1)?.rgb?.let { Color(it) }
+                        ?: dominant
+
+                    var secondary = palette.mutedSwatch?.rgb?.let { Color(it) }
+                        ?: palette.darkMutedSwatch?.rgb?.let { Color(it) }
+                        ?: swatches.getOrNull(2)?.rgb?.let { Color(it) }
+                        ?: vibrant
+
+                    if (secondaryUrl != null) {
+                        try {
+                            val secRequest = ImageRequest.Builder(context)
+                                .data(secondaryUrl.artworkAt(ROW_ART_PX))
+                                .size(96)
+                                .allowHardware(false)
+                                .build()
+                            val secResult = imageLoader.execute(secRequest)
+                            val secBitmap = (secResult as? SuccessResult)?.image?.toBitmap()
+                            if (secBitmap != null) {
+                                val secPalette = Palette.from(secBitmap).maximumColorCount(16).generate()
+                                val secDom = secPalette.dominantSwatch?.rgb?.let { Color(it) }
+                                    ?: secPalette.vibrantSwatch?.rgb?.let { Color(it) }
+                                if (secDom != null) {
+                                    secondary = secDom
+                                }
+                            }
+                        } catch (_: Throwable) {}
+                    }
+
+                    if (dominant != null) {
+                        ambientPalette = HomeAmbientPalette(
+                            dominant = dominant,
+                            vibrant = vibrant ?: dominant,
+                            secondary = secondary ?: vibrant ?: dominant,
+                        )
+                    }
+                }
+            } catch (_: Throwable) {
+                // Keep null on error to smoothly fallback to dark theme background
+            }
+        }
+    }
+    return ambientPalette
+}
+
+/**
+ * Subtle, blurred ambient gradient background for the Home screen.
+ * Extracts dominant and vibrant colors directly from the visible Home feed artwork.
+ *
+ * Features:
+ * - Smooth one-time transition when artwork loads (zero per-scroll-frame or per-item jumps).
+ * - Clean fallback to current dark theme background during loading, error, or missing artwork.
+ * - Multi-point radial Gaussian-like falloff creating an authentic blurred ambient bloom.
+ * - Protective contrast scrim guaranteeing 100% legibility of foreground cards and text.
+ */
+@Composable
+private fun HomeAmbientBackdrop(
+    primaryArtworkUrl: String?,
+    secondaryArtworkUrl: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val themeBg = MaterialTheme.colorScheme.background
+    val isDark = isSystemInDarkTheme()
+
+    val colors = rememberHomeAmbientColors(primaryArtworkUrl, secondaryArtworkUrl)
+
+    // Smooth one-time fade transition when artwork colors are extracted
+    val transitionProgress by animateFloatAsState(
+        targetValue = if (colors != null) 1f else 0f,
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+        label = "homeAmbientFade",
+    )
+
+    val animatedDominant by animateColorAsState(
+        targetValue = colors?.dominant ?: themeBg,
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+        label = "homeAmbientDominant",
+    )
+    val animatedVibrant by animateColorAsState(
+        targetValue = colors?.vibrant ?: themeBg,
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+        label = "homeAmbientVibrant",
+    )
+    val animatedSecondary by animateColorAsState(
+        targetValue = colors?.secondary ?: themeBg,
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+        label = "homeAmbientSecondary",
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(themeBg),
+    ) {
+        if (transitionProgress > 0.005f) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val width = size.width
+                val height = size.height
+
+                // 1. Dominant artwork bloom (top-left) - soft Gaussian-like multi-stop falloff
+                val center1 = Offset(width * 0.12f, height * 0.10f)
+                val radius1 = width * 1.10f
+                val alpha1 = (if (isDark) 0.38f else 0.22f) * transitionProgress
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        0.0f to animatedDominant.copy(alpha = alpha1),
+                        0.40f to animatedDominant.copy(alpha = alpha1 * 0.55f),
+                        0.72f to animatedDominant.copy(alpha = alpha1 * 0.16f),
+                        1.0f to Color.Transparent,
+                        center = center1,
+                        radius = radius1,
+                    ),
+                    radius = radius1,
+                    center = center1,
+                )
+
+                // 2. Vibrant artwork bloom (top-right / mid-right) - dual-color ambient atmosphere
+                val center2 = Offset(width * 0.90f, height * 0.24f)
+                val radius2 = width * 0.95f
+                val alpha2 = (if (isDark) 0.32f else 0.18f) * transitionProgress
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        0.0f to animatedVibrant.copy(alpha = alpha2),
+                        0.38f to animatedVibrant.copy(alpha = alpha2 * 0.50f),
+                        0.72f to animatedVibrant.copy(alpha = alpha2 * 0.14f),
+                        1.0f to Color.Transparent,
+                        center = center2,
+                        radius = radius2,
+                    ),
+                    radius = radius2,
+                    center = center2,
+                )
+
+                // 3. Secondary artwork bloom (center / lower-mid) - prevents harsh gradients, softens blend
+                val center3 = Offset(width * 0.45f, height * 0.38f)
+                val radius3 = width * 0.85f
+                val alpha3 = (if (isDark) 0.24f else 0.12f) * transitionProgress
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        0.0f to animatedSecondary.copy(alpha = alpha3),
+                        0.45f to animatedSecondary.copy(alpha = alpha3 * 0.40f),
+                        1.0f to Color.Transparent,
+                        center = center3,
+                        radius = radius3,
+                    ),
+                    radius = radius3,
+                    center = center3,
+                )
+
+                // 4. Subtle top wash matching the dominant hue
+                val washAlpha = (if (isDark) 0.24f else 0.12f) * transitionProgress
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0.0f to animatedDominant.copy(alpha = washAlpha),
+                        0.32f to animatedVibrant.copy(alpha = washAlpha * 0.45f),
+                        0.60f to Color.Transparent,
+                    ),
+                )
+
+                // 5. Protective contrast scrim: keeps cards, titles, and text 100% legible
+                // and softly settles into the dark theme background
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0.0f to themeBg.copy(alpha = if (isDark) 0.15f else 0.05f),
+                        0.25f to themeBg.copy(alpha = if (isDark) 0.35f else 0.15f),
+                        0.55f to themeBg.copy(alpha = if (isDark) 0.68f else 0.42f),
+                        0.80f to themeBg,
+                        1.0f to themeBg,
+                    ),
+                )
+            }
         }
     }
 }
@@ -298,6 +582,7 @@ private fun MoodGenreChips(
             )
         }
     }
+    val haptics = rememberHaptics()
     LazyRow(
         contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -309,7 +594,6 @@ private fun MoodGenreChips(
             contentType = { "chip" },
         ) { chip ->
             val isSelected = chip == selectedChip
-            val haptics = rememberHaptics()
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
@@ -362,18 +646,7 @@ private fun MoodGenreChips(
  * Top songs this week, Trending tracks) that YouTube Music displays as a
  * multi-row compact track list rather than full square album cards.
  */
-internal fun HomeShelf.isSongShelf(): Boolean {
-    if (items.isEmpty()) return false
-    val songCount = items.count { it.videoId != null && it.browseId == null }
-    val titleLower = title.lowercase(Locale.ROOT)
-    val titleMatch = titleLower.contains("pick") ||
-        titleLower.contains("song") ||
-        titleLower.contains("track") ||
-        titleLower.contains("chart") ||
-        titleLower.contains("trending") ||
-        titleLower.contains("top")
-    return (songCount >= items.size * 0.75) || (songCount >= 3 && titleMatch)
-}
+internal fun HomeShelf.isSongShelf(): Boolean = this.isSongShelf
 
 /**
  * Shelves are rendered with dedicated layouts matching YouTube Music:
@@ -388,10 +661,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
 ) {
     items(
         count = shelves.size,
-        key = { index -> "shelf_${shelves[index].title}" },
+        key = { index ->
+            val shelf = shelves[index]
+            val firstId = shelf.items.firstOrNull()?.videoId
+                ?: shelf.items.firstOrNull()?.browseId
+                ?: index
+            "shelf_${shelf.title}_$firstId"
+        },
         contentType = { index ->
             when {
-                shelves[index].isSongShelf() -> "song_shelf"
+                shelves[index].isSongShelf -> "song_shelf"
                 index == 0 -> "hero_shelf"
                 else -> "shelf"
             }
@@ -399,7 +678,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     ) { index ->
         val shelf = shelves[index]
         when {
-            shelf.isSongShelf() -> {
+            shelf.isSongShelf -> {
                 SongShelf(shelf = shelf, onItemClick = onItemClick, onItemLongPress = onItemLongPress)
             }
             index == 0 -> {
@@ -427,14 +706,16 @@ private fun SongShelf(
         val rowsPerColumn = 4
         val columns = remember(shelf.items) { shelf.items.chunked(rowsPerColumn) }
         val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-        val columnWidth = if (screenWidth > 600.dp) 340.dp else screenWidth * 0.88f
+        val columnWidth = remember(screenWidth) { if (screenWidth > 600.dp) 340.dp else screenWidth * 0.88f }
+        val shelfState = rememberSaveable(shelf.title, saver = LazyListState.Saver) { LazyListState() }
         LazyRow(
+            state = shelfState,
             contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             items(
                 items = columns,
-                key = { it.firstOrNull()?.videoId ?: it.hashCode() },
+                key = { col -> col.firstOrNull()?.videoId ?: col.firstOrNull()?.title ?: col.hashCode() },
                 contentType = { "song_column" },
             ) { columnItems ->
                 Column(
@@ -445,7 +726,7 @@ private fun SongShelf(
                         QuickPickSongRow(
                             item = item,
                             onClick = { onItemClick(item) },
-                            onLongPress = onItemLongPress?.let { { it(item) } },
+                            onLongPress = onItemLongPress?.let { lp -> { lp(item) } },
                         )
                     }
                 }
@@ -466,7 +747,7 @@ private fun QuickPickSongRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RowCardShape)
             .combinedClickable(onClick = onClick, onLongClick = onLongPress)
             .padding(vertical = 4.dp, horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -477,8 +758,8 @@ private fun QuickPickSongRow(
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(50.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .thumbnailBorder(RoundedCornerShape(8.dp))
+                .clip(RowThumbnailShape)
+                .thumbnailBorder(RowThumbnailShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         )
         Spacer(Modifier.width(12.dp))
@@ -622,8 +903,10 @@ private fun HeroShelf(
     Column(Modifier.padding(bottom = 26.dp)) {
         SectionHeader(shelf.title)
         val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-        val cardWidth = heroCardWidth(screenWidth)
+        val cardWidth = remember(screenWidth) { heroCardWidth(screenWidth) }
+        val shelfState = rememberSaveable(shelf.title, saver = LazyListState.Saver) { LazyListState() }
         LazyRow(
+            state = shelfState,
             contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -661,7 +944,7 @@ private fun HeroCard(
     Box(
         modifier = modifier
             .aspectRatio(0.95f) // Generous atmospheric card ratio matching Stitch
-            .uiDesignCard(shape = RoundedCornerShape(22.dp))
+            .uiDesignCard(shape = HeroCardShape)
             .combinedClickable(onClick = onClick, onLongClick = onLongPress),
     ) {
         AsyncImage(
@@ -894,7 +1177,9 @@ internal fun Shelf(
 ) {
     Column(Modifier.padding(bottom = 26.dp)) {
         SectionHeader(shelf.title)
+        val shelfState = rememberSaveable(shelf.title, saver = LazyListState.Saver) { LazyListState() }
         LazyRow(
+            state = shelfState,
             contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -987,7 +1272,7 @@ internal fun ShelfCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(12.dp)),
+                        .clip(LibraryCardShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (item.thumbnailUrl != null) {
@@ -998,8 +1283,8 @@ internal fun ShelfCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .thumbnailBorder(RoundedCornerShape(12.dp)),
+                                .clip(LibraryCardShape)
+                                .thumbnailBorder(LibraryCardShape),
                         )
                         Box(
                             modifier = Modifier
@@ -1044,7 +1329,7 @@ internal fun ShelfCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(12.dp)),
+                        .clip(LibraryCardShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     MeshGradientBackground(
@@ -1069,7 +1354,7 @@ internal fun ShelfCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(12.dp)),
+                        .clip(LibraryCardShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     MeshGradientBackground(
@@ -1092,12 +1377,12 @@ internal fun ShelfCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .thumbnailBorder(RoundedCornerShape(16.dp)),
+                        .clip(ShelfCardShape)
+                        .thumbnailBorder(ShelfCardShape),
                 ) {
                     if (item.mosaicUrls.size >= 4) {
                         // 2×2 mosaic collage (Spotify-style playlist cover)
-                        val mosaic = item.mosaicUrls.take(4)
+                        val mosaic = item.mosaicUrls
                         Column(
                             modifier = Modifier.fillMaxSize(),
                         ) {
@@ -1152,7 +1437,7 @@ internal fun ShelfCard(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(16.dp))
+                                .clip(ShelfCardShape)
                                 .background(MaterialTheme.colorScheme.surfaceVariant),
                             contentAlignment = Alignment.Center,
                         ) {
