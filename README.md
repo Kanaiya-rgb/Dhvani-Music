@@ -161,7 +161,7 @@ Explore every version of your favorite tracks in a single tap:
 
 | Platform | Link |
 |:---|:---|
-| **Latest APK** | [📥 Download DhvaniMusic-v2.7.0.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest) |
+| **Latest APK** | [📥 Download DhvaniMusic-v2.8.0.apk](https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest) |
 | **All Releases** | [📋 View Release History](https://github.com/Kanaiya-rgb/Dhvani-Music/releases) |
 
 ### 📲 Installation Steps
