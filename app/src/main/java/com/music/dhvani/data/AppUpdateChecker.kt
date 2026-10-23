@@ -66,10 +66,10 @@ object AppUpdateChecker {
     private const val CACHE_SUBDIR = "updates"
 
     private const val CDN_VERSION_URL =
-        "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/version.json"
+        "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Releases/main/version.json"
 
     private const val LATEST_RELEASE_URL =
-        "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Music/releases/latest"
+        "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Releases/releases/latest"
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -146,7 +146,7 @@ object AppUpdateChecker {
             val obj = json.parseToJsonElement(text) as? JsonObject ?: return null
             val ver = obj["version"]?.jsonPrimitive?.contentOrNull?.trim()?.removePrefix("v") ?: return null
             val relUrl = obj["releaseUrl"]?.jsonPrimitive?.contentOrNull
-                ?: "https://github.com/Kanaiya-rgb/Dhvani-Music/releases"
+                ?: "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases"
             val apk = obj["apkUrl"]?.jsonPrimitive?.contentOrNull
             val notes = obj["notes"]?.jsonPrimitive?.contentOrNull
             UpdateInfo(ver, relUrl, apk, notes)
@@ -174,7 +174,7 @@ object AppUpdateChecker {
 
     private fun fetchFromGitHubRedirect(): UpdateInfo? = runCatching {
         val req = Request.Builder()
-            .url("https://github.com/Kanaiya-rgb/Dhvani-Music/releases/latest")
+            .url("https://github.com/Kanaiya-rgb/Dhvani-Releases/releases/latest")
             .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
             .build()
         Http.client.newCall(req).execute().use { res ->
@@ -182,7 +182,7 @@ object AppUpdateChecker {
             if (finalUrl.contains("/tag/")) {
                 val tag = finalUrl.substringAfterLast("/tag/").removePrefix("v").trim()
                 if (tag.isNotEmpty()) {
-                    val apk = "https://github.com/Kanaiya-rgb/Dhvani-Music/releases/download/v$tag/DhvaniMusic-v$tag.apk"
+                    val apk = "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases/download/v$tag/DhvaniMusic-v$tag.apk"
                     return UpdateInfo(tag, finalUrl, apk, null)
                 }
             }

@@ -28,7 +28,7 @@ class DhvaniFirebaseMessagingService : FirebaseMessagingService() {
         val version = data["version"]?.removePrefix("v")?.trim()
             ?: remoteMessage.notification?.title?.substringAfter("v")?.substringBefore(" ")?.trim()
 
-        val releaseUrl = data["release_url"] ?: "https://github.com/Kanaiya-rgb/Dhvani-Music/releases"
+        val releaseUrl = data["release_url"] ?: "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases"
         val apkUrl = data["apk_url"]
         val notes = data["notes"] ?: remoteMessage.notification?.body
 

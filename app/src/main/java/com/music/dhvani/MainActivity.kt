@@ -329,7 +329,7 @@ class MainActivity : AppCompatActivity() {
                 this,
                 AppUpdateChecker.UpdateInfo(
                     version = "2.0.8",
-                    releaseUrl = "https://github.com/Kanaiya-rgb/Dhvani-Music/releases",
+                    releaseUrl = "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases",
                     apkUrl = null,
                     notes = "• Instant update alert on Wi-Fi & data connect\n• Background lyrics & audio prefetching for zero latency\n• Sleek Listen Together UI with front-screen sync\n• Seamless performance and battery optimizations",
                 ),
@@ -357,7 +357,7 @@ class MainActivity : AppCompatActivity() {
                 this,
                 AppUpdateChecker.UpdateInfo(
                     version = "2.0.8",
-                    releaseUrl = "https://github.com/Kanaiya-rgb/Dhvani-Music/releases",
+                    releaseUrl = "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases",
                     apkUrl = null,
                     notes = "• Instant update alert on Wi-Fi & data connect\n• Background lyrics & audio prefetching for zero latency\n• Sleek Listen Together UI with front-screen sync\n• Seamless performance and battery optimizations",
                 ),

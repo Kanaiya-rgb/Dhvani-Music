@@ -31,8 +31,8 @@ data class ReleaseChangelog(
 object ChangelogRepository {
 
     private const val TAG = "ChangelogRepository"
-    private const val GITHUB_RELEASES_URL = "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Music/releases?per_page=15"
-    private const val CDN_VERSION_URL = "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/version.json"
+    private const val GITHUB_RELEASES_URL = "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Releases/releases?per_page=15"
+    private const val CDN_VERSION_URL = "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Releases/main/version.json"
 
     val FALLBACK_RELEASES: List<ReleaseChangelog> = emptyList()
 
