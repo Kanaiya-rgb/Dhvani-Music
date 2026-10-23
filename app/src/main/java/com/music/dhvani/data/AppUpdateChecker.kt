@@ -65,11 +65,15 @@ object AppUpdateChecker {
 
     private const val CACHE_SUBDIR = "updates"
 
-    private const val CDN_VERSION_URL =
+    private const val PRIMARY_CDN_URL =
         "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Releases/main/version.json"
+    private const val FALLBACK_CDN_URL =
+        "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/version.json"
 
-    private const val LATEST_RELEASE_URL =
+    private const val PRIMARY_API_URL =
         "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Releases/releases/latest"
+    private const val FALLBACK_API_URL =
+        "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Music/releases/latest"
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -109,7 +113,8 @@ object AppUpdateChecker {
     }
 
     /**
-     * Checks for updates using a multi-tiered strategy:
+     * Checks for updates using a multi-tiered strategy across primary (Dhvani-Releases)
+     * and fallback (Dhvani-Music) repositories:
      * 1. Raw GitHub CDN (version.json): Never rate-limited, ultra-fast.
      * 2. GitHub REST API: Official releases API.
      * 3. GitHub Web redirect: Direct fallback without rate limits.
@@ -117,7 +122,12 @@ object AppUpdateChecker {
      * If an update is found and [context] is provided, also posts a system notification.
      */
     suspend fun check(context: Context? = null): CheckResult = withContext(Dispatchers.IO) {
-        val latestInfo = fetchFromCdn() ?: fetchFromGitHubApi() ?: fetchFromGitHubRedirect()
+        val latestInfo = fetchFromCdn(PRIMARY_CDN_URL)
+            ?: fetchFromCdn(FALLBACK_CDN_URL)
+            ?: fetchFromGitHubApi(PRIMARY_API_URL)
+            ?: fetchFromGitHubApi(FALLBACK_API_URL)
+            ?: fetchFromGitHubRedirect("https://github.com/Kanaiya-rgb/Dhvani-Releases")
+            ?: fetchFromGitHubRedirect("https://github.com/Kanaiya-rgb/Dhvani-Music")
         if (latestInfo == null) {
             return@withContext CheckResult.Error("Could not reach update server")
         }
@@ -131,9 +141,9 @@ object AppUpdateChecker {
         }
     }
 
-    private fun fetchFromCdn(): UpdateInfo? = runCatching {
+    private fun fetchFromCdn(url: String): UpdateInfo? = runCatching {
         // Append a timestamp query parameter to bust any CDN / ISP-level cache
-        val bustUrl = "$CDN_VERSION_URL?_t=${System.currentTimeMillis()}"
+        val bustUrl = "$url?_t=${System.currentTimeMillis()}"
         val req = Request.Builder()
             .url(bustUrl)
             .header("User-Agent", "Dhvani-Music/${BuildConfig.VERSION_NAME}")
@@ -153,9 +163,9 @@ object AppUpdateChecker {
         }
     }.getOrNull()
 
-    private fun fetchFromGitHubApi(): UpdateInfo? = runCatching {
+    private fun fetchFromGitHubApi(apiUrl: String): UpdateInfo? = runCatching {
         val request = Request.Builder()
-            .url(LATEST_RELEASE_URL)
+            .url(apiUrl)
             .header("User-Agent", "Dhvani-Music/${BuildConfig.VERSION_NAME}")
             .header("Accept", "application/vnd.github+json")
             .build()
@@ -172,9 +182,9 @@ object AppUpdateChecker {
         }
     }.getOrNull()
 
-    private fun fetchFromGitHubRedirect(): UpdateInfo? = runCatching {
+    private fun fetchFromGitHubRedirect(repoBaseUrl: String): UpdateInfo? = runCatching {
         val req = Request.Builder()
-            .url("https://github.com/Kanaiya-rgb/Dhvani-Releases/releases/latest")
+            .url("$repoBaseUrl/releases/latest")
             .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
             .build()
         Http.client.newCall(req).execute().use { res ->
@@ -182,7 +192,7 @@ object AppUpdateChecker {
             if (finalUrl.contains("/tag/")) {
                 val tag = finalUrl.substringAfterLast("/tag/").removePrefix("v").trim()
                 if (tag.isNotEmpty()) {
-                    val apk = "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases/download/v$tag/DhvaniMusic-v$tag.apk"
+                    val apk = "$repoBaseUrl/releases/download/v$tag/DhvaniMusic-v$tag.apk"
                     return UpdateInfo(tag, finalUrl, apk, null)
                 }
             }

@@ -31,8 +31,11 @@ data class ReleaseChangelog(
 object ChangelogRepository {
 
     private const val TAG = "ChangelogRepository"
-    private const val GITHUB_RELEASES_URL = "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Releases/releases?per_page=15"
-    private const val CDN_VERSION_URL = "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Releases/main/version.json"
+    private const val PRIMARY_RELEASES_URL = "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Releases/releases?per_page=15"
+    private const val FALLBACK_RELEASES_URL = "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Music/releases?per_page=15"
+
+    private const val PRIMARY_CDN_URL = "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Releases/main/version.json"
+    private const val FALLBACK_CDN_URL = "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/version.json"
 
     val FALLBACK_RELEASES: List<ReleaseChangelog> = emptyList()
 
@@ -52,7 +55,8 @@ object ChangelogRepository {
 
         _isLoading.value = true
         try {
-            val fetched = fetchReleasesFromGitHub()
+            val fetched = fetchReleasesFromGitHub(PRIMARY_RELEASES_URL)
+                ?: fetchReleasesFromGitHub(FALLBACK_RELEASES_URL)
             if (!fetched.isNullOrEmpty()) {
                 _releases.value = fetched
                 hasFetchedOnce = true
@@ -61,7 +65,8 @@ object ChangelogRepository {
             }
 
             // Fallback 1: Try raw CDN version.json if GitHub API rate-limited
-            val cdnRelease = fetchLatestFromCdn()
+            val cdnRelease = fetchLatestFromCdn(PRIMARY_CDN_URL)
+                ?: fetchLatestFromCdn(FALLBACK_CDN_URL)
             if (cdnRelease != null) {
                 val currentList = _releases.value.toMutableList()
                 val existingIndex = currentList.indexOfFirst { it.version.equals(cdnRelease.version, ignoreCase = true) }
@@ -86,9 +91,9 @@ object ChangelogRepository {
         }
     }
 
-    private fun fetchReleasesFromGitHub(): List<ReleaseChangelog>? = runCatching {
+    private fun fetchReleasesFromGitHub(apiUrl: String): List<ReleaseChangelog>? = runCatching {
         val request = Request.Builder()
-            .url(GITHUB_RELEASES_URL)
+            .url(apiUrl)
             .header("User-Agent", "Dhvani-Music/${BuildConfig.VERSION_NAME}")
             .header("Accept", "application/vnd.github+json")
             .build()
@@ -136,8 +141,8 @@ object ChangelogRepository {
         }
     }.getOrNull()
 
-    private fun fetchLatestFromCdn(): ReleaseChangelog? = runCatching {
-        val bustUrl = "$CDN_VERSION_URL?_t=${System.currentTimeMillis()}"
+    private fun fetchLatestFromCdn(cdnUrl: String): ReleaseChangelog? = runCatching {
+        val bustUrl = "$cdnUrl?_t=${System.currentTimeMillis()}"
         val req = Request.Builder()
             .url(bustUrl)
             .header("User-Agent", "Dhvani-Music/${BuildConfig.VERSION_NAME}")
