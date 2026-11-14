@@ -17,6 +17,14 @@ class JioSaavnSource(
     /** Always Ok since the API endpoints don't need authentication to search. */
     override suspend fun health(): SourceHealth = SourceHealth.Ok()
 
+    private fun unescapeHtml(text: String): String = text
+        .replace("&quot;", "\"")
+        .replace("&#039;", "'")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+
     override suspend fun search(query: String, limit: Int, waitForAll: Boolean): List<Song> {
         TrackLog.d(TAG, "? JioSaavn searchSongs() query=\"$query\" limit=$limit")
         val results = JioSaavnService.searchSongs(query)
@@ -26,7 +34,7 @@ class JioSaavnSource(
             }' ${it.moreInfo.duration}s" }.takeIf { results.isNotEmpty() }.orEmpty())
         return results.take(limit).map { raw ->
             val primaryArtists = raw.moreInfo.artistMap.primaryArtists.joinToString(", ") { it.name }
-            val artistName = primaryArtists.ifBlank { "Unknown Artist" }
+            val artistName = unescapeHtml(primaryArtists.ifBlank { "Unknown Artist" })
             
             // Generate higher quality thumbnail link (e.g. 500x500)
             val thumbnail = raw.image
@@ -44,7 +52,7 @@ class JioSaavnSource(
 
             Song(
                 videoId = SourceRegistry.trackKey(config.id, raw.id),
-                title = raw.title,
+                title = unescapeHtml(raw.title),
                 artist = artistName,
                 thumbnailUrl = thumbnail,
                 albumName = albumName,
@@ -62,6 +70,7 @@ class JioSaavnSource(
     }
 
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? {
+        streamCache[trackId]?.let { return it }
         TrackLog.d(TAG, "? JioSaavn getStreamUrl() trackId=$trackId request=$request")
         val stream = JioSaavnService.getStreamUrl(trackId)
         if (stream == null || stream.url.isBlank()) {
@@ -74,7 +83,7 @@ class JioSaavnSource(
         // [SourceResolver.worthSwapping], because a miss lets the resolver step
         // over this source to the next one, whereas a stream returned and then
         // rejected is simply the track not being upgraded at all.
-        if (stream.kbps != null && stream.kbps <= MIN_USABLE_KBPS) {
+        if (stream.kbps != null && stream.kbps < MIN_USABLE_KBPS) {
             TrackLog.w(
                 TAG,
                 "  ? JioSaavn only offered ${stream.kbps}kbps for $trackId; not worth playing",
@@ -82,16 +91,19 @@ class JioSaavnSource(
             return null
         }
         TrackLog.d(TAG, "  ? JioSaavn ${stream.kbps ?: "?"}kbps ${stream.url.take(96)}")
-        return SourceStream(
+        val result = SourceStream(
             url = stream.url,
             // The rate the URL will really serve, not a flat 320  see
             // [JioSaavnService.bestStream]. `mp4` is the container; the codec
             // inside is AAC, which the decoder reports for itself.
             format = StreamFormat(source = displayName, codec = "mp4", kbps = stream.kbps),
         )
+        streamCache[trackId] = result
+        return result
     }
 
     private companion object {
+        private val streamCache = java.util.concurrent.ConcurrentHashMap<String, SourceStream>()
         /**
          * The lowest rendition worth taking over YouTube.
          *
@@ -99,6 +111,6 @@ class JioSaavnSource(
          * what YouTube already serves, so taking one is a downgrade dressed as
          * an upgrade.
          */
-        const val MIN_USABLE_KBPS = 96
+        const val MIN_USABLE_KBPS = 64
     }
 }

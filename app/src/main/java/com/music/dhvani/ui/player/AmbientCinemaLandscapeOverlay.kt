@@ -3,7 +3,10 @@ package com.music.dhvani.ui.player
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.database.ContentObserver
 import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
@@ -13,6 +16,11 @@ import com.music.dhvani.ui.components.DynamicPlayerSlider
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -35,6 +43,7 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -102,6 +111,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
@@ -111,6 +121,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -123,7 +135,15 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.music.dhvani.R
+import android.os.Build
+import android.widget.Toast
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.text.font.FontStyle
 import com.music.dhvani.data.lyrics.LyricLine
+import com.music.dhvani.data.lyrics.LyricsRomanization
+import com.music.dhvani.ui.haptics.Haptic
+import com.music.dhvani.ui.haptics.rememberHaptics
+import com.music.dhvani.data.NerdStats
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.artworkAt
 import kotlinx.coroutines.delay
@@ -168,33 +188,93 @@ fun AmbientCinemaLandscapeOverlay(
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context as? Activity }
+    val window = activity?.window
 
-    // 1. Force screen orientation to landscape on enter, restore to portrait on exit
-    DisposableEffect(activity) {
+    // Force screen orientation to landscape on enter, restore to portrait on exit.
+    // True immersive fullscreen: hides status bar (time/date/notifications) and navigation bar.
+    DisposableEffect(activity, window) {
         val originalOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+
+        val win = window
+        val originalCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            win?.attributes?.layoutInDisplayCutoutMode ?: 0
+        } else 0
+        @Suppress("DEPRECATION")
+        val originalSystemUi = win?.decorView?.systemUiVisibility ?: 0
+
+        win?.let { w ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                w.attributes = w.attributes.apply {
+                    layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+            @Suppress("DEPRECATION")
+            w.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+            val insetsController = WindowCompat.getInsetsController(w, w.decorView)
+            insetsController.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            insetsController.hide(WindowInsetsCompat.Type.systemBars())
+
+            @Suppress("DEPRECATION")
+            w.decorView.systemUiVisibility = (
+                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            )
+
+            val insetsListener = android.view.View.OnApplyWindowInsetsListener { v, insets ->
+                insetsController.hide(WindowInsetsCompat.Type.systemBars())
+                v.onApplyWindowInsets(insets)
+            }
+            w.decorView.setOnApplyWindowInsetsListener(insetsListener)
+        }
+
         onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            activity?.window?.let { win ->
-                val insetsController = WindowCompat.getInsetsController(win, win.decorView)
+            activity?.requestedOrientation = originalOrientation
+            win?.let { w ->
+                w.decorView.setOnApplyWindowInsetsListener(null)
+                @Suppress("DEPRECATION")
+                w.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    w.attributes = w.attributes.apply {
+                        layoutInDisplayCutoutMode = originalCutoutMode
+                    }
+                }
+                @Suppress("DEPRECATION")
+                w.decorView.systemUiVisibility = originalSystemUi
+                val insetsController = WindowCompat.getInsetsController(w, w.decorView)
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
             }
         }
     }
 
-    val window = activity?.window
-    DisposableEffect(window) {
-        window?.let { win ->
-            val insetsController = WindowCompat.getInsetsController(win, win.decorView)
+    // Re-enforce immersive hiding whenever orientation changes or layout settles
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    LaunchedEffect(configuration.orientation) {
+        window?.let { w ->
+            @Suppress("DEPRECATION")
+            w.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            val insetsController = WindowCompat.getInsetsController(w, w.decorView)
             insetsController.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             insetsController.hide(WindowInsetsCompat.Type.systemBars())
-        }
-        onDispose {
-            window?.let { win ->
-                val insetsController = WindowCompat.getInsetsController(win, win.decorView)
-                insetsController.show(WindowInsetsCompat.Type.systemBars())
-            }
+
+            @Suppress("DEPRECATION")
+            w.decorView.systemUiVisibility = (
+                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            )
         }
     }
 
@@ -222,6 +302,10 @@ fun AmbientCinemaLandscapeOverlay(
         // 1. Immediately request portrait orientation and restore system bars so OS starts rotating
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         activity?.window?.let { win ->
+            win.decorView.setOnApplyWindowInsetsListener(null)
+            @Suppress("DEPRECATION")
+            win.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            win.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             val insetsController = WindowCompat.getInsetsController(win, win.decorView)
             insetsController.show(WindowInsetsCompat.Type.systemBars())
         }
@@ -254,7 +338,81 @@ fun AmbientCinemaLandscapeOverlay(
     // 3. Slider Style & Scrubbing State (Honors user choice in settings)
     val sliderStyle by AppSettings.sliderStyle.collectAsStateWithLifecycle()
     val squigglySlider by AppSettings.squigglySlider.collectAsStateWithLifecycle()
+    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
     val reduceAnimation by AppSettings.reduceAnimation.collectAsStateWithLifecycle()
+    val nerdStats by NerdStats.current.collectAsStateWithLifecycle()
+
+    // Real-time audio quality tag (e.g. FLAC, HI-RES, OPUS, AAC, HQ)
+    val qualityTagInfo = remember(nerdStats) {
+        val stats = nerdStats
+        when {
+            stats?.isHiRes == true -> {
+                Triple(
+                    "HI-RES",
+                    Color(0xFF2A2210).copy(alpha = 0.88f),
+                    Color(0xFFFFD56B),
+                )
+            }
+            stats?.isLossless == true -> {
+                val label = when {
+                    stats.mimeType?.contains("alac", ignoreCase = true) == true -> "ALAC"
+                    stats.mimeType?.contains("wav", ignoreCase = true) == true -> "WAV"
+                    else -> "FLAC"
+                }
+                Triple(
+                    label,
+                    Color.White.copy(alpha = 0.16f),
+                    Color.White,
+                )
+            }
+            stats?.isDolbyAtmos == true -> {
+                Triple(
+                    "ATMOS",
+                    Color(0xFF101C30).copy(alpha = 0.88f),
+                    Color(0xFF8AB8FF),
+                )
+            }
+            stats?.isHiQuality == true -> {
+                val codec = when {
+                    stats.mimeType?.contains("mp4a", ignoreCase = true) == true || stats.mimeType?.contains("aac", ignoreCase = true) == true -> "AAC"
+                    stats.mimeType?.contains("mp3", ignoreCase = true) == true -> "MP3"
+                    else -> null
+                }
+                Triple(
+                    if (codec != null) "HQ $codec" else "HQ",
+                    Color(0xFF0F261C).copy(alpha = 0.88f),
+                    Color(0xFF86EFAC),
+                )
+            }
+            stats?.mimeType != null -> {
+                val label = when {
+                    stats.mimeType.contains("opus", ignoreCase = true) || stats.decoderName?.contains("opus", ignoreCase = true) == true -> "OPUS"
+                    stats.mimeType.contains("mp4a", ignoreCase = true) || stats.mimeType.contains("aac", ignoreCase = true) -> "AAC"
+                    stats.mimeType.contains("mp3", ignoreCase = true) || stats.mimeType.contains("mpeg", ignoreCase = true) -> "MP3"
+                    else -> stats.mimeType.substringAfter('/').substringBefore(';').uppercase(Locale.ROOT).take(5)
+                }
+                Triple(
+                    label,
+                    Color.White.copy(alpha = 0.12f),
+                    Color.White.copy(alpha = 0.82f),
+                )
+            }
+            stats?.claimed?.codec != null -> {
+                Triple(
+                    stats.claimed.codec.uppercase(Locale.ROOT),
+                    Color.White.copy(alpha = 0.12f),
+                    Color.White.copy(alpha = 0.82f),
+                )
+            }
+            else -> {
+                Triple(
+                    "OPUS",
+                    Color.White.copy(alpha = 0.12f),
+                    Color.White.copy(alpha = 0.82f),
+                )
+            }
+        }
+    }
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubFraction by remember { mutableFloatStateOf(0f) }
 
@@ -314,15 +472,24 @@ fun AmbientCinemaLandscapeOverlay(
         context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     }
     val maxVolume = remember(audioManager) {
-        audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
+        audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC)?.coerceAtLeast(1) ?: 15
     }
     var currentVolume by remember(audioManager) {
         mutableIntStateOf(audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: (maxVolume / 2))
     }
     val initialVolPercent = remember(audioManager, maxVolume) {
-        if (maxVolume > 0) (audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: (maxVolume / 2)).toFloat() / maxVolume.toFloat() else 0.5f
+        val initialStream = if (maxVolume > 0) {
+            (audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: (maxVolume / 2)).toFloat() / maxVolume.toFloat()
+        } else 0.5f
+        initialStream.coerceIn(0f, 1f)
     }
     var smoothVolumePercent by remember { mutableFloatStateOf(initialVolPercent) }
+    var isVolumeDragging by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        com.music.dhvani.playback.eq.EqualizerManager.setLoudnessEnabled(false)
+        com.music.dhvani.playback.eq.EqualizerManager.setLoudnessBoostMb(0)
+    }
 
     var showVolumeHud by remember { mutableStateOf(false) }
     var volumeTimer by remember { mutableLongStateOf(0L) }
@@ -334,6 +501,32 @@ fun AmbientCinemaLandscapeOverlay(
         }
     }
 
+    // Hardware volume keys and system panel observer
+    DisposableEffect(audioManager) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                if (isVolumeDragging) return
+                val current = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: return
+                val fraction = (current.toFloat() / maxVolume).coerceIn(0f, 1f)
+                smoothVolumePercent = fraction
+                currentVolume = current
+                volumeTimer = System.currentTimeMillis()
+            }
+        }
+        val uri = Settings.System.CONTENT_URI
+        val resolver = context.contentResolver
+        try {
+            resolver.registerContentObserver(uri, true, observer)
+        } catch (_: SecurityException) {
+        }
+        onDispose {
+            try {
+                resolver.unregisterContentObserver(observer)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     fun updateSmoothVolume(deltaFraction: Float) {
         val newPercent = (smoothVolumePercent + deltaFraction).coerceIn(0f, 1f)
         smoothVolumePercent = newPercent
@@ -342,6 +535,8 @@ fun AmbientCinemaLandscapeOverlay(
             currentVolume = targetSysVol
             audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetSysVol, 0)
         }
+        com.music.dhvani.playback.eq.EqualizerManager.setLoudnessEnabled(false)
+        com.music.dhvani.playback.eq.EqualizerManager.setLoudnessBoostMb(0)
         volumeTimer = System.currentTimeMillis()
     }
 
@@ -357,6 +552,122 @@ fun AmbientCinemaLandscapeOverlay(
 
     // 6. Queue Panel state (Slide-out Queue drawer with full playlist and song removal)
     var showQueuePanel by remember { mutableStateOf(false) }
+
+    val haptics = rememberHaptics()
+
+    // Romanization & Phonetic Pronunciation State (Same as NowPlayingScreen)
+    val persistentRomanization by com.music.dhvani.data.settings.AppSettings.lyricsRomanization.collectAsStateWithLifecycle()
+    var showingRomanization by remember(song.videoId) { mutableStateOf(persistentRomanization) }
+    var romanizationLoading by remember(song.videoId) { mutableStateOf(false) }
+    var romanizationStatus by remember(song.videoId) { mutableStateOf<String?>(null) }
+    var romanizedLyrics by remember(song.videoId) {
+        mutableStateOf<List<LyricLine>?>(
+            lyrics?.let { LyricsRomanization.getCached(song.videoId, it) }
+        )
+    }
+
+    LaunchedEffect(song.videoId, showingRomanization, lyrics) {
+        if (showingRomanization && !lyrics.isNullOrEmpty()) {
+            val cached = LyricsRomanization.getCached(song.videoId, lyrics)
+            if (cached != null) {
+                romanizedLyrics = cached
+                romanizationLoading = false
+                return@LaunchedEffect
+            }
+            if (romanizedLyrics == null && !romanizationLoading) {
+                romanizationLoading = true
+                when (val res = LyricsRomanization.romanize(
+                    context = context.applicationContext,
+                    trackId = song.videoId,
+                    lines = lyrics,
+                )) {
+                    is LyricsRomanization.Result.Romanized -> {
+                        romanizedLyrics = res.lines
+                        romanizationLoading = false
+                    }
+                    is LyricsRomanization.Result.AlreadyLatin -> {
+                        romanizationLoading = false
+                        romanizationStatus = "Lyrics already in Latin script"
+                    }
+                    LyricsRomanization.Result.Unavailable -> {
+                        romanizationLoading = false
+                        romanizationStatus = "Pronunciation unavailable"
+                    }
+                }
+            }
+        }
+    }
+
+    val toggleRomanization: () -> Unit = {
+        romanizationStatus = null
+        if (showingRomanization) {
+            showingRomanization = false
+            com.music.dhvani.data.settings.AppSettings.setLyricsRomanization(false)
+            haptics.play(Haptic.Select)
+        } else if (romanizedLyrics != null) {
+            showingRomanization = true
+            com.music.dhvani.data.settings.AppSettings.setLyricsRomanization(true)
+            haptics.play(Haptic.Select)
+        } else {
+            showingRomanization = true
+            com.music.dhvani.data.settings.AppSettings.setLyricsRomanization(true)
+            val cached = lyrics?.let { LyricsRomanization.getCached(song.videoId, it) }
+            if (cached != null) {
+                romanizedLyrics = cached
+                haptics.play(Haptic.ToggleOn)
+            } else {
+                val source = lyrics.orEmpty()
+                if (source.isNotEmpty()) {
+                    romanizationLoading = true
+                    haptics.play(Haptic.Tap)
+                    scope.launch {
+                        when (val res = LyricsRomanization.romanize(
+                            context = context.applicationContext,
+                            trackId = song.videoId,
+                            lines = source,
+                        )) {
+                            is LyricsRomanization.Result.Romanized -> {
+                                romanizedLyrics = res.lines
+                                showingRomanization = true
+                                romanizationLoading = false
+                                haptics.play(Haptic.ToggleOn)
+                            }
+                            is LyricsRomanization.Result.AlreadyLatin -> {
+                                romanizationLoading = false
+                                romanizationStatus = "Lyrics already in Latin script"
+                                Toast.makeText(
+                                    context,
+                                    "Lyrics are already in English / Roman script",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                            LyricsRomanization.Result.Unavailable -> {
+                                romanizationLoading = false
+                                romanizationStatus = "Pronunciation unavailable"
+                                Toast.makeText(
+                                    context,
+                                    "Pronunciation unavailable for this song",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val displayedLyrics = remember(lyrics, showingRomanization, romanizedLyrics) {
+        if (showingRomanization && romanizedLyrics != null && !lyrics.isNullOrEmpty()) {
+            val romanMap = romanizedLyrics!!.associateBy { it.timeMs }
+            lyrics.map { line ->
+                val roman = romanMap[line.timeMs]?.romanizedText
+                if (roman != null) line.copy(romanizedText = roman) else line
+            }
+        } else {
+            lyrics
+        }
+    }
 
     // Root container: Stationary, 100% opaque solid background
     // Covers the physical screen completely so rotating or dragging never reveals underlying app content!
@@ -375,32 +686,11 @@ fun AmbientCinemaLandscapeOverlay(
                 }
             },
     ) {
-        // Full-screen ambient blurred artwork backdrop (downscaled for 60/120fps smooth render)
-        // PINNED TO SCREEN: stays stationary so dragging down or rotating never reveals the app behind!
-        AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(song.artworkAt(180) ?: song.thumbnailUrl)
-                .build(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(28.dp),
-        )
-
-        // Frosted dark overlay gradient (Pinned to screen)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.50f),
-                            Color(0xFF06080F).copy(alpha = 0.72f),
-                            Color(0xFF030408).copy(alpha = 0.92f),
-                        )
-                    )
-                ),
+        // Dynamic animated background derived from current song's album art
+        DynamicBackground(
+            song = song,
+            isPlaying = isPlaying,
+            modifier = Modifier.fillMaxSize(),
         )
 
         // Main Interactive Foreground Content Container
@@ -556,15 +846,15 @@ fun AmbientCinemaLandscapeOverlay(
                 ) {
                     // Rotating Circular Vinyl Record with ambient halo glow
                     Box(contentAlignment = Alignment.Center) {
-                        // Ambient halo behind record (smooth radial gradient without GPU blur overhead)
+                        // Subtle vinyl drop shadow to lift record off the background
                         Box(
                             modifier = Modifier
                                 .size(haloSize)
                                 .background(
                                     Brush.radialGradient(
                                         colors = listOf(
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                            Color.Black.copy(alpha = 0.45f),
+                                            Color.Black.copy(alpha = 0.15f),
                                             Color.Transparent,
                                         )
                                     ),
@@ -605,25 +895,51 @@ fun AmbientCinemaLandscapeOverlay(
 
                     Spacer(Modifier.height(artworkToTitleGap))
 
-                    // Song Title & Artist (Smooth auto-marquee moving text effect when text overflows)
-                    Text(
-                        text = song.title,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = titleFontSize,
-                        ),
-                        color = Color.White,
-                        maxLines = 1,
-                        textAlign = TextAlign.Center,
+                    // Song Title & Audio Quality Tag (Smooth auto-marquee moving text effect when text overflows)
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth(0.92f)
+                            .padding(vertical = 4.dp)
                             .basicMarquee(
                                 iterations = Int.MAX_VALUE,
                                 initialDelayMillis = 1500,
                                 repeatDelayMillis = 1200,
                                 velocity = 32.dp,
                             ),
-                    )
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = song.title,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = titleFontSize,
+                            ),
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                        qualityTagInfo.let { (tag, bgColor, accentColor) ->
+                            Spacer(Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = bgColor,
+                                border = BorderStroke(0.75.dp, accentColor.copy(alpha = 0.40f)),
+                            ) {
+                                Text(
+                                    text = tag,
+                                    style = TextStyle(
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.6.sp,
+                                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                    ),
+                                    color = accentColor,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = song.artist,
                         style = MaterialTheme.typography.bodySmall.copy(
@@ -806,16 +1122,42 @@ fun AmbientCinemaLandscapeOverlay(
                             }
                         }
                     } else {
-                        val activeIndex = remember(lyrics, positionMs) {
-                            val idx = lyrics.indexOfLast { it.timeMs <= positionMs }
+                        val activeIndex = remember(displayedLyrics, positionMs) {
+                            val idx = displayedLyrics.orEmpty().indexOfLast { it.timeMs <= positionMs }
                             if (idx >= 0) idx else 0
                         }
 
                         val listState = rememberLazyListState()
+                        var isUserDragging by remember { mutableStateOf(false) }
+                        var isManualBrowsing by remember { mutableStateOf(false) }
 
-                        // Auto-scroll so the currently active singing line stays centered
-                        LaunchedEffect(activeIndex) {
-                            if (activeIndex in lyrics.indices) {
+                        LaunchedEffect(listState.interactionSource) {
+                            listState.interactionSource.interactions.collect { interaction ->
+                                when (interaction) {
+                                    is DragInteraction.Start -> {
+                                        isUserDragging = true
+                                        isManualBrowsing = true
+                                    }
+                                    is DragInteraction.Stop, is DragInteraction.Cancel -> {
+                                        isUserDragging = false
+                                    }
+                                }
+                            }
+                        }
+
+                        // While manual browsing: once dragging stops and the scroll/fling finishes, wait 4s before returning to auto-scroll
+                        LaunchedEffect(isManualBrowsing, isUserDragging, listState.isScrollInProgress) {
+                            if (isManualBrowsing && !isUserDragging && !listState.isScrollInProgress) {
+                                delay(4_000L)
+                                isManualBrowsing = false
+                            }
+                        }
+
+                        val isManual = isManualBrowsing || isUserDragging
+
+                        // Auto-scroll so the currently active singing line stays centered (paused during manual scroll)
+                        LaunchedEffect(activeIndex, isManual) {
+                            if (!isManual && activeIndex in displayedLyrics.orEmpty().indices) {
                                 val targetIndex = (activeIndex - 1).coerceAtLeast(0)
                                 listState.animateScrollToItem(
                                     index = targetIndex,
@@ -832,48 +1174,99 @@ fun AmbientCinemaLandscapeOverlay(
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = if (isCompact) 32.dp else 52.dp),
                         ) {
                             itemsIndexed(
-                                lyrics,
+                                displayedLyrics.orEmpty(),
                                 key = { index, line -> "${line.timeMs}_$index" }
                             ) { index, line ->
                                 val isActive = index == activeIndex
-                                val isUpcoming = index > activeIndex
+
+                                // Blur exactly matching NowPlayingScreen full screen lyrics:
+                                // - When scrolling manually (isManual): 0.dp for ALL lines so user can read everything clearly!
+                                // - While playing:
+                                //   - Active line: 0.dp (sharp focus)
+                                //   - Next 3 lines: 0.dp (sharp, readable upcoming)
+                                //   - Lines before active line: heavily blurred (8.dp to 22.dp)
+                                //   - Lines after subsequent 3 lines: heavily blurred (8.dp to 22.dp)
+                                val targetBlur = if (isManual || reduceDynamicBlur || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                                    0.dp
+                                } else when {
+                                    activeIndex < 0 -> 0.dp
+                                    isActive -> 0.dp
+                                    index in (activeIndex + 1)..(activeIndex + 3) -> 0.dp
+                                    index < activeIndex -> {
+                                        val distBefore = activeIndex - index
+                                        (8f + (distBefore - 1) * 3f).coerceIn(8f, 22f).dp
+                                    }
+                                    else -> {
+                                        val distAfter = index - (activeIndex + 3)
+                                        (8f + (distAfter - 1) * 3f).coerceIn(8f, 22f).dp
+                                    }
+                                }
+
+                                val animatedBlur by animateDpAsState(
+                                    targetValue = targetBlur,
+                                    animationSpec = tween(durationMillis = 350),
+                                    label = "cinemaLyricBlur",
+                                )
 
                                 val targetAlpha = when {
+                                    isManual -> if (isActive) 0.88f else 0.50f
                                     isActive -> 1f
-                                    isUpcoming -> 0.42f
-                                    else -> 0.28f
+                                    index in (activeIndex + 1)..(activeIndex + 3) -> 0.55f
+                                    index < activeIndex -> 0.30f
+                                    else -> 0.22f
                                 }
                                 val alpha by animateFloatAsState(
                                     targetValue = targetAlpha,
-                                    animationSpec = tween(durationMillis = 200),
+                                    animationSpec = tween(durationMillis = 250),
                                     label = "lyricAlpha",
                                 )
 
                                 val fontSize = if (isActive) (if (isCompact) 23.sp else 29.sp) else (if (isCompact) 16.5.sp else 21.sp)
                                 val fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Medium
 
-                                Text(
-                                    text = line.text,
-                                    style = MaterialTheme.typography.headlineSmall.copy(
-                                        fontSize = fontSize,
-                                        fontWeight = fontWeight,
-                                        lineHeight = if (isActive) (if (isCompact) 32.sp else 39.sp) else (if (isCompact) 23.sp else 29.sp),
-                                        shadow = if (isActive) {
-                                            Shadow(
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.70f),
-                                                offset = Offset(0f, 0f),
-                                                blurRadius = 14f,
-                                            )
-                                        } else null,
-                                    ),
-                                    textAlign = TextAlign.Center,
-                                    color = if (isActive) Color.White else Color.White.copy(alpha = alpha),
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier
                                         .fillMaxWidth(0.94f)
+                                        .then(
+                                            if (animatedBlur > 0.5.dp) Modifier.blur(animatedBlur, BlurredEdgeTreatment.Unbounded)
+                                            else Modifier
+                                        )
                                         .clip(RoundedCornerShape(12.dp))
-                                        .clickable { onSeek(line.timeMs) }
+                                        .clickable {
+                                            isManualBrowsing = false
+                                            isUserDragging = false
+                                            onSeek(line.timeMs)
+                                        }
                                         .padding(horizontal = 8.dp, vertical = 4.dp),
-                                )
+                                ) {
+                                    Text(
+                                        text = line.text,
+                                        style = MaterialTheme.typography.headlineSmall.copy(
+                                            fontSize = fontSize,
+                                            fontWeight = fontWeight,
+                                            lineHeight = if (isActive) (if (isCompact) 32.sp else 39.sp) else (if (isCompact) 23.sp else 29.sp),
+                                        ),
+                                        textAlign = TextAlign.Center,
+                                        color = if (isActive && !isManual) Color.White else Color.White.copy(alpha = alpha),
+                                    )
+
+                                    line.romanizedText?.takeIf { it.isNotBlank() }?.let { roman ->
+                                        val romanFontSize = if (isActive) (if (isCompact) 14.5.sp else 18.sp) else (if (isCompact) 12.sp else 14.sp)
+                                        Text(
+                                            text = roman,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = romanFontSize,
+                                                lineHeight = if (isActive) (if (isCompact) 20.sp else 25.sp) else (if (isCompact) 16.sp else 19.sp),
+                                                fontWeight = FontWeight.Normal,
+                                                fontStyle = FontStyle.Italic,
+                                            ),
+                                            textAlign = TextAlign.Center,
+                                            color = if (isActive && !isManual) Color.White.copy(alpha = 0.88f) else Color.White.copy(alpha = alpha * 0.85f),
+                                            modifier = Modifier.padding(top = 2.dp),
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -907,6 +1300,9 @@ fun AmbientCinemaLandscapeOverlay(
                 .width(48.dp)
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
+                        onDragStart = { isVolumeDragging = true },
+                        onDragEnd = { isVolumeDragging = false },
+                        onDragCancel = { isVolumeDragging = false },
                         onVerticalDrag = { change, dragAmount ->
                             change.consume()
                             // Smooth continuous 1% to 2% precision per drag step
@@ -983,6 +1379,9 @@ fun AmbientCinemaLandscapeOverlay(
                 smoothVolumePercent < 0.5f -> Icons.AutoMirrored.Rounded.VolumeDown
                 else -> Icons.AutoMirrored.Rounded.VolumeUp
             }
+            val primaryColor = MaterialTheme.colorScheme.primary
+            val displayPercent = (smoothVolumePercent * 100).roundToInt().coerceIn(0, 100)
+
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color(0xDD121420),
@@ -1008,16 +1407,22 @@ fun AmbientCinemaLandscapeOverlay(
                             .background(Color.White.copy(alpha = 0.20f)),
                         contentAlignment = Alignment.BottomCenter,
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .fillMaxHeight(smoothVolumePercent.coerceIn(0.01f, 1f))
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary),
-                        )
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val totalFrac = smoothVolumePercent.coerceIn(0f, 1f)
+                            val totalHeight = size.height * totalFrac
+
+                            // Base standard volume fill (0% to 100%)
+                            if (totalHeight > 0f) {
+                                drawRect(
+                                    color = primaryColor,
+                                    topLeft = Offset(0f, size.height - totalHeight),
+                                    size = Size(size.width, totalHeight),
+                                )
+                            }
+                        }
                     }
                     Text(
-                        text = "${(smoothVolumePercent * 100).roundToInt()}%",
+                        text = "$displayPercent%",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
@@ -1367,6 +1772,46 @@ fun AmbientCinemaLandscapeOverlay(
                     color = Color.White.copy(alpha = 0.55f),
                 )
             }
+
+            // Top-Right Romanization / Pronunciation Toggle Button
+            val hasLyrics = !lyrics.isNullOrEmpty()
+            IconButton(
+                onClick = {
+                    haptics.play(Haptic.Tap)
+                    toggleRomanization()
+                },
+                enabled = !isExiting && hasLyrics,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .size(42.dp)
+                    .alpha(if (hasLyrics) 1f else 0.4f)
+                    .background(
+                        if (showingRomanization) MaterialTheme.colorScheme.primary.copy(alpha = 0.32f) else Color.White.copy(alpha = 0.16f),
+                        CircleShape
+                    )
+                    .border(
+                        BorderStroke(
+                            0.8.dp,
+                            if (showingRomanization) MaterialTheme.colorScheme.primary.copy(alpha = 0.70f) else Color.White.copy(alpha = 0.25f)
+                        ),
+                        CircleShape
+                    ),
+            ) {
+                if (romanizationLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_speaking),
+                        contentDescription = if (showingRomanization) "Hide pronunciation" else "Show pronunciation (Romanize)",
+                        tint = if (showingRomanization) MaterialTheme.colorScheme.primary else Color.White,
+                        modifier = Modifier.size(21.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -1390,27 +1835,23 @@ private fun CinemaVinylRecord(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val rotationAngle = remember { mutableFloatStateOf(0f) }
+    val rotation = remember { Animatable(0f) }
 
     // Reset rotation cleanly to upright when track changes
     LaunchedEffect(song.videoId) {
-        rotationAngle.floatValue = 0f
+        rotation.snapTo(0f)
     }
 
     // Continuous smooth turntable rotation while actively playing
     // When paused, automatically freezes at the exact current angle without resetting!
-    LaunchedEffect(isPlaying, song.videoId) {
+    LaunchedEffect(isPlaying) {
         if (isPlaying) {
-            var lastFrameTime = 0L
             while (isActive) {
-                withFrameNanos { frameTime ->
-                    if (lastFrameTime != 0L) {
-                        val dt = (frameTime - lastFrameTime) / 1_000_000_000f
-                        // 15 degrees per second = 360 degrees in 24 seconds (~15 RPM turntable speed)
-                        rotationAngle.floatValue = (rotationAngle.floatValue + dt * 15f) % 360f
-                    }
-                    lastFrameTime = frameTime
-                }
+                val current = rotation.value
+                rotation.animateTo(
+                    targetValue = current + 360f,
+                    animationSpec = tween(durationMillis = 32_000, easing = LinearEasing),
+                )
             }
         }
     }
@@ -1427,7 +1868,7 @@ private fun CinemaVinylRecord(
             )
             .graphicsLayer {
                 // Read inside draw-phase lambda: zero recompositions, purely GPU-accelerated!
-                rotationZ = rotationAngle.floatValue
+                rotationZ = rotation.value % 360f
             }
             .clip(CircleShape)
             .background(Color(0xFF0F0F13)),
@@ -1517,6 +1958,8 @@ private fun CinemaVinylRecord(
         )
     }
 }
+
+
 
 private fun formatTime(ms: Long): String {
     if (ms <= 0) return "0:00"

@@ -19,6 +19,7 @@ import com.music.dhvani.playback.smart.TransitionStyle
 import com.music.dhvani.playback.smart.TransitionTrackInfo
 import com.music.dhvani.playback.smart.planTransition
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -26,6 +27,7 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlin.math.sin
 import java.util.Locale
@@ -197,6 +199,7 @@ class CrossfadeController(
 
     /** Which player this class's own listener is currently attached to. */
     private var listeningTo: ExoPlayer? = null
+    private var tickerJob: Job? = null
 
     /** Length of the transition in flight, in ms. Fixed when it begins. */
     private var fadeMs = 0L
@@ -282,6 +285,7 @@ class CrossfadeController(
 
     /** Dedupes the per-tick plan log down to one line per distinct verdict. */
     private var lastPlanVerdict = ""
+    private var latestLivePlanDetails: String? = null
 
     /**
      * True while a transition is armed or running.
@@ -358,7 +362,8 @@ class CrossfadeController(
 
     fun start() {
         listenTo(active())
-        scope.launch {
+        tickerJob?.cancel()
+        tickerJob = scope.launch {
             while (isActive) {
                 tick()
                 delay(
@@ -374,10 +379,13 @@ class CrossfadeController(
     }
 
     fun release() {
+        tickerJob?.cancel()
+        tickerJob = null
         listeningTo?.removeListener(listener)
         listeningTo = null
-        active().volume = 1f
+        active().volume = PlaybackService.HEADROOM_VOLUME
         AppSettings.smartMixInProgress.value = false
+        latestLivePlanDetails = null
         filters.open()
     }
 
@@ -440,6 +448,7 @@ class CrossfadeController(
         // claiming both songs are measured.
         if (!player.hasNextMediaItem()) {
             AppSettings.smartTransitionWindow.value = null
+            latestLivePlanDetails = null
             return
         }
 
@@ -466,6 +475,7 @@ class CrossfadeController(
             // planned for this pair before the loop went on, at a point the
             // playhead now runs past on every lap without anything happening.
             AppSettings.smartTransitionWindow.value = null
+            latestLivePlanDetails = null
             return
         }
 
@@ -588,8 +598,7 @@ class CrossfadeController(
         val markable = !plan.blocked &&
             plan.markerVisible &&
             duration > 0L &&
-            analysisState.current == TrackAnalysisState.ANALYSED &&
-            analysisState.next in MEASURED_ENOUGH_TO_ENTER_ON
+            analysisState.current in MEASURED_ENOUGH_TO_ENTER_ON
         AppSettings.smartTransitionWindow.value = if (markable) {
             TransitionWindow(
                 start = (plan.transitionStart * 1000.0 / duration).toFloat().coerceIn(0f, 1f),
@@ -598,6 +607,59 @@ class CrossfadeController(
         } else {
             null
         }
+
+        if (markable) {
+            val remainingSec = maxOf(0, ((plan.transitionStart * 1000 - player.currentPosition) / 1000.0).roundToInt())
+            val styleName = when {
+                plan.transitionStyle == TransitionStyle.DJ_BLEND -> "loop mix"
+                plan.bassSwap -> "bass swap"
+                plan.filterSweep > 0.0 -> "filter sweep"
+                else -> "loop mix"
+            }
+            val timingPart = if (AppSettings.smartMixInProgress.value || remainingSec <= 0) {
+                "mixing now"
+            } else {
+                "$styleName in $remainingSec s"
+            }
+
+            val outBpm = if (plan.outgoingBpm > 0) plan.outgoingBpm else currentAnalysis.bpm
+            val outBeatSec = if (outBpm > 0) 60.0 / outBpm else 0.5
+            val outBeats = if (plan.transitionBeats > 0) plan.transitionBeats else (plan.fadeSeconds / outBeatSec).roundToInt()
+            val outBars = (outBeats / 4).coerceAtLeast(1)
+            val outVocalStr = if (plan.vocalOverlap <= 0.20) "clear by lyrics" else "vocal crossfade"
+            val outPart = "out $outBars-bar, $outVocalStr"
+
+            val nextMeasured = analysisState.next in MEASURED_ENOUGH_TO_ENTER_ON
+            if (nextMeasured) {
+                val inBpm = if (plan.incomingBpm > 0) plan.incomingBpm else nextAnalysis.bpm
+                val inBeatSec = if (inBpm > 0) 60.0 / inBpm else outBeatSec
+                val inDurationSec = maxOf(0.0, plan.incomingHandoffTime - plan.incomingCueTime)
+                val inBeats = if (inDurationSec > 0) (inDurationSec / inBeatSec).roundToInt() else (outBeats / 2)
+                val inBars = (inBeats / 4).coerceIn(1, outBars)
+                val inVocalStr = if (plan.vocalOverlap <= 0.20) "clear by lyrics" else "vocal crossfade"
+                val inPart = "in $inBars-bar, $inVocalStr"
+
+                val totalBars = (plan.fadeSeconds / outBeatSec / 4).roundToInt().coerceAtLeast(1)
+                val bpmPart = if (outBpm > 0 && inBpm > 0) {
+                    val outInt = outBpm.roundToInt()
+                    val inInt = inBpm.roundToInt()
+                    if (outInt != inInt) {
+                        "$outInt -> $inInt BPM over $totalBars bars"
+                    } else {
+                        "$outInt BPM over $totalBars bars"
+                    }
+                } else {
+                    "$totalBars bars transition"
+                }
+
+                latestLivePlanDetails = "$timingPart · $outPart · $inPart · $bpmPart"
+            } else {
+                latestLivePlanDetails = "$timingPart · $outPart"
+            }
+        } else {
+            latestLivePlanDetails = null
+        }
+        AppSettings.smartAnalysis.value = AppSettings.smartAnalysis.value.copy(livePlanDetails = latestLivePlanDetails)
 
         if (plan.blocked) return
 
@@ -664,6 +726,7 @@ class CrossfadeController(
         AppSettings.smartAnalysis.value = SmartAnalysis(
             current = currentItem?.let { stateOf(it, analysisFor(it)) } ?: TrackAnalysisState.WAITING,
             next = nextItem?.let { stateOf(it, analysisFor(it)) } ?: TrackAnalysisState.WAITING,
+            livePlanDetails = latestLivePlanDetails,
         )
     }
 
@@ -957,12 +1020,21 @@ class CrossfadeController(
         val elapsed = (player.currentPosition - incomingCueTimeMs).coerceAtLeast(0L)
         val progress = (elapsed.toFloat() / span).coerceIn(0f, 1f)
 
-        player.volume = riseGain(progress)
-        out.volume = fallGain(progress)
+        player.volume = riseGain(progress) * PlaybackService.HEADROOM_VOLUME
+        out.volume = fallGain(progress) * PlaybackService.HEADROOM_VOLUME
         // Only from here, never during ARMING: the standby is silent until the
         // handoff, and [filters] describes the split between the track arriving
         // and the track leaving, which only exists once both are audible.
         rideFilters(progress)
+
+        if (AppSettings.smartMixInProgress.value) {
+            latestLivePlanDetails?.let { details ->
+                if (!details.startsWith("mixing now")) {
+                    latestLivePlanDetails = details.replaceFirst(Regex("^.*? in \\d+ s"), "mixing now")
+                    AppSettings.smartAnalysis.value = AppSettings.smartAnalysis.value.copy(livePlanDetails = latestLivePlanDetails)
+                }
+            }
+        }
 
         // Whichever comes first: the fade running its course, the old track
         // genuinely ending, the tail failing outright, or whichever setting
@@ -1014,6 +1086,7 @@ class CrossfadeController(
         if (phase == Phase.IDLE || phase == Phase.BAILING) return
         Log.d(TAG, "bail from $phase")
         AppSettings.smartMixInProgress.value = false
+        latestLivePlanDetails = null
         if (!handedOff) {
             // Nothing was ever audible; no ramp to run.
             finish()
@@ -1024,7 +1097,7 @@ class CrossfadeController(
         // currently lifted out. Dropping a 24 dB/octave filter in one buffer is
         // the click this ramp exists to avoid.
         filters.open()
-        incoming?.volume = 1f
+        incoming?.volume = PlaybackService.HEADROOM_VOLUME
         bailFromGain = outgoing?.volume ?: 0f
         bailStartedAt = SystemClock.elapsedRealtime()
         phase = Phase.BAILING
@@ -1041,6 +1114,7 @@ class CrossfadeController(
             settledAt = SystemClock.elapsedRealtime()
         }
         AppSettings.smartMixInProgress.value = false
+        latestLivePlanDetails = null
         // Unconditional and idempotent, like the speed reset below: correct
         // whether or not this transition ever filtered anything.
         filters.open()
@@ -1050,7 +1124,7 @@ class CrossfadeController(
             // The roles have already traded: the incoming player is the session
             // and owns the queue from here, and the outgoing one is spare.
             incoming?.let {
-                it.volume = 1f
+                it.volume = PlaybackService.HEADROOM_VOLUME
                 // Undoes whatever [begin] stacked on for a beatmatched handoff.
                 // Unconditional and idempotent, so this is correct whether or
                 // not a stretch was ever actually applied.
@@ -1060,7 +1134,7 @@ class CrossfadeController(
         } else {
             // The transition never became audible, so the session player never
             // moved and the standby is the one to throw away.
-            outgoing?.volume = 1f
+            outgoing?.volume = PlaybackService.HEADROOM_VOLUME
             incoming?.let(::retire)
         }
 
@@ -1091,7 +1165,7 @@ class CrossfadeController(
     private fun retire(player: ExoPlayer) {
         player.stop()
         player.clearMediaItems()
-        player.volume = 1f
+        player.volume = PlaybackService.HEADROOM_VOLUME
         player.setPlaybackSpeed(AppSettings.playbackSpeed.value)
     }
 

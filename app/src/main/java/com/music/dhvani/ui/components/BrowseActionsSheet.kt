@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.music.dhvani.data.artist.ArtistPortraitRepository
 import com.music.dhvani.data.model.BrowseType
 import com.music.dhvani.data.model.ROW_ART_PX
 import com.music.dhvani.data.model.Song
@@ -288,6 +289,11 @@ fun BrowseActionsSheet(
 @Composable
 private fun BrowseSheetHeader(target: BrowseTarget) {
     val shape = if (target.type == BrowseType.ARTIST) CircleShape else RoundedCornerShape(8.dp)
+    val effectiveThumbnail = if (target.type == BrowseType.ARTIST) {
+        ArtistPortraitRepository.getCachedPortrait(target.title) ?: target.thumbnailUrl
+    } else {
+        target.thumbnailUrl
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -295,7 +301,7 @@ private fun BrowseSheetHeader(target: BrowseTarget) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AsyncImage(
-            model = target.thumbnailUrl.artworkAt(ROW_ART_PX),
+            model = effectiveThumbnail.artworkAt(ROW_ART_PX),
             contentDescription = null,
             modifier = Modifier
                 .size(52.dp)

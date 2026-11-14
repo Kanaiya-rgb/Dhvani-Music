@@ -267,10 +267,35 @@ fun SongShelfSkeleton(index: Int = 0, rows: Int = 3) {
 
 /** Home and Explore while the first page of shelves is still loading. */
 fun LazyListScope.feedSkeleton(shelves: Int = 3) {
-    item(key = "skeleton:quick_picks") { SongShelfSkeleton(index = 0, rows = 3) }
-    items(shelves - 1, key = { "skeleton:shelf:$it" }) { index ->
-        ShelfSkeleton(index = index + 1)
+    // 1. "Listen Again" section: single track row (matching Image 2)
+    item(key = "skeleton:listen_again") {
+        Column(Modifier.padding(bottom = 20.dp)) {
+            SectionHeaderSkeleton(index = 0)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PAGE_GUTTER, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ShimmerBox(
+                    modifier = Modifier.size(50.dp),
+                    shape = RoundedCornerShape(8.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    SkeletonLine(fraction = 0.55f, height = 14.dp)
+                    Spacer(Modifier.height(6.dp))
+                    SkeletonLine(fraction = 0.35f, height = 11.dp)
+                }
+            }
+        }
     }
+    // 2. "Quick Picks" section: 4 rows of tracks in columns (matching Image 2)
+    item(key = "skeleton:quick_picks") { SongShelfSkeleton(index = 1, rows = 4) }
+    // 3. "Daily Discover" section: 4 rows of tracks in columns (matching Image 2)
+    item(key = "skeleton:daily_discover") { SongShelfSkeleton(index = 2, rows = 4) }
+    // 4. Album/playlist carousel shelf
+    item(key = "skeleton:albums_shelf") { ShelfSkeleton(index = 3) }
 }
 
 /** Appended to the feed while a further page of shelves is on its way. */

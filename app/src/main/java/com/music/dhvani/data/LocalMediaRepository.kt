@@ -51,8 +51,8 @@ object LocalMediaRepository {
      */
     suspend fun getDownloadedSongs(context: Context): List<Song> = withContext(Dispatchers.IO) {
         val appDownloads = Downloads.getDownloadedSongs(context)
+        if (appDownloads.isEmpty()) return@withContext emptyList()
         val knownUris = appDownloads.mapNotNull { it.localUri }.toSet()
-        val extraSongs = mutableListOf<Song>()
 
         /** uri to what the media scanner read off that file. */
         val scanned = mutableMapOf<String, ScannedTags>()
@@ -61,8 +61,6 @@ object LocalMediaRepository {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val projection = arrayOf(
                     MediaStore.Audio.Media._ID,
-                    MediaStore.Audio.Media.DISPLAY_NAME,
-                    MediaStore.Audio.Media.RELATIVE_PATH,
                     MediaStore.Audio.Media.ALBUM,
                     MediaStore.Audio.Media.ALBUM_ID,
                 )
@@ -77,51 +75,29 @@ object LocalMediaRepository {
                     null,
                 )?.use { cursor ->
                     val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-                    val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
                     val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
                     val albumIdCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
                     val albumArtBaseUri = Uri.parse("content://media/external/audio/albumart")
 
                     while (cursor.moveToNext()) {
                         val id = cursor.getLong(idCol)
-                        val name = cursor.getString(nameCol) ?: continue
                         val contentUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id).toString()
-                        val albumId = cursor.getLong(albumIdCol)
-                        val tags = ScannedTags(
-                            albumName = cursor.getString(albumCol).cleanTag(),
-                            artworkUrl = if (albumId > 0) {
-                                ContentUris.withAppendedId(albumArtBaseUri, albumId).toString()
-                            } else {
-                                null
-                            },
-                        )
-                        scanned[contentUri] = tags
-                        if (contentUri !in knownUris && isAudioFileName(name)) {
-                            if (DownloadStore.exists(context, Uri.parse(contentUri))) {
-                                extraSongs.add(buildSongFromUri(context, contentUri, name, tags))
-                            }
-                        }
-                    }
-                }
-            } else {
-                val folder = File(
-                    android.os.Environment.getExternalStoragePublicDirectory(
-                        android.os.Environment.DIRECTORY_MUSIC,
-                    ),
-                    DownloadStore.FOLDER,
-                )
-                if (folder.exists() && folder.isDirectory) {
-                    folder.listFiles()?.forEach { file ->
-                        if (file.isFile && isAudioFileName(file.name) && file.exists()) {
-                            val uriStr = Uri.fromFile(file).toString()
-                            if (uriStr !in knownUris) {
-                                extraSongs.add(buildSongFromUri(context, uriStr, file.name))
-                            }
+                        if (contentUri in knownUris) {
+                            val albumId = cursor.getLong(albumIdCol)
+                            val tags = ScannedTags(
+                                albumName = cursor.getString(albumCol).cleanTag(),
+                                artworkUrl = if (albumId > 0) {
+                                    ContentUris.withAppendedId(albumArtBaseUri, albumId).toString()
+                                } else {
+                                    null
+                                },
+                            )
+                            scanned[contentUri] = tags
                         }
                     }
                 }
             }
-        }.onFailure { Log.w(TAG, "Failed scanning Music/DhvaniMusic directory: ${it.message}") }
+        }.onFailure { Log.w(TAG, "Failed scanning tags for downloaded songs: ${it.message}") }
 
         val filled = appDownloads.map { song ->
             val uri = song.localUri
@@ -137,7 +113,7 @@ object LocalMediaRepository {
             song.copy(albumName = album, thumbnailUrl = resolvedThumb)
         }
 
-        (filled + extraSongs).distinctBy { it.localUri ?: it.videoId }
+        filled.distinctBy { it.localUri ?: it.videoId }
     }
 
     /**

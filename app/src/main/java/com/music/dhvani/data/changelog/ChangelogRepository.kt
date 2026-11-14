@@ -32,10 +32,10 @@ object ChangelogRepository {
 
     private const val TAG = "ChangelogRepository"
     private const val PRIMARY_RELEASES_URL = "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Releases/releases?per_page=15"
-    private const val FALLBACK_RELEASES_URL = "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Music/releases?per_page=15"
+    private const val FALLBACK_RELEASES_URL = "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Releases/releases?per_page=15"
 
     private const val PRIMARY_CDN_URL = "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Releases/main/version.json"
-    private const val FALLBACK_CDN_URL = "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/version.json"
+    private const val FALLBACK_CDN_URL = "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Releases/main/version.json"
 
     val FALLBACK_RELEASES: List<ReleaseChangelog> = emptyList()
 
@@ -62,7 +62,7 @@ object ChangelogRepository {
                 hasFetchedOnce = true
                 Log.d(TAG, "Successfully loaded ${fetched.size} releases from GitHub API")
                 return@withContext
-            }
+            }   
 
             // Fallback 1: Try raw CDN version.json if GitHub API rate-limited
             val cdnRelease = fetchLatestFromCdn(PRIMARY_CDN_URL)

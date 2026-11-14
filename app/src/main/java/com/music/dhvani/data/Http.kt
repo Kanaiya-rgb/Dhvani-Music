@@ -109,11 +109,14 @@ object Http {
     // ---- End temporary instrumentation ----------------------------------
 
     val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
-        .dispatcher(Dispatcher().apply { maxRequestsPerHost = 16 })
-        .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
+        .dispatcher(Dispatcher().apply {
+            maxRequests = 128
+            maxRequestsPerHost = 32
+        })
+        .connectionPool(ConnectionPool(64, 5, TimeUnit.MINUTES))
         .apply { if (USAGE_LOGGING_ENABLED) addNetworkInterceptor(usageInterceptor) }
         .build()
 }

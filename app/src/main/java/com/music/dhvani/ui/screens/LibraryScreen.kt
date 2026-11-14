@@ -47,6 +47,10 @@ import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.LibraryMusic
@@ -331,57 +335,86 @@ fun LibraryScreen(
             // to discover it is to have already used it.
             item(key = "replay") { ReplayBanner(replayCard, onOpenReplay) }
             item(key = "shelf:$ON_DEVICE") {
-                val savedDownloads by Downloads.saved.collectAsStateWithLifecycle()
-                val downloadsCover = remember(savedDownloads) {
-                    savedDownloads.keys.firstNotNullOfOrNull { id ->
-                        Downloads.localCoverUri(id)
-                    }
-                }
-                val onDeviceItems = buildList {
+                val showCachedPlaylist by AppSettings.showCachedPlaylist.collectAsStateWithLifecycle()
+                val context = LocalContext.current
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = PAGE_GUTTER, vertical = 4.dp),
+                ) {
                     if (showDownloadedPlaylist) {
-                        add(
-                            ShelfItem(
-                                title = stringResource(R.string.downloads),
-                                subtitle = "",
-                                thumbnailUrl = downloadsCover,
-                                videoId = null,
-                                browseId = "local:downloads",
-                            )
-                        )
-                    }
-                    add(
-                        ShelfItem(
-                            title = stringResource(R.string.local_music),
-                            subtitle = "",
-                            thumbnailUrl = null,
-                            videoId = null,
-                            browseId = "local:all",
-                        )
-                    )
-                    if (showDownloadedPlaylist) {
-                        addAll(
-                            downloadedPlaylists.map { playlist ->
-                                ShelfItem(
-                                    title = playlist.title,
-                                    subtitle = "",
-                                    thumbnailUrl = playlist.thumbnailUrl,
-                                    videoId = null,
-                                    browseId = Downloads.pageIdFor(playlist.id),
+                        LibraryListRow(
+                            icon = Icons.Rounded.Download,
+                            title = stringResource(R.string.downloads),
+                            onClick = {
+                                onShelfItemClick(
+                                    ShelfItem(
+                                        title = context.getString(R.string.downloads),
+                                        subtitle = "",
+                                        thumbnailUrl = null,
+                                        videoId = null,
+                                        browseId = "local:downloads",
+                                    )
                                 )
-                            }
+                            },
                         )
                     }
+
+                    LibraryListRow(
+                        icon = Icons.Rounded.Folder,
+                        title = stringResource(R.string.local_music),
+                        onClick = {
+                            onShelfItemClick(
+                                ShelfItem(
+                                    title = context.getString(R.string.local_music),
+                                    subtitle = "",
+                                    thumbnailUrl = null,
+                                    videoId = null,
+                                    browseId = "local:all",
+                                )
+                            )
+                        },
+                    )
+
+                    if (showCachedPlaylist) {
+                        LibraryListRow(
+                            icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                            title = "Cached songs",
+                            onClick = {
+                                onShelfItemClick(
+                                    ShelfItem(
+                                        title = "Cached songs",
+                                        subtitle = "Songs from YouTube and JioSaavn in the song cache",
+                                        thumbnailUrl = null,
+                                        videoId = null,
+                                        browseId = "local:cached",
+                                    )
+                                )
+                            },
+                        )
+                    }
+
+                    if (showDownloadedPlaylist) {
+                        downloadedPlaylists.forEach { playlist ->
+                            LibraryListRow(
+                                icon = Icons.Rounded.LibraryMusic,
+                                title = playlist.title,
+                                onClick = {
+                                    onShelfItemClick(
+                                        ShelfItem(
+                                            title = playlist.title,
+                                            subtitle = "",
+                                            thumbnailUrl = playlist.thumbnailUrl,
+                                            videoId = null,
+                                            browseId = Downloads.pageIdFor(playlist.id),
+                                        )
+                                    )
+                                },
+                            )
+                        }
+                    }
                 }
-                val onDeviceShelf = HomeShelf(
-                    title = ON_DEVICE,
-                    items = onDeviceItems,
-                )
-                LibraryGridShelf(
-                    shelf = onDeviceShelf,
-                    onItemClick = onShelfItemClick,
-                    onItemLongPress = onShelfItemLongPress,
-                    onShowAll = { onShowAll(onDeviceShelf) },
-                )
             }
             if (!signedIn) {
                 item(key = "shelf:$PLAYLISTS") {
@@ -735,6 +768,192 @@ private fun ReplayBanner(card: ReplayHeroCard?, onClick: () -> Unit) {
  * that creates a playlist, and holding a card gets rename and delete on top of
  * the queue actions every other shelf's menu offers.
  */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CompactPlaylistTile(
+    item: ShelfItem,
+    onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    val isLiked = item.browseId == YtMusicRepository.LIKED_MUSIC || item.browseId == "local:liked"
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(58.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+            .border(
+                BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                ),
+                RoundedCornerShape(12.dp)
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (isLiked) {
+                if (item.thumbnailUrl != null) {
+                    AsyncImage(
+                        model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.35f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = DhvaniIcons.HeartFilled,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFFFF5252), Color(0xFFFF7A00))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = DhvaniIcons.HeartFilled,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            } else if (item.thumbnailUrl != null) {
+                AsyncImage(
+                    model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
+                    contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.LibraryMusic,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (item.subtitle.isNotBlank()) {
+                Text(
+                    text = item.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactActionTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(58.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+            .border(
+                BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                ),
+                RoundedCornerShape(12.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun PlaylistShelf(
     shelf: HomeShelf,
@@ -746,37 +965,88 @@ private fun PlaylistShelf(
     onShowAll: () -> Unit,
     pinnedPlaylists: List<String> = emptyList(),
 ) {
-    LibraryGridShelf(
-        shelf = shelf,
-        onItemClick = onItemClick,
-        onItemLongPress = onItemLongPress,
-        onShowAll = onShowAll,
-        pinnedPlaylists = pinnedPlaylists,
-        leadingCard = {
-            NewShelfCard(
+    val playlistCards = shelf.items.map { item ->
+        @Composable { modifier: Modifier ->
+            CompactPlaylistTile(
+                item = item,
+                onClick = { onItemClick(item) },
+                onLongPress = { onItemLongPress(item) },
+                modifier = modifier,
+            )
+        }
+    }
+
+    val actionCards = listOf<@Composable (Modifier) -> Unit>(
+        { modifier ->
+            CompactActionTile(
                 icon = DhvaniIcons.Plus,
                 label = "New playlist",
-                subtitle = "",
+                subtitle = "Create",
                 onClick = onNewPlaylist,
+                modifier = modifier,
             )
         },
-        leadingCardSecond = {
-            NewShelfCard(
+        { modifier ->
+            CompactActionTile(
                 icon = Icons.Rounded.FileDownload,
                 label = "Import",
-                subtitle = "",
+                subtitle = "From file or link",
                 onClick = onImportPlaylist,
+                modifier = modifier,
             )
         },
-        leadingCardThird = {
-            NewShelfCard(
+        { modifier ->
+            CompactActionTile(
                 icon = Icons.Rounded.FileUpload,
                 label = "Export playlist",
-                subtitle = "",
+                subtitle = "Backup to file",
                 onClick = onExportPlaylist,
+                modifier = modifier,
             )
         },
     )
+
+    val allCards = playlistCards + actionCards
+    val maxVisible = 6
+    val hasMore = allCards.size > maxVisible
+    val visibleCards = allCards.take(maxVisible)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 22.dp),
+    ) {
+        SectionHeader(
+            title = shelf.title,
+            subtitle = shelf.subtitle,
+            onShowAll = onShowAll.takeIf { hasMore },
+        )
+        Spacer(Modifier.height(6.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = PAGE_GUTTER),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            visibleCards.chunked(2).forEach { rowPair ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        rowPair[0](Modifier.fillMaxWidth())
+                    }
+                    if (rowPair.size > 1) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            rowPair[1](Modifier.fillMaxWidth())
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** A Library shelf's preview row never swipes past this many cards. */
@@ -1925,3 +2195,43 @@ const val YOUTUBE_PLAYLISTS = "YouTube Playlists"
 const val SPOTIFY_PLAYLISTS = "Spotify Playlists"
 const val SPOTIFY_PROFILES = "Spotify Profile Playlists"
 const val IMPORTED_ALBUMS = "Albums"
+
+@Composable
+private fun LibraryListRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.90f),
+            modifier = Modifier.size(23.dp),
+        )
+        Spacer(Modifier.width(18.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = 15.5.sp,
+                fontWeight = FontWeight.SemiBold,
+            ),
+            color = Color.White,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            imageVector = Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.40f),
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}

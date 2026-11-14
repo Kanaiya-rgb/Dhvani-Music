@@ -12,8 +12,18 @@ import com.music.dhvani.auth.AuthStore
 import com.music.dhvani.data.lyrics.LyricsSource
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.playback.DolbyUtils
+import com.music.dhvani.playback.EqLayout
+import com.music.dhvani.playback.EqualizerPreset
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.File
+
+enum class EqualizerMode {
+    /** The tone pad: tilt, contour, and how wide each is. */
+    DYNAMIC,
+
+    /** Seven sliders and a preset list. */
+    MANUAL,
+}
 
 /**
  * Stream bitrate ceiling. HIGH means "whatever the best available format is".
@@ -36,6 +46,38 @@ enum class AudioQuality(
 enum class OutputPcmMode(val label: String) {
     PCM_16("16-bit PCM"),
     FLOAT_32("32-bit float"),
+}
+
+/**
+ * Automix background analysis performance mode: balances CPU threads, battery consumption,
+ * and analysis speed.
+ */
+enum class AutomixPerformanceMode(
+    val threads: Int,
+    val title: String,
+    val subtitle: String,
+) {
+    EFFICIENT(
+        threads = 1,
+        title = "Efficient",
+        subtitle = "1 thread · lowest heat and battery use · analysis may take longer",
+    ),
+    BALANCED(
+        threads = 2,
+        title = "Balanced",
+        subtitle = "2 threads · recommended balance of speed, heat and battery",
+    ),
+    PERFORMANCE(
+        threads = 4,
+        title = "Performance",
+        subtitle = "4 threads · fastest analysis · higher heat and battery use",
+    );
+
+    companion object {
+        fun fromName(name: String?): AutomixPerformanceMode {
+            return entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: BALANCED
+        }
+    }
 }
 
 /**
@@ -292,6 +334,35 @@ enum class GridItemSize(val label: String) {
     BIG("Big"),
 }
 
+enum class AppFontStyle(val id: String, val label: String, val subtitle: String = "") {
+    CUSTOM("custom", "Custom Font", "Personal font from URL or file"),
+    SF_PRO("sf_pro", "Apple SF Pro", "Official Apple Music typography · iOS San Francisco"),
+    CASUAL("casual", "Casual", "Friendly rounded playful typography"),
+    CONDENSED("condensed", "Condensed", "Modern compact & sleek typography"),
+    CURSIVE("cursive", "Cursive", "Artistic handwritten script typography"),
+    INTER("inter", "Inter", "Ultra-crisp UI specialist"),
+    LATO("lato", "Lato", "Warm classical harmony"),
+    MONOSPACE("monospace", "Monospace", "Clean fixed-width typography"),
+    MONTSERRAT("montserrat", "Montserrat", "Urban geometric & bold"),
+    NUNITO("nunito", "Nunito", "Soft & rounded cozy aesthetic"),
+    OPEN_SANS("open_sans", "Open Sans", "Friendly & readable humanist"),
+    OSWALD("oswald", "Oswald", "Condensed gothic headlines"),
+    OUTFIT("outfit", "Outfit", "Sleek luxury modern aesthetic"),
+    PLAYFAIR("playfair", "Playfair Display", "Classical royal serif elegance"),
+    JAKARTA("jakarta", "Plus Jakarta Sans", "Modern geometric grotesque · Dhvani classic"),
+    POPPINS("poppins", "Poppins", "Modern geometric curves · India's favorite"),
+    RALEWAY("raleway", "Raleway", "Elegant artistic display"),
+    SERIF("serif", "Serif", "Classic serif typography"),
+    SYSTEM("system", "System Default", "Standard Android system typography"),
+    TELMA("telma", "Telma", "Chic modern display typography"),
+    ;
+
+    companion object {
+        fun fromId(id: String?): AppFontStyle =
+            entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: SF_PRO
+    }
+}
+
 /**
  * App settings, backed by SharedPreferences and exposed as flows.
  *
@@ -314,6 +385,15 @@ object AppSettings {
      */
     val audioQualityWifi = MutableStateFlow(AudioQuality.LOSSLESS)
     val audioQualityCellular = MutableStateFlow(AudioQuality.LOSSLESS)
+
+    val equalizerEnabled = MutableStateFlow(false)
+    val equalizerMode = MutableStateFlow(EqualizerMode.DYNAMIC)
+    val equalizerToneX = MutableStateFlow(0)
+    val equalizerToneY = MutableStateFlow(0)
+    val equalizerFocused = MutableStateFlow(false)
+    val equalizerBalance = MutableStateFlow(0f)
+    val equalizerBands = MutableStateFlow(EqualizerPreset.FLAT.bands)
+    val equalizerPreset = MutableStateFlow(EqualizerPreset.FLAT)
 
     /**
      * What a saved file should be, answered on its own terms.
@@ -376,6 +456,8 @@ object AppSettings {
 
     /** Whether the active network charges for data. `null` while offline. */
     val meteredConnection = MutableStateFlow<Boolean?>(null)
+    val isWifiConnected = MutableStateFlow<Boolean?>(null)
+    val isCellularConnected = MutableStateFlow<Boolean?>(null)
 
     // `losslessAudio` used to live here, behind a "Prefer lossless" switch on
     // the Sources screen. It is gone: sources are asked for their best and each
@@ -386,7 +468,7 @@ object AppSettings {
 
     val crossfadeSeconds = MutableStateFlow(4)
     val gaplessPlayback = MutableStateFlow(true)
-    val preferredPlaybackSource = MutableStateFlow("LOSSLESS")
+    val preferredPlaybackSource = MutableStateFlow("JIOSAAVN")
 
     /**
      * Lets Automix's analyzer decide the transition's timing and length
@@ -399,9 +481,14 @@ object AppSettings {
      * See [com.music.dhvani.playback.smart.TransitionPlanner].
      */
     val smartFadeEnabled = MutableStateFlow(false)
+    val automixPerformanceMode = MutableStateFlow(AutomixPerformanceMode.BALANCED)
     val skipSilence = MutableStateFlow(false)
     val outputPcmMode = MutableStateFlow(OutputPcmMode.PCM_16)
     val preferUsbDac = MutableStateFlow(false)
+    val loudnessNormalization = MutableStateFlow(false)
+    val disableNormalizationOnSpeaker = MutableStateFlow(true)
+    val deviceCategoryOverrides = MutableStateFlow<Map<String, String>>(emptyMap())
+    private const val KEY_DEVICE_CATEGORY_OVERRIDES = "device_category_overrides"
 
     /**
      * Widens stereo output via [com.music.dhvani.playback.SpatialAudioProcessor],
@@ -440,6 +527,11 @@ object AppSettings {
     val dynamicTheme = MutableStateFlow(true)
     val accentColor = MutableStateFlow<Int?>(null)
     val uiDesignStyle = MutableStateFlow(UiDesignStyle.DEFAULT)
+    val fontStyle = MutableStateFlow(AppFontStyle.SF_PRO)
+    val boldText = MutableStateFlow(false)
+    val customFontPath = MutableStateFlow("")
+    val customFontName = MutableStateFlow("Custom Font")
+    val customFontUrl = MutableStateFlow("")
     val enableHighRefreshRate = MutableStateFlow(true)
     val densityScale = MutableStateFlow(1.0f)
     val sliderStyle = MutableStateFlow(SliderStyle.DEFAULT)
@@ -457,13 +549,14 @@ object AppSettings {
     val swipeThumbnail = MutableStateFlow(true)
     val swipeSensitivity = MutableStateFlow(0.73f)
     val coverDoubleTapSeek = MutableStateFlow(true)
-    val lyricsPosition = MutableStateFlow(LyricsPosition.CENTER)
+    val lyricsPosition = MutableStateFlow(LyricsPosition.LEFT)
     val lyricsAnimationStyle = MutableStateFlow(LyricsAnimationStyle.FADE)
     val lyricsGlowEffect = MutableStateFlow(false)
     val lyricsTextSize = MutableStateFlow(24f)
     val lyricsLineSpacing = MutableStateFlow(1.2f)
     val lyricsClickSeek = MutableStateFlow(true)
     val lyricsAutoScroll = MutableStateFlow(true)
+    val lyricsRomanization = MutableStateFlow(false)
     val respectAgentPositioning = MutableStateFlow(true)
     val defaultOpenTab = MutableStateFlow(0)
     val gridItemSize = MutableStateFlow(GridItemSize.SMALL)
@@ -473,7 +566,6 @@ object AppSettings {
     val lyricsTranslationLanguage = translationLanguage
     val paxSenixApiKey = MutableStateFlow("")
     val musixmatchUserToken = MutableStateFlow("")
-    val equalizerPreset get() = com.music.dhvani.playback.eq.EqualizerManager.selectedPreset
     val showRecognizeButton = MutableStateFlow(true)
     val showPlayRandomButton = MutableStateFlow(true)
     val showLikedPlaylist = MutableStateFlow(true)
@@ -526,9 +618,18 @@ object AppSettings {
     val convertVideoToAudio = MutableStateFlow(true)
     /** Drops haze blur (status bar, mini player, bottom fade, lyrics focus) for a solid-fill look. */
     val reduceDynamicBlur = MutableStateFlow(false)
+    /** Frosted glass blur behind the top app bar / header. Decoupled from bottom Liquid Glass. */
+    val frostedHeaderBlur = MutableStateFlow(false)
 
     /** Real backdrop-sampled glass (blur, lens refraction) on the floating nav bar, Android 12+ only. */
     val liquidGlass = MutableStateFlow(true)
+    val liquidGlassVibrancy = MutableStateFlow(1.0f)
+    val liquidGlassBlurRadius = MutableStateFlow(0.0f) // 0dp for crystal clear liquid glass (not frosted blur)
+    val liquidGlassMenuResolution = MutableStateFlow("HIGH") // Native 1:1 razor-sharp resolution
+    val liquidGlassRefractionHeight = MutableStateFlow(0.85f)
+    val liquidGlassRefractionAmount = MutableStateFlow(0.75f)
+    val liquidGlassChromaticAberration = MutableStateFlow(true)
+    val liquidGlassDepthEffect = MutableStateFlow(true)
 
     /** Performance Mode for budget / low-end devices: drops blur, freezes mesh gradient, reduces heavy animations */
     val performanceMode = MutableStateFlow(false)
@@ -557,7 +658,7 @@ object AppSettings {
     /** Whether to display handwritten artist signatures on artist profile pages. */
     val artistSignaturesEnabled = MutableStateFlow(true)
 
-    /** Optional custom Signature API URL endpoint (e.g. self-hosted BitChord or community endpoint). */
+    /** Optional custom Signature API URL endpoint (e.g. self-hosted or community endpoint). */
     val customSignatureApiUrl = MutableStateFlow("")
 
     /**
@@ -695,6 +796,7 @@ object AppSettings {
     val isCustomSpotifyToken = MutableStateFlow(false)
     val spotifyRemoteTokenUrl = MutableStateFlow("")
     val remoteSpotifyToken = MutableStateFlow("")
+    val sourcesRemoteUrl = MutableStateFlow("")
     val appleMusicUserToken = MutableStateFlow(DEFAULT_APPLE_MUSIC_USER_TOKEN)
     val appleMusicDevToken = MutableStateFlow(DEFAULT_APPLE_MUSIC_DEV_TOKEN)
 
@@ -788,10 +890,11 @@ object AppSettings {
 
     /** The ceiling that applies to a stream started right now. */
     val effectiveAudioQuality: AudioQuality
-        get() = if (meteredConnection.value == true) {
-            audioQualityCellular.value
-        } else {
-            audioQualityWifi.value
+        get() = when {
+            isWifiConnected.value == true -> audioQualityWifi.value
+            isCellularConnected.value == true -> audioQualityCellular.value
+            meteredConnection.value == false -> audioQualityWifi.value
+            else -> audioQualityCellular.value
         }
 
     /**
@@ -804,8 +907,10 @@ object AppSettings {
      */
     val downloadsAllowedNow: Boolean
         get() = when {
-            wifiOnlyDownloads.value || downloadNetwork.value == DownloadNetwork.WIFI_ONLY -> meteredConnection.value != true
-            downloadNetwork.value == DownloadNetwork.CELLULAR_ONLY -> meteredConnection.value == true
+            wifiOnlyDownloads.value || downloadNetwork.value == DownloadNetwork.WIFI_ONLY ->
+                meteredConnection.value != true
+            downloadNetwork.value == DownloadNetwork.CELLULAR_ONLY ->
+                meteredConnection.value != false
             else -> true
         }
 
@@ -923,7 +1028,7 @@ object AppSettings {
      *
      * Classifies as low-end / budget:
      * - Android OS marked low-RAM device (Android Go / isLowRamDevice)
-     * - Total RAM <= 6.0 GB (captures budget devices like 3GB, 4GB, and 6GB variants)
+     * - Total RAM <= 2.5 GB (e.g. Android Go / 1GB / 2GB legacy devices)
      * - CPU cores <= 6
      * - Device currently in low-memory state
      */
@@ -937,7 +1042,7 @@ object AppSettings {
             val totalRamGb = memInfo.totalMem / (1024.0 * 1024.0 * 1024.0)
             val cores = Runtime.getRuntime().availableProcessors()
             val isLowMem = memInfo.lowMemory
-            isLowRam || totalRamGb <= 6.0 || cores <= 6 || isLowMem
+            isLowRam || totalRamGb <= 2.5 || cores <= 4 || isLowMem
         }.getOrDefault(false)
         cachedIsLowEnd = result
         return result
@@ -965,6 +1070,9 @@ object AppSettings {
         hasPromptedAutoDownloadNotice.value = prefs.getBoolean(KEY_HAS_PROMPTED_AUTO_DOWNLOAD_NOTICE, false)
         crossfadeSeconds.value = prefs.getInt(KEY_CROSSFADE, 4)
         smartFadeEnabled.value = prefs.getBoolean(KEY_SMART_FADE, false)
+        automixPerformanceMode.value = AutomixPerformanceMode.fromName(
+            prefs.getString(KEY_AUTOMIX_PERFORMANCE, AutomixPerformanceMode.BALANCED.name)
+        )
         skipSilence.value = prefs.getBoolean(KEY_SKIP_SILENCE, false)
         outputPcmMode.value = runCatching {
             OutputPcmMode.valueOf(
@@ -973,6 +1081,28 @@ object AppSettings {
             )
         }.getOrDefault(OutputPcmMode.PCM_16)
         preferUsbDac.value = prefs.getBoolean(KEY_PREFER_USB_DAC, false)
+        loudnessNormalization.value = prefs.getBoolean(KEY_LOUDNESS_NORMALIZATION, false)
+        disableNormalizationOnSpeaker.value = prefs.getBoolean(KEY_DISABLE_NORMALIZATION_ON_SPEAKER, true)
+        val savedOverrides = prefs.getString(KEY_DEVICE_CATEGORY_OVERRIDES, null)
+        if (!savedOverrides.isNullOrBlank()) {
+            try {
+                deviceCategoryOverrides.value = savedOverrides.split(";").mapNotNull {
+                    val parts = it.split("=")
+                    if (parts.size == 2) parts[0] to parts[1] else null
+                }.toMap()
+            } catch (_: Exception) {}
+        }
+
+        equalizerEnabled.value = prefs.getBoolean(KEY_EQ_ENABLED, false)
+        equalizerMode.value = runCatching {
+            EqualizerMode.valueOf(prefs.getString(KEY_EQ_MODE, null) ?: EqualizerMode.DYNAMIC.name)
+        }.getOrDefault(EqualizerMode.DYNAMIC)
+        equalizerToneX.value = prefs.getInt(KEY_EQ_TONE_X, 0).coerceIn(-EqLayout.TONE_STEPS, EqLayout.TONE_STEPS)
+        equalizerToneY.value = prefs.getInt(KEY_EQ_TONE_Y, 0).coerceIn(-EqLayout.TONE_STEPS, EqLayout.TONE_STEPS)
+        equalizerFocused.value = prefs.getBoolean(KEY_EQ_FOCUSED, false)
+        equalizerBalance.value = prefs.getFloat(KEY_EQ_BALANCE, 0f).coerceIn(-1f, 1f)
+        equalizerBands.value = readEqualizerBands()
+        equalizerPreset.value = EqualizerPreset.matching(equalizerBands.value)
         gaplessPlayback.value = prefs.getBoolean(KEY_GAPLESS_PLAYBACK, true)
         spatialAudio.value = prefs.getBoolean(KEY_SPATIAL_AUDIO, false)
         val hasHardwareDolby = appContext?.let { DolbyUtils.isDolbyAtmosAvailable(it) } ?: false
@@ -1008,33 +1138,54 @@ object AppSettings {
             ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "DARK")
         }.getOrDefault(ThemeMode.DARK)
         autoplay.value = prefs.getBoolean(KEY_AUTOPLAY, true)
-        val defaultPreferred = if (audioQualityWifi.value == AudioQuality.LOSSLESS || audioQualityCellular.value == AudioQuality.LOSSLESS) "LOSSLESS" else "JIOSAAVN"
+        val defaultPreferred = "monochrome"
         val savedPreferred = prefs.getString(KEY_PREFERRED_PLAYBACK_SOURCE, defaultPreferred) ?: defaultPreferred
-        preferredPlaybackSource.value = if ((audioQualityWifi.value == AudioQuality.LOSSLESS || audioQualityCellular.value == AudioQuality.LOSSLESS) && savedPreferred == "JIOSAAVN") {
-            "LOSSLESS"
-        } else {
-            savedPreferred
-        }
+        preferredPlaybackSource.value = savedPreferred
         showNerdStats.value = prefs.getBoolean(KEY_NERD_STATS, false)
 
         val isLowEnd = isLowEndDevice()
-        val isPerfMode = prefs.getBoolean(KEY_PERFORMANCE_MODE, isLowEnd)
+        val isPerfMode = prefs.getBoolean(KEY_PERFORMANCE_MODE, false)
         performanceMode.value = isPerfMode
-        reduceAnimation.value = prefs.getBoolean(KEY_REDUCE_ANIMATION, if (isPerfMode) true else isLowEnd)
+        reduceAnimation.value = prefs.getBoolean(KEY_REDUCE_ANIMATION, false)
         stopOnTaskRemoved.value = prefs.getBoolean(KEY_STOP_ON_TASK_REMOVED, false)
         hideVolumeBar.value = prefs.getBoolean(KEY_HIDE_VOLUME_BAR, false)
         swipeToPlayNext.value = prefs.getBoolean(KEY_SWIPE_TO_PLAY_NEXT, false)
         resumeOnBluetooth.value = prefs.getBoolean(KEY_RESUME_ON_BLUETOOTH, false)
         dontRepeatSuggestions.value = prefs.getBoolean(KEY_DONT_REPEAT_SUGGESTIONS, false)
         convertVideoToAudio.value = prefs.getBoolean(KEY_CONVERT_VIDEO_TO_AUDIO, true)
-        reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, if (isPerfMode) true else isLowEnd)
-        liquidGlass.value = prefs.getBoolean(KEY_LIQUID_GLASS, true)
+        reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, false)
+        frostedHeaderBlur.value = prefs.getBoolean(KEY_FROSTED_HEADER_BLUR, false)
+        val isLiquidGlass = prefs.getBoolean(KEY_LIQUID_GLASS, true)
+        liquidGlass.value = isLiquidGlass
+
+        // If Liquid Glass is active (default), ensure performance mode and blur reduction
+        // are off unless explicitly enabled by user
+        if (isLiquidGlass && !prefs.contains(KEY_PERFORMANCE_MODE)) {
+            performanceMode.value = false
+            reduceAnimation.value = false
+            reduceDynamicBlur.value = false
+        }
+        liquidGlassVibrancy.value = prefs.getFloat(KEY_LIQUID_GLASS_VIBRANCY, 1.0f)
+        val savedBlur = prefs.getFloat(KEY_LIQUID_GLASS_BLUR_RADIUS, 0.0f)
+        liquidGlassBlurRadius.value = if (savedBlur == 8.0f) 0.0f else savedBlur
+        liquidGlassMenuResolution.value = prefs.getString(KEY_LIQUID_GLASS_MENU_RESOLUTION, "HIGH") ?: "HIGH"
+        liquidGlassRefractionHeight.value = prefs.getFloat(KEY_LIQUID_GLASS_REFRACTION_HEIGHT, 0.85f)
+        liquidGlassRefractionAmount.value = prefs.getFloat(KEY_LIQUID_GLASS_REFRACTION_AMOUNT, 0.75f)
+        liquidGlassChromaticAberration.value = prefs.getBoolean(KEY_LIQUID_GLASS_CHROMATIC_ABERRATION, true)
+        liquidGlassDepthEffect.value = prefs.getBoolean(KEY_LIQUID_GLASS_DEPTH_EFFECT, true)
         dynamicTheme.value = prefs.getBoolean(KEY_DYNAMIC_THEME, true)
         accentColor.value = if (prefs.contains(KEY_ACCENT_COLOR)) {
             val c = prefs.getInt(KEY_ACCENT_COLOR, 0)
             if (c != 0) c else null
         } else null
         uiDesignStyle.value = UiDesignStyle.DEFAULT
+        fontStyle.value = runCatching {
+            AppFontStyle.fromId(prefs.getString(KEY_FONT_STYLE, AppFontStyle.SF_PRO.id))
+        }.getOrDefault(AppFontStyle.SF_PRO)
+        boldText.value = prefs.getBoolean(KEY_BOLD_TEXT, false)
+        customFontPath.value = prefs.getString(KEY_CUSTOM_FONT_PATH, "") ?: ""
+        customFontName.value = prefs.getString(KEY_CUSTOM_FONT_NAME, "Custom Font") ?: "Custom Font"
+        customFontUrl.value = prefs.getString(KEY_CUSTOM_FONT_URL, "") ?: ""
         enableHighRefreshRate.value = prefs.getBoolean(KEY_ENABLE_HIGH_REFRESH_RATE, !isLowEnd)
         densityScale.value = prefs.getFloat(KEY_DENSITY_SCALE, 1.0f)
         sliderStyle.value = runCatching {
@@ -1063,14 +1214,15 @@ object AppSettings {
         swipeSensitivity.value = prefs.getFloat(KEY_SWIPE_SENSITIVITY, 0.73f)
         coverDoubleTapSeek.value = prefs.getBoolean(KEY_COVER_DOUBLE_TAP_SEEK, true)
         lyricsPosition.value = runCatching {
-            LyricsPosition.valueOf(prefs.getString(KEY_LYRICS_POSITION, null) ?: "CENTER")
-        }.getOrDefault(LyricsPosition.CENTER)
+            LyricsPosition.valueOf(prefs.getString(KEY_LYRICS_POSITION, null) ?: "LEFT")
+        }.getOrDefault(LyricsPosition.LEFT)
         lyricsAnimationStyle.value = LyricsAnimationStyle.fromString(prefs.getString(KEY_LYRICS_ANIMATION_STYLE, null))
         lyricsGlowEffect.value = prefs.getBoolean(KEY_LYRICS_GLOW_EFFECT, false)
         lyricsTextSize.value = prefs.getFloat(KEY_LYRICS_TEXT_SIZE, 24f)
         lyricsLineSpacing.value = prefs.getFloat(KEY_LYRICS_LINE_SPACING, 1.2f)
         lyricsClickSeek.value = prefs.getBoolean(KEY_LYRICS_CLICK_SEEK, true)
         lyricsAutoScroll.value = prefs.getBoolean(KEY_LYRICS_AUTO_SCROLL, true)
+        lyricsRomanization.value = prefs.getBoolean(KEY_LYRICS_ROMANIZATION, false)
         respectAgentPositioning.value = prefs.getBoolean(KEY_RESPECT_AGENT_POSITIONING, true)
         defaultOpenTab.value = prefs.getInt(KEY_DEFAULT_OPEN_TAB, 0)
         gridItemSize.value = runCatching {
@@ -1134,12 +1286,15 @@ object AppSettings {
         isCustomSpotifyToken.value = !savedSpotifyToken.isNullOrBlank()
         spotifySpdcToken.value = if (!savedSpotifyToken.isNullOrBlank()) savedSpotifyToken else DEFAULT_SPOTIFY_SPDC_TOKEN
         spotifyRemoteTokenUrl.value = prefs.getString(KEY_SPOTIFY_REMOTE_TOKEN_URL, "").orEmpty()
+        sourcesRemoteUrl.value = prefs.getString(KEY_SOURCES_REMOTE_URL, "").orEmpty()
         remoteSpotifyToken.value = prefs.getString(KEY_REMOTE_SPOTIFY_TOKEN, "").orEmpty()
         appleMusicUserToken.value = prefs.getString(KEY_APPLE_MUSIC_USER_TOKEN, DEFAULT_APPLE_MUSIC_USER_TOKEN).orEmpty()
         appleMusicDevToken.value = prefs.getString(KEY_APPLE_MUSIC_DEV_TOKEN, DEFAULT_APPLE_MUSIC_DEV_TOKEN).orEmpty()
         replayGenres.value = prefs.getBoolean(KEY_REPLAY_GENRES, true)
         pinnedPlaylists.value = readPinnedPlaylists()
-        discordToken.value = authStore.discordToken.orEmpty()
+        kotlin.concurrent.thread(name = "discord-token-loader") {
+            discordToken.value = authStore.discordToken.orEmpty()
+        }
         discordUsername.value = prefs.getString(KEY_DISCORD_USERNAME, "").orEmpty()
         discordName.value = prefs.getString(KEY_DISCORD_NAME, "").orEmpty()
         discordAvatar.value = prefs.getString(KEY_DISCORD_AVATAR, "").orEmpty()
@@ -1259,21 +1414,37 @@ object AppSettings {
      */
     private fun watchConnection(context: Context) {
         val manager = context.getSystemService(ConnectivityManager::class.java) ?: return
-        val refresh = {
-            meteredConnection.value = runCatching {
-                if (manager.activeNetwork == null) null else manager.isActiveNetworkMetered
-            }.getOrNull()
+        val refresh: () -> Unit = {
+            runCatching {
+                val activeNetwork = manager.activeNetwork
+                if (activeNetwork == null) {
+                    isWifiConnected.value = null
+                    isCellularConnected.value = null
+                    meteredConnection.value = null
+                } else {
+                    val caps = manager.getNetworkCapabilities(activeNetwork)
+                    val wifi = caps?.let {
+                        it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                        it.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+                    } ?: false
+                    val cellular = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ?: false
+
+                    isWifiConnected.value = wifi
+                    isCellularConnected.value = if (!wifi) cellular else false
+                    meteredConnection.value = manager.isActiveNetworkMetered
+                }
+            }
         }
         refresh()
         runCatching {
             manager.registerDefaultNetworkCallback(
                 object : ConnectivityManager.NetworkCallback() {
-                    override fun onAvailable(network: Network) = refresh()
-                    override fun onLost(network: Network) = refresh()
+                    override fun onAvailable(network: Network) { refresh() }
+                    override fun onLost(network: Network) { refresh() }
                     override fun onCapabilitiesChanged(
                         network: Network,
                         capabilities: NetworkCapabilities,
-                    ) = refresh()
+                    ) { refresh() }
                 },
             )
         }
@@ -1287,18 +1458,12 @@ object AppSettings {
     fun setAudioQualityWifi(value: AudioQuality) {
         audioQualityWifi.value = value
         prefs.edit().putString(KEY_QUALITY_WIFI, value.name).apply()
-        if (value == AudioQuality.LOSSLESS && preferredPlaybackSource.value != "YOUTUBE") {
-            setPreferredPlaybackSource("LOSSLESS")
-        }
         syncListeningMode()
     }
 
     fun setAudioQualityCellular(value: AudioQuality) {
         audioQualityCellular.value = value
         prefs.edit().putString(KEY_QUALITY_CELLULAR, value.name).apply()
-        if (value == AudioQuality.LOSSLESS && preferredPlaybackSource.value != "YOUTUBE") {
-            setPreferredPlaybackSource("LOSSLESS")
-        }
         syncListeningMode()
     }
 
@@ -1374,6 +1539,11 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_SMART_FADE, value).apply()
     }
 
+    fun setAutomixPerformanceMode(value: AutomixPerformanceMode) {
+        automixPerformanceMode.value = value
+        prefs.edit().putString(KEY_AUTOMIX_PERFORMANCE, value.name).apply()
+    }
+
     fun setSkipSilence(value: Boolean) {
         skipSilence.value = value
         prefs.edit().putBoolean(KEY_SKIP_SILENCE, value).apply()
@@ -1389,27 +1559,120 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_PREFER_USB_DAC, value).apply()
     }
 
+    fun setLoudnessNormalization(value: Boolean) {
+        loudnessNormalization.value = value
+        prefs.edit().putBoolean(KEY_LOUDNESS_NORMALIZATION, value).apply()
+    }
+
+    fun setDisableNormalizationOnSpeaker(value: Boolean) {
+        disableNormalizationOnSpeaker.value = value
+        prefs.edit().putBoolean(KEY_DISABLE_NORMALIZATION_ON_SPEAKER, value).apply()
+    }
+
+    fun setDeviceCategoryOverride(deviceName: String, category: String) {
+        val key = deviceName.trim().lowercase()
+        val updated = deviceCategoryOverrides.value.toMutableMap()
+        updated[key] = category
+        deviceCategoryOverrides.value = updated
+        val serialized = updated.entries.joinToString(";") { "${it.key}=${it.value}" }
+        prefs.edit().putString(KEY_DEVICE_CATEGORY_OVERRIDES, serialized).apply()
+    }
+
+    fun getDeviceCategoryOverride(deviceName: String): String? {
+        val key = deviceName.trim().lowercase()
+        return deviceCategoryOverrides.value[key]
+    }
+
+    fun setEqualizerEnabled(value: Boolean) {
+        equalizerEnabled.value = value
+        if (this::prefs.isInitialized) prefs.edit().putBoolean(KEY_EQ_ENABLED, value).apply()
+    }
+
+    fun setEqualizerMode(value: EqualizerMode) {
+        equalizerMode.value = value
+        if (this::prefs.isInitialized) prefs.edit().putString(KEY_EQ_MODE, value.name).apply()
+    }
+
+    fun setEqualizerTone(x: Int, y: Int) {
+        val steps = EqLayout.TONE_STEPS
+        val clampedX = x.coerceIn(-steps, steps)
+        val clampedY = y.coerceIn(-steps, steps)
+        equalizerToneX.value = clampedX
+        equalizerToneY.value = clampedY
+        if (this::prefs.isInitialized) {
+            prefs.edit().putInt(KEY_EQ_TONE_X, clampedX).putInt(KEY_EQ_TONE_Y, clampedY).apply()
+        }
+    }
+
+    fun setEqualizerFocused(value: Boolean) {
+        equalizerFocused.value = value
+        if (this::prefs.isInitialized) prefs.edit().putBoolean(KEY_EQ_FOCUSED, value).apply()
+    }
+
+    fun setEqualizerBalance(value: Float) {
+        val clamped = value.coerceIn(-1f, 1f)
+        equalizerBalance.value = clamped
+        if (this::prefs.isInitialized) prefs.edit().putFloat(KEY_EQ_BALANCE, clamped).apply()
+    }
+
+    fun setEqualizerBands(values: List<Float>) {
+        val clamped = List(EqLayout.MANUAL_COUNT) {
+            values.getOrElse(it) { 0f }.coerceIn(-EqLayout.MANUAL_RANGE_DB, EqLayout.MANUAL_RANGE_DB)
+        }
+        equalizerBands.value = clamped
+        equalizerPreset.value = EqualizerPreset.matching(clamped)
+        if (this::prefs.isInitialized) {
+            prefs.edit().putString(KEY_EQ_BANDS, clamped.joinToString(",")).apply()
+        }
+    }
+
+    fun setEqualizerPreset(preset: EqualizerPreset) {
+        if (preset == EqualizerPreset.CUSTOM) return
+        setEqualizerBands(preset.bands)
+    }
+
+    private fun readEqualizerBands(): List<Float> {
+        if (!this::prefs.isInitialized) return EqualizerPreset.FLAT.bands
+        val stored = prefs.getString(KEY_EQ_BANDS, null)
+            ?.split(",")
+            ?.mapNotNull { it.trim().toFloatOrNull() }
+            .orEmpty()
+        return List(EqLayout.MANUAL_COUNT) { index ->
+            stored.getOrElse(index) { 0f }.coerceIn(-EqLayout.MANUAL_RANGE_DB, EqLayout.MANUAL_RANGE_DB)
+        }
+    }
+
     fun setSpatialAudio(value: Boolean) {
         spatialAudio.value = value
         prefs.edit().putBoolean(KEY_SPATIAL_AUDIO, value).apply()
     }
 
+    fun hasHardwareDolby(): Boolean = appContext?.let { DolbyUtils.isDolbyAtmosAvailable(it) } ?: false
+
     fun setDolbyAtmosEnabled(value: Boolean) {
-        dolbyAtmosEnabled.value = value
-        prefs.edit().putBoolean(KEY_DOLBY_ATMOS_ENABLED, value).apply()
-        if (value) {
+        val hasHardware = hasHardwareDolby()
+        val safeValue = value && hasHardware
+        dolbyAtmosEnabled.value = safeValue
+        prefs.edit().putBoolean(KEY_DOLBY_ATMOS_ENABLED, safeValue).apply()
+        if (safeValue) {
             setSpatialAudio(true)
         }
         syncListeningMode()
     }
 
     fun applyListeningMode(mode: AudioListeningMode) {
-        audioListeningMode.value = mode
-        prefs.edit().putString(KEY_AUDIO_LISTENING_MODE, mode.name).apply()
-        when (mode) {
+        val hasHardware = hasHardwareDolby()
+        val safeMode = if (!hasHardware && (mode == AudioListeningMode.DOLBY_ATMOS || mode == AudioListeningMode.BOTH)) {
+            if (mode == AudioListeningMode.BOTH || audioQualityWifi.value == AudioQuality.LOSSLESS) AudioListeningMode.LOSSLESS else AudioListeningMode.STANDARD
+        } else {
+            mode
+        }
+        audioListeningMode.value = safeMode
+        prefs.edit().putString(KEY_AUDIO_LISTENING_MODE, safeMode.name).apply()
+        when (safeMode) {
             AudioListeningMode.DOLBY_ATMOS -> {
-                dolbyAtmosEnabled.value = true
-                prefs.edit().putBoolean(KEY_DOLBY_ATMOS_ENABLED, true).apply()
+                dolbyAtmosEnabled.value = hasHardware
+                prefs.edit().putBoolean(KEY_DOLBY_ATMOS_ENABLED, hasHardware).apply()
                 setSpatialAudio(true)
             }
             AudioListeningMode.LOSSLESS -> {
@@ -1420,8 +1683,8 @@ object AppSettings {
                 setAudioQualityCellular(AudioQuality.LOSSLESS)
             }
             AudioListeningMode.BOTH -> {
-                dolbyAtmosEnabled.value = true
-                prefs.edit().putBoolean(KEY_DOLBY_ATMOS_ENABLED, true).apply()
+                dolbyAtmosEnabled.value = hasHardware
+                prefs.edit().putBoolean(KEY_DOLBY_ATMOS_ENABLED, hasHardware).apply()
                 setSpatialAudio(true)
                 setAudioQualityWifi(AudioQuality.LOSSLESS)
                 setAudioQualityCellular(AudioQuality.LOSSLESS)
@@ -1435,7 +1698,8 @@ object AppSettings {
     }
 
     private fun syncListeningMode() {
-        val dolby = dolbyAtmosEnabled.value
+        val hasHardware = hasHardwareDolby()
+        val dolby = hasHardware && dolbyAtmosEnabled.value
         val lossless = audioQualityWifi.value == AudioQuality.LOSSLESS || audioQualityCellular.value == AudioQuality.LOSSLESS
         val mode = AudioListeningMode.fromMode(dolby, lossless)
         audioListeningMode.value = mode
@@ -1578,9 +1842,54 @@ object AppSettings {
         }
     }
 
+    fun setFrostedHeaderBlur(value: Boolean) {
+        frostedHeaderBlur.value = value
+        prefs.edit().putBoolean(KEY_FROSTED_HEADER_BLUR, value).apply()
+    }
+
     fun setLiquidGlass(value: Boolean) {
         liquidGlass.value = value
         prefs.edit().putBoolean(KEY_LIQUID_GLASS, value).apply()
+        if (value) {
+            if (performanceMode.value) setPerformanceMode(false)
+            if (reduceDynamicBlur.value) setReduceDynamicBlur(false)
+            if (reduceAnimation.value) setReduceAnimation(false)
+        }
+    }
+
+    fun setLiquidGlassVibrancy(value: Float) {
+        liquidGlassVibrancy.value = value
+        prefs.edit().putFloat(KEY_LIQUID_GLASS_VIBRANCY, value).apply()
+    }
+
+    fun setLiquidGlassBlurRadius(value: Float) {
+        liquidGlassBlurRadius.value = value
+        prefs.edit().putFloat(KEY_LIQUID_GLASS_BLUR_RADIUS, value).apply()
+    }
+
+    fun setLiquidGlassMenuResolution(value: String) {
+        liquidGlassMenuResolution.value = value
+        prefs.edit().putString(KEY_LIQUID_GLASS_MENU_RESOLUTION, value).apply()
+    }
+
+    fun setLiquidGlassRefractionHeight(value: Float) {
+        liquidGlassRefractionHeight.value = value
+        prefs.edit().putFloat(KEY_LIQUID_GLASS_REFRACTION_HEIGHT, value).apply()
+    }
+
+    fun setLiquidGlassRefractionAmount(value: Float) {
+        liquidGlassRefractionAmount.value = value
+        prefs.edit().putFloat(KEY_LIQUID_GLASS_REFRACTION_AMOUNT, value).apply()
+    }
+
+    fun setLiquidGlassChromaticAberration(value: Boolean) {
+        liquidGlassChromaticAberration.value = value
+        prefs.edit().putBoolean(KEY_LIQUID_GLASS_CHROMATIC_ABERRATION, value).apply()
+    }
+
+    fun setLiquidGlassDepthEffect(value: Boolean) {
+        liquidGlassDepthEffect.value = value
+        prefs.edit().putBoolean(KEY_LIQUID_GLASS_DEPTH_EFFECT, value).apply()
     }
 
     fun setDynamicTheme(value: Boolean) {
@@ -1591,6 +1900,38 @@ object AppSettings {
     fun setUiDesignStyle(value: UiDesignStyle) {
         uiDesignStyle.value = value
         prefs.edit().putString(KEY_UI_DESIGN_STYLE, value.id).apply()
+    }
+
+    fun setFontStyle(value: AppFontStyle) {
+        fontStyle.value = value
+        prefs.edit().putString(KEY_FONT_STYLE, value.id).apply()
+    }
+
+    fun setBoldText(value: Boolean) {
+        boldText.value = value
+        prefs.edit().putBoolean(KEY_BOLD_TEXT, value).apply()
+    }
+
+    fun setCustomFont(path: String, name: String, url: String) {
+        customFontPath.value = path
+        customFontName.value = name
+        customFontUrl.value = url
+        prefs.edit()
+            .putString(KEY_CUSTOM_FONT_PATH, path)
+            .putString(KEY_CUSTOM_FONT_NAME, name)
+            .putString(KEY_CUSTOM_FONT_URL, url)
+            .apply()
+    }
+
+    fun clearCustomFont() {
+        customFontPath.value = ""
+        customFontName.value = "Custom Font"
+        customFontUrl.value = ""
+        prefs.edit()
+            .remove(KEY_CUSTOM_FONT_PATH)
+            .remove(KEY_CUSTOM_FONT_NAME)
+            .remove(KEY_CUSTOM_FONT_URL)
+            .apply()
     }
 
     fun setEnableHighRefreshRate(value: Boolean) {
@@ -1753,6 +2094,8 @@ object AppSettings {
         return prefs.getLong("lyrics_offset_$videoId", 0L)
     }
 
+    val lyricsOffsetEvent = kotlinx.coroutines.flow.MutableStateFlow<Pair<String, Long>?>(null)
+
     fun setLyricsOffset(videoId: String, offsetMs: Long) {
         if (videoId.isBlank()) return
         if (offsetMs == 0L) {
@@ -1760,6 +2103,7 @@ object AppSettings {
         } else {
             prefs.edit().putLong("lyrics_offset_$videoId", offsetMs).apply()
         }
+        lyricsOffsetEvent.value = videoId to offsetMs
     }
 
     private const val KEY_TRANSLATION_LANGUAGE = "translation_language"
@@ -2267,6 +2611,11 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_LYRICS_AUTO_SCROLL, value).apply()
     }
 
+    fun setLyricsRomanization(value: Boolean) {
+        lyricsRomanization.value = value
+        prefs.edit().putBoolean(KEY_LYRICS_ROMANIZATION, value).apply()
+    }
+
     fun setRespectAgentPositioning(value: Boolean) {
         respectAgentPositioning.value = value
         prefs.edit().putBoolean(KEY_RESPECT_AGENT_POSITIONING, value).apply()
@@ -2345,7 +2694,8 @@ object AppSettings {
         val saved = stored.split(",")
             .mapNotNull { name -> LyricsSource.entries.firstOrNull { it.name == name } }
             .toSet()
-        return if (saved.isEmpty()) LyricsSource.entries.toSet() else saved
+        val unconfigured = LyricsSource.entries.filter { it !in saved && !stored.contains(it.name) }
+        return if (saved.isEmpty()) LyricsSource.entries.toSet() else (saved + unconfigured)
     }
 
     fun setLyricsSourceOrder(value: List<LyricsSource>) {
@@ -2484,6 +2834,12 @@ object AppSettings {
         val trimmed = value.trim()
         spotifyRemoteTokenUrl.value = trimmed
         prefs.edit().putString(KEY_SPOTIFY_REMOTE_TOKEN_URL, trimmed).apply()
+    }
+
+    fun setSourcesRemoteUrl(value: String) {
+        val trimmed = value.trim()
+        sourcesRemoteUrl.value = trimmed
+        prefs.edit().putString(KEY_SOURCES_REMOTE_URL, trimmed).apply()
     }
 
     fun setRemoteSpotifyToken(value: String) {
@@ -2797,10 +3153,20 @@ object AppSettings {
     private const val KEY_LOSSLESS = "lossless_audio"
     private const val KEY_CROSSFADE = "crossfade_seconds"
     private const val KEY_SMART_FADE = "smart_fade_enabled"
+    private const val KEY_AUTOMIX_PERFORMANCE = "automix_performance_mode"
     private const val KEY_GAPLESS_PLAYBACK = "gapless_playback"
     private const val KEY_SKIP_SILENCE = "skip_silence"
     private const val KEY_OUTPUT_PCM_MODE = "output_pcm_mode"
     private const val KEY_PREFER_USB_DAC = "prefer_usb_dac"
+    private const val KEY_LOUDNESS_NORMALIZATION = "loudness_normalization"
+    private const val KEY_DISABLE_NORMALIZATION_ON_SPEAKER = "disable_normalization_on_speaker"
+    private const val KEY_EQ_ENABLED = "equalizer_enabled"
+    private const val KEY_EQ_MODE = "equalizer_mode"
+    private const val KEY_EQ_TONE_X = "equalizer_tone_x"
+    private const val KEY_EQ_TONE_Y = "equalizer_tone_y"
+    private const val KEY_EQ_FOCUSED = "equalizer_focused"
+    private const val KEY_EQ_BALANCE = "equalizer_balance"
+    private const val KEY_EQ_BANDS = "equalizer_bands"
     private const val KEY_SPATIAL_AUDIO = "spatial_audio"
     private const val KEY_DOLBY_ATMOS_ENABLED = "dolby_atmos_enabled"
     private const val KEY_PREFERRED_PLAYBACK_SOURCE = "preferred_playback_source"
@@ -2811,6 +3177,11 @@ object AppSettings {
     private const val KEY_REVERB_DEPTH = "reverb_depth"
     private const val KEY_THEME = "theme_mode"
     private const val KEY_UI_DESIGN_STYLE = "ui_design_style"
+    private const val KEY_FONT_STYLE = "app_font_style"
+    private const val KEY_BOLD_TEXT = "bold_text"
+    private const val KEY_CUSTOM_FONT_PATH = "custom_font_path"
+    private const val KEY_CUSTOM_FONT_NAME = "custom_font_name"
+    private const val KEY_CUSTOM_FONT_URL = "custom_font_url"
     private const val KEY_AUTOPLAY = "autoplay"
     private const val KEY_NERD_STATS = "show_nerd_stats"
     private const val KEY_CACHE_LIMIT = "audio_cache_limit_bytes"
@@ -2823,7 +3194,15 @@ object AppSettings {
     private const val KEY_DONT_REPEAT_SUGGESTIONS = "dont_repeat_suggestions"
     private const val KEY_CONVERT_VIDEO_TO_AUDIO = "convert_video_to_audio"
     private const val KEY_REDUCE_BLUR = "reduce_dynamic_blur"
+    private const val KEY_FROSTED_HEADER_BLUR = "frosted_header_blur"
     private const val KEY_LIQUID_GLASS = "liquid_glass"
+    private const val KEY_LIQUID_GLASS_VIBRANCY = "liquid_glass_vibrancy"
+    private const val KEY_LIQUID_GLASS_BLUR_RADIUS = "liquid_glass_blur_radius"
+    private const val KEY_LIQUID_GLASS_MENU_RESOLUTION = "liquid_glass_menu_resolution"
+    private const val KEY_LIQUID_GLASS_REFRACTION_HEIGHT = "liquid_glass_refraction_height"
+    private const val KEY_LIQUID_GLASS_REFRACTION_AMOUNT = "liquid_glass_refraction_amount"
+    private const val KEY_LIQUID_GLASS_CHROMATIC_ABERRATION = "liquid_glass_chromatic_aberration"
+    private const val KEY_LIQUID_GLASS_DEPTH_EFFECT = "liquid_glass_depth_effect"
     private const val KEY_DEFAULT_TO_SONG_ON_CELLULAR = "default_to_song_on_cellular"
     private const val KEY_VIDEO_BACKDROP_QUALITY = "video_backdrop_quality"
     private const val KEY_VIDEO_BACKDROP_LOOP_MODE = "video_backdrop_loop_mode"
@@ -2867,6 +3246,7 @@ object AppSettings {
     private const val KEY_LYRICS_LINE_SPACING = "lyrics_line_spacing"
     private const val KEY_LYRICS_CLICK_SEEK = "lyrics_click_seek"
     private const val KEY_LYRICS_AUTO_SCROLL = "lyrics_auto_scroll"
+    private const val KEY_LYRICS_ROMANIZATION = "lyrics_romanization"
     private const val KEY_RESPECT_AGENT_POSITIONING = "respect_agent_positioning"
     private const val KEY_DEFAULT_OPEN_TAB = "default_open_tab"
     private const val KEY_GRID_ITEM_SIZE = "grid_item_size"
@@ -2898,6 +3278,9 @@ object AppSettings {
     const val DEFAULT_SPOTIFY_REMOTE_TOKEN_URL = "https://gist.githubusercontent.com/Kanaiya-rgb/d92b26ecfcee065ecbf75283cedc7272/raw/spotify_spdc.txt"
     private const val KEY_SPOTIFY_REMOTE_TOKEN_URL = "spotify_remote_token_url"
     private const val KEY_REMOTE_SPOTIFY_TOKEN = "remote_spotify_token"
+    const val DEFAULT_SOURCES_REMOTE_URL = "https://gist.githubusercontent.com/Kanaiya-rgb/d92b26ecfcee065ecbf75283cedc7272/raw/sources.json"
+    const val FALLBACK_SOURCES_REMOTE_URL = "https://gist.githubusercontent.com/Kanaiya-rgb/d92b26ecfcee065ecbf75283cedc7272/raw/sources.json"
+    private const val KEY_SOURCES_REMOTE_URL = "sources_remote_url"
     const val DEFAULT_APPLE_MUSIC_USER_TOKEN = "0.AtD3rSsiNHsC6xGrKVuH9D8Q3wLfagnppQVNecUb8c4urIsjzfQjX6NRY4hl04yQ/KfFYuTiiX09EGrnFGsjaK1EUQNWEU6l5smve9Md4kVQ9oz5VUN4uVPHYzwAcbEs6hp17uRNAG1TzE2tSeEKm/P/4BqhRNHsH3nxFdPYyN8n2pjGUx6xMwGOku3qNcMVWxIf4Hw3glOhfWAFbA0Eit3x03Z89D24dUn0MBJ/bRIwO0I7dg="
     const val DEFAULT_APPLE_MUSIC_DEV_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IldlYlBsYXlLaWQifQ.eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzg2NjMyOTI0LCJleHAiOjE3OTI2ODA5MjQsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ.hBgj61sZf-y7bmuvT-joXAUAcf7TVJ51732xnH5vFkLHOmsQHxVqGMYUuI4h8c0-RX3fRY3moylhLW8fewFJyw"
     private const val KEY_APPLE_MUSIC_USER_TOKEN = "apple_music_user_token"
@@ -2986,6 +3369,7 @@ enum class TrackAnalysisState {
 data class SmartAnalysis(
     val current: TrackAnalysisState = TrackAnalysisState.WAITING,
     val next: TrackAnalysisState = TrackAnalysisState.WAITING,
+    val livePlanDetails: String? = null,
 )
 
 /**

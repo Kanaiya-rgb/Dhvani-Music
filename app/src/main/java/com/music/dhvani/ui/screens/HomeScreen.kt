@@ -78,6 +78,7 @@ import com.music.dhvani.data.model.artworkAt
 import com.music.dhvani.ui.components.HERO_CARD_RATIO
 import java.util.Locale
 import com.music.dhvani.ui.components.MessageState
+import com.music.dhvani.ui.components.ExplicitBadge
 import com.music.dhvani.ui.components.PAGE_GUTTER
 import com.music.dhvani.ui.components.PullToRefresh
 import com.music.dhvani.ui.components.SHELF_CARD_WIDTH
@@ -191,7 +192,7 @@ fun HomeScreen(
                 contentPadding = contentPadding,
             ) {
                 item(key = "home_title", contentType = "home_title") {
-                    Column {
+                    Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
                         Text(
                             text = title,
                             style = MaterialTheme.typography.displayLarge,
@@ -207,14 +208,7 @@ fun HomeScreen(
                     }
                 }
 
-                if (replayCard != null && onOpenReplay != null) {
-                    item(key = "home_wrapped_banner", contentType = "home_replay_banner") {
-                        HomeReplayBanner(
-                            card = replayCard,
-                            onClick = onOpenReplay,
-                        )
-                    }
-                }
+// Replay removed from Home feed as requested
 
                 when (state) {
                     is UiState.Loading -> feedSkeleton()
@@ -764,13 +758,23 @@ private fun QuickPickSongRow(
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (item.isExplicit) {
+                    ExplicitBadge()
+                }
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
             if (item.subtitle.isNotBlank()) {
                 Spacer(Modifier.height(2.dp))
                 Text(
@@ -1455,18 +1459,19 @@ internal fun ShelfCard(
         Spacer(Modifier.height(10.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (isPinned) {
                 Icon(
                     imageVector = DhvaniIcons.Pin,
                     contentDescription = "Pinned",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(top = 3.dp)
-                        .size(14.dp),
+                    modifier = Modifier.size(14.dp),
                 )
-                Spacer(Modifier.width(4.dp))
+            }
+            if (item.isExplicit) {
+                ExplicitBadge()
             }
             Text(
                 text = item.title,

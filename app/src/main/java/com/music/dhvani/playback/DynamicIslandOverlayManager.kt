@@ -11,9 +11,11 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -30,6 +32,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -59,6 +62,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
@@ -77,11 +81,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -92,6 +99,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -109,9 +117,13 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import coil3.compose.AsyncImage
 import com.music.dhvani.MainActivity
+import com.music.dhvani.data.lyrics.EmbeddedLyrics
+import com.music.dhvani.data.lyrics.LyricLine
+import com.music.dhvani.data.lyrics.LyricsRepository
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.artworkAt
 import com.music.dhvani.data.settings.AppSettings
+import com.music.dhvani.download.Downloads
 import com.music.dhvani.ui.theme.ArtworkPalette
 import com.music.dhvani.ui.theme.DhvaniTheme
 import com.music.dhvani.ui.theme.rememberArtworkPalette
@@ -155,26 +167,35 @@ class DynamicIslandOverlayManager(
     private val isDismissedByUserFlow = MutableStateFlow(false)
     private val shouldShowFlow = MutableStateFlow(false)
     private val upcomingTracksFlow = MutableStateFlow<List<Pair<Int, Song>>>(emptyList())
+    private val lyricsFlow = MutableStateFlow<List<LyricLine>?>(null)
+    private var lyricsFetchJob: kotlinx.coroutines.Job? = null
     private var isOverlayAttached = false
 
     companion object {
         private val isAppInForegroundFlow = MutableStateFlow(true)
+        private val activeLyricsOverride = MutableStateFlow<Pair<String, List<LyricLine>?>?>(null)
 
         fun setAppForeground(inForeground: Boolean) {
             isAppInForegroundFlow.value = inForeground
+        }
+
+        fun updateActiveLyrics(videoId: String, lines: List<LyricLine>?) {
+            activeLyricsOverride.value = videoId to lines
         }
     }
 
     init {
         // Pre-seed state from player immediately
         playerProvider()?.let { player ->
-            currentSongFlow.value = player.currentMediaItem?.toSong()
+            val initialSong = player.currentMediaItem?.toSong()
+            currentSongFlow.value = initialSong
             isPlayingFlow.value = player.isPlaying
             playWhenReadyFlow.value = player.playWhenReady
             playbackStateFlow.value = player.playbackState
             isLoadingFlow.value = player.playbackState == Player.STATE_BUFFERING
             currentPositionFlow.value = player.currentPosition.coerceAtLeast(0L)
             durationMsFlow.value = player.duration.coerceAtLeast(0L)
+            fetchLyricsForSong(initialSong)
         }
         updateUpcomingTracks()
 
@@ -190,7 +211,7 @@ class DynamicIslandOverlayManager(
                         }
                     }
                 }
-                delay(350)
+                delay(if (isOverlayExpanded) 200 else 350)
             }
         }
 
@@ -236,16 +257,94 @@ class DynamicIslandOverlayManager(
             }
         }
         scope.launch {
+            activeLyricsOverride.collect { pair ->
+                if (pair != null && pair.first == currentSongFlow.value?.videoId && !pair.second.isNullOrEmpty()) {
+                    lyricsFlow.value = pair.second
+                }
+            }
+        }
+        scope.launch {
             currentSongFlow.collect { song ->
                 if (song != null) {
                     isDismissedByUserFlow.value = false
+                    fetchLyricsForSong(song)
+                } else {
+                    lyricsFetchJob?.cancel()
+                    lyricsFlow.value = null
                 }
                 updateOverlayVisibility()
             }
         }
         scope.launch {
+            durationMsFlow.collect { duration ->
+                if (duration > 0L && lyricsFlow.value == null) {
+                    currentSongFlow.value?.let { song ->
+                        if (lyricsFetchJob == null || lyricsFetchJob?.isCompleted == true) {
+                            fetchLyricsForSong(song)
+                        }
+                    }
+                }
+            }
+        }
+        scope.launch {
+            lyricsFlow.collect {
+                if (isOverlayExpanded) {
+                    adjustExpandedDimensions()
+                }
+            }
+        }
+        scope.launch {
             isDismissedByUserFlow.collect {
                 updateOverlayVisibility()
+            }
+        }
+    }
+
+    private fun fetchLyricsForSong(song: Song?) {
+        lyricsFetchJob?.cancel()
+        if (song == null || song.videoId.isBlank()) {
+            lyricsFlow.value = null
+            return
+        }
+        val override = activeLyricsOverride.value
+        if (override != null && override.first == song.videoId && !override.second.isNullOrEmpty()) {
+            lyricsFlow.value = override.second
+            return
+        }
+        val cached = LyricsRepository.getCached(song.videoId)
+        if (cached != null) {
+            lyricsFlow.value = cached.lines
+            return
+        }
+        lyricsFetchJob = scope.launch(Dispatchers.IO) {
+            try {
+                val effectiveLocalUri = song.localUri
+                    ?: Downloads.verifiedSavedUri(song.videoId)
+                    ?: Downloads.savedUri(context, song.videoId)?.toString()
+
+                if (!effectiveLocalUri.isNullOrBlank() || song.videoId.isNotBlank()) {
+                    EmbeddedLyrics.forUri(context, effectiveLocalUri.orEmpty(), song.videoId)?.let { embedded ->
+                        lyricsFlow.value = embedded
+                        return@launch
+                    }
+                }
+
+                val playerDuration = durationMsFlow.value.takeIf { it > 0L }
+                    ?: (playerProvider()?.duration?.takeIf { it > 0L } ?: 0L)
+                val sources = if (AppSettings.syncedLyrics.value) AppSettings.lyricsSources.value else emptySet()
+                val result = LyricsRepository.lyrics(
+                    videoId = song.videoId,
+                    title = song.title,
+                    artist = song.artist,
+                    durationMs = playerDuration,
+                    album = song.albumName,
+                    sources = sources.ifEmpty { com.music.dhvani.data.lyrics.LyricsSource.entries.toSet() },
+                    order = AppSettings.lyricsSourceOrder.value,
+                    prioritizeSyllableSync = AppSettings.prioritizeSyllableSync.value,
+                )
+                lyricsFlow.value = result?.lines
+            } catch (_: Throwable) {
+                // Ignore network errors in floating overlay
             }
         }
     }
@@ -260,6 +359,7 @@ class DynamicIslandOverlayManager(
                 currentPositionFlow.value = player.currentPosition.coerceAtLeast(0L)
                 durationMsFlow.value = player.duration.coerceAtLeast(0L)
             }
+            fetchLyricsForSong(song)
             updateUpcomingTracks()
             isDismissedByUserFlow.value = false
         }
@@ -358,12 +458,13 @@ class DynamicIslandOverlayManager(
         val screenWidth = context.resources.displayMetrics.widthPixels
         val isLandscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val hasUpcoming = upcomingTracksFlow.value.isNotEmpty()
+        val hasLyrics = !lyricsFlow.value.isNullOrEmpty()
 
         val targetWidthDp = ((screenWidth / density) - 20).coerceIn(310f, 356f)
         val targetHeightDp = if (hasUpcoming) {
-            if (isLandscape) 180f else 208f
+            if (isLandscape) 180f else (if (hasLyrics) 238f else 208f)
         } else {
-            if (isLandscape) 130f else 148f
+            if (isLandscape) 130f else (if (hasLyrics) 180f else 148f)
         }
         params.width = (targetWidthDp * density).toInt()
         params.height = (targetHeightDp * density).toInt()
@@ -507,6 +608,7 @@ class DynamicIslandOverlayManager(
                             positionFlow = currentPositionFlow,
                             durationFlow = durationMsFlow,
                             upcomingTracksFlow = upcomingTracksFlow,
+                            lyricsFlow = lyricsFlow,
                             onExpandedChanged = { isExp ->
                                 setOverlayExpanded(isExp)
                             },
@@ -609,6 +711,7 @@ private fun SystemDynamicIslandRoot(
     positionFlow: MutableStateFlow<Long>,
     durationFlow: MutableStateFlow<Long>,
     upcomingTracksFlow: MutableStateFlow<List<Pair<Int, Song>>>,
+    lyricsFlow: MutableStateFlow<List<LyricLine>?>,
     onExpandedChanged: (Boolean) -> Unit,
     onSeek: (Long) -> Unit,
     onTrackClick: (Int) -> Unit,
@@ -705,45 +808,17 @@ private fun SystemDynamicIslandRoot(
         )
         val shape = RoundedCornerShape(cornerRadius)
 
-        // OxygenOS liquid glass dynamic background: dark translucent surface with fine edge highlight and restrained artwork glow
-        val glassBackground = remember(palette.accent, expanded) {
-            if (expanded) {
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xF2121522),
-                        Color(0xEA0D0F18),
-                        Color(0xF0090A10),
-                    ),
-                )
-            } else {
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xEC12141F),
-                        Color(0xE80A0B10),
-                        palette.accent.copy(alpha = 0.16f),
-                    ),
-                )
-            }
+        // Pure OLED Black background for both mini and expanded island - no color taken from song cover
+        val glassBorder = remember {
+            Brush.verticalGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.20f),
+                    Color.White.copy(alpha = 0.06f),
+                ),
+            )
         }
-        val glassBorder = remember(palette.accent, expanded) {
-            if (expanded) {
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.36f),
-                        palette.accent.copy(alpha = 0.25f),
-                        Color.White.copy(alpha = 0.08f),
-                    ),
-                )
-            } else {
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.32f),
-                        Color.White.copy(alpha = 0.08f),
-                        palette.accent.copy(alpha = 0.22f),
-                    ),
-                )
-            }
-        }
+
+        val canBlur = remember { Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isReducedMotion }
 
         Box(
             modifier = Modifier
@@ -751,11 +826,11 @@ private fun SystemDynamicIslandRoot(
                 .shadow(
                     elevation = if (expanded) 16.dp else 12.dp,
                     shape = shape,
-                    ambientColor = Color.Black.copy(alpha = 0.85f),
-                    spotColor = palette.accent.copy(alpha = 0.45f),
+                    ambientColor = Color.Black.copy(alpha = 0.90f),
+                    spotColor = Color.Black.copy(alpha = 0.85f),
                 )
                 .clip(shape)
-                .background(glassBackground)
+                .background(Color.Black)
                 .border(
                     width = 1.dp,
                     brush = glassBorder,
@@ -785,18 +860,55 @@ private fun SystemDynamicIslandRoot(
                     },
                 ),
         ) {
+            // Blurred Song Cover in Background (Expanded mode with deep black scrim, zero palette tint)
+            if (expanded) {
+                AsyncImage(
+                    model = artworkModel,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            scaleX = 1.35f
+                            scaleY = 1.35f
+                            alpha = 0.16f
+                        }
+                        .then(
+                            if (canBlur) Modifier.blur(36.dp, BlurredEdgeTreatment.Unbounded)
+                            else Modifier
+                        ),
+                )
+
+                // Deep black scrim so background remains OLED pitch black
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xEA000000),
+                                    Color(0xF5000000),
+                                    Color(0xFF000000),
+                                ),
+                            ),
+                        ),
+                )
+            }
+
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // Subtle swipe up indicator notch pill at top
-                Box(
-                    modifier = Modifier
-                        .padding(top = 3.dp)
-                        .width(26.dp)
-                        .height(2.5.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.22f)),
-                )
+                // Subtle swipe up indicator notch pill at top (expanded mode only)
+                if (expanded) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 3.dp)
+                            .width(26.dp)
+                            .height(2.5.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.22f)),
+                    )
+                }
 
                 Crossfade(
                     targetState = expanded,
@@ -815,6 +927,7 @@ private fun SystemDynamicIslandRoot(
                             positionFlow = positionFlow,
                             durationFlow = durationFlow,
                             upcomingTracksFlow = upcomingTracksFlow,
+                            lyricsFlow = lyricsFlow,
                             onSeek = onSeek,
                             onTrackClick = onTrackClick,
                             onPlayPause = onPlayPause,
@@ -852,6 +965,10 @@ private fun SystemDynamicIslandRoot(
  * Compact state: translucent dark capsule with mini artwork, song title, artist,
  * and animated equalizer/spinner. Tapping anywhere on the capsule smoothly expands it.
  */
+/**
+ * Compact state: translucent dark capsule matching iOS Dynamic Island with song cover
+ * on the left and animated wave effect on the right. Tapping anywhere smoothly expands it.
+ */
 @Composable
 private fun CompactOverlayPill(
     song: Song,
@@ -862,21 +979,6 @@ private fun CompactOverlayPill(
     isReducedMotion: Boolean,
     onExpand: () -> Unit,
 ) {
-    val transition = rememberInfiniteTransition(label = "overlayArtSpin")
-    val rotation by if (!isReducedMotion && isPlaying) {
-        transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 360f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(14000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart,
-            ),
-            label = "artSpin",
-        )
-    } else {
-        remember { mutableFloatStateOf(0f) }
-    }
-
     Row(
         modifier = Modifier
             .clickable(
@@ -884,65 +986,36 @@ private fun CompactOverlayPill(
                 indication = null,
                 onClick = onExpand,
             )
-            .padding(start = 7.dp, end = 10.dp, top = 4.dp, bottom = 4.dp)
-            .height(36.dp),
+            .padding(start = 6.dp, end = 10.dp, top = 4.dp, bottom = 4.dp)
+            .height(34.dp)
+            .widthIn(min = 125.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Thumbnail with squircle corner radius
+        // Left side: Song cover (Album artwork)
         AsyncImage(
             model = artworkModel,
-            contentDescription = null,
+            contentDescription = "Song Cover",
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(28.dp)
+                .size(26.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFF1E202B))
-                .border(0.75.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(8.dp))
-                .then(if (isPlaying && !isReducedMotion) Modifier.rotate(rotation) else Modifier),
+                .border(0.75.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(8.dp)),
         )
 
-        // Song title & artist
-        Column(
-            modifier = Modifier.widthIn(min = 60.dp, max = 118.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                ),
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = song.artist,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 9.5.sp,
-                ),
-                color = Color.White.copy(alpha = 0.68f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        // Kinetic Audio Equalizer or Loading Spinner
+        // Right side: Wave effect (Kinetic Audio Equalizer or Loading Spinner)
         if (isLoading) {
             CircularProgressIndicator(
-                color = palette.accent,
+                color = Color.White,
                 strokeWidth = 2.dp,
-                modifier = Modifier
-                    .size(15.dp)
-                    .padding(horizontal = 2.dp),
+                modifier = Modifier.size(14.dp),
             )
         } else {
             OverlayEqualizer(
                 isPlaying = isPlaying,
-                barColor = palette.accent,
+                barColor = Color.White,
                 isReducedMotion = isReducedMotion,
-                modifier = Modifier.padding(horizontal = 2.dp),
             )
         }
     }
@@ -964,6 +1037,7 @@ private fun ExpandedOverlayCard(
     positionFlow: MutableStateFlow<Long>,
     durationFlow: MutableStateFlow<Long>,
     upcomingTracksFlow: MutableStateFlow<List<Pair<Int, Song>>>,
+    lyricsFlow: MutableStateFlow<List<LyricLine>?>,
     onSeek: (Long) -> Unit,
     onTrackClick: (Int) -> Unit,
     onPlayPause: () -> Unit,
@@ -972,8 +1046,19 @@ private fun ExpandedOverlayCard(
     onCollapse: () -> Unit,
     onOpenApp: () -> Unit,
 ) {
-    val accentColor = palette.accent
+    val accentColor = Color.White
     val upcomingTracks by upcomingTracksFlow.collectAsState()
+    val lyrics by lyricsFlow.collectAsState()
+    val positionMs by positionFlow.collectAsState()
+
+    val activeLyric = remember(lyrics, positionMs) {
+        val lines = lyrics
+        if (lines.isNullOrEmpty()) null
+        else {
+            val idx = lines.indexOfLast { it.timeMs <= positionMs }
+            if (idx >= 0) lines[idx] else null
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -998,9 +1083,9 @@ private fun ExpandedOverlayCard(
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .shadow(4.dp, RoundedCornerShape(12.dp), spotColor = accentColor.copy(alpha = 0.40f))
+                    .shadow(4.dp, RoundedCornerShape(12.dp), spotColor = Color.Black.copy(alpha = 0.60f))
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF1E202B))
+                    .background(Color.Black)
                     .border(1.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(12.dp))
                     .clickable(onClick = onOpenApp),
                 contentAlignment = Alignment.Center,
@@ -1033,7 +1118,7 @@ private fun ExpandedOverlayCard(
                         fontSize = 11.sp,
                         fontWeight = if (errorMessage != null) FontWeight.Medium else FontWeight.Normal,
                     ),
-                    color = if (errorMessage != null) accentColor else Color.White.copy(alpha = 0.70f),
+                    color = if (errorMessage != null) Color(0xFFFF5252) else Color.White.copy(alpha = 0.70f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1064,6 +1149,58 @@ private fun ExpandedOverlayCard(
             accentColor = accentColor,
             onSeek = onSeek,
         )
+
+        // Smooth line-by-line synced lyrics banner (no border, clean aesthetic)
+        val activeText = (activeLyric?.romanizedText?.takeIf { it.isNotBlank() } ?: activeLyric?.text)?.trim()
+        if (!lyrics.isNullOrEmpty() && !activeText.isNullOrBlank()) {
+            AnimatedContent(
+                targetState = activeText,
+                transitionSpec = {
+                    if (isReducedMotion) {
+                        fadeIn(animationSpec = tween(140)).togetherWith(fadeOut(animationSpec = tween(120)))
+                    } else {
+                        (fadeIn(animationSpec = tween(260)) +
+                                slideInVertically(animationSpec = tween(260, easing = FastOutSlowInEasing)) { it / 2 })
+                            .togetherWith(
+                                fadeOut(animationSpec = tween(180)) +
+                                        slideOutVertically(animationSpec = tween(180, easing = FastOutSlowInEasing)) { -it / 2 },
+                            )
+                    }
+                },
+                label = "IslandLyricTransition",
+                modifier = Modifier.fillMaxWidth(),
+            ) { lineText ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                        .clickable(onClick = onOpenApp)
+                        .padding(horizontal = 8.dp, vertical = 2.5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.MusicNote,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.80f),
+                        modifier = Modifier.size(13.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = lineText,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            letterSpacing = 0.2.sp,
+                        ),
+                        color = Color.White.copy(alpha = 0.95f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
 
         // Playback controls row: Audio visualizer on left, centered Previous/Play/Next, open-in-app button on right
         Row(
@@ -1117,13 +1254,13 @@ private fun ExpandedOverlayCard(
                 Box(
                     modifier = Modifier
                         .size(46.dp)
-                        .shadow(6.dp, CircleShape, spotColor = accentColor.copy(alpha = 0.50f))
+                        .shadow(6.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.60f))
                         .clip(CircleShape)
                         .background(
                             Brush.radialGradient(
                                 colors = listOf(
-                                    accentColor.copy(alpha = 0.40f),
-                                    Color.White.copy(alpha = 0.15f),
+                                    Color.White.copy(alpha = 0.20f),
+                                    Color.White.copy(alpha = 0.08f),
                                 ),
                             ),
                         )
@@ -1242,7 +1379,7 @@ private fun UpcomingCoverArt(
     Box(
         modifier = Modifier
             .size(54.dp)
-            .shadow(4.dp, RoundedCornerShape(12.dp), spotColor = accentColor.copy(alpha = 0.35f))
+            .shadow(4.dp, RoundedCornerShape(12.dp), spotColor = Color.Black.copy(alpha = 0.50f))
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF1E202B))
             .border(0.75.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(12.dp))

@@ -42,14 +42,38 @@ object TtmlLyrics {
      */
     private const val BACKGROUND_ROLE = "x-bg"
 
-    fun parse(ttml: String): List<LyricLine> = runCatching {
+    data class ParseResult(
+        val lines: List<LyricLine>,
+        val songwriters: List<String> = emptyList(),
+    )
+
+    private val songwritersByFirstLine = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+
+    fun songwritersFor(lines: List<LyricLine>): List<String> {
+        val key = lines.firstOrNull { it.text.isNotBlank() }?.let { "${it.timeMs}:${it.text}" } ?: return emptyList()
+        return songwritersByFirstLine[key] ?: emptyList()
+    }
+
+    fun parse(ttml: String): List<LyricLine> = parseWithMetadata(ttml).lines
+
+    fun parseWithMetadata(ttml: String): ParseResult = runCatching {
         val factory = DocumentBuilderFactory.newInstance().apply {
             // The document declares four namespaces and we address attributes
             // by their qualified names (ttm:agent), so leave prefixes intact.
             isNamespaceAware = false
             // Lyrics arrive from a third-party host; refuse to resolve
             // anything the document asks us to go and fetch.
-            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            // On standard Android runtime, unsupported Xerces features throw
+            // ParserConfigurationException, so wrap defensively.
+            runCatching {
+                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            }
+            runCatching {
+                setFeature("http://xml.org/sax/features/external-general-entities", false)
+            }
+            runCatching {
+                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+            }
         }
         val document = factory.newDocumentBuilder().parse(InputSource(StringReader(ttml)))
         val paragraphs = document.getElementsByTagName("p")
@@ -59,8 +83,37 @@ object TtmlLyrics {
             val paragraph = paragraphs.item(i) as? Element ?: continue
             lineFrom(paragraph)?.let(lines::add)
         }
-        lines.sortedBy { it.timeMs }.withInstrumentalGaps()
-    }.getOrDefault(emptyList())
+        val sortedLines = lines.sortedBy { it.timeMs }.withInstrumentalGaps()
+
+        // Extract songwriters from <songwriter> or iTunesMetadata or <ttm:agent>
+        val songwriters = LinkedHashSet<String>()
+        val songwriterNodes = document.getElementsByTagName("songwriter")
+        for (i in 0 until songwriterNodes.length) {
+            val name = songwriterNodes.item(i)?.textContent?.trim().orEmpty()
+            if (name.isNotBlank()) songwriters.add(name)
+        }
+        if (songwriters.isEmpty()) {
+            val agentNodes = document.getElementsByTagName("ttm:agent")
+            for (i in 0 until agentNodes.length) {
+                val agent = agentNodes.item(i) as? Element ?: continue
+                val nameNodes = agent.getElementsByTagName("ttm:name")
+                for (j in 0 until nameNodes.length) {
+                    val name = nameNodes.item(j)?.textContent?.trim().orEmpty()
+                    if (name.isNotBlank()) songwriters.add(name)
+                }
+            }
+        }
+
+        val writerList = songwriters.toList()
+        val key = sortedLines.firstOrNull { it.text.isNotBlank() }?.let { "${it.timeMs}:${it.text}" }
+        if (key != null && writerList.isNotEmpty()) {
+            songwritersByFirstLine[key] = writerList
+        }
+
+        ParseResult(sortedLines, writerList)
+    }.onFailure {
+        android.util.Log.e("TtmlLyrics", "Failed to parse TTML (${ttml.length} chars): ${it.message}", it)
+    }.getOrDefault(ParseResult(emptyList()))
 
     private fun lineFrom(paragraph: Element): LyricLine? {
         val pieces = mutableListOf<Piece>()

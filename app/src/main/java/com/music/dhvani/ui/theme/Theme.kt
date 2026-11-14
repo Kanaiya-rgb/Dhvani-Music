@@ -1,6 +1,7 @@
 package com.music.dhvani.ui.theme
 
 import android.app.Activity
+import android.graphics.Typeface
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -12,12 +13,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.dhvani.R
+import com.music.dhvani.data.settings.AppFontStyle
 import com.music.dhvani.data.settings.AppSettings
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -158,121 +162,123 @@ val PlusJakartaSans = FontFamily(
     Font(R.font.plus_jakarta_sans_extrabold, FontWeight.W800),
 )
 
-// Legacy alias used in existing code
-val SFProDisplay = PlusJakartaSans
-
-private val DhvaniTypography = Typography(
-    // Display scale — hero editorial headers, player takeovers
-    displayLarge  = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W800,
-        fontSize     = 30.sp,
-        lineHeight   = 36.sp,
-        letterSpacing = (-0.6).sp,
-    ),
-    displayMedium = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W800,
-        fontSize     = 26.sp,
-        lineHeight   = 32.sp,
-        letterSpacing = (-0.5).sp,
-    ),
-    displaySmall  = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W700,
-        fontSize     = 22.sp,
-        lineHeight   = 28.sp,
-        letterSpacing = (-0.3).sp,
-    ),
-    // Headline scale — shelf categorizations, section headers
-    headlineLarge = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W700,
-        fontSize     = 26.sp,
-        lineHeight   = 32.sp,
-        letterSpacing = (-0.4).sp,
-    ),
-    headlineMedium = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W700,
-        fontSize     = 20.sp,
-        lineHeight   = 26.sp,
-        letterSpacing = (-0.2).sp,
-    ),
-    headlineSmall = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W600,
-        fontSize     = 17.sp,
-        lineHeight   = 22.sp,
-        letterSpacing = (-0.1).sp,
-    ),
-    // Title scale
-    titleLarge    = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W700,
-        fontSize     = 18.sp,
-        lineHeight   = 24.sp,
-        letterSpacing = (-0.1).sp,
-    ),
-    titleMedium   = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W600,
-        fontSize     = 15.sp,
-        lineHeight   = 20.sp,
-        letterSpacing = 0.sp,
-    ),
-    titleSmall    = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W600,
-        fontSize     = 13.sp,
-        lineHeight   = 18.sp,
-        letterSpacing = 0.sp,
-    ),
-    // Body scale — descriptions, biographies, liner notes
-    bodyLarge     = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W400,
-        fontSize     = 16.sp,
-        lineHeight   = 24.sp,
-        letterSpacing = 0.sp,
-    ),
-    bodyMedium    = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W400,
-        fontSize     = 14.sp,
-        lineHeight   = 20.sp,
-        letterSpacing = 0.1.sp,
-    ),
-    bodySmall     = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W400,
-        fontSize     = 12.sp,
-        lineHeight   = 16.sp,
-        letterSpacing = 0.2.sp,
-    ),
-    // Label scale — micro-badges, genre tokens, nav labels
-    labelLarge    = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W600,
-        fontSize     = 14.sp,
-        lineHeight   = 18.sp,
-        letterSpacing = 0.1.sp,
-    ),
-    labelMedium   = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W600,
-        fontSize     = 12.sp,
-        lineHeight   = 16.sp,
-        letterSpacing = 0.2.sp,
-    ),
-    labelSmall    = TextStyle(
-        fontFamily   = PlusJakartaSans,
-        fontWeight   = FontWeight.W700,
-        fontSize     = 10.sp,
-        lineHeight   = 12.sp,
-        letterSpacing = 0.5.sp,
-    ),
+val SFProDisplay = FontFamily(
+    Font(R.font.sf_pro_display_regular,  FontWeight.W400),
+    Font(R.font.sf_pro_display_medium,   FontWeight.W500),
+    Font(R.font.sf_pro_display_semibold, FontWeight.W600),
+    Font(R.font.sf_pro_display_bold,     FontWeight.W700),
+    Font(R.font.sf_pro_display_heavy,    FontWeight.W800),
 )
+
+private val DhvaniPlatformStyle = PlatformTextStyle(includeFontPadding = false)
+private val DhvaniLineHeightStyle = LineHeightStyle(
+    alignment = LineHeightStyle.Alignment.Center,
+    trim = LineHeightStyle.Trim.Both,
+)
+
+val CondensedFontFamily = FontFamily(Typeface.create("sans-serif-condensed", Typeface.NORMAL))
+val CasualFontFamily = FontFamily(Typeface.create("casual", Typeface.NORMAL))
+
+fun createDhvaniTypography(fontFamily: FontFamily, isBold: Boolean = false): Typography {
+    fun style(
+        fontWeight: FontWeight,
+        fontSize: androidx.compose.ui.unit.TextUnit,
+        lineHeight: androidx.compose.ui.unit.TextUnit,
+        letterSpacing: androidx.compose.ui.unit.TextUnit,
+    ) = TextStyle(
+        fontFamily = fontFamily,
+        fontWeight = if (isBold) {
+            when (fontWeight) {
+                FontWeight.W400 -> FontWeight.W600
+                FontWeight.W500 -> FontWeight.W700
+                FontWeight.W600 -> FontWeight.W700
+                FontWeight.W700 -> FontWeight.W800
+                FontWeight.W800 -> FontWeight.W900
+                else -> FontWeight.Bold
+            }
+        } else fontWeight,
+        fontSize = fontSize,
+        lineHeight = lineHeight,
+        letterSpacing = letterSpacing,
+        platformStyle = DhvaniPlatformStyle,
+        lineHeightStyle = DhvaniLineHeightStyle,
+    )
+
+    return Typography(
+        displayLarge  = style(FontWeight.W800, 30.sp, 36.sp, (-0.6).sp),
+        displayMedium = style(FontWeight.W800, 26.sp, 32.sp, (-0.5).sp),
+        displaySmall  = style(FontWeight.W700, 22.sp, 28.sp, (-0.3).sp),
+        headlineLarge = style(FontWeight.W700, 26.sp, 32.sp, (-0.4).sp),
+        headlineMedium = style(FontWeight.W700, 20.sp, 26.sp, (-0.2).sp),
+        headlineSmall = style(FontWeight.W600, 17.sp, 22.sp, (-0.1).sp),
+        titleLarge    = style(FontWeight.W700, 18.sp, 24.sp, (-0.1).sp),
+        titleMedium   = style(FontWeight.W600, 15.sp, 20.sp, 0.sp),
+        titleSmall    = style(FontWeight.W600, 13.sp, 18.sp, 0.sp),
+        bodyLarge     = style(FontWeight.W400, 16.sp, 24.sp, 0.sp),
+        bodyMedium    = style(FontWeight.W400, 14.sp, 20.sp, 0.1.sp),
+        bodySmall     = style(FontWeight.W400, 12.sp, 16.sp, 0.2.sp),
+        labelLarge    = style(FontWeight.W600, 14.sp, 18.sp, 0.1.sp),
+        labelMedium   = style(FontWeight.W600, 12.sp, 16.sp, 0.2.sp),
+        labelSmall    = style(FontWeight.W700, 10.sp, 12.sp, 0.5.sp),
+    )
+}
+
+val PoppinsFontFamily = FontFamily(
+    Font(R.font.poppins_regular, FontWeight.W400),
+    Font(R.font.poppins_bold, FontWeight.W700),
+)
+val InterFontFamily = FontFamily(
+    Font(R.font.inter_regular, FontWeight.W400),
+    Font(R.font.inter_bold, FontWeight.W700),
+)
+val MontserratFontFamily = FontFamily(
+    Font(R.font.montserrat_regular, FontWeight.W400),
+    Font(R.font.montserrat_bold, FontWeight.W700),
+)
+val OutfitFontFamily = FontFamily(
+    Font(R.font.outfit_regular, FontWeight.W400),
+    Font(R.font.outfit_bold, FontWeight.W700),
+)
+val OpenSansFontFamily = FontFamily(
+    Font(R.font.opensans_regular, FontWeight.W400),
+    Font(R.font.opensans_bold, FontWeight.W700),
+)
+val LatoFontFamily = FontFamily(
+    Font(R.font.lato_regular, FontWeight.W400),
+    Font(R.font.lato_bold, FontWeight.W700),
+)
+val OswaldFontFamily = FontFamily(
+    Font(R.font.oswald_regular, FontWeight.W400),
+    Font(R.font.oswald_bold, FontWeight.W700),
+)
+val RalewayFontFamily = FontFamily(
+    Font(R.font.raleway_regular, FontWeight.W400),
+    Font(R.font.raleway_bold, FontWeight.W700),
+)
+val NunitoFontFamily = FontFamily(
+    Font(R.font.nunito_regular, FontWeight.W400),
+    Font(R.font.nunito_bold, FontWeight.W700),
+)
+val PlayfairFontFamily = FontFamily(
+    Font(R.font.playfair_regular, FontWeight.W400),
+    Font(R.font.playfair_bold, FontWeight.W700),
+)
+val TelmaFontFamily = FontFamily(
+    Font(R.font.telma_regular, FontWeight.W400),
+    Font(R.font.telma_medium, FontWeight.W500),
+    Font(R.font.telma_bold, FontWeight.W700),
+)
+
+val SFProTypography = createDhvaniTypography(SFProDisplay)
+val JakartaTypography = createDhvaniTypography(PlusJakartaSans)
+val SystemTypography = createDhvaniTypography(FontFamily.Default)
+val CondensedTypography = createDhvaniTypography(CondensedFontFamily)
+val SerifTypography = createDhvaniTypography(FontFamily.Serif)
+val MonospaceTypography = createDhvaniTypography(FontFamily.Monospace)
+val CasualTypography = createDhvaniTypography(CasualFontFamily)
+val CursiveTypography = createDhvaniTypography(FontFamily.Cursive)
+
+val DhvaniTypography = SFProTypography
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -287,7 +293,43 @@ fun DhvaniTheme(
     val uiStyle = AppSettings.uiDesignStyle.collectAsStateWithLifecycle().value
     val accentInt = AppSettings.accentColor.collectAsStateWithLifecycle().value
     val dynamicTheme = AppSettings.dynamicTheme.collectAsStateWithLifecycle().value
+    val fontStyle = AppSettings.fontStyle.collectAsStateWithLifecycle().value
+    val boldText = AppSettings.boldText.collectAsStateWithLifecycle().value
+    val customFontPath = AppSettings.customFontPath.collectAsStateWithLifecycle().value
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    val currentTypography = androidx.compose.runtime.remember(fontStyle, boldText, customFontPath) {
+        val baseFont = when (fontStyle) {
+            AppFontStyle.SF_PRO -> SFProDisplay
+            AppFontStyle.JAKARTA -> PlusJakartaSans
+            AppFontStyle.TELMA -> TelmaFontFamily
+            AppFontStyle.POPPINS -> PoppinsFontFamily
+            AppFontStyle.INTER -> InterFontFamily
+            AppFontStyle.MONTSERRAT -> MontserratFontFamily
+            AppFontStyle.OUTFIT -> OutfitFontFamily
+            AppFontStyle.OPEN_SANS -> OpenSansFontFamily
+            AppFontStyle.LATO -> LatoFontFamily
+            AppFontStyle.OSWALD -> OswaldFontFamily
+            AppFontStyle.RALEWAY -> RalewayFontFamily
+            AppFontStyle.NUNITO -> NunitoFontFamily
+            AppFontStyle.PLAYFAIR -> PlayfairFontFamily
+            AppFontStyle.SYSTEM -> FontFamily.Default
+            AppFontStyle.CONDENSED -> CondensedFontFamily
+            AppFontStyle.SERIF -> FontFamily.Serif
+            AppFontStyle.MONOSPACE -> FontFamily.Monospace
+            AppFontStyle.CASUAL -> CasualFontFamily
+            AppFontStyle.CURSIVE -> FontFamily.Cursive
+            AppFontStyle.CUSTOM -> {
+                runCatching {
+                    val file = java.io.File(customFontPath)
+                    if (file.exists() && file.length() > 0) {
+                        FontFamily(Typeface.createFromFile(file))
+                    } else null
+                }.getOrNull() ?: SFProDisplay
+            }
+        }
+        createDhvaniTypography(baseFont, isBold = boldText)
+    }
 
     val colorScheme = androidx.compose.runtime.remember(darkTheme, accentInt, dynamicTheme) {
         val base = when {
@@ -322,7 +364,7 @@ fun DhvaniTheme(
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography  = DhvaniTypography,
+            typography  = currentTypography,
             content     = content,
         )
     }

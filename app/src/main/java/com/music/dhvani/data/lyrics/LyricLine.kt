@@ -42,6 +42,7 @@ data class LyricLine(
     val timingSource: LyricLine? = null,
     val alignment: LyricAlignment = LyricAlignment.Start,
     val isEstimatedTiming: Boolean = false,
+    val romanizedText: String? = null,
 ) {
     val isGap: Boolean get() = text.isEmpty()
 

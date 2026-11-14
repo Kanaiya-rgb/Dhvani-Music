@@ -30,12 +30,14 @@ data class SourceConfig(
     val label: String = "",
     val baseUrl: String = "",
     val enabled: Boolean = true,
+    val isManagedRemote: Boolean = false,
 ) {
     /** What the sources screen and the player show. Never blank. */
     val displayName: String
         get() = when {
             kind == SourceKind.JIOSAAVN && (label.isBlank() || label.equals("JioSaavn", ignoreCase = true)) -> "High Quality AAC"
             kind == SourceKind.YOUTUBE && (label.isBlank() || label.equals("YouTube Music", ignoreCase = true) || label.equals("YouTube", ignoreCase = true)) -> "Standard Opus"
+            kind == SourceKind.MONOCHROME && (label.isBlank() || label.equals("Monochrome", ignoreCase = true)) -> "Monochrome Hi-Res"
             else -> label.ifBlank {
                 baseUrl.takeIf { it.isNotBlank() }
                     ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
@@ -45,7 +47,7 @@ data class SourceConfig(
 
     /** Whether this has enough filled in to be worth contacting at all. */
     val isComplete: Boolean
-        get() = !kind.needsServer || baseUrl.isNotBlank()
+        get() = if (kind == SourceKind.MONOCHROME) true else !kind.needsServer || baseUrl.isNotBlank()
 }
 
 /**
@@ -95,18 +97,27 @@ object SourceRegistry {
             context.getSharedPreferences("flux_sources_plain", Context.MODE_PRIVATE)
         }
 
+        com.music.dhvani.data.sources.zarz.ZarzSessionManager.init(context)
         val stored = prefs.getString(KEY_SOURCES, null)?.let(::decodeStored) ?: emptyList()
         val removedIds = prefs.getStringSet(KEY_REMOVED_SOURCES, emptySet()) ?: emptySet()
 
         // Purge retired/non-functional sources (e.g. Tido/Tidal addon that only verified connection without streaming)
         val sanitized = stored.filterNot {
-            it.baseUrl.contains("tido", ignoreCase = true) ||
-                it.baseUrl.contains("tidal", ignoreCase = true) ||
+            it.id in listOf("builtin_addon_bluebit", "amazon_lossless", "deezer_lossless", "qobuz_lossless") ||
+                (it.id == "tidal_lossless" && !it.isManagedRemote) ||
+                it.baseUrl.contains("tido", ignoreCase = true) ||
                 it.label.contains("tido", ignoreCase = true) ||
-                it.label.contains("tidal hi-res", ignoreCase = true)
+                it.baseUrl.contains("4433c7caff7fd070309e", ignoreCase = true) ||
+                it.baseUrl.contains("losslessbridge", ignoreCase = true) ||
+                it.baseUrl.contains("bluebit", ignoreCase = true) ||
+                it.label.contains("bluebit", ignoreCase = true) ||
+                it.id == "builtin_addon_bluebit" ||
+                it.baseUrl.contains("eljohnzc-mono", ignoreCase = true)
         }.map { cfg ->
-            // Upgrade generic "Custom Module" label to friendly manifest names
-            if (cfg.label == "Custom Module" || cfg.label.isBlank()) {
+            // Upgrade old/custom labels without exposing internal names
+            if (cfg.label.contains("bitchord", ignoreCase = true)) {
+                cfg.copy(label = "Hi-Res Studio Master [Juanjob]")
+            } else if (cfg.label == "Custom Module" || cfg.label.isBlank()) {
                 val upgraded = friendlyAddonName(cfg.baseUrl)
                 if (upgraded.isNotBlank()) cfg.copy(label = upgraded) else cfg
             } else cfg
@@ -130,11 +141,16 @@ object SourceRegistry {
             .map {
                 val stableId = when (it) {
                     SourceKind.MONOCHROME -> "monochrome"
+                    SourceKind.TIDAL -> "tidal_lossless"
                     SourceKind.JIOSAAVN -> "jiosaavn"
                     SourceKind.YOUTUBE -> "youtube"
                     else -> UUID.randomUUID().toString()
                 }
-                SourceConfig(id = stableId, kind = it, enabled = true)
+                val label = when (it) {
+                    SourceKind.MONOCHROME -> "Monochrome Hi-Res"
+                    else -> ""
+                }
+                SourceConfig(id = stableId, kind = it, label = label, enabled = true)
             }
 
         // Put Monochrome (bit-exact built-in) and active working addons at the top
@@ -142,7 +158,7 @@ object SourceRegistry {
         val seeded = allSources.sortedBy { cfg ->
             when (cfg.kind) {
                 SourceKind.MONOCHROME -> 0
-                SourceKind.CUSTOM_MODULE, SourceKind.MODULE -> 1
+                SourceKind.CUSTOM_MODULE, SourceKind.MODULE, SourceKind.TIDAL, SourceKind.KUWO, SourceKind.NETEASE -> 1
                 SourceKind.JIOSAAVN -> 2
                 SourceKind.YOUTUBE -> 3
             }
@@ -220,6 +236,7 @@ object SourceRegistry {
     fun instance(configId: String): MusicSource? = instances[configId]
         ?: instances.values.firstOrNull { it.configId == configId }
         ?: active().firstOrNull { it.configId == configId || it.kind.name.equals(configId, ignoreCase = true) }
+        ?: instances.values.firstOrNull { it.configId.contains(configId, ignoreCase = true) || it.displayName.contains(configId, ignoreCase = true) }
         ?: if (configId.contains("monochrome", ignoreCase = true)) active().firstOrNull { it.kind == SourceKind.MONOCHROME }
         else if (configId.equals("JIOSAAVN", ignoreCase = true)) active().firstOrNull { it.kind == SourceKind.JIOSAAVN }
         else null
@@ -278,12 +295,13 @@ object SourceRegistry {
         configs.value.firstOrNull { it.kind == SourceKind.CUSTOM_MODULE }
 
     fun friendlyAddonName(url: String): String = when {
-        url.contains("bluebit", ignoreCase = true) -> "BluBit Station Hi-Fi"
-        url.contains("eljohnzc-mono", ignoreCase = true) -> "Eljohnzc Addon Monochrome"
-        url.contains("4433c7caff7fd070309e", ignoreCase = true) ||
-            url.contains("eljohnzc-addon", ignoreCase = true) -> "Eljohnzc Addon 🇵🇭"
-        url.contains("losslessbridge", ignoreCase = true) -> "Lossless Bridge"
-        url.contains("qobuz", ignoreCase = true) -> "Qobuz Addon"
+        url.contains("163", ignoreCase = true) || url.contains("netease", ignoreCase = true) -> "NetEase Cloud Music"
+        url.contains("oiapi", ignoreCase = true) || url.contains("kuwo", ignoreCase = true) -> "Kuwo FLAC Master"
+        url.contains("soundfean", ignoreCase = true) || url.contains("qobuz", ignoreCase = true) -> "Qobuz Lossless [Heisenbergg]"
+        url.contains("bitchord", ignoreCase = true) -> "Hi-Res Studio Master [Juanjob]"
+        url.contains("aurix", ignoreCase = true) -> "Aurix TIDAL [Fesi]"
+        url.contains("eljohnzc", ignoreCase = true) -> "Eljohn Addon"
+        url.contains("tidal", ignoreCase = true) -> "TIDAL HiFi"
         else -> ""
     }
 
@@ -355,9 +373,12 @@ object SourceRegistry {
 
     private fun build(config: SourceConfig): MusicSource = when (config.kind) {
         SourceKind.CUSTOM_MODULE, SourceKind.MODULE -> ModuleSource(config)
+        SourceKind.TIDAL -> TidalLosslessSource(config)
         SourceKind.MONOCHROME -> MonochromeSource(config)
         SourceKind.JIOSAAVN -> JioSaavnSource(config)
         SourceKind.YOUTUBE -> YouTubeSource(config)
+        SourceKind.KUWO -> KuwoLosslessSource(config)
+        SourceKind.NETEASE -> NetEaseLosslessSource(config)
     }
 
     /**
@@ -408,54 +429,92 @@ object SourceRegistry {
 
     val DEFAULT_COMMUNITY_ADDONS = listOf(
         SourceConfig(
-            id = "builtin_addon_eljohnzc_mono",
-            kind = SourceKind.CUSTOM_MODULE,
-            label = "Eljohnzc Addon Monochrome",
-            baseUrl = "https://eljohnzc-mono.de.deplexo.com/manifest.json",
+            id = "builtin_addon_kuwo",
+            kind = SourceKind.KUWO,
+            label = "Kuwo FLAC Master",
+            baseUrl = "https://oiapi.net/api/Kuwo",
             enabled = true,
+            isManagedRemote = true,
         ),
         SourceConfig(
-            id = "builtin_addon_eljohnzc_ph",
-            kind = SourceKind.CUSTOM_MODULE,
-            label = "Eljohnzc Addon 🇵🇭",
-            baseUrl = "https://eljohnzc-addon.de.deplexo.com/4433c7caff7fd070309e/manifest.json",
+            id = "builtin_addon_netease",
+            kind = SourceKind.NETEASE,
+            label = "NetEase Cloud Music",
+            baseUrl = "https://oiapi.net/api/Music_163",
             enabled = true,
-        ),
-        SourceConfig(
-            id = "builtin_addon_bluebit",
-            kind = SourceKind.CUSTOM_MODULE,
-            label = "BluBit Station Hi-Fi",
-            baseUrl = "https://bluebit.jucepe0929.workers.dev/",
-            enabled = false,
+            isManagedRemote = true,
         ),
     )
 
     val COMMUNITY_ADDON_PRESETS = listOf(
         CommunityAddonPreset(
-            name = "Eljohnzc Addon Monochrome",
-            url = "https://eljohnzc-mono.de.deplexo.com/manifest.json",
-            tag = "Lossless FLAC",
-            description = "16-bit 44.1kHz Lossless FLAC stream",
+            name = "Kuwo FLAC Master",
+            url = "https://oiapi.net/api/Kuwo",
+            tag = "2000kbps FLAC",
+            description = "Direct CD-Quality 16/24-bit FLAC streams via Kuwo CDN",
         ),
         CommunityAddonPreset(
-            name = "Eljohnzc Addon 🇵🇭",
-            url = "https://eljohnzc-addon.de.deplexo.com/4433c7caff7fd070309e/manifest.json",
-            tag = "Lossless & Atmos",
-            description = "Tidal Lossless and Dolby Atmos",
-        ),
-        CommunityAddonPreset(
-            name = "BluBit Station Hi-Fi",
-            url = "https://bluebit.jucepe0929.workers.dev/",
-            tag = "24-bit Hi-Res",
-            description = "Tidal & Deezer Lossless FLAC via Cloudflare Workers",
-        ),
-        CommunityAddonPreset(
-            name = "Lossless Bridge",
-            url = "https://losslessbridge.de.deplexo.com/",
-            tag = "Hi-Res FLAC",
-            description = "Lossless bridge audio server",
+            name = "NetEase Cloud Music",
+            url = "https://oiapi.net/api/Music_163",
+            tag = "320kbps MP3",
+            description = "High-Quality audio streams via NetEase Cloud Music CDN",
         ),
     )
+
+    val communityPresets = MutableStateFlow<List<CommunityAddonPreset>>(COMMUNITY_ADDON_PRESETS)
+
+    fun applyRemoteSources(
+        newSources: List<SourceConfig>,
+        newPresets: List<CommunityAddonPreset>,
+        retiredIds: Set<String>,
+    ) {
+        if (newPresets.isNotEmpty()) {
+            communityPresets.value = newPresets
+        }
+        val current = configs.value
+        val removedIds = if (::prefs.isInitialized) {
+            prefs.getStringSet(KEY_REMOVED_SOURCES, emptySet()) ?: emptySet()
+        } else emptySet()
+
+        // Remove retired or developer-deleted sources from user's configs (protecting built-in Monochrome, YouTube & JioSaavn)
+        var updated = current.filterNot { cfg ->
+            (cfg.kind != SourceKind.YOUTUBE && cfg.kind != SourceKind.JIOSAAVN && cfg.kind != SourceKind.MONOCHROME) &&
+                (cfg.id in retiredIds || cfg.baseUrl in retiredIds || cfg.baseUrl.trimEnd('/') in retiredIds)
+        }
+
+        // Update or add remote sources
+        for (remote in newSources) {
+            if (remote.id in removedIds || remote.id in retiredIds) continue
+            val existingIndex = updated.indexOfFirst {
+                it.id == remote.id ||
+                    (it.baseUrl.isNotBlank() && it.baseUrl.trimEnd('/').equals(remote.baseUrl.trimEnd('/'), ignoreCase = true))
+            }
+            if (existingIndex >= 0) {
+                // Update label and baseUrl if developer changed it, while preserving user enabled state
+                val existing = updated[existingIndex]
+                val merged = existing.copy(
+                    baseUrl = remote.baseUrl.ifBlank { existing.baseUrl },
+                    label = if (remote.label.isNotBlank()) remote.label else existing.label,
+                    kind = remote.kind,
+                    isManagedRemote = true,
+                )
+                updated = updated.toMutableList().also { it[existingIndex] = merged }
+            } else {
+                // Auto-seed newly added remote source
+                updated = updated + remote.copy(isManagedRemote = true)
+            }
+        }
+
+        val reseeded = updated.sortedBy { cfg ->
+            when (cfg.kind) {
+                SourceKind.MONOCHROME -> 0
+                SourceKind.CUSTOM_MODULE, SourceKind.MODULE, SourceKind.TIDAL, SourceKind.KUWO, SourceKind.NETEASE -> 1
+                SourceKind.JIOSAAVN -> 2
+                SourceKind.YOUTUBE -> 3
+            }
+        }
+        publish(reseeded)
+    }
 
     private val BUILT_IN_KINDS = listOf(SourceKind.MONOCHROME, SourceKind.JIOSAAVN, SourceKind.YOUTUBE)
 

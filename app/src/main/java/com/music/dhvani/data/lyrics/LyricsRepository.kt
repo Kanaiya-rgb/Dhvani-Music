@@ -63,7 +63,7 @@ import java.util.concurrent.ConcurrentHashMap
 object LyricsRepository {
 
     /** Lyrics, and which source they turned out to come from. */
-    data class Result(val source: LyricsSource, val lines: List<LyricLine>)
+    data class Result(val source: LyricsSource, val lines: List<LyricLine>, val songwriters: List<String> = emptyList())
 
     /**
      * [sources] is the user's pick from Settings; anything not in it is not
@@ -101,10 +101,11 @@ object LyricsRepository {
             LyricsSource.entries.filter { it in sources && it !in order }
 
         // Every source but [SimpMusicLyrics] is asked for a name, and
-        // YouTube's is not the name anyone catalogued. Cleaned once, here,
-        // rather than by whichever source thought to do it for itself.
-        val searchTitle = title.forLyricsSearch()
-        val searchArtist = artist.artistForLyricsSearch()
+        // YouTube's is not the name anyone catalogued. Cleaned canonically
+        // using LyricsCleaner so noise like '(From "Movie")' and '- Topic'
+        // are stripped upfront across all providers.
+        val searchTitle = LyricsCleaner.cleanTitle(title, artist).ifBlank { title.forLyricsSearch() }
+        val searchArtist = LyricsCleaner.cleanArtist(artist).ifBlank { artist.artistForLyricsSearch() }
 
         // Settled before anyone is asked for words, so every source that can
         // name the recording does. What the caller knows beats what we worked
@@ -117,37 +118,34 @@ object LyricsRepository {
         }
         val recording = known ?: hit?.isrc?.takeIf { it.isNotBlank() }
 
-        // Genius is a plain text web scraper. To preserve bandwidth and avoid rate-limiting,
-        // it starts lazily and is only contacted if all higher-priority synced sources miss.
         val racing: List<Pair<LyricsSource, Deferred<List<LyricLine>?>>> = sequence.map { source ->
-            val startMode = if (source == LyricsSource.GENIUS) kotlinx.coroutines.CoroutineStart.LAZY else kotlinx.coroutines.CoroutineStart.DEFAULT
-            source to async(Dispatchers.IO, start = startMode) {
-                fetch(source, videoId, searchTitle, searchArtist, durationMs, album, recording, hit)
+            source to async(Dispatchers.IO) {
+                runCatching { fetch(source, videoId, searchTitle, searchArtist, durationMs, album, recording, hit) }
+                    .getOrNull()
             }
         }
 
         try {
             var lineSyncedResult: LyricsRepository.Result? = null
+            var estimatedResult: LyricsRepository.Result? = null
             var plainResult: LyricsRepository.Result? = null
 
             for ((source, job) in racing) {
-                // If we already found a line-synced or better result, skip Genius completely
-                if (lineSyncedResult != null && source == LyricsSource.GENIUS) continue
-
                 val lines = runCatching { job.await() }.getOrNull() ?: continue
                 if (lines.isEmpty()) continue
 
                 val hasWordSync = lines.any { it.isWordSynced }
-                val hasLineSync = lines.any { it.timeMs > 0 }
+                val hasRealLineSync = lines.any { it.timeMs > 0 && !it.isEstimatedTiming }
+                val hasEstimatedTiming = lines.any { it.isEstimatedTiming }
+
+                val res = result(source, lines)
 
                 if (hasWordSync) {
-                    val res = result(source, lines)
                     if (videoId.isNotBlank()) lyricsCache[videoId] = CacheEntry(res)
                     return@coroutineScope res
                 }
 
-                if (hasLineSync) {
-                    val res = result(source, lines)
+                if (hasRealLineSync) {
                     if (!prioritizeSyllableSync) {
                         if (videoId.isNotBlank()) lyricsCache[videoId] = CacheEntry(res)
                         return@coroutineScope res
@@ -155,17 +153,20 @@ object LyricsRepository {
                     if (lineSyncedResult == null) {
                         lineSyncedResult = res
                     }
+                } else if (hasEstimatedTiming) {
+                    if (estimatedResult == null) {
+                        estimatedResult = res
+                    }
                 } else {
                     // Plain / unsynced lyrics fallback only
                     if (plainResult == null) {
-                        plainResult = result(source, lines)
+                        plainResult = res
                     }
                 }
             }
 
-            val best = lineSyncedResult ?: plainResult
-            if (videoId.isNotBlank()) {
-                // Aggressive negative caching: store CacheEntry(null) if missing
+            val best = lineSyncedResult ?: estimatedResult ?: plainResult
+            if (best != null && videoId.isNotBlank()) {
                 lyricsCache[videoId] = CacheEntry(best)
             }
             best
@@ -188,27 +189,25 @@ object LyricsRepository {
         hit: BiniLyrics.Hit?,
     ): List<LyricLine>? {
         val found = when (source) {
-            LyricsSource.LRC_RED -> LrcRed.lyrics(title, artist, durationMs, isrc)
-            LyricsSource.BETTER_LYRICS -> BetterLyrics.lyrics(title, artist, durationMs, album)
-            LyricsSource.BETTER_LYRICS_PORTATO -> BetterLyrics.portato(title, artist, durationMs, album)
-            LyricsSource.LYRICS_PLUS -> LyricsPlus.lyrics(title, artist, durationMs, album, isrc)
             LyricsSource.BINI_LYRICS ->
                 (hit?.let { BiniLyrics.lyricsFor(it) }
                     ?: BiniLyrics.lyrics(title, artist, durationMs, album, isrc))
                     ?.also { remember(videoId, it.isrc) }
                     ?.lines
-            LyricsSource.UNISON -> Unison.lyrics(title, artist, durationMs, album)
-            LyricsSource.SIMP_MUSIC -> SimpMusicLyrics.lyrics(videoId, durationMs)
+            LyricsSource.LRC_RED -> LrcRed.lyrics(title, artist, durationMs, isrc, onFoundIsrc = { foundIsrc ->
+                remember(videoId, foundIsrc)
+            })
+            LyricsSource.LYRICS_PLUS -> LyricsPlus.lyrics(title, artist, durationMs, album, isrc)
+            LyricsSource.MEGALOBIZ -> Megalobiz.lyrics(title, artist, durationMs)
+            LyricsSource.MUSIXMATCH -> Musixmatch.lyrics(title, artist, durationMs)
             LyricsSource.YOUTUBE_TRANSCRIPT -> YouTubeTranscriptLyrics.lyrics(videoId)
             LyricsSource.YOUTUBE_MUSIC -> YouTubeMusicLyrics.lyrics(videoId)
             LyricsSource.LRCLIB -> LrcLib.lyrics(title, artist, durationMs)
-            LyricsSource.MUSIXMATCH -> Musixmatch.lyrics(title, artist, durationMs)
-            LyricsSource.PAXSENIX -> PaxSenix.lyrics(title, artist, durationMs, album)
-            LyricsSource.PAXSENIX_SPOTIFY -> PaxSenix.spotifyLyrics(title, artist, durationMs)
-            LyricsSource.PAXSENIX_MUSIXMATCH -> PaxSenix.musixmatchLyrics(title, artist, durationMs)
             LyricsSource.KUGOU -> KuGou.lyrics(title, artist, durationMs, album)
-            LyricsSource.MEGALOBIZ -> Megalobiz.lyrics(title, artist)
-            LyricsSource.GENIUS -> Genius.lyrics(title, artist)
+            LyricsSource.BETTER_LYRICS -> BetterLyrics.lyrics(title, artist, durationMs, album, isrc)
+            LyricsSource.BETTER_LYRICS_PORTATO -> BetterLyrics.portato(title, artist, durationMs, album)
+            LyricsSource.UNISON -> Unison.lyrics(title, artist, durationMs, album, videoId)
+            LyricsSource.GENIUS -> Genius.lyrics(title, artist, videoId, durationMs)
         }
         return found
     }
@@ -220,8 +219,8 @@ object LyricsRepository {
      * [TtmlLyrics] knows it structurally — [withBackgroundVocals] leaves that
      * one's own split alone.
      */
-    private fun result(source: LyricsSource, lines: List<LyricLine>) =
-        Result(source, lines.withBackgroundVocals())
+    private fun result(source: LyricsSource, lines: List<LyricLine>, songwriters: List<String> = emptyList()) =
+        Result(source, lines.withBackgroundVocals(), songwriters.ifEmpty { TtmlLyrics.songwritersFor(lines) })
 
     /**
      * Longest the lookup will wait to find out which recording this is.
@@ -231,7 +230,7 @@ object LyricsRepository {
      * lyrics panel sitting empty because one host is having a slow morning is a
      * worse failure than a fuzzy match.
      */
-    private const val IDENTIFY_TIMEOUT_MS = 2_500L
+    private const val IDENTIFY_TIMEOUT_MS = 3_500L
 
     /**
      * The one request made before the race: which recording is this?
@@ -249,9 +248,32 @@ object LyricsRepository {
         album: String?,
         sequence: List<LyricsSource>,
     ): BiniLyrics.Hit? {
-        if (LyricsSource.BINI_LYRICS !in sequence) return null
+        val wantsIdentify = LyricsSource.BINI_LYRICS in sequence ||
+            LyricsSource.LRC_RED in sequence ||
+            sequence.any { it.wordSynced }
+        if (!wantsIdentify) return null
+
         val hit = withTimeoutOrNull(IDENTIFY_TIMEOUT_MS) {
             runCatching { BiniLyrics.identify(title, artist, durationMs, album) }.getOrNull()
+        } ?: withTimeoutOrNull(IDENTIFY_TIMEOUT_MS) {
+            val cleanTitle = LyricsCleaner.cleanTitle(title, artist).ifBlank { title }
+            val cleanArtist = LyricsCleaner.cleanArtist(artist).ifBlank { artist }
+            if (cleanTitle != title) {
+                runCatching { BiniLyrics.identify(cleanTitle, cleanArtist, durationMs, album) }.getOrNull()
+            } else null
+        } ?: withTimeoutOrNull(IDENTIFY_TIMEOUT_MS) {
+            val cleanTitle = LyricsCleaner.cleanTitle(title, artist).ifBlank { title }
+            val cleanArtist = LyricsCleaner.cleanArtist(artist).ifBlank { artist }
+            runCatching { LrcRed.findHit(cleanTitle, cleanArtist, durationMs) }.getOrNull()?.let { h ->
+                BiniLyrics.Hit(
+                    trackName = h.title,
+                    artistName = h.artist,
+                    albumName = h.album,
+                    duration = h.duration?.toInt(),
+                    isrc = h.isrc,
+                    lyricsUrl = h.isrc?.let { LrcRed.documentUrl(it) },
+                )
+            }
         }
         if (hit == null) return null
         remember(videoId, hit.isrc)
@@ -296,6 +318,12 @@ object LyricsRepository {
 
     fun getCached(videoId: String): LyricsRepository.Result? = if (videoId.isBlank()) null else lyricsCache[videoId]?.result
 
+    fun clearCache(videoId: String) {
+        if (videoId.isNotBlank()) {
+            lyricsCache.remove(videoId)
+        }
+    }
+
     /**
      * Asynchronously probes which lyrics providers return results for the active song.
      * Uses a lightweight parallel check with a short timeout.
@@ -307,26 +335,76 @@ object LyricsRepository {
         album: String? = null,
         videoId: String = "",
     ): Map<LyricsSource, Boolean> = coroutineScope {
-        val searchTitle = title.forLyricsSearch()
-        val searchArtist = artist.artistForLyricsSearch()
+        val searchTitle = LyricsCleaner.cleanTitle(title, artist).ifBlank { title.forLyricsSearch() }
+        val searchArtist = LyricsCleaner.cleanArtist(artist).ifBlank { artist.artistForLyricsSearch() }
         val results = ConcurrentHashMap<LyricsSource, Boolean>()
+
+        val activeCachedSource = getCached(videoId)?.source
+        if (activeCachedSource != null) {
+            results[activeCachedSource] = true
+        }
 
         val candidateSources = LyricsSource.entries
 
+        val knownIsrc = if (videoId.isNotBlank()) isrcs[videoId] else null
+        val hit = if (knownIsrc == null && (LyricsSource.BINI_LYRICS in candidateSources || LyricsSource.LRC_RED in candidateSources || candidateSources.any { it.wordSynced })) {
+            runCatching {
+                identify(videoId, searchTitle, searchArtist, durationMs, album, candidateSources)
+            }.getOrNull()
+        } else null
+        val effectiveIsrc = knownIsrc ?: hit?.isrc?.takeIf { it.isNotBlank() }
+        if (effectiveIsrc != null) {
+            results[LyricsSource.LRC_RED] = true
+            results[LyricsSource.BINI_LYRICS] = true
+        }
+
         candidateSources.map { source ->
             async(Dispatchers.IO) {
+                if (source == activeCachedSource) return@async
+                if (effectiveIsrc != null && (source == LyricsSource.LRC_RED || source == LyricsSource.BINI_LYRICS)) {
+                    results[source] = true
+                    return@async
+                }
                 val found = runCatching {
-                    withTimeoutOrNull(2200L) {
-                        val lines = fetch(
+                    withTimeoutOrNull(8500L) {
+                        var lines = fetch(
                             source = source,
                             videoId = videoId,
                             title = searchTitle,
                             artist = searchArtist,
                             durationMs = durationMs,
                             album = album,
-                            isrc = isrcs[videoId],
-                            hit = null,
+                            isrc = effectiveIsrc,
+                            hit = if (source == LyricsSource.BINI_LYRICS) hit else null,
                         )
+                        if (lines.isNullOrEmpty() && (searchTitle != title || searchArtist != artist)) {
+                            lines = fetch(
+                                source = source,
+                                videoId = videoId,
+                                title = title,
+                                artist = artist,
+                                durationMs = durationMs,
+                                album = album,
+                                isrc = effectiveIsrc,
+                                hit = if (source == LyricsSource.BINI_LYRICS) hit else null,
+                            )
+                        }
+                        if (lines.isNullOrEmpty()) {
+                            val cleanTitle = LyricsCleaner.cleanTitle(title, artist).ifBlank { title }
+                            val cleanArtist = LyricsCleaner.cleanArtist(artist).ifBlank { artist }
+                            if (cleanTitle != searchTitle && cleanTitle != title) {
+                                lines = fetch(
+                                    source = source,
+                                    videoId = videoId,
+                                    title = cleanTitle,
+                                    artist = cleanArtist,
+                                    durationMs = durationMs,
+                                    album = album,
+                                    isrc = effectiveIsrc,
+                                    hit = if (source == LyricsSource.BINI_LYRICS) hit else null,
+                                )
+                            }
+                        }
                         !lines.isNullOrEmpty()
                     } ?: false
                 }.getOrDefault(false)
@@ -348,12 +426,12 @@ object LyricsRepository {
         durationMs: Long,
         album: String? = null,
     ): Result? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        val searchTitle = title.forLyricsSearch()
-        val searchArtist = artist.artistForLyricsSearch()
+        val searchTitle = LyricsCleaner.cleanTitle(title, artist).ifBlank { title.forLyricsSearch() }
+        val searchArtist = LyricsCleaner.cleanArtist(artist).ifBlank { artist.artistForLyricsSearch() }
         val known = isrcs[videoId]
-        val hit = if (known == null && (source == LyricsSource.BINI_LYRICS || source.wordSynced)) {
+        val hit = if (known == null && (source == LyricsSource.BINI_LYRICS || source == LyricsSource.LRC_RED || source.wordSynced)) {
             runCatching {
-                identify(videoId, searchTitle, searchArtist, durationMs, album, listOf(source))
+                identify(videoId, searchTitle, searchArtist, durationMs, album, listOf(source, LyricsSource.BINI_LYRICS, LyricsSource.LRC_RED))
             }.getOrNull()
         } else null
         val recording = known ?: hit?.isrc?.takeIf { it.isNotBlank() }
@@ -385,6 +463,26 @@ object LyricsRepository {
                     hit = hit,
                 )
             }.getOrNull()
+        }
+
+        // Also try with fully stripped clean title
+        if (lines.isNullOrEmpty()) {
+            val cleanTitle = LyricsCleaner.cleanTitle(title, artist).ifBlank { title }
+            val cleanArtist = LyricsCleaner.cleanArtist(artist).ifBlank { artist }
+            if (cleanTitle != searchTitle && cleanTitle != title) {
+                lines = runCatching {
+                    fetch(
+                        source = source,
+                        videoId = videoId,
+                        title = cleanTitle,
+                        artist = cleanArtist,
+                        durationMs = durationMs,
+                        album = album,
+                        isrc = recording,
+                        hit = hit,
+                    )
+                }.getOrNull()
+            }
         }
 
         if (lines.isNullOrEmpty()) return@withContext null

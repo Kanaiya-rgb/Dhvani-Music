@@ -73,6 +73,49 @@
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
+
+        <!-- Standard Android Audio Effect & Equalizer / DSP Control Panel (Global) -->
+        <intent>
+            <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.OPEN_AUDIO_EFFECT_CONTROL_PANEL" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.CLOSE_AUDIO_EFFECT_CONTROL_PANEL" />
+        </intent>
+
+        <!-- Samsung One UI SoundAlive & Dolby Atmos -->
+        <package android:name="com.sec.android.app.soundalive" />
+        <intent>
+            <action android:name="com.sec.android.app.soundalive.ACTION_SOUND_ALIVE" />
+        </intent>
+
+        <!-- Universal OEM Dolby Atmos & Spatial Audio Packages -->
+        <package android:name="com.dolby.daxappui" />
+        <package android:name="com.dolby.spatialaudio" />
+        <package android:name="com.dolby.daxservice" />
+        <package android:name="com.dolby.dap" />
+        <package android:name="com.motorola.dolby.dolbyui" />
+        <package android:name="com.motorola.motoaudio" />
+        <package android:name="com.oneplus.sound" />
+        <package android:name="com.oplus.sound" />
+        <package android:name="com.oplus.audio" />
+        <package android:name="com.oplus.multimedia.sound" />
+        <package android:name="com.realme.sound" />
+        <package android:name="com.miui.audioeffect" />
+        <package android:name="com.xiaomi.audioeffect" />
+        <package android:name="com.lenovo.dolby" />
+        <package android:name="com.lenovo.audioeffect" />
+        <package android:name="com.sonymobile.soundenhancement" />
+        <package android:name="com.sonyericsson.soundenhancement" />
+        <package android:name="com.asus.audiowizard" />
+        <package android:name="com.transsion.dolby" />
+        <package android:name="com.transsion.soundeffect" />
+        <package android:name="com.zte.zmusic" />
+        <package android:name="com.zte.audioeffect" />
+        <package android:name="com.nothing.audio" />
+        <package android:name="com.vivo.audiofx" />
     </queries>
 
     <application
@@ -80,7 +123,7 @@
         android:allowBackup="true"
         android:largeHeap="true"
         android:hardwareAccelerated="true"
-        android:usesCleartextTraffic="false"
+        android:usesCleartextTraffic="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -122,7 +165,6 @@
             android:theme="@style/Theme.DhvaniMusic">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
                 <!--
                   What makes the system call this a music app. "Play music" from
                   the assistant, Android Auto's media list and the OEM pickers
@@ -220,6 +262,17 @@
             </intent-filter>
 
             <!--
+              Session grant callbacks from Zarz / Mornye Turnstile verification
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="mornye" android:host="session-grant" />
+                <data android:scheme="dhvani" android:host="session-grant" />
+            </intent-filter>
+
+            <!--
               Share → Dhvani Music, from YT Music's own share sheet or from
               anywhere a link can be sent. The text is whatever the sending app
               wrote around the URL, so the URL is picked out of it rather than
@@ -231,6 +284,127 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- App Icon Launcher Aliases (Dhvani dynamic launcher switcher) -->
+        <activity-alias
+            android:name=".MainActivityDefault"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_MUSIC" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityLiquidGlass"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_liquid_glass"
+            android:roundIcon="@mipmap/ic_launcher_liquid_glass_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_MUSIC" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityCosmicCrystal"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_cosmic_crystal"
+            android:roundIcon="@mipmap/ic_launcher_cosmic_crystal_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_MUSIC" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivitySmokyAmber"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_smoky_amber"
+            android:roundIcon="@mipmap/ic_launcher_smoky_amber_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_MUSIC" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityCyberpunkNeon"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_cyberpunk_neon"
+            android:roundIcon="@mipmap/ic_launcher_cyberpunk_neon_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_MUSIC" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityMonochrome"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_monochrome"
+            android:roundIcon="@mipmap/ic_launcher_monochrome_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_MUSIC" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityRoyalGold"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_royal_gold"
+            android:roundIcon="@mipmap/ic_launcher_royal_gold_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_MUSIC" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityStealthBlack"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_stealth_black"
+            android:roundIcon="@mipmap/ic_launcher_stealth_black_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_MUSIC" />
+            </intent-filter>
+        </activity-alias>
 
         <service
             android:name=".playback.PlaybackService"

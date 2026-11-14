@@ -70,6 +70,7 @@ fun LyricsSourcePickerSheet(
     val haptics = rememberHaptics()
     var isVisible by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
 
     val dismissSmoothly = {
         if (isVisible) {
@@ -81,7 +82,10 @@ fun LyricsSourcePickerSheet(
         }
     }
 
-    LaunchedEffect(Unit) { isVisible = true }
+    LaunchedEffect(Unit) {
+        isVisible = true
+        scrollState.scrollTo(0)
+    }
 
     Dialog(
         onDismissRequest = { dismissSmoothly() },
@@ -122,7 +126,7 @@ fun LyricsSourcePickerSheet(
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.09f)),
                     modifier = modifier
                         .fillMaxWidth()
-                        .fillMaxHeight(0.60f)
+                        .fillMaxHeight(0.72f)
                         .widthIn(max = 540.dp)
                         .clickable(enabled = false) {},
                 ) {
@@ -164,8 +168,9 @@ fun LyricsSourcePickerSheet(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(7.dp),
+                                .weight(1f, fill = false)
+                                .verticalScroll(scrollState),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             LyricsSource.entries.forEach { source ->
                                 val isSelected = currentSource == source
@@ -189,7 +194,7 @@ fun LyricsSourcePickerSheet(
                                 )
                             }
 
-                            Spacer(Modifier.height(20.dp))
+                            Spacer(Modifier.height(48.dp))
                         }
                     }
                 }

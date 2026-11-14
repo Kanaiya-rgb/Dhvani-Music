@@ -1,9 +1,11 @@
 package com.music.dhvani.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.MoreVert
@@ -42,6 +44,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +53,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
@@ -128,6 +132,27 @@ fun LanguageBadgePill(
             maxLines = 1,
         )
     }
+}
+
+/**
+ * Official compact explicit content advisory badge ([E]) for mature tracks,
+ * using Windows 11 Fluent styled metallic gradient advisory icon from Icons8.
+ */
+@Composable
+fun ExplicitBadge(
+    modifier: Modifier = Modifier,
+    tint: Color? = null,
+    background: Color? = null,
+    border: Color? = null,
+    size: Dp = 11.5.dp,
+) {
+    Image(
+        painter = painterResource(id = R.drawable.ic_explicit),
+        contentDescription = "Explicit content",
+        modifier = modifier
+            .size(size)
+            .clip(RoundedCornerShape(2.5.dp)),
+    )
 }
 
 /**
@@ -526,10 +551,16 @@ private fun SongRowContent(
             val qualityBadge = remember(song.sourceQuality, song.localPath, song.localUri) {
                 getAudioQualityBadge(song)
             }
+            val isExplicit = remember(song.isExplicit, song.title, song.artist, song.albumName) {
+                com.music.dhvani.data.ExplicitDetector.isExplicit(song.isExplicit, song.title, song.artist, song.albumName)
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                if (isExplicit) {
+                    ExplicitBadge()
+                }
                 Text(
                     text = song.title,
                     style = MaterialTheme.typography.titleMedium,
@@ -644,7 +675,30 @@ fun PullToRefresh(
         onRefresh = onRefresh,
         state = state,
         modifier = modifier.fillMaxSize(),
-        indicator = {},
+        indicator = {
+            val pullFraction = state.distanceFraction.coerceIn(0f, 1f)
+            val showIndicator = refreshing || pullFraction > 0.15f
+            if (showIndicator) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = topBarHeight() + (8.dp * (if (refreshing) 1f else pullFraction)))
+                        .graphicsLayer {
+                            val s = if (refreshing) 1f else pullFraction.coerceIn(0.4f, 1f)
+                            scaleX = s
+                            scaleY = s
+                            alpha = if (refreshing) 1f else (pullFraction * 1.5f).coerceIn(0f, 1f)
+                        },
+                ) {
+                    M3ContainedLoadingIndicator(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        indicatorColor = MaterialTheme.colorScheme.primary,
+                        containerSize = 40.dp,
+                        indicatorSize = 28.dp,
+                    )
+                }
+            }
+        },
     ) {
         content()
     }

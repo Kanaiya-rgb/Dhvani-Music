@@ -31,6 +31,7 @@ captures/
 Thumbs.db
 
 # Release signing & Services credentials — never commit secrets
+sources.json
 keystore.properties
 secrets.properties
 *.jks
@@ -105,8 +106,11 @@ env/
 
 # Internal docs / notes (keep only README.md public)
 RELEASE_v2.4.0_CHANGELOG.md
+RELEASE_NOTES_*.md
 UPCOMING_FEATURES.md
 ADVANCED_FEATURES_SPEC.md
+LOSSLESS_PROVIDERS_BLUEPRINT.md
+docs/LOSSLESS_PROVIDERS_BLUEPRINT.md
 
 # Local C/C++ tooling
 .clangd
@@ -128,4 +132,17 @@ out/
 *~
 ehthumbs.db
 ehthumbs_vista.db
+
+# Temporary testing screenshots, test audio & local artifacts
+search_*.png
+emulator_*.png
+current_*.png
+screen_*.png
+*.flac
+
+# Decompiled references, local backups & scratch tools
+androidx/
+dashboard_backup_safe/
+scratch/
+AUDIO_PIPELINE_REFINEMENTS.md
 

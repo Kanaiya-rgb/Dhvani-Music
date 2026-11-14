@@ -31,9 +31,9 @@ import java.util.concurrent.atomic.AtomicReference
 object LyricsPlus {
 
     private val MIRRORS = listOf(
+        "https://lyricsplus.binimum.org",
         "https://lyricsplus.prjktla.my.id",
         "https://lyricsplus.atomix.one",
-        "https://lyricsplus.binimum.org",
         "https://lyricsplus.prjktla.workers.dev",
         "https://lyricsplus-seven.vercel.app",
         "https://lyrics-plus-backend.vercel.app",
@@ -70,7 +70,9 @@ object LyricsPlus {
                     return@coroutineScope lines
                 }
             }
-            null
+            // Fallback: When volunteer mirrors are rate-limited or down, provide word-synced timings
+            LrcRed.lyrics(title, artist, durationMs, isrc)
+                ?: QQMusicLyrics.lyrics(title, artist, durationMs, album)
         } finally {
             pending.forEach { it.second.cancel() }
         }

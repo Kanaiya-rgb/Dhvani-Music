@@ -497,6 +497,8 @@ fun PlayerSliderTrack(
     trackHeight: Dp = 10.dp,
     bufferedValue: Float = 0f,
     bufferedColor: Color = Color.White.copy(alpha = 0.38f),
+    transitionWindow: ClosedFloatingPointRange<Float>? = null,
+    transitionMarkerColor: Color = Color.White.copy(alpha = 0.65f),
 ) {
     val inactiveTrackColor = colors.inactiveTrackColor
     val activeTrackColor = colors.activeTrackColor
@@ -530,6 +532,36 @@ fun PlayerSliderTrack(
                 strokeWidth = stroke,
                 cap = StrokeCap.Round,
             )
+        }
+
+        // Automix upcoming transition window (drawn on top of buffered, below active played progress)
+        transitionWindow?.let { window ->
+            val fromX = size.width * ((window.start - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val toX = size.width * ((window.endInclusive - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            if (toX > fromX) {
+                drawLine(
+                    color = transitionMarkerColor,
+                    start = Offset(fromX, centerY),
+                    end = Offset(toX, centerY),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round,
+                )
+            }
+        }
+
+        // Automix upcoming transition window (drawn on top of buffered, below active played progress)
+        transitionWindow?.let { window ->
+            val fromX = size.width * ((window.start - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            val toX = size.width * ((window.endInclusive - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+            if (toX > fromX) {
+                drawLine(
+                    color = transitionMarkerColor,
+                    start = Offset(fromX, centerY),
+                    end = Offset(toX, centerY),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round,
+                )
+            }
         }
 
         // Active played progress

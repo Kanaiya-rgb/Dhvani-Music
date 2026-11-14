@@ -70,8 +70,46 @@ object TrackMatcher {
         val title = searchableTitle(target.title, target.artist)
         if (title.isBlank()) return emptyList()
         val artist = primaryArtist(target.artist)
-        if (artist.isBlank()) return listOf(title)
-        return listOf("$title $artist", title)
+        val complete = cleanCompleteTitle(target.title)
+
+        val list = mutableListOf<String>()
+
+        // 1. Complete title search (e.g. "Banjaare - Bairan"), especially crucial for catalogues like Kuwo
+        if (complete.isNotBlank() && DASH.containsMatchIn(complete)) {
+            list += complete
+            val spaceForm = complete.replace(DASH, " ").replace(Regex("""\s+"""), " ").trim()
+            if (spaceForm != complete) list += spaceForm
+            val parts = complete.split(DASH).map { it.trim() }.filter { it.isNotBlank() }
+            if (parts.size == 2) {
+                list += "${parts[1]} ${parts[0]}"
+            }
+        }
+
+        if (artist.isBlank()) {
+            list += title
+        } else {
+            val isArtistSuspect = artist.contains("collective") || artist.contains("record") ||
+                artist.contains("vevo") || artist.contains("topic") || artist.contains("music") ||
+                artist.contains("official") || artist.contains("channel") || artist.contains("series") ||
+                artist.contains("label") || artist.contains("ent") || artist.length > 25
+            if (isArtistSuspect) {
+                list += title
+                list += "$title $artist"
+            } else {
+                list += "$title $artist"
+                list += title
+            }
+        }
+        return list.distinct()
+    }
+
+    private val BRACKET_PACKAGING = Regex("""\s*[\(\[](official\s*(music\s*)?video|official\s*audio|lyric(al)?(\s*video)?|full\s*video|4k(\s*uhd)?|hd|1080p|audio)[\)\]]""", RegexOption.IGNORE_CASE)
+    private val TRAILING_VIDEO_NOISE = Regex("""\s*(\||/|–|-)?\s*(official\s*(music\s*)?video|official\s*audio|lyric(al)?(\s*video)?|full\s*song|video\s*song|4k(\s*uhd)?|hd|1080p|audio\s*song).*""", RegexOption.IGNORE_CASE)
+
+    internal fun cleanCompleteTitle(rawTitle: String): String {
+        var t = BRACKET_PACKAGING.replace(rawTitle, "")
+        t = TRAILING_VIDEO_NOISE.replace(t, "")
+        return t.trim()
     }
 
     /** The title with the packaging taken off, version markers kept. */
@@ -122,11 +160,14 @@ object TrackMatcher {
         val wanted = parseTitle(target.title, target.artist)
         val got = parseTitle(candidate.title, candidate.artist)
         if (wanted.core.isEmpty() || got.core.isEmpty()) return null
-        if (wanted.core != got.core) return null
+        val coreMatches = (wanted.core == got.core) ||
+            (got.core.isNotEmpty() && wanted.context.contains(got.core) && isArtistName(wanted.core, candidate.artist)) ||
+            (wanted.core.isNotEmpty() && got.context.contains(wanted.core) && isArtistName(got.core, target.artist))
+        if (!coreMatches) return null
         // Direction matters both ways round: asking for the album cut must not
         // land on the live take, and asking for the live take must not land on
         // the album cut.
-        if (wanted.versions != got.versions) return null
+        if (wanted.core == got.core && wanted.versions != got.versions) return null
 
         // Strict language check: prevents swapping Hindi audio for Telugu audio or vice-versa
         val wantedLang = detectSongLanguage(target.title, target.artist)
@@ -138,20 +179,8 @@ object TrackMatcher {
         val duration = durationScore(target.durationSec, secondsOf(candidate.durationText))
             ?: return null
         val artist = artistScore(target.artist, candidate.artist)
-            // The credits don't merely differ in spelling, they name different
-            // people — and sometimes that is because they are describing the
-            // same recording from different ends of it. Film catalogues are
-            // full of this: YouTube Music files "Jhak Maar Ke" under Pritam,
-            // who *wrote* it, while every store files it under Neeraj
-            // Shridhar, who *sang* it. Neither is wrong and nothing in either
-            // credit hints at the other, so a matcher that insists on an
-            // overlap refuses the correct track every time.
-            //
-            // What breaks the tie is length. Two recordings that share an
-            // exact title and agree on their runtime to the second are the
-            // same master; a cover, a remix or a re-recording essentially
-            // never lands there — of the four candidates for that track, the
-            // remix ran 241s and the acoustic cover 66s against the 233s being
+            // Film catalogues sometimes file under Composer (Pritam) while another
+            // files under Singer (Neeraj Shridhar). The 241s "Leo Lz Mix" is not the 233s being
             // played. So an exact runtime is allowed to stand in for a shared
             // credit, and *only* an exact one: with no runtime on either side
             // there is nothing corroborating anything, and the strict refusal
@@ -159,7 +188,12 @@ object TrackMatcher {
             // it never wins where a properly-credited copy exists.
             ?: CREDITS_DISAGREE.takeIf {
                 withinSeconds(candidate, target, CREDIT_OVERRIDE_SEC) &&
-                    (wantedLang == null || gotLang == null || wantedLang.equals(gotLang, ignoreCase = true))
+                    (wantedLang == null || gotLang == null || wantedLang.equals(gotLang, ignoreCase = true)) &&
+                    // Never match totally unrelated songs with common titles (e.g. "Tere Bin", "Tum Hi Ho")
+                    // If credits disagree, require either matching album/context or target has no artist
+                    (target.artist.isBlank() || candidate.artist.isBlank() ||
+                        wanted.context.any { it in got.context } ||
+                        candidate.albumName?.lowercase(Locale.ROOT)?.let { alb -> wanted.context.any { alb.contains(it) } } == true)
             }
             ?: return null
         return BASE + artist + duration + contextScore(wanted, got)
@@ -208,7 +242,14 @@ object TrackMatcher {
     internal fun parseTitle(raw: String, artist: String = ""): TitleParts {
         val versions = sortedSetOf<String>()
         val context = mutableSetOf<String>()
-        var text = raw.lowercase(Locale.ROOT).replace("&", " and ")
+        var text = raw.lowercase(Locale.ROOT)
+            .replace("&quot;", "\"")
+            .replace("&#039;", "'")
+            .replace("&apos;", "'")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&", " and ")
 
         // Bracketed asides, innermost first: "(From "Satyamev Jayate")",
         // "[Official Audio]", "(Live at Wembley)".
@@ -375,7 +416,7 @@ object TrackMatcher {
         if (wanted == null || got == null) return 0
         val drift = abs(wanted - got)
         return when {
-            drift > DURATION_LIMIT_SEC -> null
+            drift > DURATION_LIMIT_SEC && (wanted > 0 && drift.toDouble() / wanted > 0.15) -> null
             drift <= DURATION_TIGHT_SEC -> DURATION_TIGHT
             else -> DURATION_LOOSE
         }
@@ -420,14 +461,14 @@ object TrackMatcher {
     private const val CONTEXT_SHARED = 20
 
     /** Within this many seconds is the same master, allowing for trimmed silence. */
-    private const val DURATION_TIGHT_SEC = 3
+    private const val DURATION_TIGHT_SEC = 4
 
     /**
      * Past this, two tracks sharing a title are not sharing a recording.
-     * Wide enough for a fade or an intro a service trims differently, narrow
-     * enough to rule out an extended cut or a full-album upload.
+     * Relaxed to 20s (or 15% duration drift) to accommodate YouTube video intros, outro silence,
+     * and credits while preventing remixes, extended cuts, or different recordings.
      */
-    private const val DURATION_LIMIT_SEC = 30
+    private const val DURATION_LIMIT_SEC = 20
 
     private const val BRACKET_PASSES = 3
     private const val DASH_PASSES = 3
@@ -456,6 +497,8 @@ object TrackMatcher {
         "version", "mix", "dub", "vip", "session", "sessions",
         "sped", "slowed", "reverb", "nightcore", "lofi", "orchestral", "symphonic",
         "part", "pt", "chapter",
+        // Male / Female / Duet markers — prevents swapping male/female cuts (e.g. JioSaavn / Bollywood)
+        "female", "male", "duet",
         // Language markers — prevents matching a Hindi version with a Telugu/Tamil/Kannada dub
         "hindi", "telugu", "tamil", "kannada", "malayalam", "punjabi", "bhojpuri",
         "bengali", "marathi", "gujarati", "odia", "urdu", "english", "spanish", "korean", "japanese",

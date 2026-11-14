@@ -96,7 +96,9 @@ fun ThinSlider(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     dragging = true
                     val fraction = (down.position.x / size.width).coerceIn(0f, 1f)
-                    onValueChange(valueRange.start + fraction * rangeSpan)
+                    val rawVal = valueRange.start + fraction * rangeSpan
+                    val snappedVal = if (showOverdriveNotch && kotlin.math.abs(rawVal - 1.0f) < 0.035f) 1.0f else rawVal
+                    onValueChange(snappedVal)
 
                     while (true) {
                         val event = awaitPointerEvent()
@@ -107,7 +109,9 @@ fun ThinSlider(
                         }
                         if (pointer.positionChanged()) {
                             val moveFraction = (pointer.position.x / size.width).coerceIn(0f, 1f)
-                            onValueChange(valueRange.start + moveFraction * rangeSpan)
+                            val rawMove = valueRange.start + moveFraction * rangeSpan
+                            val snappedMove = if (showOverdriveNotch && kotlin.math.abs(rawMove - 1.0f) < 0.035f) 1.0f else rawMove
+                            onValueChange(snappedMove)
                             pointer.consume()
                         }
                     }
@@ -146,11 +150,14 @@ fun ThinSlider(
                 val from = size.width * ((window.start - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
                 val to = size.width * ((window.endInclusive - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
                 if (to > from) {
+                    val rawWidth = to - from
+                    val markerWidth = rawWidth.coerceAtLeast(size.height * 0.75f)
+                    val markerRadius = CornerRadius(minOf(size.height / 2f, markerWidth / 2f))
                     drawRoundRect(
                         color = markerColor,
                         topLeft = Offset(from, 0f),
-                        size = Size(to - from, size.height),
-                        cornerRadius = radius,
+                        size = Size(markerWidth, size.height),
+                        cornerRadius = markerRadius,
                     )
                 }
             }

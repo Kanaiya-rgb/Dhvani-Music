@@ -50,6 +50,7 @@ object LastPlayed {
                     it.localUri,
                     it.localPath,
                     it.durationText,
+                    it.isExplicit,
                 )
             },
             index = (index - start).coerceIn(0, window.lastIndex),
@@ -82,6 +83,7 @@ object LastPlayed {
                     fromAutoplay = it.auto,
                     localUri = it.local,
                     localPath = it.path,
+                    isExplicit = it.isExplicit || com.music.dhvani.data.ExplicitDetector.isExplicit(it.isExplicit, it.title, it.artist),
                 )
             },
             index = stored.index.coerceIn(0, stored.tracks.lastIndex),
@@ -121,6 +123,7 @@ object LastPlayed {
          * ago the app was opened.
          */
         val duration: String? = null,
+        val isExplicit: Boolean = false,
     )
 
     @Serializable

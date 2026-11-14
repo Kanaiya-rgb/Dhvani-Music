@@ -7,6 +7,7 @@ import com.music.dhvani.data.NerdStats
 import com.music.dhvani.data.sources.SourceResolver
 import com.music.dhvani.data.sources.SourceStream
 import com.music.dhvani.data.sources.StreamFormat
+import com.music.dhvani.data.sources.StreamRequest
 import com.music.dhvani.data.sources.TrackMatcher
 import kotlinx.coroutines.Deferred
 import java.util.concurrent.ConcurrentHashMap
@@ -50,8 +51,8 @@ object QualityUpgrade {
     private const val TAG = "DhvaniMusic"
 
     /** The marker that distinguishes an upgraded item from the one it replaced. */
-    const val MARKER = "q"
-    private const val UPGRADED = "hifi"
+    const val MARKER = "swapped_upgrade"
+    private const val UPGRADED = "true"
 
     /**
      * A track playing on less than was asked for.
@@ -79,7 +80,15 @@ object QualityUpgrade {
     )
 
     private val pending = ConcurrentHashMap<String, Pending>()
+    private val followUps = ConcurrentHashMap<String, Pending>()
     private val forced = ConcurrentHashMap<String, SourceStream>()
+    private val attemptCounts = ConcurrentHashMap<String, Int>()
+    private const val MAX_UPGRADE_ATTEMPTS = 3
+
+    internal fun needsLosslessFollowUp(format: StreamFormat): Boolean =
+        (SourceResolver.requestForNow() is StreamRequest.Lossless || com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality == com.music.dhvani.data.settings.AudioQuality.LOSSLESS) &&
+            (format.isLossless != true || !format.isHiRes) &&
+            !format.isDolbyAtmos
 
     /**
      * Tracks whose upgraded stream is being *proved* rather than played  see
@@ -202,6 +211,9 @@ object QualityUpgrade {
     /** Whether [mediaId] is worth a second look  and hasn't already had one. */
     fun isPending(mediaId: String?) = mediaId != null && pending.containsKey(mediaId)
 
+    fun targetFor(mediaId: String?): com.music.dhvani.data.sources.TrackMatcher.Target? =
+        if (mediaId != null) pending[mediaId]?.target ?: followUps[mediaId]?.target else null
+
     /**
      * Tracks whose upgrade broke the playback it was supposed to improve.
      *
@@ -223,6 +235,13 @@ object QualityUpgrade {
     fun refuseUpgrades(mediaId: String) {
         refused += mediaId
         TrackLog.d(TAG, "$mediaId broke on its upgrade; no more swaps for it", about = mediaId)
+    }
+
+    /** Clears any refusal so [mediaId] can be evaluated and upgraded again. */
+    fun allowUpgrades(mediaId: String) {
+        refused -= mediaId
+        asked -= mediaId
+        attemptCounts.remove(mediaId)
     }
 
     /**
@@ -252,31 +271,72 @@ object QualityUpgrade {
         if (uri == null || uri.getQueryParameter("v") == null) return false
         if (mediaId in refused || pending.containsKey(mediaId)) return false
         if (isDowngraded) {
-            // Source promised 24-bit Hi-Res but active player reported 16-bit:
-            // continue checking other enabled sources for a true Hi-Res version.
             return SourceResolver.canSubstituteForYouTube()
         }
-        // Already upgraded: check if we are playing 16-bit lossless but user wanted 24-bit Hi-Res
+
+        val currentStats = NerdStats.current.value
+        val isLossless = currentStats?.isLossless == true
+        val isHiRes = isLossless && (currentStats.isHiRes || (currentStats.bitDepth ?: 16) > 16)
+        val isAac320 = !isLossless && (currentStats?.isHiQuality == true || (currentStats?.bitrateKbps ?: 0) >= 320)
+
+        // If already playing verified 24-bit Hi-Res, nothing can upgrade it
+        if (isHiRes) return false
+
+        // If already swapped twice (up to generation 2)
+        if (uri.getQueryParameter(MARKER) == "$UPGRADED-2") return false
+
+        // If already swapped once by QualityUpgrade
         if (uri.getQueryParameter(MARKER) != null) {
-            val wantsHiRes = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality == com.music.dhvani.data.settings.AudioQuality.LOSSLESS
-            val currentStats = NerdStats.current.value
-            val isPlaying16BitLossless = currentStats?.isLossless == true && !currentStats.isHiRes
-            if (wantsHiRes && isPlaying16BitLossless) {
+            val ceiling = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality
+            val preferred = com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value
+            val wantsLossless = ceiling == com.music.dhvani.data.settings.AudioQuality.LOSSLESS ||
+                preferred == "LOSSLESS" ||
+                preferred.contains("qobuz", ignoreCase = true) ||
+                preferred.contains("lossless", ignoreCase = true) ||
+                preferred.startsWith("builtin_addon_") ||
+                com.music.dhvani.data.sources.SourceRegistry.configs.value.any { it.id == preferred && it.kind.canServeLossless }
+            if (wantsLossless && (!isLossless || !isHiRes)) {
                 return SourceResolver.canSubstituteForYouTube()
             }
             return false
         }
-        if (mediaId in asked) return false
-        val ceiling = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality
-        if (ceiling != com.music.dhvani.data.settings.AudioQuality.LOSSLESS) {
-            val stats = NerdStats.current.value
-            val currentKbps = stats?.bitrateKbps ?: stats?.claimed?.kbps
-            // If already playing lossless or at or above connection ceiling bitrate, no further upgrade needed
-            if (stats?.isLossless == true || (currentKbps != null && currentKbps >= ceiling.maxKbps)) {
+
+        if (mediaId in asked) {
+            // If playing lossy Opus and lossless or 320k is wanted, don't permanently shut down upgrade attempts
+            if (!isLossless && !isAac320 && SourceResolver.canSubstituteForYouTube()) {
+                val attempts = attemptCounts[mediaId] ?: 0
+                if (attempts < MAX_UPGRADE_ATTEMPTS) {
+                    asked -= mediaId
+                } else {
+                    return false
+                }
+            } else {
                 return false
             }
         }
-        return SourceResolver.canSubstituteForYouTube()
+
+        val ceiling = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality
+        val preferred = com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value
+        val wantsLossless = ceiling == com.music.dhvani.data.settings.AudioQuality.LOSSLESS ||
+            preferred == "LOSSLESS" ||
+            preferred.contains("qobuz", ignoreCase = true) ||
+            preferred.contains("lossless", ignoreCase = true) ||
+            preferred.startsWith("builtin_addon_") ||
+            com.music.dhvani.data.sources.SourceRegistry.configs.value.any { it.id == preferred && it.kind.canServeLossless }
+
+        if (wantsLossless) {
+            // Want lossless, but playing lossy (YouTube Opus / 320k) or 16-bit FLAC -> Upgrade!
+            if (!isLossless || !isHiRes) {
+                return SourceResolver.canSubstituteForYouTube()
+            }
+        } else {
+            // Want high quality (320k), but playing YouTube Opus (<200k) -> Upgrade!
+            if (!isLossless && !isAac320) {
+                return SourceResolver.canSubstituteForYouTube()
+            }
+        }
+
+        return false
     }
 
     /**
@@ -428,6 +488,13 @@ object QualityUpgrade {
                     SourceResolver.sameRecordingAs(late.durationSec, playingDurationSec)
                 ) {
                     found = late
+                    if (needsLosslessFollowUp(late.format)) {
+                        followUps[mediaId] = waiting.copy(
+                            target = waiting.target.copy(durationSec = playingDurationSec ?: waiting.target.durationSec),
+                            inFlight = null,
+                            playing = late.format,
+                        )
+                    }
                     answered = true
                     return late
                 }
@@ -440,17 +507,27 @@ object QualityUpgrade {
                 playing = waiting.playing,
             ).also {
                 found = it
+                if (it != null && needsLosslessFollowUp(it.format)) {
+                    followUps[mediaId] = waiting.copy(
+                        target = waiting.target.copy(durationSec = playingDurationSec ?: waiting.target.durationSec),
+                        inFlight = null,
+                        playing = it.format,
+                    )
+                }
                 answered = true
             }
         } finally {
             if (answered) {
-                // The question has now been asked, whatever the answer. Leaving
-                // it pending would re-run the whole search on every pause and
-                // resume, and leaving it out of [asked] would let
-                // [adoptUnresolved] offer the same track again at the next
-                // progress sample.
                 pending.remove(mediaId)
-                asked += mediaId
+                if (found != null) {
+                    asked += mediaId
+                } else {
+                    val count = (attemptCounts[mediaId] ?: 0) + 1
+                    attemptCounts[mediaId] = count
+                    if (count >= MAX_UPGRADE_ATTEMPTS) {
+                        asked += mediaId
+                    }
+                }
             }
             // Otherwise the search was cancelled  the queue moved on while it
             // was still running  and *nothing was learned*. The track is left
@@ -479,8 +556,10 @@ object QualityUpgrade {
     /** Abandons the second look for [mediaId]  the queue has moved on. */
     fun forget(mediaId: String) {
         pending.remove(mediaId)?.inFlight?.cancel()
+        followUps.remove(mediaId)?.inFlight?.cancel()
         forced.remove(mediaId)
         shelved.remove(mediaId)
+        attemptCounts.remove(mediaId)
         auditioning -= mediaId
         NerdStats.onLosslessRaceEnd(mediaId)
     }
@@ -533,7 +612,8 @@ object QualityUpgrade {
         // Via [forget] rather than by clearing the maps, so a track still being
         // auditioned or still holding a live lookup is torn down properly  and
         // so the badge for it goes out with it.
-        (pending.keys + forced.keys + shelved.keys + auditioning).forEach(::forget)
+        (pending.keys + followUps.keys + forced.keys + shelved.keys + auditioning).forEach(::forget)
+        followUps.clear()
         asked.clear()
         refused.clear()
     }
@@ -546,6 +626,19 @@ object QualityUpgrade {
     }
 
     /**
+     * Re-arms the lossless pass only after the lossy stream has actually
+     * swapped in. A failed audition must leave the original search as the last
+     * word rather than triggering a second interruption attempt.
+     */
+    fun continueAfterLossySwap(mediaId: String): Boolean {
+        val next = followUps.remove(mediaId) ?: return false
+        pending[mediaId] = next
+        asked -= mediaId
+        NerdStats.onLosslessRaceStart(mediaId)
+        return true
+    }
+
+    /**
      * The upgraded stream for a request carrying the [MARKER], or null.
      *
      * Read rather than consumed: ExoPlayer reopens a source more than once
@@ -553,12 +646,23 @@ object QualityUpgrade {
      * cache miss  and each of those has to arrive at the same bytes.
      */
     fun forcedStream(uri: Uri): SourceStream? {
-        if (uri.getQueryParameter(MARKER) != UPGRADED) return null
+        if (uri.getQueryParameter(MARKER)?.startsWith(UPGRADED) != true) return null
         return uri.getQueryParameter("v")?.let(forced::get)
     }
 
     /** The same URI, marked so that Media3 rebuilds the source and the cache keys it apart. */
-    fun upgradedUri(uri: String): String = "$uri&$MARKER=$UPGRADED"
+    fun upgradedUri(uri: String): String {
+        val markerStart = "&$MARKER="
+        val previous = uri.substringAfter(markerStart, missingDelimiterValue = "")
+            .substringBefore('&')
+            .ifBlank { null }
+        val previousGeneration = previous
+            ?.removePrefix("$UPGRADED-")
+            ?.toIntOrNull()
+            ?: 1
+        val tag = if (previous == null) UPGRADED else "$UPGRADED-${previousGeneration + 1}"
+        return uri.substringBefore(markerStart) + "&$MARKER=$tag"
+    }
 
     /**
      * The suffix that keeps an upgraded track's bytes off the copy it

@@ -2,6 +2,10 @@ package com.music.dhvani.ui.components
 
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -80,6 +84,8 @@ fun AppLanguageDialog(
     val shape = RoundedCornerShape(ALERT_CORNER)
     val currentLanguage = AppCompatDelegate.getApplicationLocales().get(0)?.language
         ?: Locale.getDefault().language
+    val configuration = LocalConfiguration.current
+    val maxDialogHeight = (configuration.screenHeightDp * 0.72f).dp
 
     Box(
         modifier = modifier
@@ -95,16 +101,13 @@ fun AppLanguageDialog(
         Column(
             modifier = Modifier
                 .width(ALERT_WIDTH)
+                .heightIn(max = maxDialogHeight)
                 .clip(shape)
-                .then(
-                    if (reduceDynamicBlur) {
-                        Modifier.background(MaterialTheme.colorScheme.surface)
-                    } else {
-                        Modifier.hazeEffect(
-                            state = hazeState,
-                            style = HazeMaterials.regular(MaterialTheme.colorScheme.surface),
-                        )
-                    },
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                    shape = shape,
                 )
                 // Swallows the tap before it reaches the scrim behind, so
                 // touching the card itself never dismisses it.
@@ -141,18 +144,24 @@ fun AppLanguageDialog(
                 )
             }
 
-            SUPPORTED_LANGUAGES.forEach { language ->
-                AlertRule()
-                LanguageRow(
-                    language = language,
-                    selected = language.tag == currentLanguage,
-                    onClick = {
-                        AppCompatDelegate.setApplicationLocales(
-                            LocaleListCompat.forLanguageTags(language.tag),
-                        )
-                        onDismiss()
-                    },
-                )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false),
+            ) {
+                items(SUPPORTED_LANGUAGES, key = { it.tag }) { language ->
+                    AlertRule()
+                    LanguageRow(
+                        language = language,
+                        selected = language.tag == currentLanguage,
+                        onClick = {
+                            AppCompatDelegate.setApplicationLocales(
+                                LocaleListCompat.forLanguageTags(language.tag),
+                            )
+                            onDismiss()
+                        },
+                    )
+                }
             }
         }
     }

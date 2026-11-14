@@ -1,6 +1,7 @@
 package com.music.dhvani.data.model
 
 import androidx.compose.runtime.Immutable
+import kotlinx.serialization.Serializable
 
 /** A playable YouTube Music track. */
 data class Song(
@@ -53,6 +54,11 @@ data class Song(
      * the track played as a 128kbps MP3.
      */
     val sourceQuality: String? = null,
+    /**
+     * Whether this track carries an explicit content advisory badge ([E]),
+     * matching Spotify and Apple Music parental guidance standards.
+     */
+    val isExplicit: Boolean = false,
 )
 
 /**
@@ -115,6 +121,7 @@ private val SIZE_HINT = Regex("""w\d+-h\d+""")
 private val GOOGLE_WH_REGEX = Regex("""=w\d+-h\d+.*""")
 private val GOOGLE_S_REGEX = Regex("""=s\d+.*""")
 private val SAAVN_DIMEN_REGEX = Regex("""50x50|150x150""")
+private val APPLE_DIMEN_REGEX = Regex("""/\d+x\d+.*""")
 
 /** As [Song.artworkAt], for artwork that isn't a track's. */
 fun String?.artworkAt(px: Int): String? {
@@ -142,6 +149,10 @@ fun String?.artworkAt(px: Int): String? {
     if (url.contains("saavncdn.com")) {
         url = url.replace(SAAVN_DIMEN_REGEX, "500x500")
             .replace("http://", "https://")
+    }
+    // 4. Apple Music CDN: upgrade to 4K Ultra HD master (4160x4160) so it never blurs or pixelates when zoomed
+    if (url.contains("mzstatic.com")) {
+        url = url.replace(APPLE_DIMEN_REGEX, "/4160x4160bb.jpg")
     }
     return url
 }
@@ -193,6 +204,7 @@ enum class SearchFilter(val label: String, val params: String?) {
 
 /** A card in a home-feed carousel: either a track (videoId) or an album/playlist (browseId). */
 @Immutable
+@Serializable
 data class ShelfItem(
     val title: String,
     val subtitle: String,
@@ -201,6 +213,16 @@ data class ShelfItem(
     val browseId: String?,
     /** Up to 4 artwork URLs for a mosaic/collage cover. When non-empty, shown as a 2×2 grid. */
     val mosaicUrls: List<String> = emptyList(),
+    val isExplicit: Boolean = false,
+)
+
+fun Song.toShelfItem(): ShelfItem = ShelfItem(
+    title = title,
+    subtitle = artist,
+    thumbnailUrl = thumbnailUrl,
+    videoId = videoId,
+    browseId = null,
+    isExplicit = isExplicit,
 )
 
 /** The signed-in Google account, as YouTube Music reports it. */
@@ -212,6 +234,7 @@ data class Account(
 )
 
 @Immutable
+@Serializable
 data class HomeShelf(
     val title: String,
     val items: List<ShelfItem>,

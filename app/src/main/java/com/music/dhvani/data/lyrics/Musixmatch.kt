@@ -57,15 +57,8 @@ object Musixmatch {
         val cleanArtist = LyricsCleaner.cleanArtist(artist)
         val seconds = (durationMs / 1000).toInt()
 
-        // 1. Try direct Musixmatch API
-        val directLyrics = tryDirectLyrics(cleanTitle, cleanArtist, seconds)
-        if (!directLyrics.isNullOrEmpty()) return@withContext directLyrics
-
-        // 2. Fallback to PaxSenix Musixmatch endpoint if available
-        val paxMusix = PaxSenix.musixmatchLyrics(cleanTitle, cleanArtist, durationMs)
-        if (!paxMusix.isNullOrEmpty()) return@withContext paxMusix
-
-        null
+        // Direct Musixmatch API
+        tryDirectLyrics(cleanTitle, cleanArtist, seconds)
     }
 
     private suspend fun tryDirectLyrics(title: String, artist: String, seconds: Int): List<LyricLine>? {

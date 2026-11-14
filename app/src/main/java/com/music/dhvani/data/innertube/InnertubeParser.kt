@@ -144,7 +144,7 @@ object InnertubeParser {
                 .o("thumbnail").a("thumbnails").best(),
             type = when {
                 "ALBUM" in pageType -> BrowseType.ALBUM
-                "ARTIST" in pageType -> BrowseType.ARTIST
+                "ARTIST" in pageType || browseId.startsWith("UC") || subtitle.startsWith("Artist", ignoreCase = true) || subtitle.contains("Artist •", ignoreCase = true) -> BrowseType.ARTIST
                 "PLAYLIST" in pageType -> BrowseType.PLAYLIST
                 else -> BrowseType.OTHER
             },
@@ -227,7 +227,7 @@ object InnertubeParser {
             parseTwoRowItem(item.o("musicTwoRowItemRenderer"))
                 ?: parseResponsiveListItem(item.o("musicResponsiveListItemRenderer"))
                     ?.let { song ->
-                        ShelfItem(song.title, song.artist, song.thumbnailUrl, song.videoId, null)
+                        ShelfItem(song.title, song.artist, song.thumbnailUrl, song.videoId, null, isExplicit = song.isExplicit)
                     }
                 // A chart row with nothing to play — "Top artists" lists the
                 // artist alone, no track — falls through parseResponsiveListItem
@@ -241,7 +241,7 @@ object InnertubeParser {
         val title = shelf.o("title").runs()
         val items = shelf.a("contents").orEmpty().mapNotNull {
             parseResponsiveListItem(it.o("musicResponsiveListItemRenderer"))
-        }.map { ShelfItem(it.title, it.artist, it.thumbnailUrl, it.videoId, null) }
+        }.map { ShelfItem(it.title, it.artist, it.thumbnailUrl, it.videoId, null, isExplicit = it.isExplicit) }
         return if (items.isEmpty()) null else HomeShelf(title.ifBlank { "For you" }, items)
     }
 
@@ -251,7 +251,7 @@ object InnertubeParser {
         val items = grid.a("items").orEmpty().mapNotNull { item ->
             parseTwoRowItem(item.o("musicTwoRowItemRenderer"))
                 ?: parseResponsiveListItem(item.o("musicResponsiveListItemRenderer"))?.let { song ->
-                    ShelfItem(song.title, song.artist, song.thumbnailUrl, song.videoId, null)
+                    ShelfItem(song.title, song.artist, song.thumbnailUrl, song.videoId, null, isExplicit = song.isExplicit)
                 }
         }
         return if (items.isEmpty()) null else HomeShelf(title.ifBlank { "Charts" }, items)
@@ -572,7 +572,33 @@ object InnertubeParser {
             // otherwise a music-video upload gives itself away with widescreen
             // art where a catalogue track has square album cover art.
             isVideo = rowType == "video" || thumbnails.isNotSquare(),
+            isExplicit = hasExplicitBadge(renderer) ||
+                com.music.dhvani.data.ExplicitDetector.isExplicit(
+                    false,
+                    title,
+                    credits.artistName ?: fallback.artistName ?: "",
+                    credits.albumName ?: fallback.albumName ?: albumPart
+                ),
         )
+    }
+
+    private fun hasExplicitBadge(renderer: JsonObject?): Boolean {
+        if (renderer == null) return false
+        val badges = renderer.a("badges").orEmpty() + renderer.a("subtitleBadges").orEmpty()
+        if (badges.any { isExplicitBadge(it) }) return true
+        val columns = renderer.a("flexColumns").orEmpty()
+        for (col in columns) {
+            val flexBadges = col.o("musicResponsiveListItemFlexColumnRenderer").a("badges").orEmpty()
+            if (flexBadges.any { isExplicitBadge(it) }) return true
+        }
+        return false
+    }
+
+    private fun isExplicitBadge(element: kotlinx.serialization.json.JsonElement): Boolean {
+        val inline = (element as? JsonObject)?.o("musicInlineBadgeRenderer") ?: return false
+        val iconType = inline.o("icon").s("iconType").orEmpty()
+        val label = inline.o("accessibilityData").o("accessibilityData").s("label").orEmpty()
+        return iconType.contains("EXPLICIT", ignoreCase = true) || label.equals("Explicit", ignoreCase = true)
     }
 
     /**
@@ -794,6 +820,9 @@ object InnertubeParser {
                 // A catalogue track is credited "Artist • Album • Year"; the
                 // matching music video is "Artist • 417M views • 2.4M likes".
                 isVideo = byline.any { it.contains("views", ignoreCase = true) },
+                isExplicit = hasExplicitBadge(renderer) ||
+                    title.contains("(Explicit)", ignoreCase = true) ||
+                    title.contains("[Explicit]", ignoreCase = true),
             )
         }
         return out.values.toList()
@@ -1038,12 +1067,15 @@ object InnertubeParser {
         ) {
             return null
         }
+        val isExplicit = hasExplicitBadge(renderer) ||
+            com.music.dhvani.data.ExplicitDetector.isExplicit(false, title, subtitle)
         return ShelfItem(
             title = title,
             subtitle = subtitle,
             thumbnailUrl = thumbnails.best(),
             videoId = videoId,
             browseId = resolvedBrowseId,
+            isExplicit = isExplicit,
         )
     }
 
@@ -1061,6 +1093,12 @@ object InnertubeParser {
         return parts.firstOrNull {
             it.lowercase() !in TYPE_WORDS && !it.matches(TALLY) && !it.matches(DURATION)
         } ?: subtitle
+    }
+
+    /** Extracts "3:45" or similar duration string if present in subtitle, else null. */
+    fun durationFromSubtitle(subtitle: String): String? {
+        val parts = subtitle.split(" • ").map(String::trim).filter { it.isNotBlank() }
+        return parts.firstOrNull { it.matches(DURATION) }
     }
 
     /**

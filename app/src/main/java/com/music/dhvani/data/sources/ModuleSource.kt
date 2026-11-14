@@ -45,7 +45,7 @@ class ModuleSource(
     private val manager = ModuleManager()
     private val httpAddon = HttpAddonSource(config)
     @Volatile
-    private var isHttpAddon: Boolean? = null
+    private var isHttpAddon: Boolean? = if (SourceRegistry.isAddonUrl(config.baseUrl)) true else null
 
     // -- Health ------------------------------------------------------------
 
@@ -54,7 +54,7 @@ class ModuleSource(
             return@withContext SourceHealth.Rejected("A module index or addon URL is required")
         }
 
-        // 1. First probe as an HTTP Addon (BitChord / Eclipse HTTP JSON v1 protocol)
+        // 1. First probe as an HTTP Addon (HTTP JSON v1 protocol)
         val addonHealth = httpAddon.health()
         if (addonHealth.isOk) {
             isHttpAddon = true
@@ -112,6 +112,10 @@ class ModuleSource(
         withContext(Dispatchers.IO) {
             if (query.isBlank()) return@withContext emptyList()
 
+            if (isHttpAddon == true || SourceRegistry.isAddonUrl(config.baseUrl)) {
+                isHttpAddon = true
+                return@withContext httpAddon.search(query, limit, waitForAll)
+            }
             if (isHttpAddon == null) {
                 isHttpAddon = httpAddon.health().isOk
             }
@@ -240,6 +244,11 @@ class ModuleSource(
 
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? =
         withContext(Dispatchers.IO) {
+            val cacheKey = "${config.id}_$trackId"
+            streamCache[cacheKey]?.let {
+                TrackLog.d(TAG, "${config.displayName}: stream cache hit for $trackId")
+                return@withContext it
+            }
             if (isHttpAddon == true || !trackId.contains(MOD_SEPARATOR)) {
                 return@withContext httpAddon.stream(trackId, request)
             }
@@ -291,7 +300,7 @@ class ModuleSource(
             }
 
             val trackMeta = streamResponse.track
-            SourceStream(
+            val result = SourceStream(
                 url = url,
                 format = StreamFormat(
                     codec = codecOf(trackMeta?.mimeType, trackMeta?.audioQuality, url),
@@ -300,6 +309,8 @@ class ModuleSource(
                     bitDepth = trackMeta?.bitDepth?.takeIf { it > 0 },
                 ),
             )
+            streamCache[cacheKey] = result
+            result
         }
 
     /**
@@ -373,6 +384,7 @@ class ModuleSource(
         }
 
     internal companion object {
+        private val streamCache = java.util.concurrent.ConcurrentHashMap<String, SourceStream>()
         const val TAG = "DhvaniMusic"
 
         /**

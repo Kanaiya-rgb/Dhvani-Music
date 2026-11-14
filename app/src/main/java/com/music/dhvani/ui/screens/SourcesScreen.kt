@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +47,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -76,6 +78,7 @@ import com.music.dhvani.data.sources.SourceConfig
 import com.music.dhvani.data.sources.SourceHealth
 import com.music.dhvani.data.sources.SourceKind
 import com.music.dhvani.data.sources.SourceRegistry
+import com.music.dhvani.data.sources.RemoteSourcesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -102,13 +105,34 @@ fun SourcesScreen(
     /** Last known reachability per source, filled in as the probes come back. */
     val health = remember { mutableStateMapOf<String, SourceHealth>() }
     var editing by remember { mutableStateOf<SourceConfig?>(null) }
+    var showTurnstileDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    if (showTurnstileDialog) {
+        com.music.dhvani.ui.components.TurnstileVerificationDialog(
+            onDismiss = { showTurnstileDialog = false },
+            onVerified = {
+                showTurnstileDialog = false
+                scope.launch(Dispatchers.IO) {
+                    configs.filter { it.kind == SourceKind.TIDAL }.forEach { cfg ->
+                        val source = SourceRegistry.instance(cfg.id) ?: return@forEach
+                        health[cfg.id] = runCatching { source.health() }.getOrElse { SourceHealth.Unreachable(it.message ?: "Failed") }
+                    }
+                }
+            },
+        )
+    }
 
     // Every source that has a server to reach is probed, not just the built-in
     // module, so a custom index gets the same reachability line.
-    val probeKey = configs.filter { it.kind.needsServer }.joinToString { "${it.id}@${it.baseUrl}" }
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            com.music.dhvani.data.sources.RemoteSourcesManager.syncRemoteSources(force = true)
+        }
+    }
+    val probeKey = configs.filter { it.kind.needsServer || it.kind == SourceKind.MONOCHROME }.joinToString { "${it.id}@${it.baseUrl}" }
     LaunchedEffect(probeKey) {
-        configs.filter { it.kind.needsServer && it.isComplete }.forEach { config ->
+        configs.filter { (it.kind.needsServer || it.kind == SourceKind.MONOCHROME) && it.isComplete }.forEach { config ->
             val source = SourceRegistry.instance(config.id) ?: return@forEach
             health[config.id] = withContext(Dispatchers.IO) {
                 runCatching { source.health() }
@@ -118,7 +142,8 @@ fun SourcesScreen(
     }
 
     /** Whether the ceiling in force right now would cap a lossless stream anyway. */
-    val cappedByQuality = (if (metered == true) cellularQuality else wifiQuality) != AudioQuality.HIGH
+    val currentCeiling = if (metered == true) cellularQuality else wifiQuality
+    val cappedByQuality = currentCeiling == AudioQuality.LOW || currentCeiling == AudioQuality.MEDIUM
     val anyLosslessSource = configs.any { it.enabled && it.isComplete && it.kind.canServeLossless }
 
     Column(
@@ -174,6 +199,40 @@ fun SourcesScreen(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                     )
+                }
+
+                // Gist Sync pill
+                val isGistSyncing by com.music.dhvani.data.sources.RemoteSourcesManager.isSyncing.collectAsState()
+                Surface(
+                    onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            com.music.dhvani.data.sources.RemoteSourcesManager.syncRemoteSources(force = true)
+                        }
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.White.copy(alpha = 0.06f),
+                    border = BorderStroke(0.6.dp, Color.White.copy(alpha = 0.14f)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Sync,
+                            contentDescription = "Sync Gist",
+                            tint = if (isGistSyncing) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.70f),
+                            modifier = Modifier.size(13.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = if (isGistSyncing) "Syncing..." else "Gist Sync",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                            color = Color.White.copy(alpha = 0.85f),
+                        )
+                    }
                 }
 
                 // Lossless capability pill
@@ -243,10 +302,17 @@ fun SourcesScreen(
                     SourceRegistry.reorder(newOrder)
                 },
                 onEdit = { config ->
-                    editing = config
+                    if (config.kind == SourceKind.TIDAL && !com.music.dhvani.data.sources.zarz.ZarzSessionManager.isSessionValid()) {
+                        showTurnstileDialog = true
+                    } else {
+                        editing = config
+                    }
                 },
                 onToggle = { configId, enabled ->
                     SourceRegistry.setEnabled(configId, enabled)
+                },
+                onVerifyTidal = {
+                    showTurnstileDialog = true
                 },
             )
         }
@@ -513,6 +579,7 @@ private fun ReorderableSourceList(
     onReorder: (List<SourceConfig>) -> Unit,
     onEdit: (SourceConfig) -> Unit,
     onToggle: (String, Boolean) -> Unit,
+    onVerifyTidal: (() -> Unit)? = null,
 ) {
     var liveOrder by remember(configs) { mutableStateOf(configs) }
     var draggedConfig by remember { mutableStateOf<SourceConfig?>(null) }
@@ -549,7 +616,17 @@ private fun ReorderableSourceList(
                         config = config,
                         health = health[config.id],
                         isDragging = dragging,
-                        onClick = if (config.kind.needsServer) ({ onEdit(config) }) else null,
+                        onClick = when {
+                            config.kind == SourceKind.TIDAL -> ({
+                                if (!com.music.dhvani.data.sources.zarz.ZarzSessionManager.isSessionValid()) {
+                                    onVerifyTidal?.invoke()
+                                } else if (!RemoteSourcesManager.isManagedRemote(config)) {
+                                    onEdit(config)
+                                }
+                            })
+                            config.kind.needsServer && !RemoteSourcesManager.isManagedRemote(config) -> ({ onEdit(config) })
+                            else -> null
+                        },
                         onToggle = if (config.kind == SourceKind.YOUTUBE) {
                             null
                         } else {
@@ -631,7 +708,7 @@ private fun SourceRow(
     onDragHandlePointerInput: Modifier = Modifier,
 ) {
     val isEnabled = config.enabled
-    val isBuiltin = !config.kind.needsServer
+    val isBuiltin = config.kind == SourceKind.JIOSAAVN || config.kind == SourceKind.YOUTUBE || config.kind == SourceKind.MONOCHROME
 
     val statusInfo = remember(health, config) {
         when {
@@ -651,30 +728,43 @@ private fun SourceRow(
                 SourceStatusDisplay(text, Color.White.copy(alpha = 0.65f))
             }
             health is SourceHealth.Rejected -> SourceStatusDisplay("Error: ${health.reason}", Color(0xFFF87171), isError = true)
-            health is SourceHealth.Unreachable -> SourceStatusDisplay("Offline: ${health.reason}", Color(0xFFF87171).copy(alpha = 0.85f), isError = true)
-            config.kind.needsServer -> SourceStatusDisplay("Checking status…", Color.White.copy(alpha = 0.45f), showSpinner = true)
+            health is SourceHealth.Unreachable -> {
+                if (config.kind == SourceKind.MONOCHROME) {
+                    SourceStatusDisplay("Server is temporarily down • Please check back in a few days", Color(0xFFFBBF24), isError = true)
+                } else {
+                    SourceStatusDisplay("Offline: ${health.reason}", Color(0xFFF87171).copy(alpha = 0.85f), isError = true)
+                }
+            }
+            (config.kind.needsServer || config.kind == SourceKind.MONOCHROME) -> SourceStatusDisplay("Checking status…", Color.White.copy(alpha = 0.45f), showSpinner = true)
             else -> SourceStatusDisplay(config.kind.labels.take(3).joinToString(" • "), Color.White.copy(alpha = 0.55f))
         }
     }
 
     val iconBgColor = when (config.kind) {
+        SourceKind.TIDAL -> Color(0xFF00E5FF).copy(alpha = 0.16f)
         SourceKind.MONOCHROME -> Color(0xFF10B981).copy(alpha = 0.16f)
+        SourceKind.KUWO -> Color(0xFFE11D48).copy(alpha = 0.16f)
+        SourceKind.NETEASE -> Color(0xFFEF4444).copy(alpha = 0.16f)
         SourceKind.JIOSAAVN -> Color(0xFF0EA5E9).copy(alpha = 0.16f)
         SourceKind.YOUTUBE -> Color(0xFFF59E0B).copy(alpha = 0.16f)
         SourceKind.CUSTOM_MODULE, SourceKind.MODULE -> Color(0xFF8B5CF6).copy(alpha = 0.16f)
     }
     val iconTint = when (config.kind) {
+        SourceKind.TIDAL -> Color(0xFF00E5FF)
         SourceKind.MONOCHROME -> Color(0xFF34D399)
+        SourceKind.KUWO -> Color(0xFFFB7185)
+        SourceKind.NETEASE -> Color(0xFFF87171)
         SourceKind.JIOSAAVN -> Color(0xFF38BDF8)
         SourceKind.YOUTUBE -> Color(0xFFFBBF24)
         SourceKind.CUSTOM_MODULE, SourceKind.MODULE -> Color(0xFFA78BFA)
     }
     val sourceIcon = when (config.kind) {
+        SourceKind.TIDAL, SourceKind.KUWO -> Icons.Rounded.Waves
+        SourceKind.NETEASE, SourceKind.JIOSAAVN -> Icons.Rounded.GraphicEq
         SourceKind.CUSTOM_MODULE, SourceKind.MODULE -> {
             if (SourceRegistry.isAddonUrl(config.baseUrl)) Icons.Rounded.Waves else Icons.Rounded.Extension
         }
         SourceKind.MONOCHROME -> Icons.Rounded.Waves
-        SourceKind.JIOSAAVN -> Icons.Rounded.GraphicEq
         SourceKind.YOUTUBE -> Icons.Rounded.PlayCircle
     }
 
@@ -709,27 +799,7 @@ private fun SourceRow(
             )
         }
 
-        Spacer(Modifier.width(4.dp))
-
-        // Position Badge
-        Box(
-            modifier = Modifier
-                .size(22.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = if (isEnabled) 0.08f else 0.03f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "$position",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isEnabled) 0.85f else 0.35f),
-            )
-        }
-
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
 
         // Source Icon Container
         Box(
@@ -839,8 +909,9 @@ private fun SourceRow(
 
         Spacer(Modifier.width(8.dp))
 
-        // Action: Edit button for modular sources
-        if (config.kind.needsServer) {
+        // Action: Edit button only for user's manual custom sources (hidden for Gist/remote managed sources)
+        val isRemoteManaged = RemoteSourcesManager.isManagedRemote(config)
+        if (config.kind.needsServer && !isRemoteManaged) {
             IconButton(
                 onClick = { onClick?.invoke() },
                 modifier = Modifier

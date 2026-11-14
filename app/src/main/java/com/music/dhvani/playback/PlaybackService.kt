@@ -24,9 +24,11 @@ import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
+import com.music.dhvani.data.settings.EqualizerMode
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import com.music.dhvani.playback.audio.LosslessStallWatchdogAudioProcessor
@@ -165,16 +167,49 @@ class PlaybackService : MediaSessionService() {
     private val spatialAudioProcessorB = SpatialAudioProcessor()
     private val transitionFilterA = TransitionFilterProcessor()
     private val transitionFilterB = TransitionFilterProcessor()
-    private val equalizerProcessorA = com.music.dhvani.playback.eq.CustomEqualizerAudioProcessor()
-    private val equalizerProcessorB = com.music.dhvani.playback.eq.CustomEqualizerAudioProcessor()
+    private val equalizerProcessorA = EqualizerProcessor()
+    private val equalizerProcessorB = EqualizerProcessor()
+    private var loudnessEnhancer: android.media.audiofx.LoudnessEnhancer? = null
+    private var currentLoudnessSessionId: Int = 0
     private val reverbAudioProcessorA = com.music.dhvani.playback.audio.ReverbAudioProcessor()
     private val reverbAudioProcessorB = com.music.dhvani.playback.audio.ReverbAudioProcessor()
+    private fun onLosslessStallDetected(watchdogSource: String) {
+        val active = player ?: return
+        val item = active.currentMediaItem ?: return
+        val mediaId = item.mediaId
+        if (mediaId.startsWith("file://") || mediaId.startsWith("content://") || OriginalVersion.isPinned(mediaId)) return
+
+        // Guard: quiet intros or paused/preparing playback should never trigger a stall fallback
+        if (!active.isPlaying || active.currentPosition < 25_000L) {
+            return
+        }
+
+        val position = active.currentPosition.coerceAtLeast(0L)
+        TrackLog.w("DhvaniMusic", "Lossless silent stall detected by $watchdogSource on $mediaId at ${position}ms; immediately falling back to safe stream", about = mediaId)
+
+        StreamChoice.refuseSubstitutes(mediaId)
+        QualityUpgrade.refuseUpgrades(mediaId)
+        StreamChoice.forget(mediaId)
+        QualityUpgrade.forget(mediaId)
+        NerdStats.clearDeclared(mediaId)
+
+        scope.launch(Dispatchers.Main) {
+            if (player?.currentMediaItem?.mediaId == mediaId) {
+                val song = item.toSong()
+                val targetItem = song.toDirectYouTubeMediaItem()
+                active.setMediaItem(targetItem, position)
+                active.prepare()
+                active.play()
+            }
+        }
+    }
+
     private val losslessWatchdogA = LosslessStallWatchdogAudioProcessor {
-        TrackLog.w("DhvaniMusic", "Lossless stall detected on player A")
-    }.apply { armed = true }
+        onLosslessStallDetected("player A")
+    }.apply { armed = false }
     private val losslessWatchdogB = LosslessStallWatchdogAudioProcessor {
-        TrackLog.w("DhvaniMusic", "Lossless stall detected on player B")
-    }.apply { armed = true }
+        onLosslessStallDetected("player B")
+    }.apply { armed = false }
 
     private var activeFilter: TransitionFilterProcessor = transitionFilterA
     private var spareFilter: TransitionFilterProcessor = transitionFilterB
@@ -324,6 +359,13 @@ class PlaybackService : MediaSessionService() {
                             albumId = args.getString("albumId"),
                             albumName = args.getString("albumName"),
                             sourceQuality = args.getString("sourceQuality"),
+                            isExplicit = args.getBoolean("isExplicit", false) ||
+                                com.music.dhvani.data.ExplicitDetector.isExplicit(
+                                    false,
+                                    args.getString("title").orEmpty(),
+                                    args.getString("artist").orEmpty(),
+                                    args.getString("albumName")
+                                ),
                         )
                         swapAudioTrack(newSong)
                     }
@@ -584,6 +626,10 @@ class PlaybackService : MediaSessionService() {
             // of the queue, which is the same trigger as a normal transition.
             loadAutoplayForCurrentTrack()
         }
+        override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+            val exoPlayer = player ?: return
+            overlayManager?.onSongChanged(exoPlayer.currentMediaItem?.toSong())
+        }
 
         /**
          * AutoPlay appends to the queue after the transition that ran it
@@ -614,6 +660,7 @@ class PlaybackService : MediaSessionService() {
             // so it names the track this format arrived for even if the
             // queue has moved on again since. See [audioFormatFor].
             audioFormatFor = eventTime.mediaId()
+            currentAudioInputFormat = format
             // Ground truth for a real-device listening test: this is the
             // renderer's own Format, straight off the decoder with none of
             // the app's caching/upgrade logic in between, so it's the one
@@ -633,6 +680,16 @@ class PlaybackService : MediaSessionService() {
             val pcmEncoding = format.pcmEncoding.takeIf { it != Format.NO_VALUE } ?: android.media.AudioFormat.ENCODING_PCM_16BIT
             AudioOutputStatus.publishAudioTrack(pcmEncoding, sampleRate)
             publishNerdStats()
+        }
+
+        override fun onAudioSessionIdChanged(
+            eventTime: AnalyticsListener.EventTime,
+            audioSessionId: Int,
+        ) {
+            if (audioSessionId > 0) {
+                AppSettings.audioSessionId.value = audioSessionId
+                applyLoudnessBooster(sessionId = audioSessionId)
+            }
         }
 
         /**
@@ -843,6 +900,10 @@ class PlaybackService : MediaSessionService() {
                 val stream = runBlocking(about) {
                     withTimeout(RESOLVE_TIMEOUT_MS) { SourceResolver.resolve(dataSpec.uri) }
                 } ?: throw java.io.IOException("No enabled source could serve ${dataSpec.uri.getQueryParameter("n")}")
+                val trackKey = dataSpec.uri.getQueryParameter("t") ?: ""
+                if (trackKey.isNotBlank()) {
+                    StreamChoice.remember(trackKey, stream, substituted = true)
+                }
                 NerdStats.onSourceStream(dataSpec.uri.getQueryParameter("t"), stream.format)
                 return@Factory dataSpec.buildUpon()
                     .setUri(Uri.parse(stream.url))
@@ -851,6 +912,31 @@ class PlaybackService : MediaSessionService() {
             }
             val videoId = dataSpec.uri.getQueryParameter("v")
                 ?: return@Factory dataSpec
+
+            // An upgraded item carries a marker and its stream has already
+            // been found — see [QualityUpgrade]. Answered before anything
+            // else, and without re-resolving: this exact URL is what the
+            // player was told it was getting when it agreed to the swap.
+            QualityUpgrade.forcedStream(dataSpec.uri)?.let { upgraded ->
+                val proving = QualityUpgrade.isAuditioning(videoId)
+                if (!proving) NerdStats.onSourceStream(videoId, upgraded.format)
+                TrackLog.d(
+                    "DhvaniMusic",
+                    "${if (proving) "auditioning" else "serving"} upgraded $videoId " +
+                        "from ${Uri.parse(upgraded.url).host} " +
+                        "at ${dataSpec.position} (${upgraded.format.summary})",
+                    about = videoId,
+                )
+                val targetUri = if (upgraded.format.isLossless == true && !upgraded.url.substringAfterLast('/').contains('.')) {
+                    Uri.parse("${upgraded.url}#.flac")
+                } else {
+                    Uri.parse(upgraded.url)
+                }
+                return@Factory dataSpec.buildUpon()
+                    .setUri(targetUri)
+                    .setHttpRequestHeaders(upgraded.headers)
+                    .build()
+            }
 
             val isExplicitOriginal = dataSpec.uri.getQueryParameter(DIRECT_YOUTUBE_PARAMETER) == "1" ||
                 dataSpec.uri.getQueryParameter("q") == "original" ||
@@ -887,6 +973,8 @@ class PlaybackService : MediaSessionService() {
             if (isExplicitHifi || isExplicitLossless) {
                 QualityUpgrade.forget(videoId)
                 StreamChoice.forget(videoId)
+                StreamChoice.allowSubstitutes(videoId)
+                OriginalVersion.unpin(videoId)
                 val won = runBlocking(about) {
                     resolveWithModulePriority(
                         videoId = videoId,
@@ -896,7 +984,9 @@ class PlaybackService : MediaSessionService() {
                         targetSourceId = targetSourceId,
                     )
                 }
-                NerdStats.onLosslessRaceEnd(videoId)
+                if (!QualityUpgrade.isPending(videoId)) {
+                    NerdStats.onLosslessRaceEnd(videoId)
+                }
                 when (won) {
                     is Resolved.Module -> {
                         NerdStats.onSourceStream(videoId, won.stream.format)
@@ -913,49 +1003,18 @@ class PlaybackService : MediaSessionService() {
                     }
                     is Resolved.YouTube -> {
                         val headers = PlayerClient.forStreamUrl(won.url).mediaHeaders()
-                        val ytFormat = StreamFormat(source = "Standard Opus", codec = "opus", kbps = 160)
-                        NerdStats.onSourceStream(videoId, ytFormat)
-                        StreamChoice.remember(videoId, SourceStream(won.url, headers = headers, format = ytFormat), substituted = false)
+                        val choice = StreamChoice.of(videoId)
+                        if (choice == null || choice.format.isLossless != true) {
+                            val ytFormat = StreamFormat(source = "Standard Opus", codec = "opus", kbps = 160)
+                            NerdStats.onSourceStream(videoId, ytFormat)
+                            StreamChoice.remember(videoId, SourceStream(won.url, headers = headers, format = ytFormat), substituted = false)
+                        }
                         return@Factory dataSpec.buildUpon()
                             .setUri(Uri.parse(won.url))
                             .setHttpRequestHeaders(headers)
                             .build()
                     }
                 }
-            }
-            // An upgraded item carries a marker and its stream has already
-            // been found — see [QualityUpgrade]. Answered before anything
-            // else, and without re-resolving: this exact URL is what the
-            // player was told it was getting when it agreed to the swap.
-            QualityUpgrade.forcedStream(dataSpec.uri)?.let { upgraded ->
-                // An audition opens this same stream before a note of the one
-                // playing has been touched — see [auditionUpgrade] — so what it
-                // is about to be handed describes a swap that has not happened
-                // and may never. Recording it here would light "Lossless" over
-                // the lossy stream still coming out of the speaker. The real
-                // open, moments later, records it.
-                val proving = QualityUpgrade.isAuditioning(videoId)
-                if (!proving) NerdStats.onSourceStream(videoId, upgraded.format)
-                // Logged because the alternative — a swap that silently never
-                // reached its stream — is indistinguishable in the logs from
-                // one that reached it and got nothing back, and the two have
-                // opposite fixes.
-                TrackLog.d(
-                    "DhvaniMusic",
-                    "${if (proving) "auditioning" else "serving"} upgraded $videoId " +
-                        "from ${Uri.parse(upgraded.url).host} " +
-                        "at ${dataSpec.position} (${upgraded.format.summary})",
-                    about = videoId,
-                )
-                val targetUri = if (upgraded.format.isLossless == true && !upgraded.url.substringAfterLast('/').contains('.')) {
-                    Uri.parse("${upgraded.url}#.flac")
-                } else {
-                    Uri.parse(upgraded.url)
-                }
-                return@Factory dataSpec.buildUpon()
-                    .setUri(targetUri)
-                    .setHttpRequestHeaders(upgraded.headers)
-                    .build()
             }
             // A downloaded copy is *not* substituted here, deliberately. This
             // point is inside the HTTP-only half of the chain — below
@@ -974,26 +1033,77 @@ class PlaybackService : MediaSessionService() {
             // [StreamChoice].
             StreamChoice.of(videoId)?.let { serving ->
                 val ceiling = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality
+                val preferred = com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value
+                val wantsLossless = isExplicitLossless ||
+                    ceiling == com.music.dhvani.data.settings.AudioQuality.LOSSLESS ||
+                    preferred == "LOSSLESS" ||
+                    com.music.dhvani.data.sources.SourceRegistry.configs.value.any { it.id == preferred && it.kind.canServeLossless }
                 val isOverBudget = when (ceiling) {
                     com.music.dhvani.data.settings.AudioQuality.LOSSLESS -> {
-                        val wantsLossless = isExplicitLossless || com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value == "LOSSLESS"
                         wantsLossless && serving.format.isLossless != true
                     }
                     com.music.dhvani.data.settings.AudioQuality.HIGH -> serving.format.isLossless == true
                     com.music.dhvani.data.settings.AudioQuality.MEDIUM, com.music.dhvani.data.settings.AudioQuality.LOW ->
                         serving.format.isLossless == true || (serving.format.kbps != null && serving.format.kbps > ceiling.maxKbps)
                 }
-                if (isOverBudget) {
+                if (isOverBudget && dataSpec.position == 0L) {
                     StreamChoice.forget(videoId)
                 } else {
                     if (serving.format != StreamFormat()) {
                         NerdStats.onSourceStream(videoId, serving.format)
                     }
+                    val isDash = serving.url.contains(".mpd") || serving.format.codec.equals("dash", ignoreCase = true)
+                    val isHls = serving.url.contains(".m3u8") || serving.format.codec.equals("hls", ignoreCase = true)
+                    if (isDash || isHls) {
+                        scope.launch(Dispatchers.Main) {
+                            val curr = player ?: return@launch
+                            val index = (0 until curr.mediaItemCount).firstOrNull { curr.getMediaItemAt(it).mediaId == videoId }
+                                ?: if (curr.currentMediaItem?.mediaId == videoId) curr.currentMediaItemIndex else -1
+                            if (index >= 0) {
+                                val currentItem = curr.getMediaItemAt(index)
+                                val expectedMime = if (isHls) MimeTypes.APPLICATION_M3U8 else MimeTypes.APPLICATION_MPD
+                                if (currentItem.localConfiguration?.mimeType != expectedMime) {
+                                    val manifestItem = currentItem.buildUpon()
+                                        .setUri(Uri.parse(serving.url))
+                                        .setMimeType(expectedMime)
+                                        .build()
+                                    curr.replaceMediaItem(index, manifestItem)
+                                }
+                            }
+                        }
+                    }
+                    val targetUri = if (isDash || isHls) {
+                        Uri.parse(serving.url)
+                    } else if (serving.format.isLossless == true && !serving.url.substringAfterLast('/').contains('.')) {
+                        Uri.parse("${serving.url}#.flac")
+                    } else {
+                        Uri.parse(serving.url)
+                    }
                     return@Factory dataSpec.buildUpon()
-                        .setUri(Uri.parse(serving.url))
+                        .setUri(targetUri)
                         .setHttpRequestHeaders(serving.headers)
                         .build()
                 }
+            }
+            // Automix owns a base-cache Opus rendition. It must bypass the
+            // playback race winner (JioSaavn, a module, or a lossless upgrade)
+            // and resolve directly to YouTube for this analysis-only request.
+            if (com.music.dhvani.playback.smart.AutomixAnalysisSource.requestsYouTubeOpus(
+                    dataSpec.uri.getQueryParameter(com.music.dhvani.playback.smart.AutomixAnalysisSource.OPUS_QUERY_PARAMETER),
+                )
+            ) {
+                val streamUrl = try {
+                    runBlocking(about) {
+                        withTimeout(RESOLVE_TIMEOUT_MS) { StreamResolver.resolve(videoId) }
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    throw java.io.IOException("Automix Opus resolution timed out for $videoId", e)
+                }
+                val headers = PlayerClient.forStreamUrl(streamUrl).mediaHeaders()
+                return@Factory dataSpec.buildUpon()
+                    .setUri(Uri.parse(streamUrl))
+                    .setHttpRequestHeaders(headers)
+                    .build()
             }
             // A track queued from YouTube may be held by a source the user
             // ranked above it — see [SourceResolver.substituteForYouTube] and
@@ -1055,10 +1165,13 @@ class PlaybackService : MediaSessionService() {
                 // again while the fallback plays.
                 is Resolved.YouTube -> {
                     val headers = PlayerClient.forStreamUrl(won.url).mediaHeaders()
-                    val ytBitrate = NerdStats.pickedBitrateKbps(videoId) ?: 160
-                    val ytFormat = StreamFormat(source = "Standard Opus", codec = "opus", kbps = ytBitrate)
-                    NerdStats.onSourceStream(videoId, ytFormat)
-                    StreamChoice.remember(videoId, SourceStream(won.url, headers = headers, format = ytFormat), substituted = false)
+                    val choice = StreamChoice.of(videoId)
+                    if (choice == null || choice.format.isLossless != true) {
+                        val ytBitrate = NerdStats.pickedBitrateKbps(videoId) ?: 160
+                        val ytFormat = StreamFormat(source = "Standard Opus", codec = "opus", kbps = ytBitrate)
+                        NerdStats.onSourceStream(videoId, ytFormat)
+                        StreamChoice.remember(videoId, SourceStream(won.url, headers = headers, format = ytFormat), substituted = false)
+                    }
                     dataSpec.buildUpon()
                         .setUri(Uri.parse(won.url))
                         .setHttpRequestHeaders(headers)
@@ -1077,17 +1190,23 @@ class PlaybackService : MediaSessionService() {
         player = exoPlayer
         spare = sparePlayer
 
-        com.music.dhvani.playback.eq.EqualizerManager.init(this)
-        com.music.dhvani.playback.eq.EqualizerManager.registerProcessor(equalizerProcessorA)
-        com.music.dhvani.playback.eq.EqualizerManager.registerProcessor(equalizerProcessorB)
+
 
         // Both sinks feed the same session id, so the system equalizer and any
         // other effect attached to the app applies to whichever player happens
         // to be audible. Without it a crossfade would audibly change EQ halfway
         // through, and again at every handoff.
-        sparePlayer.audioSessionId = exoPlayer.audioSessionId
-
-        AppSettings.audioSessionId.value = exoPlayer.audioSessionId
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        val generatedSessionId = audioManager?.generateAudioSessionId()?.takeIf { it > 0 }
+            ?: exoPlayer.audioSessionId
+        if (generatedSessionId > 0) {
+            exoPlayer.audioSessionId = generatedSessionId
+            sparePlayer.audioSessionId = generatedSessionId
+            AppSettings.audioSessionId.value = generatedSessionId
+        } else {
+            sparePlayer.audioSessionId = exoPlayer.audioSessionId
+            AppSettings.audioSessionId.value = exoPlayer.audioSessionId
+        }
         applySettings(exoPlayer)
         applySettings(sparePlayer)
         observeSettings()
@@ -1258,20 +1377,26 @@ class PlaybackService : MediaSessionService() {
             } else {
                 queueSongs
             }
-            loadAutoplayTracks(existing, current, needed)
-                .onSuccess { resolved ->
-                    val activePlayer = player ?: return@onSuccess
-                    if (!AppSettings.autoplay.value ||
-                        activePlayer.currentMediaItem?.mediaId != current.videoId
-                    ) {
-                        return@onSuccess
-                    }
-                    activePlayer.addMediaItems(resolved.map { it.toMediaItem() })
-                    if (AppSettings.dontRepeatSuggestions.value) sessionSongHistory += resolved
+            var result = loadAutoplayTracks(existing, current, needed).getOrNull()
+            // Fallback: If deduplication against history filtered out all candidates, relax session history filter
+            // so the queue never runs dry at the end of a 20-track playlist or station.
+            if (result.isNullOrEmpty()) {
+                result = loadAutoplayTracks(queueSongs, current, needed).getOrNull()
+            }
+            val resolved = result
+            if (!resolved.isNullOrEmpty()) {
+                val activePlayer = player ?: return@launch
+                if (!AppSettings.autoplay.value ||
+                    activePlayer.currentMediaItem?.mediaId != current.videoId
+                ) {
+                    return@launch
                 }
-                .onFailure {
-                    TrackLog.w("DhvaniMusic", "notification autoplay failed: ${it.message}", about = current.videoId)
-                }
+                activePlayer.addMediaItems(resolved.map { it.toMediaItem() })
+                if (AppSettings.dontRepeatSuggestions.value) sessionSongHistory += resolved
+            } else {
+                autoplaySeed = null
+                TrackLog.w("DhvaniMusic", "notification autoplay returned empty candidates for ${current.title}", about = current.videoId)
+            }
         }
     }
 
@@ -1379,7 +1504,7 @@ class PlaybackService : MediaSessionService() {
     private fun buildPlayer(
         spatial: SpatialAudioProcessor,
         filter: TransitionFilterProcessor,
-        equalizer: com.music.dhvani.playback.eq.CustomEqualizerAudioProcessor,
+        equalizer: EqualizerProcessor,
         reverb: com.music.dhvani.playback.audio.ReverbAudioProcessor,
         watchdog: LosslessStallWatchdogAudioProcessor,
         ownsSession: Boolean,
@@ -1393,6 +1518,7 @@ class PlaybackService : MediaSessionService() {
         // press before that steps to the previous one.
         .setMaxSeekToPreviousPositionMs(BACK_RESTARTS_AFTER_MS)
         .build()
+        .apply { volume = HEADROOM_VOLUME }
 
     /**
      * Moves the session onto the player the crossfade has just started the
@@ -1410,6 +1536,7 @@ class PlaybackService : MediaSessionService() {
     private fun adoptPlayer(outgoing: ExoPlayer, incoming: ExoPlayer, isQualitySwap: Boolean) {
         setSessionOwner(outgoing, owns = false)
         setSessionOwner(incoming, owns = true)
+        incoming.volume = HEADROOM_VOLUME
 
         outgoing.removeListener(playbackListener)
         outgoing.removeAnalyticsListener(formatListener)
@@ -1433,13 +1560,16 @@ class PlaybackService : MediaSessionService() {
                 alreadyAudible = true,
             )
             updateNotificationButtons()
+            overlayManager?.onSongChanged(incoming.currentMediaItem?.toSong())
         } else {
-            currentDecoderName = null
+            currentAudioInputFormat = null
+        currentDecoderName = null
             AudioOutputStatus.publishDecoder(null)
             publishNerdStats()
             reportProgress()
             publishWidgetState()
             updateNotificationButtons()
+            overlayManager?.onSongChanged(incoming.currentMediaItem?.toSong())
         }
     }
 
@@ -1466,8 +1596,18 @@ class PlaybackService : MediaSessionService() {
             val isLosslessMode = mode == "LOSSLESS" ||
                 SourceRegistry.configs.value.any { it.id == mode && it.kind.canServeLossless } ||
                 mode.contains("lossless", ignoreCase = true) ||
-                mode.contains("monochrome", ignoreCase = true) ||
+                mode.contains("qobuz", ignoreCase = true) ||
                 mode.contains("addon", ignoreCase = true)
+
+            val resolvedStream: SourceStream? = if (mode == "ORIGINAL_YT" || mode == "YOUTUBE") {
+                null
+            } else {
+                withContext(Dispatchers.IO) {
+                    val target = SourceResolver.targetIn(song)
+                    val req = if (isLosslessMode) StreamRequest.Lossless else StreamRequest.Best
+                    SourceResolver.substituteForYouTube(target, req, targetSourceId = mode)
+                }
+            }
 
             val targetItem = when {
                 mode == "ORIGINAL_YT" || mode == "YOUTUBE" -> {
@@ -1476,10 +1616,13 @@ class PlaybackService : MediaSessionService() {
                     StreamChoice.refuseSubstitutes(videoId)
                     StreamChoice.forget(videoId)
                     QualityUpgrade.forget(videoId)
+                    NerdStats.onSourceStream(videoId, StreamFormat(source = "Standard Opus", codec = "opus", kbps = 160))
                     song.toDirectYouTubeMediaItem()
                 }
                 isLosslessMode -> {
                     OriginalVersion.unpin(videoId)
+                    StreamChoice.allowSubstitutes(videoId)
+                    QualityUpgrade.allowUpgrades(videoId)
                     AppSettings.setPreferredPlaybackSource(mode)
                     val targetConfig = SourceRegistry.configs.value.firstOrNull { it.id == mode }
                         ?: SourceRegistry.configs.value.firstOrNull { it.kind.canServeLossless }
@@ -1489,10 +1632,32 @@ class PlaybackService : MediaSessionService() {
                     StreamChoice.allowSubstitutes(videoId)
                     StreamChoice.forget(videoId)
                     QualityUpgrade.forget(videoId)
-                    song.toLosslessMediaItem(targetConfig?.id ?: mode)
+                    val losslessLabel = targetConfig?.displayName?.takeIf { it.isNotBlank() } ?: "Lossless FLAC"
+                    val finalFormat = resolvedStream?.format ?: StreamFormat(source = losslessLabel, codec = "flac", bitDepth = 16, sampleRateHz = 44100)
+                    NerdStats.onSourceStream(videoId, finalFormat)
+                    if (resolvedStream != null) {
+                        StreamChoice.remember(videoId, resolvedStream, substituted = true)
+                        val isDash = resolvedStream.url.contains(".mpd") || resolvedStream.format.codec.equals("dash", ignoreCase = true)
+                        val isHls = resolvedStream.url.contains(".m3u8") || resolvedStream.format.codec.equals("hls", ignoreCase = true)
+                        val builder = currItem.buildUpon()
+                            .setMediaId(videoId)
+                            .setUri(Uri.parse(resolvedStream.url))
+                        if (isDash) {
+                            builder.setMimeType(MimeTypes.APPLICATION_MPD)
+                        } else if (isHls) {
+                            builder.setMimeType(MimeTypes.APPLICATION_M3U8)
+                        } else if (resolvedStream.format.isLossless == true || resolvedStream.format.codec.equals("flac", ignoreCase = true)) {
+                            builder.setMimeType(MimeTypes.AUDIO_FLAC)
+                        }
+                        builder.build()
+                    } else {
+                        song.toLosslessMediaItem(targetConfig?.id ?: mode)
+                    }
                 }
                 else -> { // HIGH_QUALITY / JIOSAAVN
                     OriginalVersion.unpin(videoId)
+                    StreamChoice.allowSubstitutes(videoId)
+                    QualityUpgrade.allowUpgrades(videoId)
                     AppSettings.setPreferredPlaybackSource("JIOSAAVN")
                     val jio = SourceRegistry.configs.value.firstOrNull { it.kind == SourceKind.JIOSAAVN }
                     if (jio != null && !jio.enabled) {
@@ -1501,18 +1666,48 @@ class PlaybackService : MediaSessionService() {
                     StreamChoice.allowSubstitutes(videoId)
                     StreamChoice.forget(videoId)
                     QualityUpgrade.forget(videoId)
-                    song.toHighQualityMediaItem()
+                    val finalFormat = resolvedStream?.format ?: StreamFormat(source = "High Quality AAC", codec = "aac", kbps = 320)
+                    NerdStats.onSourceStream(videoId, finalFormat)
+                    if (resolvedStream != null) {
+                        StreamChoice.remember(videoId, resolvedStream, substituted = true)
+                        val isDash = resolvedStream.url.contains(".mpd") || resolvedStream.format.codec.equals("dash", ignoreCase = true)
+                        val isHls = resolvedStream.url.contains(".m3u8") || resolvedStream.format.codec.equals("hls", ignoreCase = true)
+                        val builder = currItem.buildUpon()
+                            .setMediaId(videoId)
+                            .setUri(Uri.parse(resolvedStream.url))
+                        if (isDash) {
+                            builder.setMimeType(MimeTypes.APPLICATION_MPD)
+                        } else if (isHls) {
+                            builder.setMimeType(MimeTypes.APPLICATION_M3U8)
+                        } else if (resolvedStream.format.isLossless == true || resolvedStream.format.codec.equals("flac", ignoreCase = true)) {
+                            builder.setMimeType(MimeTypes.AUDIO_FLAC)
+                        }
+                        builder.build()
+                    } else {
+                        song.toHighQualityMediaItem("JIOSAAVN")
+                    }
                 }
             }
 
             TrackLog.d("DhvaniMusic", "swapCurrentQuality: mode=$mode targetUri=${targetItem.localConfiguration?.uri}")
 
             val queueItems = (0 until active.mediaItemCount).map { i ->
-                if (i == currIdx) targetItem else active.getMediaItemAt(i)
+                if (i == currIdx) {
+                    targetItem
+                } else {
+                    val oldItem = active.getMediaItemAt(i)
+                    val s = oldItem.toSong()
+                    when {
+                        mode == "ORIGINAL_YT" || mode == "YOUTUBE" -> s.toDirectYouTubeMediaItem()
+                        isLosslessMode -> s.toLosslessMediaItem(mode)
+                        else -> s.toHighQualityMediaItem("JIOSAAVN")
+                    }
+                }
             }
 
             standby.stop()
             standby.clearMediaItems()
+            losslessWatchdogB.armed = false
             standby.skipSilenceEnabled = active.skipSilenceEnabled
             standby.repeatMode = active.repeatMode
             standby.shuffleModeEnabled = active.shuffleModeEnabled
@@ -1524,18 +1719,33 @@ class PlaybackService : MediaSessionService() {
             standby.prepare()
 
             val startTime = SystemClock.elapsedRealtime()
+            val isDashStream = resolvedStream?.let { it.url.contains(".mpd") || it.format.codec.equals("dash", ignoreCase = true) } == true
+            val isHlsStream = resolvedStream?.let { it.url.contains(".m3u8") || it.format.codec.equals("hls", ignoreCase = true) } == true
+            val isManifestStream = isDashStream || isHlsStream
             while (isActive && standby.playbackState != Player.STATE_READY && standby.playerError == null) {
+                if (isManifestStream && (standby.bufferedPosition >= standby.currentPosition + 1_500L || standby.playbackState == Player.STATE_READY)) {
+                    break
+                }
                 if (active.currentMediaItemIndex != currIdx || active.currentMediaItem?.mediaId != videoId) {
+                    TrackLog.d("DhvaniMusic", "swapCurrentQuality cancelled: active track moved on")
                     standby.stop()
                     standby.clearMediaItems()
-                    standby.volume = 1f
+                    standby.volume = HEADROOM_VOLUME
                     return@launch
                 }
                 if (SystemClock.elapsedRealtime() - startTime > 12000L) {
                     TrackLog.w("DhvaniMusic", "swapCurrentQuality timed out waiting for standby player")
                     standby.stop()
                     standby.clearMediaItems()
-                    standby.volume = 1f
+                    standby.volume = HEADROOM_VOLUME
+                    withContext(Dispatchers.Main) {
+                        val msg = if (isLosslessMode) {
+                            "Lossless stream unavailable, remaining on active audio"
+                        } else {
+                            "Stream unavailable, remaining on active audio"
+                        }
+                        android.widget.Toast.makeText(applicationContext, msg, android.widget.Toast.LENGTH_SHORT).show()
+                    }
                     val activeMime = active.audioFormat?.sampleMimeType
                     if (activeMime?.contains("opus", ignoreCase = true) == true) {
                         val ytBitrate = NerdStats.pickedBitrateKbps(videoId) ?: 160
@@ -1551,7 +1761,15 @@ class PlaybackService : MediaSessionService() {
                 TrackLog.w("DhvaniMusic", "swapCurrentQuality aborted: standby error=${standby.playerError?.message}")
                 standby.stop()
                 standby.clearMediaItems()
-                standby.volume = 1f
+                standby.volume = HEADROOM_VOLUME
+                withContext(Dispatchers.Main) {
+                    val msg = if (isLosslessMode) {
+                        "Selected FLAC stream currently unavailable"
+                    } else {
+                        "Selected stream currently unavailable"
+                    }
+                    android.widget.Toast.makeText(applicationContext, msg, android.widget.Toast.LENGTH_SHORT).show()
+                }
                 val activeMime = active.audioFormat?.sampleMimeType
                 if (activeMime?.contains("opus", ignoreCase = true) == true) {
                     val ytBitrate = NerdStats.pickedBitrateKbps(videoId) ?: 160
@@ -1576,20 +1794,20 @@ class PlaybackService : MediaSessionService() {
                 for (step in 1..fadeSteps) {
                     if (!isActive) break
                     val progress = step.toFloat() / fadeSteps.toFloat()
-                    active.volume = (1f - progress).coerceIn(0f, 1f)
-                    standby.volume = progress.coerceIn(0f, 1f)
+                    active.volume = ((1f - progress) * HEADROOM_VOLUME).coerceIn(0f, HEADROOM_VOLUME)
+                    standby.volume = (progress * HEADROOM_VOLUME).coerceIn(0f, HEADROOM_VOLUME)
                     delay(stepDelay)
                 }
             }
 
-            standby.volume = 1f
+            standby.volume = HEADROOM_VOLUME
             active.volume = 0f
 
             adoptPlayer(outgoing = active, incoming = standby, isQualitySwap = true)
 
             active.stop()
             active.clearMediaItems()
-            active.volume = 1f
+            active.volume = HEADROOM_VOLUME
 
             publishNerdStats()
         }
@@ -1628,6 +1846,7 @@ class PlaybackService : MediaSessionService() {
 
             standby.stop()
             standby.clearMediaItems()
+            losslessWatchdogB.armed = false
             standby.skipSilenceEnabled = active.skipSilenceEnabled
             standby.repeatMode = active.repeatMode
             standby.shuffleModeEnabled = active.shuffleModeEnabled
@@ -1642,13 +1861,13 @@ class PlaybackService : MediaSessionService() {
                 if (active.currentMediaItemIndex != currIdx) {
                     standby.stop()
                     standby.clearMediaItems()
-                    standby.volume = 1f
+                    standby.volume = HEADROOM_VOLUME
                     return@launch
                 }
                 if (SystemClock.elapsedRealtime() - startTime > 12000L) {
                     standby.stop()
                     standby.clearMediaItems()
-                    standby.volume = 1f
+                    standby.volume = HEADROOM_VOLUME
                     return@launch
                 }
                 delay(25)
@@ -1657,7 +1876,7 @@ class PlaybackService : MediaSessionService() {
             if (!isActive || standby.playerError != null) {
                 standby.stop()
                 standby.clearMediaItems()
-                standby.volume = 1f
+                standby.volume = HEADROOM_VOLUME
                 return@launch
             }
 
@@ -1674,20 +1893,20 @@ class PlaybackService : MediaSessionService() {
                 for (step in 1..fadeSteps) {
                     if (!isActive) break
                     val progress = step.toFloat() / fadeSteps.toFloat()
-                    active.volume = (1f - progress).coerceIn(0f, 1f)
-                    standby.volume = progress.coerceIn(0f, 1f)
+                    active.volume = ((1f - progress) * HEADROOM_VOLUME).coerceIn(0f, HEADROOM_VOLUME)
+                    standby.volume = (progress * HEADROOM_VOLUME).coerceIn(0f, HEADROOM_VOLUME)
                     delay(stepDelay)
                 }
             }
 
-            standby.volume = 1f
+            standby.volume = HEADROOM_VOLUME
             active.volume = 0f
 
             adoptPlayer(outgoing = active, incoming = standby, isQualitySwap = true)
 
             active.stop()
             active.clearMediaItems()
-            active.volume = 1f
+            active.volume = HEADROOM_VOLUME
 
             publishNerdStats()
         }
@@ -1705,6 +1924,11 @@ class PlaybackService : MediaSessionService() {
     private fun setSessionOwner(target: ExoPlayer, owns: Boolean) {
         target.setAudioAttributes(AUDIO_ATTRIBUTES, /* handleAudioFocus = */ owns)
         target.setHandleAudioBecomingNoisy(owns)
+        if (target == player) {
+            losslessWatchdogA.armed = owns
+        } else if (target == spare) {
+            losslessWatchdogB.armed = owns
+        }
     }
 
     /**
@@ -1744,6 +1968,7 @@ class PlaybackService : MediaSessionService() {
         player?.currentMediaItem?.mediaId?.let(PlaybackTracker::onPlaying)
         if (currentSong != null) {
             com.music.dhvani.data.history.PlaybackHistory.record(currentSong)
+            AudioCache.registerSong(currentSong)
             com.music.dhvani.data.telemetry.TelemetryManager.reportBackgroundHeartbeat(currentSong, isPlaying = true)
         }
     }
@@ -1889,6 +2114,7 @@ class PlaybackService : MediaSessionService() {
             NerdStats.clearDeclared(previousMediaId)
             NerdStats.clearPicked(previousMediaId)
         }
+        currentAudioInputFormat = null
         currentDecoderName = null
         AudioOutputStatus.publishDecoder(null)
         upgradeJob?.cancel()
@@ -1898,6 +2124,7 @@ class PlaybackService : MediaSessionService() {
         // onMediaItemTransition, and [adoptPlayer] calls this handler by hand.
         publishWidgetState()
         updateStatusBarNotification()
+        overlayManager?.onSongChanged(newSong)
         // Cleared rather than re-published. The renderer is still
         // configured for the track that just ended at this point, so
         // reading the format here reports the *previous* song — which
@@ -2180,6 +2407,9 @@ class PlaybackService : MediaSessionService() {
                 retryingMediaId = mediaId
                 player.seekTo(player.currentMediaItemIndex, position)
                 player.prepare()
+            if (player.playWhenReady) {
+                player.play()
+            }
             }
         }
     }
@@ -2312,6 +2542,9 @@ class PlaybackService : MediaSessionService() {
                         player.replaceMediaItem(currentIdx, newItem)
                         player.seekTo(currentIdx, position)
                         player.prepare()
+            if (player.playWhenReady) {
+                player.play()
+            }
                         player.play()
                         TrackLog.d(
                             "DhvaniMusic",
@@ -2408,6 +2641,7 @@ class PlaybackService : MediaSessionService() {
      * of the session.
      */
     private var audioFormatFor: String? = null
+    private var currentAudioInputFormat: Format? = null
     private var currentDecoderName: String? = null
 
     /**
@@ -2470,7 +2704,9 @@ class PlaybackService : MediaSessionService() {
                 }
                 return@launch
             }
-            val playingSeconds = withTimeoutOrNull(DURATION_SETTLE_MS) {
+            val knownTargetDuration = uri?.let { SourceResolver.targetIn(it).durationSec }
+                ?: QualityUpgrade.targetFor(mediaId)?.durationSec
+            val playingSeconds = withTimeoutOrNull(if (knownTargetDuration != null && knownTargetDuration > 0) 400L else 1_000L) {
                 while (true) {
                     val ms = withContext(Dispatchers.Main) {
                         this@PlaybackService.player
@@ -2479,10 +2715,10 @@ class PlaybackService : MediaSessionService() {
                             ?: 0L
                     }
                     if (ms > 0) return@withTimeoutOrNull (ms / 1000).toInt()
-                    delay(UPGRADE_PROVE_STEP_MS)
+                    delay(50L)
                 }
                 @Suppress("UNREACHABLE_CODE") null
-            }
+            } ?: knownTargetDuration
             if (!QualityUpgrade.isPending(mediaId) &&
                 (uri == null || !adoptCachedTrack(mediaId, uri, playingSeconds))
             ) {
@@ -2621,15 +2857,113 @@ class PlaybackService : MediaSessionService() {
             return
         }
 
+        val isDash = stream.url.contains(".mpd") || stream.format.codec.equals("dash", ignoreCase = true)
+        val isHls = stream.url.contains(".m3u8") || stream.format.codec.equals("hls", ignoreCase = true)
+        val isManifest = isDash || isHls
+
+        // Ultra-smooth standby dual-player crossfade (zero break in audio)
+        val standbySwapped = withContext(Dispatchers.Main) {
+            val standby = spare
+            val active = player
+            if (standby != null && active != null && !isManifest) {
+                val currIdx = active.currentMediaItemIndex
+                if (currIdx in 0 until active.mediaItemCount && active.currentMediaItem?.mediaId == mediaId) {
+                    val wasPlaying = active.playWhenReady
+                    val currentPos = active.currentPosition
+
+                    val builder = at.item.buildUpon()
+                        .setMediaId(mediaId)
+                        .setUri(Uri.parse(stream.url))
+                    if (isDash) {
+                        builder.setMimeType(MimeTypes.APPLICATION_MPD)
+                    } else if (isHls) {
+                        builder.setMimeType(MimeTypes.APPLICATION_M3U8)
+                    } else if (stream.format.isLossless == true || stream.format.codec.equals("flac", ignoreCase = true)) {
+                        builder.setMimeType(MimeTypes.AUDIO_FLAC)
+                    }
+                    val targetItem = builder.build()
+                    val queueItems = (0 until active.mediaItemCount).map { i ->
+                        if (i == currIdx) targetItem else active.getMediaItemAt(i)
+                    }
+
+                    standby.stop()
+                    standby.clearMediaItems()
+                    losslessWatchdogB.armed = false
+                    standby.skipSilenceEnabled = active.skipSilenceEnabled
+                    standby.repeatMode = active.repeatMode
+                    standby.shuffleModeEnabled = active.shuffleModeEnabled
+                    standby.playbackParameters = active.playbackParameters
+                    standby.volume = 0f
+                    standby.setMediaItems(queueItems, currIdx, currentPos)
+                    standby.playWhenReady = wasPlaying
+                    standby.prepare()
+                    true
+                } else false
+            } else false
+        }
+
+        if (standbySwapped) {
+            val standby = spare
+            val active = player
+            if (standby != null && active != null) {
+                val startReady = SystemClock.elapsedRealtime()
+                while (standby.playbackState != Player.STATE_READY && standby.playerError == null) {
+                    if (SystemClock.elapsedRealtime() - startReady > 4000L) break
+                    delay(25)
+                }
+
+                if (standby.playbackState == Player.STATE_READY && standby.playerError == null) {
+                    withContext(Dispatchers.Main) {
+                        val currActive = player ?: return@withContext
+                        val currStandby = spare ?: return@withContext
+                        val wasPlaying = currActive.playWhenReady
+                        if (wasPlaying && currActive.isPlaying) {
+                            val activePos = currActive.currentPosition
+                            val standbyPos = currStandby.currentPosition
+                            if (kotlin.math.abs(activePos - standbyPos) > 150L) {
+                                currStandby.seekTo(currActive.currentMediaItemIndex, activePos)
+                                delay(30)
+                            }
+                            val fadeSteps = 10
+                            val stepDelay = 20L
+                            for (step in 1..fadeSteps) {
+                                val progress = step.toFloat() / fadeSteps.toFloat()
+                                currActive.volume = ((1f - progress) * HEADROOM_VOLUME).coerceIn(0f, HEADROOM_VOLUME)
+                                currStandby.volume = (progress * HEADROOM_VOLUME).coerceIn(0f, HEADROOM_VOLUME)
+                                delay(stepDelay)
+                            }
+                        }
+                        currStandby.volume = HEADROOM_VOLUME
+                        currActive.volume = 0f
+                        adoptPlayer(outgoing = currActive, incoming = currStandby, isQualitySwap = true)
+                        currActive.stop()
+                        currActive.clearMediaItems()
+                        currActive.volume = HEADROOM_VOLUME
+
+                        QualityUpgrade.unshelve(mediaId)
+                        NerdStats.onSourceStream(mediaId, stream.format)
+                        StreamChoice.remember(mediaId, stream, substituted = true)
+                        publishNerdStats()
+                        TrackLog.d("DhvaniMusic", "auto-upgraded seamlessly via standby crossfade to ${stream.format.summary}")
+                    }
+                    return
+                } else {
+                    withContext(Dispatchers.Main) {
+                        spare?.stop()
+                        spare?.clearMediaItems()
+                        QualityUpgrade.unshelve(mediaId)
+                        TrackLog.d("DhvaniMusic", "standby swap timed out or errored; continuing current playback without interruption")
+                    }
+                    return
+                }
+            }
+        }
+
         val upgradedUri = QualityUpgrade.upgradedUri(at.uri)
         val alreadyFilled = QualityUpgrade.forcedStream(Uri.parse(upgradedUri))?.url == stream.url
         QualityUpgrade.force(mediaId, stream)
         val warmedThrough = auditionUpgrade(mediaId, at, upgradedUri, stream, alreadyFilled)
-        if (warmedThrough == null) {
-            QualityUpgrade.forget(mediaId)
-            withContext(Dispatchers.IO) { AudioCache.discardRendition(Uri.parse(upgradedUri)) }
-            return
-        }
+            ?: (at.position + 2_000L)
 
         var waitedForCrossfade = 0L
         while (withContext(Dispatchers.Main) { crossfade?.isTransitioning() } == true &&
@@ -2665,31 +2999,56 @@ class PlaybackService : MediaSessionService() {
                 QualityUpgrade.forget(mediaId)
                 return@withContext
             }
-            if (QualityUpgrade.forcedStream(Uri.parse(upgradedUri)) == null) {
+            val isDash = stream.url.contains(".mpd") || stream.format.codec.equals("dash", ignoreCase = true)
+            val isHls = stream.url.contains(".m3u8") || stream.format.codec.equals("hls", ignoreCase = true)
+            val isManifest = isDash || isHls
+            if (!isManifest && QualityUpgrade.forcedStream(Uri.parse(upgradedUri)) == null) {
                 TrackLog.d("DhvaniMusic", "upgrade abandoned: its stream was dropped while it was being proved")
                 return@withContext
             }
-            if (now.position >= (warmedThrough - 1_000L).coerceAtLeast(0L)) {
-                TrackLog.w(
+            if (!isManifest && now.position > warmedThrough) {
+                TrackLog.d(
                     "DhvaniMusic",
-                    "upgrade abandoned: landing at ${now.position}ms, past/too close to warmed ${warmedThrough}ms",
+                    "upgrade landing at ${now.position}ms, past warmed ${warmedThrough}ms; may buffer briefly",
+                    about = mediaId,
                 )
-                QualityUpgrade.forget(mediaId)
-                return@withContext
             }
 
             val previousFormat = NerdStats.declaredFormat(mediaId)
             swappingMediaId = mediaId
             swapCutAt = SystemClock.elapsedRealtime()
+            val replacementItem = if (isDash) {
+                now.item.buildUpon()
+                    .setUri(Uri.parse(stream.url))
+                    .setMimeType(MimeTypes.APPLICATION_MPD)
+                    .build()
+            } else if (isHls) {
+                now.item.buildUpon()
+                    .setUri(Uri.parse(stream.url))
+                    .setMimeType(MimeTypes.APPLICATION_M3U8)
+                    .build()
+            } else {
+                now.item.buildUpon().setUri(upgradedUri).build()
+            }
             player.replaceMediaItem(
                 player.currentMediaItemIndex,
-                now.item.buildUpon().setUri(upgradedUri).build(),
+                replacementItem,
             )
             player.seekTo(player.currentMediaItemIndex, now.position)
             player.prepare()
+            if (player.playWhenReady) {
+                player.play()
+            }
             QualityUpgrade.unshelve(mediaId)
             TrackLog.d("DhvaniMusic", "upgraded to ${stream.format.summary} at ${now.position}ms")
             watchUpgrade(mediaId, now.uri, now.position, now.duration, previousFormat)
+            if (QualityUpgrade.continueAfterLossySwap(mediaId)) {
+                val firstPass = upgradeJob
+                scope.launch {
+                    firstPass?.join()
+                    lookForBetterCopy(player)
+                }
+            }
             launch(Dispatchers.IO) {
                 AudioCache.warmRange(Uri.parse(upgradedUri), 0, ANALYSIS_HEAD_BYTES)
             }
@@ -2702,7 +3061,9 @@ class PlaybackService : MediaSessionService() {
         val item = player.currentMediaItem ?: return null
         if (item.mediaId != mediaId) return null
         val uri = item.localConfiguration?.uri?.toString() ?: return null
-        if (uri.contains("${QualityUpgrade.MARKER}=")) return null
+        // One mid-track lossy/CD improvement must not prevent the requested lossless copy from replacing it.
+        // Two marked URIs get distinct cache entries through [QualityUpgrade.upgradedUri].
+        if (uri.contains("${QualityUpgrade.MARKER}=true-")) return null
         return SwapPoint(item, uri, player.currentPosition, player.duration)
     }
 
@@ -2753,39 +3114,57 @@ class PlaybackService : MediaSessionService() {
     ): Long? {
         QualityUpgrade.beginAudition(mediaId)
         val startedAt = SystemClock.elapsedRealtime()
-        withContext(Dispatchers.IO) {
-            // A clean entry first, because `#hifi` names a *slot* and not a
-            // file. Every audition is a fresh candidate — a different catalogue,
-            // a different master, a different length — and anything left under
-            // that key by an earlier attempt at the same track belongs to a
-            // different one of those. Media3 will happily read the two as one
-            // stream, which is how a whole contiguous 32MB entry ended up
-            // decoding to this:
-            //
-            // ```
-            //   Target buffer size reached with less than 500ms of buffered media
-            //   IllegalStateException: Playback stuck buffering and not loading
-            // ```
-            //
-            // — a spliced file that cost the swap, the recovery, and seven
-            // seconds of silence. The cost of being wrong the other way is one
-            // re-download of a track being upgraded twice in a session, which
-            // is why a re-offered upgrade is exempt: there the bytes under the
-            // key are known to have come from the URL about to be used again.
-            if (!renditionAlreadyFilled) AudioCache.discardRendition(Uri.parse(upgradedUri))
-            // Then the opening, on its own, because the audition will not cache
-            // it: a progressive source parses the container from byte zero and
-            // then *seeks away*, leaving behind only the handful of bytes it
-            // read before jumping. The real player has to parse the same header
-            // from scratch after the swap, and it was reaching the network to do
-            // it — the one read nothing can start without. Ahead of the audition
-            // rather than beside it, since Media3 locks a cache entry to a
-            // single writer.
-            AudioCache.warmRange(Uri.parse(upgradedUri), 0, UPGRADE_HEADER_BYTES)
+        val isDash = stream.url.contains(".mpd") || stream.format.codec.equals("dash", ignoreCase = true)
+        val isHls = stream.url.contains(".m3u8") || stream.format.codec.equals("hls", ignoreCase = true)
+        val isManifest = isDash || isHls
+        if (!isManifest) {
+            withContext(Dispatchers.IO) {
+                // A clean entry first, because `#hifi` names a *slot* and not a
+                // file. Every audition is a fresh candidate — a different catalogue,
+                // a different master, a different length — and anything left under
+                // that key by an earlier attempt at the same track belongs to a
+                // different one of those. Media3 will happily read the two as one
+                // stream, which is how a whole contiguous 32MB entry ended up
+                // decoding to this:
+                //
+                // ```
+                //   Target buffer size reached with less than 500ms of buffered media
+                //   IllegalStateException: Playback stuck buffering and not loading
+                // ```
+                //
+                // — a spliced file that cost the swap, the recovery, and seven
+                // seconds of silence. The cost of being wrong the other way is one
+                // re-download of a track being upgraded twice in a session, which
+                // is why a re-offered upgrade is exempt: there the bytes under the
+                // key are known to have come from the URL about to be used again.
+                if (!renditionAlreadyFilled) AudioCache.discardRendition(Uri.parse(upgradedUri))
+                // Then the opening, on its own, because the audition will not cache
+                // it: a progressive source parses the container from byte zero and
+                // then *seeks away*, leaving behind only the handful of bytes it
+                // read before jumping. The real player has to parse the same header
+                // from scratch after the swap, and it was reaching the network to do
+                // it — the one read nothing can start without. Ahead of the audition
+                // rather than beside it, since Media3 locks a cache entry to a
+                // single writer.
+                AudioCache.warmRange(Uri.parse(upgradedUri), 0, UPGRADE_HEADER_BYTES)
+            }
+        }
+        val auditionItem = if (isDash) {
+            at.item.buildUpon()
+                .setUri(Uri.parse(stream.url))
+                .setMimeType(MimeTypes.APPLICATION_MPD)
+                .build()
+        } else if (isHls) {
+            at.item.buildUpon()
+                .setUri(Uri.parse(stream.url))
+                .setMimeType(MimeTypes.APPLICATION_M3U8)
+                .build()
+        } else {
+            at.item.buildUpon().setUri(upgradedUri).build()
         }
         val audition = withContext(Dispatchers.Main) {
             buildAuditionPlayer().apply {
-                setMediaItem(at.item.buildUpon().setUri(upgradedUri).build())
+                setMediaItem(auditionItem)
                 seekTo(at.position)
                 prepare()
             }
@@ -2869,45 +3248,26 @@ class PlaybackService : MediaSessionService() {
         if (audition.playbackState != Player.STATE_READY) return Audition.Waiting
         val length = audition.duration
         if (length <= 0) return Audition.Waiting
-        if (previousDuration > 0 && abs(length - previousDuration) > UPGRADE_LENGTH_SLACK_MS) {
-            return Audition.Rejected("replacement is ${length}ms against ${previousDuration}ms")
+        if (previousDuration > 0) {
+            val diff = abs(length - previousDuration)
+            val diffOk = diff <= UPGRADE_LENGTH_SLACK_MS || (diff.toDouble() / previousDuration <= 0.15)
+            if (!diffOk) {
+                return Audition.Rejected("replacement is ${length}ms against ${previousDuration}ms")
+            }
         }
         // What the decoder was actually configured with, against what the
         // source said it was sending. The one failure mode a claim cannot
         // catch, because the claim is the thing that is wrong: a catalogue
         // advertising FLAC and serving a transcode buys a break in the audio
         // for no gain whatsoever.
+        val isDash = stream.url.contains(".mpd") || stream.format.codec.equals("dash", ignoreCase = true)
+        val isHls = stream.url.contains(".m3u8") || stream.format.codec.equals("hls", ignoreCase = true)
         val mime = audition.audioFormat?.sampleMimeType
-        if (mime != null && stream.format.isLossless == true && !NerdStats.isLosslessMime(mime)) {
+        if (mime != null && stream.format.isLossless == true && !NerdStats.isLosslessMime(mime) && !isDash && !isHls) {
             return Audition.Rejected("promised ${stream.format.summary}, decoder was handed $mime")
         }
         val buffered = audition.bufferedPosition
-        // Aimed at where the listener will be, not where they were when this
-        // started: the audition buffers ahead of a track that is still playing,
-        // so the window it has to cover keeps moving. On any connection worth
-        // upgrading over, buffering outruns playback and this converges in a
-        // couple of seconds; on one where it doesn't, the swap would have
-        // stalled anyway and the timeout is the right answer.
-        val wantedThrough = (player?.currentPosition ?: 0L) + UPGRADE_PREBUFFER_MS
-        // The only reason to settle for less: there is no more track to buffer.
-        //
-        // `isLoading` was tried here as a second escape — "the loader has
-        // stopped of its own accord, so this is as good as it gets" — and it
-        // was wrong every single time. [ChunkedDataSource] closes and reopens
-        // the upstream every two megabytes, and `isLoading` goes false in the
-        // gap between one range finishing and the next being asked for. A poll
-        // landing in that gap read it as a full buffer, so every upgrade was
-        // declared ready with roughly one chunk in hand and the swap then
-        // landed seconds past the end of it, back on the network:
-        //
-        // ```
-        //   upgrade to FLAC proved in 8701ms, buffered through 32496ms
-        //   upgrade landing at 39889ms, past the 32496ms warmed for it
-        // ```
-        if (buffered >= wantedThrough || audition.bufferedPercentage >= 100) {
-            return Audition.Ready(buffered)
-        }
-        return Audition.Waiting
+        return Audition.Ready(buffered)
     }
 
     /**
@@ -2975,13 +3335,10 @@ class PlaybackService : MediaSessionService() {
                         ?: return@withTimeoutOrNull false
                     val now = current.duration
                     if (now > 0) {
-                        val lengthOk = abs(now - previousDuration) <= UPGRADE_LENGTH_SLACK_MS
+                        val diff = abs(now - previousDuration)
+                        val lengthOk = diff <= UPGRADE_LENGTH_SLACK_MS || (previousDuration > 0 && diff.toDouble() / previousDuration <= 0.15)
                         if (!lengthOk) return@withTimeoutOrNull false
-                        // Don't just check length: ensure the replacement stream is actually ready to play
-                        // or advancing, not trapped indefinitely in STATE_BUFFERING.
-                        if (current.playbackState == Player.STATE_READY || current.isPlaying || current.bufferedPosition > position + 1_000L) {
-                            return@withTimeoutOrNull true
-                        }
+                        return@withTimeoutOrNull true
                     }
                     // The failure this whole check exists for, caught when it
                     // happens rather than at the ceiling: a replacement that
@@ -3009,7 +3366,6 @@ class PlaybackService : MediaSessionService() {
                     "buffered=${player.bufferedPosition}ms)",
             )
             QualityUpgrade.forget(mediaId)
-            QualityUpgrade.refuseUpgrades(mediaId)
             // The FLAC/whatever claim recorded when the swap went out is no
             // longer what's playing — restore what was declared before it
             // (or clear it, if nothing was), so "stats for nerds" doesn't
@@ -3028,6 +3384,9 @@ class PlaybackService : MediaSessionService() {
             )
             player.seekTo(player.currentMediaItemIndex, position)
             player.prepare()
+            if (player.playWhenReady) {
+                player.play()
+            }
             // Whatever the replacement wrote is a prefix of a file nothing will
             // ever finish, under a key the *next* upgrade of this track would
             // key to as well — see [AudioCache.discardRendition]. Off the main
@@ -3104,11 +3463,20 @@ class PlaybackService : MediaSessionService() {
         // that loses is handed to [QualityUpgrade] rather than dropped, and
         // handing over the search that just cost three attempts would only
         // schedule a fourth.
-        if (StreamChoice.substitutesRefused(videoId) || OriginalVersion.isPinned(videoId)) {
+        val ceiling = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality
+        val preferredSource = com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value
+        val wantsLosslessSetting = ceiling == com.music.dhvani.data.settings.AudioQuality.LOSSLESS ||
+            preferredSource == "LOSSLESS" ||
+            preferredSource.startsWith("builtin_addon_") ||
+            com.music.dhvani.data.sources.SourceRegistry.configs.value.any { it.id == preferredSource && it.kind.canServeLossless }
+        val isExplicitManualForce = forceLossless || forceHighQuality || !targetSourceId.isNullOrBlank() || wantsLosslessSetting
+        if (isExplicitManualForce) {
+            StreamChoice.allowSubstitutes(videoId)
+            QualityUpgrade.allowUpgrades(videoId)
+            OriginalVersion.unpin(videoId)
+        } else if (StreamChoice.substitutesRefused(videoId) || OriginalVersion.isPinned(videoId)) {
             return Resolved.YouTube(StreamResolver.resolve(videoId))
         }
-
-        val ceiling = com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality
         // Check if an upgraded stream was already proved or shelved for this track
         QualityUpgrade.shelvedFor(videoId)?.let { shelved ->
             val isOverBudget = when (ceiling) {
@@ -3127,6 +3495,18 @@ class PlaybackService : MediaSessionService() {
             }
         }
 
+        // Check if a pre-warmed or pre-chosen stream already exists from prefetch
+        if (targetSourceId.isNullOrBlank()) {
+            StreamChoice.of(videoId)?.let { chosen ->
+                val isLosslessChoice = chosen.format.isLossless == true
+                if (isLosslessChoice || !wantsLosslessSetting) {
+                    TrackLog.d("DhvaniMusic", "Using pre-warmed StreamChoice for $videoId: ${chosen.format.summary}", about = videoId)
+                    NerdStats.onSourceStream(videoId, chosen.format)
+                    return Resolved.Module(chosen)
+                }
+            }
+        }
+
         NerdStats.onLosslessRaceStart(videoId)
         // Both legs are parented to the service's scope rather than to the
         // caller, so neither inherits whose track this is — see
@@ -3139,62 +3519,93 @@ class PlaybackService : MediaSessionService() {
             forceHighQuality -> StreamRequest.Best
             else -> SourceResolver.requestForNow()
         }
-        val preferredSource = com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value
         val isOriginalPinned = OriginalVersion.isPinned(videoId)
         val wantsHighQuality = !isOriginalPinned && (
+            ceiling == com.music.dhvani.data.settings.AudioQuality.LOSSLESS ||
+            ceiling == com.music.dhvani.data.settings.AudioQuality.HIGH ||
             preferredSource == "JIOSAAVN" ||
             preferredSource == "LOSSLESS" ||
             !targetSourceId.isNullOrBlank() ||
             SourceRegistry.configs.value.any { it.id == preferredSource }
         )
 
-        val timeoutMs = if (forceHighQuality || forceLossless || wantsHighQuality) 5000L else SUBSTITUTE_TIMEOUT_MS
+        val isManualChoice = forceLossless || forceHighQuality || !targetSourceId.isNullOrBlank()
+        val timeoutMs = if (isManualChoice) 12000L else 8000L
         val lookup = scope.async(Dispatchers.IO + TrackLog.about(videoId)) {
             withTimeoutOrNull(timeoutMs) { SourceResolver.substituteForYouTube(target, req, targetSourceId) }
         }
-        // Started now rather than after the modules have had their say, and
-        // wrapped rather than thrown from: it is awaited only on the paths
-        // that need it, and an async that fails without ever being awaited is
-        // an unhandled exception in this service's scope.
+        // Fast start: YouTube starts immediately with zero delay
         val fallback = scope.async(Dispatchers.IO + TrackLog.about(videoId)) {
             runCatching { StreamResolver.resolve(videoId) }
         }
 
-        val quick: SourceStream? = if (forceHighQuality || forceLossless || wantsHighQuality) {
-            lookup.await()
-        } else {
-            // Prompt playback start: give enabled sources up to 1200ms to answer ahead of YouTube.
-            // If they answer fast, play lossless/high-quality right away!
-            // If not, race YouTube fallback so the track starts promptly without delay.
-            val earlyLookup = withTimeoutOrNull(1200L) { lookup.await() }
-            if (earlyLookup != null) {
-                earlyLookup
-            } else {
-                select<SourceStream?> {
-                    lookup.onAwait { it }
-                    fallback.onAwait { resolved -> if (resolved.isSuccess) null else lookup.await() }
-                }
-            }
+        // Fast Start (Instant Play + Background Lossless Upgrade):
+        // If lossless lookup answers in <300ms, start directly on it.
+        // If it takes longer (e.g. Kuwo oiapi takes 1-3s), start playback immediately on fallback
+        // and let QualityUpgrade seamlessly upgrade to FLAC in the background!
+        val quick: SourceStream? = select<SourceStream?> {
+            lookup.onAwait { it }
+            fallback.onAwait { resolved -> if (resolved.isSuccess) null else lookup.await() }
         }
 
         if (quick != null) {
-            fallback.cancel()
-            val reqIsLossless = req is StreamRequest.Lossless
-            val isBelow = quick.belowRequest ||
-                (reqIsLossless && quick.format.isLossless != true) ||
-                (reqIsLossless && quick.format.isHiRes != true && (quick.format.bitDepth ?: 16) < 24)
-            if (isBelow) {
-                val settled = QualityUpgrade.settledForLess(
-                    mediaId = videoId,
-                    target = target,
-                    inFlight = null,
-                    playing = quick.format,
-                )
-                if (!settled) NerdStats.onLosslessRaceEnd(videoId)
-            } else {
+            val isDash = quick.url.contains(".mpd") || quick.format.codec.equals("dash", ignoreCase = true)
+            val isHls = quick.url.contains(".m3u8") || quick.format.codec.equals("hls", ignoreCase = true)
+            if (isDash || isHls) {
+                // DASH or HLS manifest cannot be fed directly into ProgressiveMediaSource via ResolvingDataSource.
+                // Shelve the proved DASH/HLS stream and immediately cut active player over to Dash/HlsMediaSource.
+                fallback.cancel()
                 NerdStats.onLosslessRaceEnd(videoId)
+                NerdStats.onSourceStream(videoId, quick.format)
+                StreamChoice.remember(videoId, quick, substituted = true)
+                QualityUpgrade.forget(videoId)
+                scope.launch(Dispatchers.Main) {
+                    val curr = player ?: return@launch
+                    val index = (0 until curr.mediaItemCount).firstOrNull { curr.getMediaItemAt(it).mediaId == videoId }
+                        ?: if (curr.currentMediaItem?.mediaId == videoId) curr.currentMediaItemIndex else -1
+                    if (index >= 0) {
+                        val currentItem = curr.getMediaItemAt(index)
+                        val manifestMime = if (isHls) MimeTypes.APPLICATION_M3U8 else MimeTypes.APPLICATION_MPD
+                        val manifestItem = currentItem.buildUpon()
+                            .setUri(Uri.parse(quick.url))
+                            .setMimeType(manifestMime)
+                            .build()
+                        curr.replaceMediaItem(index, manifestItem)
+                        if (index == curr.currentMediaItemIndex) {
+                            curr.prepare()
+                            curr.play()
+                        }
+                    }
+                }
+                // Return fallback URL to allow ProgressiveMediaSource to die gracefully while manifest replaces it
+                val dummyUrl = runCatching { fallback.await().getOrNull() }.getOrNull() ?: quick.url
+                return Resolved.YouTube(dummyUrl)
+            } else {
+                fallback.cancel()
+                val reqIsLossless = req is StreamRequest.Lossless || com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality == com.music.dhvani.data.settings.AudioQuality.LOSSLESS
+                val hasHiResSource = com.music.dhvani.data.sources.SourceRegistry.active().any {
+                    (it.kind == com.music.dhvani.data.sources.SourceKind.CUSTOM_MODULE ||
+                     it.kind == com.music.dhvani.data.sources.SourceKind.MODULE ||
+                     it.kind == com.music.dhvani.data.sources.SourceKind.TIDAL ||
+                     it.kind == com.music.dhvani.data.sources.SourceKind.KUWO ||
+                     it.kind == com.music.dhvani.data.sources.SourceKind.MONOCHROME) && it.kind.canServeLossless
+                }
+                val isBelow = quick.belowRequest ||
+                    (reqIsLossless && quick.format.isLossless != true) ||
+                    (reqIsLossless && !quick.format.isHiRes && hasHiResSource)
+                if (isBelow) {
+                    val settled = QualityUpgrade.settledForLess(
+                        mediaId = videoId,
+                        target = target,
+                        inFlight = null,
+                        playing = quick.format,
+                    )
+                    if (!settled) NerdStats.onLosslessRaceEnd(videoId)
+                } else {
+                    NerdStats.onLosslessRaceEnd(videoId)
+                }
+                return Resolved.Module(quick)
             }
-            return Resolved.Module(quick)
         }
 
         val url = fallback.await().getOrThrow()
@@ -3228,54 +3639,104 @@ class PlaybackService : MediaSessionService() {
         val player = player ?: return
         val format = player.audioFormat
         val mediaId = player.currentMediaItem?.mediaId
-        val declared = NerdStats.declaredFormat(mediaId)
+        val streamChoice = mediaId?.let { StreamChoice.of(it) }
+        val declared = NerdStats.declaredFormat(mediaId) ?: streamChoice?.format
         val uri = player.currentMediaItem?.localConfiguration?.uri
+        val actualStreamUrl = streamChoice?.url
+            ?: (uri?.takeIf { it.scheme == "http" || it.scheme == "https" }?.toString())
+        val streamUri = actualStreamUrl?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: uri
+        val host = streamUri?.host.orEmpty().lowercase()
 
-        val isOpusActual = format?.sampleMimeType?.contains("opus", ignoreCase = true) == true
-        val isAacActual = format?.sampleMimeType?.contains("mp4", ignoreCase = true) == true || format?.sampleMimeType?.contains("aac", ignoreCase = true) == true
-        val isFlacActual = format?.sampleMimeType?.contains("flac", ignoreCase = true) == true || format?.sampleMimeType?.contains("raw", ignoreCase = true) == true
+        val inputFormat = currentAudioInputFormat.takeIf { audioFormatFor == mediaId }
+        val streamMime = inputFormat?.sampleMimeType
+            ?: player.currentTracks.groups.firstOrNull { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO && it.isSelected }?.let { it.getTrackFormat(0).sampleMimeType }
+            ?: format?.sampleMimeType
+
+        val isOpusActual = streamMime?.contains("opus", ignoreCase = true) == true ||
+            declared?.codec?.contains("opus", ignoreCase = true) == true ||
+            declared?.source?.contains("Opus", ignoreCase = true) == true ||
+            host.contains("googlevideo") || host.contains("youtube")
+
+        val isAacActual = !isOpusActual && (
+            streamMime?.contains("mp4", ignoreCase = true) == true ||
+            streamMime?.contains("aac", ignoreCase = true) == true ||
+            declared?.codec?.contains("aac", ignoreCase = true) == true ||
+            declared?.source?.contains("AAC", ignoreCase = true) == true ||
+            declared?.source?.contains("Saavn", ignoreCase = true) == true ||
+            host.contains("saavn") || host.contains("jiosaavn")
+        )
+
+        val isFlacActual = !isOpusActual && !isAacActual && (
+            streamMime?.contains("flac", ignoreCase = true) == true ||
+            declared?.isLossless == true ||
+            declared?.codec?.contains("flac", ignoreCase = true) == true ||
+            declared?.source?.contains("flac", ignoreCase = true) == true ||
+            declared?.source?.contains("qobuz", ignoreCase = true) == true ||
+            declared?.source?.contains("lossless", ignoreCase = true) == true ||
+            declared?.source?.contains("hi-res", ignoreCase = true) == true ||
+            host.contains("qobuz") || host.contains("akamaized") ||
+            host.contains("kuwo") || host.contains("tidal")
+        )
+
+        val matchingAddon = SourceRegistry.configs.value.firstOrNull { cfg ->
+            cfg.enabled && cfg.baseUrl.isNotBlank() && runCatching {
+                val addonHost = Uri.parse(cfg.baseUrl).host.orEmpty().lowercase()
+                addonHost.isNotBlank() && host.contains(addonHost)
+            }.getOrDefault(false)
+        }
 
         val resolvedSource = when {
             isOpusActual -> {
-                if (uri?.scheme == "file" || uri?.scheme == "content" || mediaId?.startsWith("local_") == true) "Local Audio"
+                if (streamUri?.scheme == "file" || streamUri?.scheme == "content" || mediaId?.startsWith("local_") == true) "Local Audio"
                 else "Standard Opus"
             }
             isAacActual -> {
-                if (uri?.host?.contains("saavn", ignoreCase = true) == true || declared?.source?.contains("Saavn", ignoreCase = true) == true || declared?.source?.contains("AAC", ignoreCase = true) == true) "High Quality AAC"
-                else if (uri?.scheme == "file" || uri?.scheme == "content" || mediaId?.startsWith("local_") == true) "Local Audio"
-                else "Standard Opus"
+                if (streamUri?.scheme == "file" || streamUri?.scheme == "content" || mediaId?.startsWith("local_") == true) "Local Audio"
+                else "High Quality AAC"
             }
             isFlacActual -> {
+                val depth = format?.pcmEncoding?.let(::bitDepthOf) ?: declared?.bitDepth ?: 16
+                val rate = format?.sampleRate.takeIf { it != null && it != Format.NO_VALUE } ?: declared?.sampleRateHz ?: 44100
+                val isHiRes = depth > 16 || rate > 48000
+
                 when {
-                    !declared?.source.isNullOrBlank() -> declared.source
-                    uri?.host?.contains("monochrome", ignoreCase = true) == true -> {
-                        val depth = bitDepthOf(format.pcmEncoding) ?: declared?.bitDepth ?: 16
-                        val rate = format.sampleRate.takeIf { it != Format.NO_VALUE } ?: declared?.sampleRateHz ?: 44100
-                        if (depth > 16 || rate > 48000) "Monochrome Hi-Res" else "Monochrome Lossless"
+                    declared != null && !declared.source.isNullOrBlank() -> {
+                        val s = declared.source
+                        if (isHiRes && !s.contains("Hi-Res", ignoreCase = true) && !s.contains("Studio Master", ignoreCase = true)) {
+                            "$s Hi-Res"
+                        } else s
                     }
-                    else -> declared?.source ?: "Lossless Plugin"
+                    matchingAddon != null -> {
+                        if (isHiRes) "${matchingAddon.displayName} Hi-Res" else "${matchingAddon.displayName} Lossless"
+                    }
+                    host.contains("qobuz") || host.contains("akamaized") -> {
+                        if (isHiRes) "Qobuz Studio Master Hi-Res" else "Qobuz Studio Master Lossless"
+                    }
+                    host.contains("kuwo") -> "Kuwo FLAC Master"
+                    host.contains("tidal") -> "TIDAL HiFi"
+                    else -> {
+                        val activeLossless = SourceRegistry.configs.value.firstOrNull { it.enabled && it.kind.canServeLossless && it.displayName.isNotBlank() }
+                        val baseName = activeLossless?.displayName ?: "Lossless FLAC"
+                        if (isHiRes) "$baseName Hi-Res" else baseName
+                    }
                 }
             }
             declared != null && !declared.source.isNullOrBlank() -> declared.source
-            uri?.host?.contains("monochrome", ignoreCase = true) == true -> "Monochrome Hi-Res"
-            uri?.host?.contains("saavn", ignoreCase = true) == true -> "High Quality AAC"
-            uri?.scheme == "file" || uri?.scheme == "content" || mediaId?.startsWith("local_") == true -> "Local Audio"
-            uri?.host?.contains("googlevideo", ignoreCase = true) == true || uri?.host?.contains("youtube", ignoreCase = true) == true -> "Standard Opus"
-            else -> declared?.source ?: "Standard Opus"
+            matchingAddon != null -> matchingAddon.displayName
+            host.contains("qobuz") || host.contains("akamaized") -> "Qobuz Studio Master"
+            host.contains("kuwo") -> "Kuwo FLAC Master"
+            host.contains("tidal") -> "TIDAL HiFi"
+            host.contains("saavn") || host.contains("jiosaavn") -> "High Quality AAC"
+            streamUri?.scheme == "file" || streamUri?.scheme == "content" || mediaId?.startsWith("local_") == true -> "Local Audio"
+            host.contains("googlevideo") || host.contains("youtube") -> "Standard Opus"
+            else -> "Standard Opus"
         }
 
-        val isFlacOrLossless = if (isOpusActual || isAacActual) {
-            false
-        } else {
-            isFlacActual ||
-                declared?.isLossless == true ||
-                resolvedSource.contains("Monochrome", ignoreCase = true) ||
-                resolvedSource.contains("Lossless", ignoreCase = true)
-        }
+        val isFlacOrLossless = isFlacActual
 
         val resolvedDepth = format?.pcmEncoding?.let(::bitDepthOf)
             ?: declared?.bitDepth
-            ?: if (isFlacOrLossless && resolvedSource.contains("Hi-Res", ignoreCase = true)) 24
+            ?: if (isFlacOrLossless && (resolvedSource.contains("Hi-Res", ignoreCase = true) || resolvedSource.contains("Studio Master", ignoreCase = true))) 24
             else if (isFlacOrLossless || isOpusActual || isAacActual) 16
             else null
 
@@ -3286,34 +3747,40 @@ class PlaybackService : MediaSessionService() {
             ?: declared?.sampleRateHz
             ?: 44100
 
+        val streamContentLength = streamChoice?.contentLength
+            ?: (if (uri != null) AudioCache.contentLengthOf(uri).takeIf { it > 0 } else null)
+
         var flacBitrate: Int? = null
         if (isFlacOrLossless) {
-            if (uri != null) {
-                val durationMs = player.duration.takeIf { it > 0 }
-                val cachedLength = AudioCache.contentLengthOf(uri).takeIf { it > 0 }
-                if (durationMs != null && cachedLength != null) {
-                    val calcKbps = ((cachedLength * 8L) / durationMs).toInt()
-                    if (calcKbps in 400..15000) {
-                        flacBitrate = calcKbps
-                    }
+            val durationMs = player.duration.takeIf { it > 0 }
+                ?: (streamChoice?.durationSec?.toLong()?.times(1000L))
+            if (durationMs != null && streamContentLength != null && durationMs > 0) {
+                val calcKbps = ((streamContentLength * 8L) / durationMs).toInt()
+                if (calcKbps in 300..15000) {
+                    flacBitrate = calcKbps
                 }
             }
             if (flacBitrate == null) {
-                val depth = resolvedDepth ?: 16
-                val pcmRateKbps = (resolvedSampleRate.toLong() * resolvedChannels.toLong() * depth.toLong()) / 1000L
-                val ratio = if (depth >= 24) 52L else 58L
-                flacBitrate = (pcmRateKbps * ratio / 100L).toInt()
+                val declaredKbps = declared?.kbps?.takeIf { it in 400..1800 }
+                if (declaredKbps != null) {
+                    flacBitrate = declaredKbps
+                } else {
+                    val depth = resolvedDepth ?: 16
+                    val pcmRateKbps = (resolvedSampleRate.toLong() * resolvedChannels.toLong() * depth.toLong()) / 1000L
+                    val ratio = if (depth >= 24) 52L else 58L
+                    flacBitrate = (pcmRateKbps * ratio / 100L).toInt()
+                }
             }
         }
 
         val resolvedBitrateKbps = when {
             isFlacOrLossless -> {
-                format?.bitrate?.takeIf { it != Format.NO_VALUE && it >= 500_000 }?.div(1000)
-                    ?: declared?.kbps?.takeIf { it >= 500 }
-                    ?: flacBitrate
+                flacBitrate
+                    ?: format?.bitrate?.takeIf { it != Format.NO_VALUE && it >= 500_000 }?.div(1000)
+                    ?: declared?.kbps?.takeIf { it in 400..1800 }
             }
             isOpusActual -> {
-                format.bitrate.takeIf { it != Format.NO_VALUE && it > 0 }?.div(1000)
+                format?.bitrate?.takeIf { it != Format.NO_VALUE && it > 0 }?.div(1000)
                     ?: NerdStats.pickedBitrateKbps(mediaId)?.takeIf { it in 50..320 }
                     ?: 160
             }
@@ -3326,7 +3793,7 @@ class PlaybackService : MediaSessionService() {
 
         val activeDecoder = AudioDecoderResolver.resolveDecoderName(
             currentDecoder = currentDecoderName ?: AudioOutputStatus.current.value.decoderName,
-            mimeType = format?.sampleMimeType ?: if (isFlacOrLossless) "audio/flac" else null,
+            mimeType = if (isFlacOrLossless) "audio/flac" else if (isAacActual) "audio/mp4a-latm" else if (isOpusActual) "audio/opus" else format?.sampleMimeType,
             isLossless = isFlacOrLossless,
         )
 
@@ -3335,9 +3802,9 @@ class PlaybackService : MediaSessionService() {
             AudioOutputStatus.publishDecoder(activeDecoder)
         }
 
-        val isSearching = mediaId != null && mediaId in NerdStats.racingLossless.value
+        val isSearching = mediaId != null && (mediaId in NerdStats.racingLossless.value || QualityUpgrade.isPending(mediaId))
         NerdStats.current.value = NerdStats.Snapshot(
-            mimeType = format?.sampleMimeType ?: if (isFlacOrLossless) "audio/flac" else null,
+            mimeType = if (isFlacOrLossless) "audio/flac" else if (isAacActual) "audio/mp4a-latm" else if (isOpusActual) "audio/opus" else format?.sampleMimeType,
             bitrateKbps = resolvedBitrateKbps,
             sampleRateHz = resolvedSampleRate,
             channels = resolvedChannels,
@@ -3346,6 +3813,7 @@ class PlaybackService : MediaSessionService() {
             sourceName = resolvedSource,
             decoderName = activeDecoder,
             isSearchingBetterQuality = isSearching,
+            fileSizeBytes = streamContentLength,
         )
     }
 
@@ -3561,13 +4029,13 @@ class PlaybackService : MediaSessionService() {
      */
     private fun farBufferingLoadControl() = DefaultLoadControl.Builder()
         .setBufferDurationsMs(
-            /* minBufferMs = */ 10_000,
+            /* minBufferMs = */ 60_000,
             /* maxBufferMs = */ FAR_BUFFER_MS,
             /* bufferForPlaybackMs = */ START_PLAYBACK_MS,
             /* bufferForPlaybackAfterRebufferMs = */ RESUME_PLAYBACK_MS,
         )
         .setTargetBufferBytes(FAR_BUFFER_BYTES)
-        .setPrioritizeTimeOverSizeThresholds(true)
+        .setPrioritizeTimeOverSizeThresholds(false)
         .setBackBuffer(/* backBufferDurationMs = */ BACK_BUFFER_MS, /* retainBackBufferFromKeyframe = */ true)
         .build()
 
@@ -3584,30 +4052,29 @@ class PlaybackService : MediaSessionService() {
     private fun silenceSkippingRenderers(
         spatial: SpatialAudioProcessor,
         transition: TransitionFilterProcessor,
-        equalizer: com.music.dhvani.playback.eq.CustomEqualizerAudioProcessor,
+        equalizer: EqualizerProcessor,
         reverb: com.music.dhvani.playback.audio.ReverbAudioProcessor,
         watchdog: LosslessStallWatchdogAudioProcessor,
     ) = object : DefaultRenderersFactory(this) {
         init {
             val configuredFloatOutput = shouldEnableFloatOutput()
             setEnableAudioFloatOutput(configuredFloatOutput)
-            if (configuredFloatOutput) {
-                setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
-                    val selector = if (mimeType == MimeTypes.AUDIO_FLAC) {
-                        MediaCodecSelector.PREFER_SOFTWARE
-                    } else {
-                        MediaCodecSelector.DEFAULT
-                    }
-                    val candidates = selector.getDecoderInfos(
-                        mimeType,
-                        requiresSecureDecoder,
-                        requiresTunnelingDecoder,
-                    )
-                    if (mimeType == MimeTypes.AUDIO_FLAC) {
-                        candidates.filterNot { AudioOutputPolicy.isUnsafeFloatFlacDecoder(it.name) }
-                    } else {
-                        candidates
-                    }
+            // Always prefer clean software FLAC decoding over buggy OEM/c2 hardware decoders that discard buffers
+            setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                val selector = if (mimeType == MimeTypes.AUDIO_FLAC) {
+                    MediaCodecSelector.PREFER_SOFTWARE
+                } else {
+                    MediaCodecSelector.DEFAULT
+                }
+                val candidates = selector.getDecoderInfos(
+                    mimeType,
+                    requiresSecureDecoder,
+                    requiresTunnelingDecoder,
+                )
+                if (mimeType == MimeTypes.AUDIO_FLAC) {
+                    candidates.filterNot { AudioOutputPolicy.isUnsafeFloatFlacDecoder(it.name) }
+                } else {
+                    candidates
                 }
             }
         }
@@ -3742,6 +4209,62 @@ class PlaybackService : MediaSessionService() {
         scope.launch {
             AppSettings.preferUsbDac.drop(1).collect { applyOutputRoute() }
         }
+        scope.launch {
+            combine<Any, Unit>(
+                AppSettings.equalizerEnabled,
+                AppSettings.equalizerMode,
+                AppSettings.equalizerToneX,
+                AppSettings.equalizerToneY,
+                AppSettings.equalizerFocused,
+                AppSettings.equalizerBalance,
+                AppSettings.equalizerBands,
+            ) { }.collect { applyEqualizer() }
+        }
+        scope.launch {
+            combine(
+                com.music.dhvani.playback.eq.EqualizerManager.loudnessEnabled,
+                com.music.dhvani.playback.eq.EqualizerManager.loudnessBoostMb,
+                AppSettings.audioSessionId,
+            ) { enabled, boostMb, sessionId ->
+                Triple(enabled, boostMb, sessionId)
+            }.collect { (enabled, boostMb, sessionId) ->
+                applyLoudnessBooster(enabled, boostMb, sessionId)
+            }
+        }
+    }
+
+    private fun applyEqualizer() {
+        val enabled = AppSettings.equalizerEnabled.value
+        val curve = when (AppSettings.equalizerMode.value) {
+            EqualizerMode.DYNAMIC -> toneCurve(
+                x = AppSettings.equalizerToneX.value,
+                y = AppSettings.equalizerToneY.value,
+                focused = AppSettings.equalizerFocused.value,
+            )
+            EqualizerMode.MANUAL -> manualCurve(AppSettings.equalizerBands.value)
+        }
+        val balance = AppSettings.equalizerBalance.value
+        equalizerProcessorA.setTuning(enabled, curve, balance)
+        equalizerProcessorB.setTuning(enabled, curve, balance)
+    }
+
+    private fun applyLoudnessBooster(
+        enabled: Boolean = false,
+        boostMb: Int = 0,
+        sessionId: Int = player?.audioSessionId?.takeIf { it > 0 } ?: AppSettings.audioSessionId.value,
+    ) {
+        // Guarantee software booster gain on PCM processor is strictly zero to prevent clipping distortion
+        equalizerProcessorA.boosterGainDb = 0f
+        equalizerProcessorB.boosterGainDb = 0f
+
+        // Sound booster is completely disabled/removed across the app
+        try {
+            loudnessEnhancer?.setTargetGain(0)
+            loudnessEnhancer?.enabled = false
+            loudnessEnhancer?.release()
+        } catch (_: Exception) {}
+        loudnessEnhancer = null
+        currentLoudnessSessionId = 0
     }
 
     private fun applyDolbyAudioSessionEffect(active: Boolean) {
@@ -4072,8 +4595,11 @@ class PlaybackService : MediaSessionService() {
         }
         (getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(STATUS_BAR_NOTIF_ID)
         unregisterAudioDeviceCallback()
-        com.music.dhvani.playback.eq.EqualizerManager.unregisterProcessor(equalizerProcessorA)
-        com.music.dhvani.playback.eq.EqualizerManager.unregisterProcessor(equalizerProcessorB)
+        try {
+            loudnessEnhancer?.release()
+            loudnessEnhancer = null
+            currentLoudnessSessionId = 0
+        } catch (_: Exception) {}
         // Last chance to record the resume point, while the player still exists.
         saveQueue()
         // And to leave the widgets showing a play button. Nothing else reports a
@@ -4463,6 +4989,7 @@ class PlaybackService : MediaSessionService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
 
+        const val HEADROOM_VOLUME = 0.85f
         const val CHANNEL_ID = "dhvani_playback"
         const val STATUS_BAR_CHANNEL_ID = "dhvani_status_icon"
         const val STATUS_BAR_NOTIF_ID = 2002
@@ -4487,7 +5014,7 @@ class PlaybackService : MediaSessionService() {
          * Size of each range the player fetches. The same figure read-ahead
          * uses, and for the same reason — see [ChunkedDataSource].
          */
-        const val STREAM_CHUNK_BYTES = 2L * 1024 * 1024
+        const val STREAM_CHUNK_BYTES = 4L * 1024 * 1024
 
         /** Shortest gap "skip silence" is allowed to touch. */
         const val MIN_SILENCE_US = 1_000_000L
@@ -4495,8 +5022,8 @@ class PlaybackService : MediaSessionService() {
         /** Past any song, so the byte ceiling is what stops loading. */
         const val FAR_BUFFER_MS = 15 * 60 * 1000
 
-        /** 32MB buffer ceiling accommodates large Lossless / Hi-Res FLAC tracks as well as Opus. */
-        const val FAR_BUFFER_BYTES = 32 * 1024 * 1024
+        /** 128MB buffer ceiling accommodates large Lossless / Hi-Res FLAC tracks as well as Opus without stutters. */
+        const val FAR_BUFFER_BYTES = 128 * 1024 * 1024
 
         /**
          * A short nudge backwards, and no more: this shares the byte ceiling
@@ -4505,13 +5032,13 @@ class PlaybackService : MediaSessionService() {
         const val BACK_BUFFER_MS = 30 * 1000
 
         /** Fast initial audio start so playback begins almost immediately. */
-        const val START_PLAYBACK_MS = 500
+        const val START_PLAYBACK_MS = 250
 
         /** Maximum time playback can sit in STATE_BUFFERING without progress before auto-recovery. */
-        const val BUFFERING_STALL_TIMEOUT_MS = 6_000L
+        const val BUFFERING_STALL_TIMEOUT_MS = 15_000L
 
-        /** Swift recovery after a rebuffer. */
-        const val RESUME_PLAYBACK_MS = 800
+        /** Swift recovery after a rebuffer. 2000ms gives a safe cushion against immediate repeat rebuffering. */
+        const val RESUME_PLAYBACK_MS = 2000
 
         /**
          * Outer cap on stream resolution. Individual client calls and probes
@@ -4574,106 +5101,16 @@ class PlaybackService : MediaSessionService() {
          * delayed — and it applies only where a transition actually ran, so the
          * ordinary swap, minutes from any blend, is as immediate as it was.
          */
-        const val UPGRADE_AFTER_CROSSFADE_MS = 5_000L
-
-        /**
-         * How long a replacement gets to report a length before it is
-         * disbelieved.
-         *
-         * This is silence, not patience: the swap has already cut the audio,
-         * and the track sits in `STATE_BUFFERING` for the whole of it before
-         * the old stream comes back. It was cut from eight seconds to two and
-         * a half on the strength of "a replacement that works reports its
-         * length in well under a tenth of this" — which was true of what the
-         * swap landed on at the time, and is not true of a FLAC. Measured
-         * here, an upgrade to a 16-bit Qobuz stream was still buffering its
-         * first chunk when the window closed:
-         *
-         * ```
-         *   upgrade reverted: replacement reports -9223372036854775807ms
-         *     against 259141ms (state=2, buffered=5002ms)
-         * ```
-         *
-         * — a working FLAC thrown away for being slower to open than a lossy
-         * MP4, which is the one thing this feature exists to fetch. The
-         * failure the short window was protecting against is caught by state
-         * now rather than by the clock (see [watchUpgrade]), so the ceiling
-         * only bounds the genuinely stuck case, and can afford to be long
-         * enough for a large file over a phone connection.
-         */
-        const val UPGRADE_PROVE_MS = 4_000L
-        const val UPGRADE_PROVE_STEP_MS = 200L
-
-        /**
-         * How long an upgrade gets to prove itself before the swap is dropped.
-         *
-         * Nothing like [UPGRADE_PROVE_MS], and for one reason: that window is
-         * silence and this one is music. The audition runs on a player nobody
-         * is listening to while the old stream plays through the whole of it,
-         * so the only thing a longer ceiling costs is a decoder held open a
-         * few seconds more. Generous enough for a cold hi-res FLAC over a
-         * phone connection, since a stream slow to open is exactly the one
-         * this feature exists to fetch and exactly the one the old
-         * cut-then-wait order threw away.
-         */
-        const val UPGRADE_AUDITION_MS = 25_000L
-
-        /**
-         * How far past the listener an upgrade has to be buffered before it is
-         * allowed to take over.
-         *
-         * This is the number that makes the swap inaudible. Everything inside
-         * this window is on disk by the time the real player asks for it, so
-         * the seam is a decoder init rather than a round trip to a CDN. It has
-         * to cover the drift as well: the track keeps playing while the
-         * audition buffers, so the swap lands some seconds past where the
-         * audition started, and a window shorter than the audition takes would
-         * put the swap point back on the network. Twelve seconds is comfortably
-         * more than either.
-         */
-        const val UPGRADE_PREBUFFER_MS = 12_000L
-
-        /**
-         * How much of the upgraded file's opening is fetched before the
-         * audition starts — see [AudioCache.warmRange] for why the audition
-         * cannot be relied on to leave it behind.
-         *
-         * A megabyte because a FLAC header is not a header: STREAMINFO is 34
-         * bytes, but the seek table, the tags and an embedded cover in front of
-         * the first audio frame routinely run to hundreds of kilobytes, and a
-         * range that stops short of the first frame buys nothing at all.
-         */
-        const val UPGRADE_HEADER_BYTES = 1L * 1024 * 1024
-
-        /**
-         * Opening fetched after an upgrade so the track stays analysable. Four
-         * megabytes is a little over twelve seconds of lossless — the shortest
-         * window Automix's head pass accepts — and many times that for a
-         * compressed rendition, which simply finishes sooner.
-         */
-        const val ANALYSIS_HEAD_BYTES = 4L * 1024 * 1024
-
-        /**
-         * The audition's own buffer, in time and in bytes.
-         *
-         * Both well past [FAR_BUFFER_MS]'s byte ceiling, and deliberately: this
-         * player has to end up [UPGRADE_PREBUFFER_MS] ahead of a position that
-         * keeps moving while it works, so what it needs is the window plus
-         * however long it took to fill — and at 4.6Mbit/s a hi-res FLAC eats
-         * eight megabytes in under fifteen seconds. Transient, and freed with
-         * the player a moment later.
-         */
-        const val AUDITION_BUFFER_MS = 40_000
-
-        const val AUDITION_BUFFER_BYTES = 24 * 1024 * 1024
-
-        /**
-         * The pause between releasing the audition player and swapping onto
-         * what it cached. Same reason as [RECOVERY_DELAY_MS] — Media3 lets go
-         * of a cache entry as the source is released, not as the call returns —
-         * and free here, because the old stream is still playing.
-         */
-        const val AUDITION_RELEASE_MS = 250L
+        const val UPGRADE_AFTER_CROSSFADE_MS = 250L
+        const val UPGRADE_PROVE_MS = 6_000L
+        const val UPGRADE_PROVE_STEP_MS = 50L
+        const val UPGRADE_AUDITION_MS = 3_000L
+        const val UPGRADE_PREBUFFER_MS = 1_000L
+        const val UPGRADE_HEADER_BYTES = 64L * 1024
+        const val ANALYSIS_HEAD_BYTES = 2L * 1024 * 1024
+        const val AUDITION_BUFFER_MS = 1_000
+        const val AUDITION_BUFFER_BYTES = 2 * 1024 * 1024
+        const val AUDITION_RELEASE_MS = 40L
 
         /**
          * How long the second look waits for the playing track to report its
@@ -4690,7 +5127,7 @@ class PlaybackService : MediaSessionService() {
          * known for this track. Anything past this is a different file, or a
          * broken one, and either way not what is being listened to.
          */
-        const val UPGRADE_LENGTH_SLACK_MS = 3_000L
+        const val UPGRADE_LENGTH_SLACK_MS = 45_000L
 
         /** How many times one track is picked up off the floor — see [recoverFrom]. */
         const val MAX_RECOVERIES = 2

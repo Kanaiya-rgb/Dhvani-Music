@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -40,12 +41,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import com.music.dhvani.ui.theme.DhvaniPrimary
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.dhvani.data.settings.AppSettings
@@ -168,9 +177,20 @@ fun FloatingBottomBar(
         (rowSize.width + gapPx) / n
     } else 0f
 
+    var lastValidIndex by remember { mutableIntStateOf(if (selectedIndex >= 0) selectedIndex else 0) }
+    if (selectedIndex >= 0) {
+        lastValidIndex = selectedIndex
+    }
+
     val pillTargetPx = if (tabStepPx > 0f) {
-        selectedIndex * tabStepPx + dragOffset
+        (if (selectedIndex >= 0) selectedIndex else lastValidIndex) * tabStepPx + dragOffset
     } else 0f
+
+    val pillAlpha by animateFloatAsState(
+        targetValue = if (selectedIndex >= 0) 1f else 0f,
+        animationSpec = glassSpec,
+        label = "pillAlpha",
+    )
 
     val animatedPillOffset by animateFloatAsState(
         targetValue = pillTargetPx,
@@ -212,9 +232,27 @@ fun FloatingBottomBar(
                     )
                 },
             )
-            .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, pillShape)
+            .border(
+                if (useGlass) 0.85.dp else GLASS_EDGE_WIDTH,
+                if (useGlass) GlassPrismaticEdgeBrush else Brush.linearGradient(listOf(GLASS_EDGE_COLOR, GLASS_EDGE_COLOR)),
+                pillShape,
+            )
             .padding(horizontal = PILL_INSET, vertical = PILL_INSET),
     ) {
+        val chromaticAberration by AppSettings.liquidGlassChromaticAberration.collectAsStateWithLifecycle()
+        val depthEffect by AppSettings.liquidGlassDepthEffect.collectAsStateWithLifecycle()
+        val customAccent by AppSettings.accentColor.collectAsStateWithLifecycle()
+        val dynamicTheme by AppSettings.dynamicTheme.collectAsStateWithLifecycle()
+        val isDark = MaterialTheme.colorScheme.surface.luminance() <= 0.5f
+
+        val selectedColor = when {
+            customAccent != null -> Color(customAccent!!)
+            dynamicTheme && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
+                MaterialTheme.colorScheme.primary != DhvaniPrimary -> MaterialTheme.colorScheme.primary
+            else -> Color(0xFFFA243C)
+        }
+        val unselectedColor = if (isDark) Color.White.copy(alpha = 0.88f) else Color(0xFF222428)
+
         if (tabWidthPx > 0f) {
             Box(
                 modifier = Modifier
@@ -223,16 +261,28 @@ fun FloatingBottomBar(
                     .graphicsLayer {
                         translationX = animatedPillOffset
                         // Around its own centre, so the indicator draws out
-                        // both ways rather than growing a tail off one edge —
-                        // a leading edge that ran ahead of the glyph it is
-                        // meant to be behind would read as two things moving,
-                        // not one thing stretching.
+                        // both ways rather than growing a tail off one edge
                         scaleX = 1f + lag * STRETCH
-                        scaleY = 1f - lag * STRETCH * SQUASH
-                    }
-                    .clip(pillShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
-            )
+                        alpha = pillAlpha
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (useGlass) {
+                    LiquidGlass3DBubble(
+                        modifier = Modifier.fillMaxSize(),
+                        chromaticAberration = chromaticAberration,
+                        depthEffect = depthEffect,
+                        accentColor = selectedColor,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(pillShape)
+                            .background(selectedColor.copy(alpha = 0.18f)),
+                    )
+                }
+            }
         }
 
         Row(
@@ -284,20 +334,14 @@ fun FloatingBottomBar(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // A real glass pill samples whatever artwork is behind it, not the
-            // theme's surface color, so a fixed onSurfaceVariant gray can lose
-            // contrast against it. Glass mode reads luminance off the surface
-            // color instead and picks pure black or white, same as the tint
-            // Echo's floating nav bar uses for its own liquid glass.
-            val glassTint = glassContentColor()
-            val adaptiveTint = if (useGlass) glassTint else null
             tabs.forEachIndexed { index, tab ->
                 BottomBarItem(
                     tab = tab,
                     selected = index == selectedIndex,
                     glassSpec = glassSpec,
-                    selectedTint = adaptiveTint,
-                    unselectedTint = adaptiveTint?.copy(alpha = 0.65f),
+                    useGlass = useGlass,
+                    selectedTint = selectedColor,
+                    unselectedTint = unselectedColor,
                     onClick = { onTabSelected(index) },
                     modifier = Modifier.weight(1f),
                 )
@@ -313,14 +357,13 @@ private fun BottomBarItem(
     glassSpec: AnimationSpec<Float>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    /** Overrides the theme's primary/onSurfaceVariant tint — see the glass branch above. */
+    useGlass: Boolean = false,
     selectedTint: Color? = null,
     unselectedTint: Color? = null,
 ) {
-    // The same spring the indicator rides, so the glyph arriving and the glass
-    // arriving are one movement rather than two that nearly agree.
+    // Magnified view inside the glass sphere
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1.08f else 1f,
+        targetValue = if (selected) (if (useGlass) 1.12f else 1.08f) else 1f,
         animationSpec = glassSpec,
         label = "tabScale",
     )
@@ -366,6 +409,141 @@ private fun BottomBarItem(
             color = tint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+
+/**
+ * 3D Spherical Liquid Glass Bubble / Lens Indicator matching PLYR's liquid glass design.
+ * Features:
+ * - Real chromatic aberration rainbow dispersion rim (red -> orange -> yellow -> green -> cyan -> blue -> violet)
+ * - 3D spherical dome convex shading with depth shadow
+ * - Top specular curved gloss reflection
+ * - Dynamic primary/custom accent illumination
+ */
+@Composable
+internal fun LiquidGlass3DBubble(
+    modifier: Modifier = Modifier,
+    chromaticAberration: Boolean = true,
+    depthEffect: Boolean = true,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+) {
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        val cx = width / 2f
+        val cy = height / 2f
+        val r = minOf(width, height) / 2f
+        val center = Offset(cx, cy)
+
+        // 1. Soft Ambient Elevation Drop Shadow
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color.Black.copy(alpha = 0.40f),
+                    Color.Black.copy(alpha = 0.15f),
+                    Color.Transparent,
+                ),
+                center = Offset(cx, cy + 2.5.dp.toPx()),
+                radius = r * 1.15f,
+            ),
+            radius = r * 1.15f,
+            center = Offset(cx, cy + 2.5.dp.toPx()),
+        )
+
+        // 2. Crystal Translucent 3D Convex Glass Dome (Spherical volume)
+        // Authentic Apple liquid glass: high translucency with soft specular gradient (not opaque black)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.18f),
+                    Color.White.copy(alpha = 0.05f),
+                    Color(0xFF141622).copy(alpha = 0.35f),
+                ),
+                center = Offset(cx - r * 0.25f, cy - r * 0.30f),
+                radius = r,
+            ),
+            radius = r,
+            center = center,
+        )
+
+        // 3. Dynamic Accent Core Glow (internal liquid luminescence)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    accentColor.copy(alpha = 0.30f),
+                    accentColor.copy(alpha = 0.08f),
+                    Color.Transparent,
+                ),
+                center = center,
+                radius = r * 0.85f,
+            ),
+            radius = r * 0.85f,
+            center = center,
+        )
+
+        // 4. Glancing-angle Chromatic Dispersion Arc on top-left curve (matching PLYR / Apple)
+        if (chromaticAberration) {
+            val rainbowColors = listOf(
+                Color(0xFFFF2A55),
+                Color(0xFFFF7A00),
+                Color(0xFFFFD600),
+                Color(0xFF00E676),
+                Color(0xFF00E5FF),
+                Color(0xFF2979FF),
+                Color(0xFFD500F9),
+                Color(0xFFFF2A55),
+            )
+            val arcRect = Rect(center = center, radius = r - 1.2.dp.toPx())
+            drawArc(
+                brush = Brush.sweepGradient(colors = rainbowColors, center = center),
+                startAngle = 140f,
+                sweepAngle = 95f,
+                useCenter = false,
+                topLeft = arcRect.topLeft,
+                size = arcRect.size,
+                style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round),
+                alpha = 0.85f,
+            )
+        }
+
+        // 5. Brilliant Specular White Crescent Highlight (Overhead light reflecting on convex glass dome)
+        val highlightRect = Rect(center = center, radius = r - 1.0.dp.toPx())
+        drawArc(
+            color = Color.White.copy(alpha = 0.95f),
+            startAngle = 145f,
+            sweepAngle = 85f,
+            useCenter = false,
+            topLeft = highlightRect.topLeft,
+            size = highlightRect.size,
+            style = Stroke(width = 2.0.dp.toPx(), cap = StrokeCap.Round),
+        )
+        // Soft inner glow of specular highlight
+        drawArc(
+            color = Color.White.copy(alpha = 0.40f),
+            startAngle = 150f,
+            sweepAngle = 75f,
+            useCenter = false,
+            topLeft = highlightRect.topLeft,
+            size = highlightRect.size,
+            style = Stroke(width = 4.0.dp.toPx(), cap = StrokeCap.Round),
+        )
+
+        // 6. Delicate Outer Rim Stroke (0.8dp)
+        drawCircle(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.65f),
+                    Color.White.copy(alpha = 0.10f),
+                    Color.White.copy(alpha = 0.25f),
+                ),
+                startY = cy - r,
+                endY = cy + r,
+            ),
+            radius = r - 0.5.dp.toPx(),
+            center = center,
+            style = Stroke(width = 0.8.dp.toPx()),
         )
     }
 }

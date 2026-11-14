@@ -14,6 +14,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Request
@@ -23,7 +24,7 @@ import java.util.Locale
 private const val TAG = "HttpAddonSource"
 
 /**
- * A [MusicSource] backed by a BitChord / Eclipse HTTP Addon (HTTP JSON v1 protocol).
+ * A [MusicSource] backed by an HTTP Addon (HTTP JSON v1 protocol).
  *
  * Communicates with standalone addon servers providing `manifest.json`,
  * `/search?q=...`, and `/stream/...` endpoints (e.g. BlueBit, Eljohnzc, LosslessBridge).
@@ -91,7 +92,7 @@ class HttpAddonSource(
                         return@withContext SourceHealth.Rejected("SpineModule format detected")
                     }
 
-                    // Check if it's a BitChord/Eclipse Addon manifest
+                    // Check if it's an HTTP Addon manifest
                     val hasResources = root.containsKey("resources") ||
                         root.containsKey("addonProtocol") ||
                         (root.containsKey("id") && root.containsKey("name"))
@@ -116,6 +117,7 @@ class HttpAddonSource(
     // -- Search ------------------------------------------------------------
 
     companion object {
+        private val streamCache = java.util.concurrent.ConcurrentHashMap<String, SourceStream>()
         private val failureCooldown = java.util.concurrent.ConcurrentHashMap<String, Long>()
     }
 
@@ -134,7 +136,7 @@ class HttpAddonSource(
 
             TrackLog.d(TAG, "Searching HTTP Addon: $searchUrl")
             try {
-                val timeout = if (waitForAll) 4_000L else 2_500L
+                val timeout = if (waitForAll) 8_000L else 6_000L
                 withTimeoutOrNull(timeout) {
                     val request = Request.Builder()
                         .url(searchUrl)
@@ -145,8 +147,8 @@ class HttpAddonSource(
                     Http.client.newCall(request).execute().use { response ->
                         if (!response.isSuccessful) {
                             TrackLog.w(TAG, "Addon search HTTP ${response.code} from $searchUrl")
-                            if (response.code >= 500) {
-                                failureCooldown[base] = android.os.SystemClock.elapsedRealtime() + 60_000L
+                            if (response.code in 502..504) {
+                                failureCooldown[base] = android.os.SystemClock.elapsedRealtime() + 4_000L
                             }
                             return@use emptyList()
                         }
@@ -156,7 +158,6 @@ class HttpAddonSource(
                 } ?: emptyList()
             } catch (e: Exception) {
                 TrackLog.w(TAG, "Addon search failed for '$query': ${e.message}")
-                failureCooldown[base] = android.os.SystemClock.elapsedRealtime() + 30_000L
                 emptyList()
             }
         }
@@ -215,10 +216,30 @@ class HttpAddonSource(
                 val audioQuality = item["audioQuality"]?.jsonPrimitive?.contentOrNull
                     ?: item["quality"]?.jsonPrimitive?.contentOrNull
                     ?: ""
-                val isHiRes = item["isHiRes"]?.jsonPrimitive?.booleanOrNull == true ||
+                val isAtmos = item["isDolbyAtmos"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true ||
+                    item["is_atmos"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true ||
+                    audioQuality.contains("ATMOS", ignoreCase = true)
+                val isHiRes = item["isHiRes"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true ||
+                    item["is_hires"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true ||
+                    item["hires"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true ||
+                    item["resolvedHiRes"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true ||
                     audioQuality.contains("HI_RES", ignoreCase = true) ||
-                    audioQuality.contains("HIRES", ignoreCase = true)
-                val sourceQuality = if (isHiRes) "Hi-Res FLAC" else "Lossless FLAC"
+                    audioQuality.contains("HI-RES", ignoreCase = true) ||
+                    audioQuality.contains("HIRES", ignoreCase = true) ||
+                    audioQuality.contains("24-bit", ignoreCase = true) ||
+                    audioQuality.contains("24bit", ignoreCase = true) ||
+                    audioQuality.contains("96 kHz", ignoreCase = true) ||
+                    audioQuality.contains("192 kHz", ignoreCase = true) ||
+                    audioQuality.contains("48 kHz", ignoreCase = true)
+                val sourceQuality = when {
+                    isAtmos -> "Dolby Atmos"
+                    isHiRes -> "Hi-Res FLAC"
+                    else -> "Lossless FLAC"
+                }
+                val isExplicit = item["explicit"]?.jsonPrimitive?.booleanOrNull == true ||
+                    item["isExplicit"]?.jsonPrimitive?.booleanOrNull == true ||
+                    title.contains("(Explicit)", ignoreCase = true) ||
+                    title.contains("[Explicit]", ignoreCase = true)
 
                 Song(
                     videoId = SourceRegistry.trackKey(config.id, id),
@@ -228,6 +249,7 @@ class HttpAddonSource(
                     albumName = album,
                     durationText = durationFormatted,
                     sourceQuality = sourceQuality,
+                    isExplicit = isExplicit,
                 )
             }
         }.getOrElse {
@@ -240,8 +262,14 @@ class HttpAddonSource(
 
     override suspend fun stream(trackId: String, request: StreamRequest): SourceStream? =
         withContext(Dispatchers.IO) {
+            val cacheKey = "${config.id}_$trackId"
+            streamCache[cacheKey]?.let {
+                TrackLog.d(TAG, "Addon stream cache hit for $trackId")
+                return@withContext it
+            }
             val (base, _) = resolveUrls()
-            val encodedId = URLEncoder.encode(trackId, "UTF-8")
+            val rawId = SourceRegistry.parseTrackKey(trackId)?.second ?: trackId
+            val encodedId = URLEncoder.encode(rawId, "UTF-8")
 
             // Try /stream/<id> first, fallback to /stream?id=<id>
             val urlsToTry = listOf(
@@ -251,51 +279,115 @@ class HttpAddonSource(
 
             for (url in urlsToTry) {
                 try {
-                    val req = Request.Builder()
-                        .url(url)
-                        .header("User-Agent", "Mozilla/5.0 (Android; Mobile; rv:130.0) Gecko/130.0")
-                        .get()
-                        .build()
+                    val streamResult = kotlinx.coroutines.withTimeoutOrNull(7_500L) {
+                        val req = Request.Builder()
+                            .url(url)
+                            .header("User-Agent", "Mozilla/5.0 (Android; Mobile; rv:130.0) Gecko/130.0")
+                            .get()
+                            .build()
 
-                    Http.client.newCall(req).execute().use { response ->
-                        if (!response.isSuccessful) return@use null
-                        val body = response.body?.string() ?: return@use null
-                        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return@use null
+                        Http.client.newCall(req).execute().use { response ->
+                            if (!response.isSuccessful) return@use null
+                            val body = response.body?.string() ?: return@use null
+                            val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return@use null
 
-                        val streamUrl = root["url"]?.jsonPrimitive?.contentOrNull ?: return@use null
-                        if (streamUrl.isBlank()) return@use null
+                            val streamsArray = root["streams"]?.jsonArray?.mapNotNull { runCatching { it.jsonObject }.getOrNull() }
+                            val streamObj = streamsArray?.firstOrNull {
+                                val fmt = it["format"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                                fmt.equals("direct", ignoreCase = true) || fmt.equals("flac", ignoreCase = true)
+                            } ?: streamsArray?.firstOrNull() ?: root
+                            val streamUrl = streamObj["url"]?.jsonPrimitive?.contentOrNull
+                                ?: root["url"]?.jsonPrimitive?.contentOrNull
+                                ?: return@use null
+                            if (streamUrl.isBlank()) return@use null
 
-                        val codec = root["codec"]?.jsonPrimitive?.contentOrNull
-                            ?: root["format"]?.jsonPrimitive?.contentOrNull
-                            ?: "flac"
-                        val bitDepth = root["bitDepth"]?.jsonPrimitive?.intOrNull ?: 16
-                        val sampleRate = root["sampleRate"]?.jsonPrimitive?.intOrNull
-                            ?: root["sampleRateHz"]?.jsonPrimitive?.intOrNull
-                            ?: 44100
-                        val isHiRes = root["isHiRes"]?.jsonPrimitive?.booleanOrNull
-                            ?: root["resolvedHiRes"]?.jsonPrimitive?.booleanOrNull
-                            ?: (bitDepth > 16 || sampleRate > 48000)
-                        val sourceLabel = if (isHiRes) "$displayName Hi-Res" else "$displayName Lossless"
+                            val rawCodec = streamObj["codec"]?.jsonPrimitive?.contentOrNull
+                                ?: streamObj["format"]?.jsonPrimitive?.contentOrNull
+                                ?: root["codec"]?.jsonPrimitive?.contentOrNull
+                                ?: root["format"]?.jsonPrimitive?.contentOrNull
+                                ?: "flac"
+                            val quality = (streamObj["quality"]?.jsonPrimitive?.contentOrNull
+                                ?: root["quality"]?.jsonPrimitive?.contentOrNull).orEmpty()
+                            val codec = if (rawCodec.equals("dash", ignoreCase = true) && (quality.contains("lossless", ignoreCase = true) || streamUrl.contains("tidal", ignoreCase = true))) {
+                                "flac"
+                            } else {
+                                rawCodec
+                            }
+                            val parsedBitDepth = streamObj["bitDepth"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+                                ?: streamObj["bit_depth"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+                                ?: root["bitDepth"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+                                ?: root["bit_depth"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+                                ?: root["maximum_bit_depth"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+                                ?: root["bitsPerSample"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+                                ?: if (quality.contains("24-bit", ignoreCase = true) || quality.contains("24bit", ignoreCase = true) || quality.contains("hi_res", ignoreCase = true) || quality.contains("hi-res", ignoreCase = true)) 24 else null
 
-                        val customHeaders = mutableMapOf<String, String>()
-                        (root["headers"] as? JsonObject)?.forEach { (k, v) ->
-                            v.jsonPrimitive.contentOrNull?.let { customHeaders[k] = it }
+                            val parsedSampleRate = streamObj["sampleRate"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.toInt()
+                                ?: streamObj["sample_rate"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.toInt()
+                                ?: root["sampleRate"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.toInt()
+                                ?: root["sample_rate"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.toInt()
+                                ?: root["sampleRateHz"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.toInt()
+                                ?: root["sampling_rate"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.toInt()
+                                ?: root["maximum_sampling_rate"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.let { (if (it < 1000) it * 1000 else it).toInt() }
+                                ?: if (quality.contains("96", ignoreCase = true)) 96000 else if (quality.contains("192", ignoreCase = true)) 192000 else null
+
+                            val explicitHiRes = streamObj["isHiRes"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
+                                ?: root["isHiRes"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
+                                ?: root["is_hires"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
+                                ?: root["hires"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
+                                ?: root["resolvedHiRes"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
+                                ?: (quality.contains("HI-RES", ignoreCase = true) || quality.contains("HI_RES", ignoreCase = true) || quality.contains("HIRES", ignoreCase = true) || quality.contains("24-BIT", ignoreCase = true))
+
+                            val isDolbyAtmos = streamObj["isDolbyAtmos"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true ||
+                                root["isDolbyAtmos"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true ||
+                                codec.contains("eac3", ignoreCase = true) ||
+                                codec.contains("ac4", ignoreCase = true) ||
+                                codec.contains("atmos", ignoreCase = true) ||
+                                quality.contains("atmos", ignoreCase = true)
+
+                            var bitDepth = parsedBitDepth ?: if (explicitHiRes) 24 else 16
+                            var sampleRate = parsedSampleRate ?: if (explicitHiRes) 96000 else 44100
+                            var isHiRes = (explicitHiRes || bitDepth > 16 || sampleRate > 48000) && !isDolbyAtmos
+
+                            if (codec.equals("flac", ignoreCase = true) && (!isHiRes || parsedBitDepth == null)) {
+                                FlacStreamInfoReader.inspectUrl(streamUrl)?.let { inspected ->
+                                    bitDepth = inspected.bitDepth
+                                    sampleRate = inspected.sampleRateHz
+                                    isHiRes = inspected.isHiRes
+                                }
+                            }
+
+                            val sourceLabel = when {
+                                isDolbyAtmos -> "$displayName Dolby Atmos"
+                                isHiRes -> "$displayName Hi-Res"
+                                else -> "$displayName Lossless"
+                            }
+
+                            val customHeaders = mutableMapOf<String, String>()
+                            ((streamObj["headers"] as? JsonObject) ?: (root["headers"] as? JsonObject))?.forEach { (k, v) ->
+                                v.jsonPrimitive.contentOrNull?.let { customHeaders[k] = it }
+                            }
+
+                            TrackLog.d(TAG, "Addon stream resolved: $streamUrl ($codec ${bitDepth}b/${sampleRate}Hz, isHiRes=$isHiRes, isAtmos=$isDolbyAtmos)")
+                            SourceStream(
+                                url = streamUrl,
+                                format = StreamFormat(
+                                    codec = codec.lowercase(Locale.ROOT),
+                                    bitDepth = bitDepth,
+                                    sampleRateHz = sampleRateHz(sampleRate),
+                                    isDolbyAtmos = isDolbyAtmos,
+                                    source = sourceLabel,
+                                ),
+                                headers = customHeaders,
+                            )
                         }
-
-                        TrackLog.d(TAG, "Addon stream resolved: $streamUrl ($codec ${bitDepth}b/${sampleRate}Hz)")
-                        return@withContext SourceStream(
-                            url = streamUrl,
-                            format = StreamFormat(
-                                codec = codec.lowercase(Locale.ROOT),
-                                bitDepth = bitDepth,
-                                sampleRateHz = sampleRateHz(sampleRate),
-                                source = sourceLabel,
-                            ),
-                            headers = customHeaders,
-                        )
+                    }
+                    if (streamResult != null) {
+                        streamCache[cacheKey] = streamResult
+                        return@withContext streamResult
                     }
                 } catch (e: Exception) {
                     TrackLog.w(TAG, "Addon stream fetch error on $url: ${e.message}")
+                    failureCooldown[base] = android.os.SystemClock.elapsedRealtime() + 5_000L
                 }
             }
 

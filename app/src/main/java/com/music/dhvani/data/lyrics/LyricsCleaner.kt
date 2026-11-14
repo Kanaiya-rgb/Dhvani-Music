@@ -18,7 +18,7 @@ object LyricsCleaner {
     )
 
     private val ASIDE_NOISE = Regex(
-        """\b(?:from|feat\.?|ft\.?|featuring|with|official|video|audio|lyric|lyrics|lyrical|visualizer|full\s+song|teaser|trailer|4k|hd|hq|remaster\w*|live|slowed|reverb|version|album\s+version|original\s+version|hindi|punjabi|telugu|tamil)\b""",
+        """\b(?:movie|film|soundtrack|ost|series|album|from|feat\.?|ft\.?|featuring|with|official|video|audio|lyric|lyrics|lyrical|visualizer|full\s+song|teaser|trailer|4k|hd|hq|remaster\w*|live|slowed|reverb|version|album\s+version|original\s+version|hindi|punjabi|telugu|tamil)\b""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -108,8 +108,12 @@ object LyricsCleaner {
      */
     fun cleanArtist(rawArtist: String): String {
         if (rawArtist.isBlank()) return ""
-        val first = rawArtist.split(ARTIST_SPLIT).firstOrNull()?.trim().orEmpty()
-        return first.replace(Regex("""\s+"""), " ")
+        val withoutTopic = rawArtist
+            .replace(Regex("""\s*-\s*topic\b""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+\b(vevo|official|channel)\b""", RegexOption.IGNORE_CASE), "")
+            .trim()
+        val first = withoutTopic.split(ARTIST_SPLIT).firstOrNull()?.trim().orEmpty()
+        return first.replace(Regex("""\s+"""), " ").ifBlank { rawArtist.trim() }
     }
 
     /**
@@ -126,7 +130,11 @@ object LyricsCleaner {
      * Cleans album title if provided.
      */
     fun cleanAlbum(rawAlbum: String): String {
-        return cleanTitle(rawAlbum)
+        if (rawAlbum.isBlank()) return ""
+        val withoutPrefix = rawAlbum
+            .replace(Regex("""^(?:movie|film|soundtrack|ost|series|album|from)\s*:\s*""", RegexOption.IGNORE_CASE), "")
+            .trim()
+        return cleanTitle(withoutPrefix)
     }
 
     private val ARTIST_STOP_WORDS = setOf("the", "dj", "music", "official", "records", "band", "feat", "ft", "and", "production", "records", "entertainment")

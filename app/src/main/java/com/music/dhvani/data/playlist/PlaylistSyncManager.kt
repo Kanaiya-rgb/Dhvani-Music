@@ -95,7 +95,9 @@ object PlaylistSyncManager {
 
     fun init(context: Context) {
         ensureChannel(context)
-        autoSeedFromLocalPlaylists(context)
+        syncScope.launch {
+            autoSeedFromLocalPlaylists(context)
+        }
     }
 
     private fun ensureChannel(context: Context) {

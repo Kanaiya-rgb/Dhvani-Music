@@ -6,6 +6,7 @@ package com.music.dhvani.playback.audio
 
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -22,10 +23,10 @@ import kotlin.math.abs
  */
 @UnstableApi
 class LosslessStallWatchdogAudioProcessor(
-    private val minStallDurationUs: Long = 1_500_000L,
-    private val silenceThreshold: Int = 128,
+    private val minStallDurationUs: Long = 10_000_000L,
+    private val silenceThreshold: Int = 16,
     private val onStallDetected: () -> Unit,
-) : AudioProcessor {
+) : BaseAudioProcessor() {
 
     @Volatile
     var armed: Boolean = false
@@ -35,13 +36,12 @@ class LosslessStallWatchdogAudioProcessor(
     private var bytesPerSample = 0
     private var isFloat = false
 
-    private var outputBuffer: ByteBuffer = EMPTY_BUFFER
-    private var inputEnded = false
-
     private var consecutiveSilentFrames: Long = 0
     private var notifiedThisStall = false
 
-    override fun configure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
+    override fun isActive(): Boolean = armed && sampleRate > 0
+
+    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         sampleRate = inputAudioFormat.sampleRate
         channelCount = inputAudioFormat.channelCount
         val (bytes, float) = bytesPerSampleFor(inputAudioFormat.encoding)
@@ -50,17 +50,14 @@ class LosslessStallWatchdogAudioProcessor(
         if (bytesPerSample == 0) {
             sampleRate = 0
             channelCount = 0
+            return AudioProcessor.AudioFormat.NOT_SET
         }
         return inputAudioFormat
     }
 
-    override fun isActive(): Boolean = bytesPerSample != 0
-
     override fun queueInput(inputBuffer: ByteBuffer) {
-        if (!inputBuffer.hasRemaining()) {
-            outputBuffer = EMPTY_BUFFER
-            return
-        }
+        val remaining = inputBuffer.remaining()
+        if (remaining == 0) return
 
         if (armed && sampleRate > 0 && channelCount > 0) {
             detectStall(inputBuffer)
@@ -68,7 +65,7 @@ class LosslessStallWatchdogAudioProcessor(
             resetTracking()
         }
 
-        val out = replaceOutputBuffer(inputBuffer.remaining())
+        val out = replaceOutputBuffer(remaining)
         out.put(inputBuffer)
         out.flip()
     }
@@ -81,16 +78,18 @@ class LosslessStallWatchdogAudioProcessor(
         val frameCount = inputBuffer.remaining() / frameSize
         val basePosition = inputBuffer.position()
 
-        repeat(frameCount) { frameIndex ->
+        val step = 16
+        var frameIndex = 0
+        while (frameIndex < frameCount) {
             var framePeak = 0
-            repeat(channelCount) { channelIndex ->
+            for (channelIndex in 0 until channelCount) {
                 val sampleIndex = basePosition + (frameIndex * channelCount + channelIndex) * bytesPerSample
                 val magnitude = sampleMagnitude(inputBuffer, sampleIndex)
                 if (magnitude > framePeak) framePeak = magnitude
             }
 
             if (framePeak < silenceThreshold) {
-                consecutiveSilentFrames++
+                consecutiveSilentFrames += step
                 val stallDurationUs = (consecutiveSilentFrames * 1_000_000L) / sampleRate
                 if (stallDurationUs >= minStallDurationUs && !notifiedThisStall) {
                     notifiedThisStall = true
@@ -99,6 +98,7 @@ class LosslessStallWatchdogAudioProcessor(
             } else {
                 resetTracking()
             }
+            frameIndex += step
         }
     }
 
@@ -139,43 +139,15 @@ class LosslessStallWatchdogAudioProcessor(
         resetTracking()
     }
 
-    override fun queueEndOfStream() {
-        inputEnded = true
-    }
-
-    override fun getOutput(): ByteBuffer {
-        val output = outputBuffer
-        outputBuffer = EMPTY_BUFFER
-        return output
-    }
-
-    override fun isEnded(): Boolean = inputEnded && outputBuffer === EMPTY_BUFFER
-
-    @Deprecated("Deprecated in AudioProcessor")
-    override fun flush() {
-        outputBuffer = EMPTY_BUFFER
-        inputEnded = false
+    override fun onFlush() {
         resetTracking()
     }
 
-    @Deprecated("Deprecated in AudioProcessor")
-    override fun reset() {
-        flush()
+    override fun onReset() {
+        resetTracking()
         sampleRate = 0
         channelCount = 0
         bytesPerSample = 0
-    }
-
-    private fun replaceOutputBuffer(size: Int): ByteBuffer {
-        if (outputBuffer.capacity() < size) {
-            outputBuffer = ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder())
-        } else {
-            outputBuffer.clear()
-        }
-        return outputBuffer
-    }
-
-    companion object {
-        private val EMPTY_BUFFER: ByteBuffer = ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
+        isFloat = false
     }
 }

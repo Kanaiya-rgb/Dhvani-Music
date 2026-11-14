@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
+import com.music.dhvani.data.lyrics.LyricLine
+import com.music.dhvani.ui.player.LyricsShareCardSheet
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -136,6 +138,7 @@ import com.music.dhvani.ui.screens.HistoryScreen
 import com.music.dhvani.ui.screens.ListenTogetherScreen
 import com.music.dhvani.listentogether.ListenTogetherManager
 import com.music.dhvani.ui.screens.SettingsScreen
+import com.music.dhvani.ui.screens.SettingsSubScreen
 import com.music.dhvani.ui.screens.SourcesScreen
 import com.music.dhvani.playback.LinkRequest
 import com.music.dhvani.playback.MusicLink
@@ -215,6 +218,7 @@ import com.music.dhvani.data.YtMusicRepository
 import com.music.dhvani.ui.player.NowPlayingScreen
 import com.music.dhvani.ui.player.dockedPlayerAvailable
 import com.music.dhvani.ui.player.dockedPlayerWidth
+import com.music.dhvani.ui.screens.CachedSongsScreen
 import com.music.dhvani.ui.screens.DetailScreen
 import com.music.dhvani.ui.screens.LocalMusicScreen
 import com.music.dhvani.ui.screens.HomeScreen
@@ -239,6 +243,7 @@ import dev.chrisbanes.haze.hazeSource
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.music.dhvani.data.playlist.PlaylistSyncManager
 import android.content.pm.ActivityInfo
 import java.util.Locale
@@ -349,6 +354,19 @@ class MainActivity : AppCompatActivity() {
         setIntent(intent)
         PlayerDeepLink.consume(intent)
         MusicLink.consume(intent)
+        intent.data?.let { uri ->
+            if ((uri.scheme == "mornye" || uri.scheme == "dhvani") && uri.host == "session-grant") {
+                val grant = uri.getQueryParameter("grant")
+                if (!grant.isNullOrBlank()) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val ok = com.music.dhvani.data.sources.zarz.ZarzSessionManager.exchangeGrant(grant)
+                        withContext(Dispatchers.Main) {
+                            if (ok) Toast.makeText(this@MainActivity, "Lossless Session Verified!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+        }
         if (intent.getBooleanExtra("open_update_dialog", false)) {
             AppUpdateChecker.triggerDialog()
         }
@@ -510,6 +528,7 @@ private fun DhvaniApp(
     var accountScrobblingFromListenTogether by rememberSaveable { mutableStateOf(false) }
     var showSources by remember { mutableStateOf(false) }
     var showAppearanceSettings by remember { mutableStateOf(false) }
+    var activeSettingsSubScreen by rememberSaveable { mutableStateOf<SettingsSubScreen?>(null) }
     var settingsSubScreenTitle by remember { mutableStateOf<String?>(null) }
     var settingsSubScreenOnBack by remember { mutableStateOf<(() -> Unit)?>(null) }
     
@@ -536,6 +555,7 @@ private fun DhvaniApp(
     var showDownloadManager by remember { mutableStateOf(false) }
     var showEqualizerSheet by remember { mutableStateOf(false) }
     var showAudioEffectsSheet by remember { mutableStateOf(false) }
+    var showLyricsOffsetSheet by remember { mutableStateOf(false) }
     var showAudioQualitySheet by remember { mutableStateOf(false) }
     var showSongDetails by remember { mutableStateOf(false) }
     /** The song whose details are currently being shown in [showSongDetails]. */
@@ -553,6 +573,7 @@ private fun DhvaniApp(
     var showListenTogether by remember { mutableStateOf(false) }
     var songActions by remember { mutableStateOf<Song?>(null) }
     var versionTarget by remember { mutableStateOf<Song?>(null) }
+    var shareLyricsTarget by remember { mutableStateOf<Pair<Song, List<LyricLine>>?>(null) }
     /**
      * Whether the track menu that is up was opened from the player.
      *
@@ -599,7 +620,7 @@ private fun DhvaniApp(
     // The player fills the screen with dark artwork whichever theme is on, so
     // it keeps light glyphs; every other surface follows the theme. Replay's
     // page and stories are the same case — dark artwork either way.
-    SystemBarIcons(dark = !darkTheme && !showNowPlaying && !showReplay && replayStory == null)
+    SystemBarIcons(dark = !darkTheme && !showNowPlaying && !showAmbientCinemaMode && !showReplay && replayStory == null)
 
     val homeState by viewModel.home.collectAsStateWithLifecycle()
     val homeLoadingMore by viewModel.homeLoadingMore.collectAsStateWithLifecycle()
@@ -621,10 +642,14 @@ private fun DhvaniApp(
     val updateNotice = updateAvailable
 
     val promptUpdate by AppUpdateChecker.promptDialog.collectAsStateWithLifecycle()
+    val latestKnownUpdate by AppUpdateChecker.latestKnown.collectAsStateWithLifecycle()
     LaunchedEffect(promptUpdate) {
         if (promptUpdate) {
             showUpdateDialog = true
             AppUpdateChecker.consumeDialog()
+            if (latestKnownUpdate == null && updateNotice == null) {
+                AppUpdateChecker.fetchLatest()
+            }
         }
     }
 
@@ -634,6 +659,7 @@ private fun DhvaniApp(
             showUpdateDialog = true
         }
     }
+
     val query by viewModel.query.collectAsStateWithLifecycle()
     val results by viewModel.results.collectAsStateWithLifecycle()
     val exploreState by viewModel.explore.collectAsStateWithLifecycle()
@@ -648,6 +674,7 @@ private fun DhvaniApp(
     val isLyricsTranslated by viewModel.isLyricsTranslated.collectAsStateWithLifecycle()
     val lyricsTranslating by viewModel.lyricsTranslating.collectAsStateWithLifecycle()
     val lyricsSource by viewModel.lyricsSource.collectAsStateWithLifecycle()
+    val lyricsSongwriters by viewModel.lyricsSongwriters.collectAsStateWithLifecycle()
     val lyricsChecked by viewModel.lyricsChecked.collectAsStateWithLifecycle()
     val probedLyricsSources by viewModel.probedLyricsSources.collectAsStateWithLifecycle()
     val searchHistory by viewModel.searchHistory.collectAsStateWithLifecycle()
@@ -682,6 +709,7 @@ private fun DhvaniApp(
             showAppearanceSettings = false
             settingsSubScreenTitle = null
             settingsSubScreenOnBack = null
+            activeSettingsSubScreen = null
         }
     }
 
@@ -876,7 +904,7 @@ private fun DhvaniApp(
     }
 
     val tabs = listOf(
-        BottomTab(tabSuno, DhvaniIcons.Play),
+        BottomTab(tabSuno, DhvaniIcons.Home),
         BottomTab(tabExplore, DhvaniIcons.Explore),
         BottomTab(tabLibrary, DhvaniIcons.Library),
         BottomTab(tabSearch, DhvaniIcons.Search),
@@ -896,7 +924,7 @@ private fun DhvaniApp(
             if (AppSettings.convertVideoToAudio.value) {
                 scope.launch {
                     songs.forEachIndexed { i, song ->
-                        if (!song.isVideo) return@forEachIndexed
+                        if (!song.isVideo || com.music.dhvani.playback.AudioCache.findPlayableCachedRendition(song.videoId) != null) return@forEachIndexed
                         val resolved = YtMusicRepository.resolveAudio(song)
                         if (resolved.videoId != song.videoId) {
                             val c = controller ?: return@launch
@@ -923,7 +951,7 @@ private fun DhvaniApp(
         controller?.playSongs(listOf(song), 0)
         if (!playerDocked) showNowPlaying = true
 
-        if (song.isVideo && AppSettings.convertVideoToAudio.value) {
+        if (song.isVideo && AppSettings.convertVideoToAudio.value && com.music.dhvani.playback.AudioCache.findPlayableCachedRendition(song.videoId) == null) {
             scope.launch {
                 val resolved = YtMusicRepository.resolveAudio(song)
                 if (resolved.videoId != song.videoId) {
@@ -1083,7 +1111,9 @@ private fun DhvaniApp(
                     videoId = item.videoId!!,
                     title = item.title,
                     artist = InnertubeParser.artistFromSubtitle(item.subtitle),
+                    durationText = InnertubeParser.durationFromSubtitle(item.subtitle),
                     thumbnailUrl = item.thumbnailUrl,
+                    isExplicit = item.isExplicit,
                 )
             }
             ?.distinctBy { it.videoId }
@@ -1183,7 +1213,9 @@ private fun DhvaniApp(
                     videoId = item.videoId,
                     title = item.title,
                     artist = InnertubeParser.artistFromSubtitle(item.subtitle),
+                    durationText = InnertubeParser.durationFromSubtitle(item.subtitle),
                     thumbnailUrl = item.thumbnailUrl,
+                    isExplicit = item.isExplicit,
                 )
             )
         } else {
@@ -1520,15 +1552,27 @@ private fun DhvaniApp(
             }
         }
     }
-    LaunchedEffect(player.song?.videoId) {
+    LaunchedEffect(player.song?.videoId, player.durationMs) {
         val s = player.song ?: return@LaunchedEffect
+        val effectiveDuration = if (player.durationMs > 0L) {
+            player.durationMs
+        } else {
+            s.durationMillis().takeIf { it > 0L } ?: return@LaunchedEffect
+        }
         viewModel.probeLyricsSources(
             title = s.title,
             artist = s.artist,
-            durationMs = player.durationMs,
+            durationMs = effectiveDuration,
             album = s.albumName,
             videoId = s.videoId,
         )
+    }
+
+    LaunchedEffect(player.song?.videoId, lyrics) {
+        val id = player.song?.videoId
+        if (id != null && !lyrics.isNullOrEmpty()) {
+            com.music.dhvani.playback.DynamicIslandOverlayManager.updateActiveLyrics(id, lyrics)
+        }
     }
 
     // The player's whole parameter list, in one place because there are two
@@ -1649,6 +1693,7 @@ private fun DhvaniApp(
             },
             lyrics = lyrics,
             lyricsSource = lyricsSource,
+            lyricsSongwriters = lyricsSongwriters,
             lyricsUnavailable = lyricsChecked && lyrics.isNullOrEmpty(),
             availableLyricsSources = probedLyricsSources,
             onSelectLyricsSource = { source ->
@@ -1664,6 +1709,10 @@ private fun DhvaniApp(
             onDislikeAndSkip = {
                 viewModel.dislikeAndSkipCurrentTrack(song.videoId, controller)
                 Toast.makeText(context, "Disliked track — skipping to next track", Toast.LENGTH_SHORT).show()
+            },
+            onEnterAmbientCinemaMode = {
+                showNowPlaying = false
+                showAmbientCinemaMode = true
             },
             onReloadLyrics = {
                 viewModel.reloadLyrics(
@@ -1745,6 +1794,7 @@ private fun DhvaniApp(
         // which is what actually closes/minimizes the app.
         BackHandler(enabled = showSettings && !showAccountScrobbling && !showSources && !showAppearanceSettings && settingsSubScreenTitle == null) {
             showSettings = false
+            activeSettingsSubScreen = null
             // Only when Settings was the whole of what was on screen. Opened
             // over Replay or over a release page, closing it reveals that again
             // rather than throwing both away.
@@ -1779,7 +1829,9 @@ private fun DhvaniApp(
                             videoId = item.videoId,
                             title = item.title,
                             artist = InnertubeParser.artistFromSubtitle(item.subtitle),
+                            durationText = InnertubeParser.durationFromSubtitle(item.subtitle),
                             thumbnailUrl = item.thumbnailUrl,
+                            isExplicit = item.isExplicit,
                         ),
                     )
                     item.browseId != null -> viewModel.openDetail(
@@ -2064,6 +2116,29 @@ private fun DhvaniApp(
                                 }
                             },
                             contentPadding = listPadding,
+                            initialSubScreen = activeSettingsSubScreen,
+                            onSubScreenSelected = { activeSettingsSubScreen = it },
+                        )
+                    } else if (page != null && page.browseId == "local:cached") {
+                        val localState = page.songs
+                        val localSongs = (localState as? com.music.dhvani.data.model.UiState.Success)
+                            ?.data.orEmpty()
+                        CachedSongsScreen(
+                            songs = localSongs,
+                            onSongClick = play,
+                            onSongLongPress = openSongMenu,
+                            onSongSwipe = onSongSwipe,
+                            onShuffle = { songs ->
+                                QueueShuffle.enableForNextQueue()
+                                play(songs, songs.indices.random())
+                            },
+                            onBack = {
+                                viewModel.closeDetail()
+                            },
+                            onProfileClick = {
+                                showSettings = true
+                            },
+                            contentPadding = listPadding,
                         )
                     } else if (page != null && page.browseId.isDeviceFolder()) {
                         // Local Music and Downloads — both the tabbed Songs / Artists /
@@ -2101,8 +2176,11 @@ private fun DhvaniApp(
                                 QueueShuffle.enableForNextQueue()
                                 play(songs, songs.indices.random())
                             },
-                            emptyMessage = (localState as? com.music.dhvani.data.model.UiState.Error)
-                                ?.message,
+                            emptyMessage = if (page.browseId == "local:cached") {
+                                "No cached songs in song cache. Stream any track to automatically cache it here."
+                            } else {
+                                (localState as? com.music.dhvani.data.model.UiState.Error)?.message
+                            },
                             // An album or artist here is a grouping of rows rather than
                             // a page, so the menu is handed the rows themselves — there
                             // is no id anything could be fetched with.
@@ -2134,6 +2212,9 @@ private fun DhvaniApp(
                             },
                             onBack = {
                                 viewModel.closeDetail()
+                            },
+                            onProfileClick = {
+                                showSettings = true
                             },
                             contentPadding = listPadding,
                         )
@@ -2242,7 +2323,9 @@ private fun DhvaniApp(
                                                 videoId = item.videoId,
                                                 title = item.title,
                                                 artist = InnertubeParser.artistFromSubtitle(item.subtitle),
+                                                durationText = InnertubeParser.durationFromSubtitle(item.subtitle),
                                                 thumbnailUrl = item.thumbnailUrl,
+                                                isExplicit = item.isExplicit,
                                             )
                                             playRadio(song)
                                         }
@@ -2423,11 +2506,13 @@ private fun DhvaniApp(
                         pageColor = when {
                             showReplay -> Color.Black
                             isDetailVisible -> detailPalette.wash
+                            selectedTab == TAB_HOME && !isSubScreen -> Color.Transparent
                             else -> MaterialTheme.colorScheme.background
                         },
                         scrimColor = when {
                             showReplay -> Color.Black
                             isDetailVisible -> detailPalette.background
+                            selectedTab == TAB_HOME && !isSubScreen -> Color.Transparent
                             else -> MaterialTheme.colorScheme.background
                         },
                         scrolled = isTopScrolled,
@@ -2440,6 +2525,7 @@ private fun DhvaniApp(
                             },
                     )
 
+                    if (detail?.browseId != "local:cached" && !detail?.browseId.isDeviceFolder()) {
                     FrostedTopBar(
                         isHome = selectedTab == TAB_HOME && !isSubScreen,
                         title = when {
@@ -2553,9 +2639,10 @@ private fun DhvaniApp(
                         }
                     },
                 )
+                }
             }
 
-                val hideBottomBar = showSettings || showAppearanceSettings || showSources || showAccountScrobbling || showDiscord
+                val hideBottomBar = showDiscord
 
                 // Drawn before the bars so their own glass reads on top of it.
                 if (!hideBottomBar || (player.song != null && !playerDocked)) {
@@ -2569,10 +2656,13 @@ private fun DhvaniApp(
                     )
                 }
 
+                val isSettingsOpen = showSettings || showAppearanceSettings || showSources || showAccountScrobbling
+                val isOverlayOpen = detail != null || isSettingsOpen || showHistory || showDiscord || showListenTogether || showReplay
+
                 val onTabSelected: (Int) -> Unit = onTabSelected@{ index ->
-                    // Only re-tapping the search tab while already on it focuses the input field or clears query
+                    // Only re-tapping the search tab while already on the root search page focuses the input field or clears query
                     if (index == TAB_SEARCH) {
-                        if (selectedTab == TAB_SEARCH) {
+                        if (selectedTab == TAB_SEARCH && !isOverlayOpen) {
                             searchFocusTrigger++
                             if (query.isNotEmpty()) {
                                 viewModel.onQueryChange("")
@@ -2596,10 +2686,12 @@ private fun DhvaniApp(
                     selectedTab = index
                 }
 
+                val effectiveTabIndex = if (isSettingsOpen) -1 else selectedTab
+
                 if (glassActive && !hideBottomBar) {
                     GlassNavBar(
                         tabs = tabs,
-                        selectedIndex = selectedTab,
+                        selectedIndex = effectiveTabIndex,
                         onTabSelected = onTabSelected,
                         scrollConnection = navBarScroll,
                         song = player.song?.takeUnless { playerDocked },
@@ -2620,20 +2712,11 @@ private fun DhvaniApp(
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            // Capped and centred rather than run to the page's edges
-                            // — see [FLOATING_BAR_MAX_WIDTH]. It sits on the Column
-                            // rather than on each bar so the two are held to the same
-                            // width and keep the shared left and right edge they have
-                            // on a phone. Before fillMaxWidth, so the fill has
-                            // already been bounded by the time it is applied.
                             .widthIn(max = FLOATING_BAR_MAX_WIDTH)
                             .fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        // Only where the player isn't already open beside the page:
-                        // a bar whose whole job is to stand in for the player, next
-                        // to the player, is a second copy of what is already there.
                         player.song?.takeUnless { playerDocked }?.let { song ->
                             MiniPlayer(
                                 song = song,
@@ -2644,6 +2727,7 @@ private fun DhvaniApp(
                                     controller?.let { if (it.isPlaying) it.pause() else it.play() }
                                 },
                                 onNext = { controller?.seekToNextMediaItem() },
+                                onPrevious = { controller?.seekToPrevious() },
                                 onExpand = { showNowPlaying = true },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -2664,7 +2748,7 @@ private fun DhvaniApp(
                         ) {
                             FloatingBottomBar(
                                 tabs = tabs,
-                                selectedIndex = selectedTab,
+                                selectedIndex = effectiveTabIndex,
                                 hazeState = hazeState,
                                 onTabSelected = onTabSelected,
                             )
@@ -2819,6 +2903,35 @@ private fun DhvaniApp(
                 context.startActivity(Intent.createChooser(sendIntent, song.title))
                 songActions = null
             }
+            val shareLyrics: () -> Unit = {
+                val targetSong = song
+                songActions = null
+                val curLines = if (player.song?.videoId == targetSong.videoId && !lyrics.isNullOrEmpty()) {
+                    lyrics
+                } else {
+                    com.music.dhvani.data.lyrics.LyricsRepository.getCached(targetSong.videoId)?.lines
+                }
+                if (!curLines.isNullOrEmpty()) {
+                    shareLyricsTarget = targetSong to curLines
+                } else {
+                    Toast.makeText(context, "Fetching lyrics for sharing...", Toast.LENGTH_SHORT).show()
+                    scope.launch {
+                        val result = com.music.dhvani.data.lyrics.LyricsRepository.lyrics(
+                            videoId = targetSong.videoId,
+                            title = targetSong.title,
+                            artist = targetSong.artist,
+                            durationMs = if (player.song?.videoId == targetSong.videoId && player.durationMs > 0L) player.durationMs else targetSong.durationMillis(),
+                            album = targetSong.albumName,
+                        )
+                        val fetchedLines = result?.lines
+                        if (!fetchedLines.isNullOrEmpty()) {
+                            shareLyricsTarget = targetSong to fetchedLines
+                        } else {
+                            Toast.makeText(context, "No lyrics available for this song", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
             // Navigating has to take the player down with the sheet, or the
             // page it opens lands behind a still-covering player.
             // The track's cover stands in for an album's, but never for an
@@ -2935,9 +3048,17 @@ private fun DhvaniApp(
                             showAudioEffectsSheet = true
                         }
                     } else null,
+                    onOpenLyricsOffset = if (fromPlayer) {
+                        {
+                            songActions = null
+                            showLyricsOffsetSheet = true
+                        }
+                    } else null,
+                    lyricsOffsetMs = com.music.dhvani.data.settings.AppSettings.getLyricsOffset(song.videoId),
                     onEnterAmbientCinemaMode = if (fromPlayer) {
                         {
                             songActions = null
+                            showNowPlaying = false
                             showAmbientCinemaMode = true
                         }
                     } else null,
@@ -2958,6 +3079,7 @@ private fun DhvaniApp(
                     // drops it for a local file via `isOffline`, this catches
                     // the rest.
                     onShare = share.takeIf { song.videoId.isNotBlank() },
+                    onShareLyrics = shareLyrics.takeIf { song.videoId.isNotBlank() },
                     onCopyLog = if (fromPlayer) {
                         {
                             songActions = null
@@ -2985,6 +3107,14 @@ private fun DhvaniApp(
                     },
                 )
             }
+        }
+
+        shareLyricsTarget?.let { (targetSong, lines) ->
+            LyricsShareCardSheet(
+                song = targetSong,
+                lines = lines,
+                onDismiss = { shareLyricsTarget = null },
+            )
         }
 
         // ---- Other versions & languages ----
@@ -3058,7 +3188,22 @@ private fun DhvaniApp(
         }
 
         if (showAudioEffectsSheet) {
-            com.music.dhvani.ui.player.AudioEffectsSheet(onDismiss = { showAudioEffectsSheet = false })
+            com.music.dhvani.ui.player.AudioEffectsSheet(
+                song = player.song,
+                onDismiss = { showAudioEffectsSheet = false },
+            )
+        }
+
+        if (showLyricsOffsetSheet) {
+            val offsetSong = player.song
+            if (offsetSong != null) {
+                com.music.dhvani.ui.player.LyricsOffsetSheet(
+                    song = offsetSong,
+                    currentOffsetMs = com.music.dhvani.data.settings.AppSettings.getLyricsOffset(offsetSong.videoId),
+                    onOffsetChanged = { /* updated directly in AppSettings */ },
+                    onDismiss = { showLyricsOffsetSheet = false },
+                )
+            }
         }
 
         ringtoneTarget?.let { s ->
@@ -3106,6 +3251,8 @@ private fun DhvaniApp(
                             }
                             option.isLossless || option.id == "LOSSLESS" || option.sourceConfig?.kind?.canServeLossless == true -> {
                                 com.music.dhvani.playback.OriginalVersion.unpin(s.videoId)
+                                com.music.dhvani.playback.StreamChoice.allowSubstitutes(s.videoId)
+                                com.music.dhvani.playback.QualityUpgrade.allowUpgrades(s.videoId)
                                 com.music.dhvani.data.settings.AppSettings.setPreferredPlaybackSource(option.id)
                                 com.music.dhvani.data.settings.AppSettings.setAudioQualityWifi(com.music.dhvani.data.settings.AudioQuality.LOSSLESS)
                                 com.music.dhvani.data.settings.AppSettings.setAudioQualityCellular(com.music.dhvani.data.settings.AudioQuality.LOSSLESS)
@@ -3416,24 +3563,22 @@ private fun DhvaniApp(
         }
 
 
-        // ---- Update available (once per launch) ----
+        // ---- Update available (once per launch or manual preview) ----
         if (showUpdateDialog) {
-            updateNotice?.let { update ->
+            val update = updateNotice
+                ?: latestKnownUpdate?.takeIf { AppUpdateChecker.isNewer(it.version, BuildConfig.VERSION_NAME) }
+            if (update != null) {
                 UpdateAvailableDialog(
                     version = update.version,
                     notes = update.notes,
                     hazeState = hazeState,
+                    apkSizeBytes = update.apkSizeBytes,
                     // A download in progress keeps running behind the closed
                     // sheet — only the sheet itself goes away. The top bar's
                     // update icon reopens it onto whatever state it reached.
                     onDismiss = { showUpdateDialog = false },
                     onDownload = {
-                        if (update.apkUrl != null) {
-                            scope.launch { AppUpdateChecker.downloadApk(context) }
-                        } else {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl)))
-                            showUpdateDialog = false
-                        }
+                        scope.launch { AppUpdateChecker.downloadApk(context, update) }
                     },
                     onCancelDownload = {
                         AppUpdateChecker.cancelDownload()
@@ -3442,12 +3587,9 @@ private fun DhvaniApp(
                         val ready = AppUpdateChecker.download.value as? AppUpdateChecker.DownloadState.Ready
                         ready?.let { AppUpdateChecker.installApk(context, it.file) }
                     },
-                    onOpenReleasePage = {
-                        AppUpdateChecker.resetDownload()
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl)))
-                        showUpdateDialog = false
-                    },
                 )
+            } else {
+                showUpdateDialog = false
             }
         }
 

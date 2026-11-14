@@ -27,13 +27,13 @@ import dev.chrisbanes.haze.materials.HazeMaterials
  * The run the fade needs below the bar to get from full blur to none without
  * the eye finding where it got there.
  */
-private val FADE_RUN = 64.dp
+private val FADE_RUN = 100.dp
 
 /**
  * How much blur the fade reaches at its outer edge — restrained to prevent
  * excessive opacity bands over the ambient artwork.
  */
-private const val PEAK = 0.75f
+private const val PEAK = 0.70f
 
 /**
  * The glass behind every top bar: full blur along the top edge, ramping to
@@ -65,6 +65,9 @@ fun TopFadeBlur(
     scrolled: Boolean = true,
 ) {
     val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
+    val frostedHeaderBlur by AppSettings.frostedHeaderBlur.collectAsStateWithLifecycle()
+
+    val canBlurHeader = frostedHeaderBlur && !reduceDynamicBlur
 
     val scrollProgress by animateFloatAsState(
         targetValue = if (scrolled) 1f else 0f,
@@ -73,10 +76,10 @@ fun TopFadeBlur(
     )
 
     val topBarH = topBarHeight()
-    val totalHeight = topBarH + (FADE_RUN * scrollProgress)
+    val totalHeight = if (canBlurHeader) topBarH + (FADE_RUN * scrollProgress) else topBarH
 
-    // 1. Hardware blur layer (when supported and blur is not disabled)
-    if (!reduceDynamicBlur && scrollProgress > 0.01f) {
+    // 1. Hardware blur layer (when supported and frosted header blur is enabled)
+    if (canBlurHeader && scrollProgress > 0.005f) {
         Box(
             modifier = modifier
                 .fillMaxWidth()
@@ -84,7 +87,7 @@ fun TopFadeBlur(
                 .optimizedHazeEffect(
                     state = hazeState,
                     // Translucent wash keyed to pageColor to prevent solid dark blocks
-                    style = HazeMaterials.ultraThin(pageColor.copy(alpha = (0.28f * scrollProgress).coerceIn(0f, 1f))),
+                    style = HazeMaterials.ultraThin(pageColor.copy(alpha = (0.20f * scrollProgress).coerceIn(0f, 1f))),
                 ) {
                     progressive = HazeProgressive.verticalGradient(
                         easing = EaseOutCubic,
@@ -97,30 +100,51 @@ fun TopFadeBlur(
     }
 
     // 2. Guaranteed Frosted Protective Surface & Readability Scrim:
-    // Even on devices where GPU blur is bypassed (e.g. low-end devices or battery saver),
-    // this ensures content scrolling beneath the bar is smoothly obscured and NEVER
-    // produces double-exposure illegibility over the header glyphs/text.
-    //
-    // At rest (scrollProgress == 0), only a very gentle status bar vignette (0.12f alpha)
-    // is applied at the top edge, leaving the rest 100% transparent into the ambient background.
-    val backgroundBrush = remember(scrimColor, scrollProgress, topBarH, totalHeight) {
-        val barFraction = if (totalHeight > 0.dp) (topBarH / totalHeight).coerceIn(0.5f, 0.85f) else 0.72f
-        val peakAlpha = (0.86f * scrollProgress).coerceIn(0f, 1f)
-        val midAlpha = (0.72f * scrollProgress).coerceIn(0f, 1f)
-        Brush.verticalGradient(
-            colorStops = arrayOf(
-                0.0f to scrimColor.copy(alpha = if (scrollProgress > 0.01f) peakAlpha else 0.12f),
-                barFraction * 0.75f to scrimColor.copy(alpha = if (scrollProgress > 0.01f) peakAlpha else 0.05f),
-                barFraction to scrimColor.copy(alpha = if (scrollProgress > 0.01f) midAlpha else 0.0f),
-                1.0f to Color.Transparent,
+    if (canBlurHeader && scrollProgress > 0.005f && scrimColor != Color.Transparent) {
+        val backgroundBrush = remember(scrimColor, scrollProgress, topBarH, totalHeight) {
+            val barFraction = if (totalHeight > 0.dp) (topBarH / totalHeight).coerceIn(0.40f, 0.70f) else 0.55f
+            val peakAlpha = (0.50f * scrollProgress).coerceIn(0f, 1f)
+            val midAlpha = (0.28f * scrollProgress).coerceIn(0f, 1f)
+            val tailAlpha = (0.08f * scrollProgress).coerceIn(0f, 1f)
+            Brush.verticalGradient(
+                colorStops = arrayOf(
+                    0.0f to scrimColor.copy(alpha = peakAlpha),
+                    barFraction * 0.50f to scrimColor.copy(alpha = peakAlpha * 0.85f),
+                    barFraction to scrimColor.copy(alpha = midAlpha),
+                    barFraction + (1f - barFraction) * 0.40f to scrimColor.copy(alpha = tailAlpha),
+                    barFraction + (1f - barFraction) * 0.75f to scrimColor.copy(alpha = tailAlpha * 0.35f),
+                    1.0f to Color.Transparent,
+                )
             )
+        }
+
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(totalHeight)
+                .background(backgroundBrush),
+        )
+    } else if (!canBlurHeader && scrollProgress > 0.005f && scrimColor != Color.Transparent) {
+        // When frosted header blur is disabled, provide clean soft scrim fading gently over totalHeight
+        val backgroundBrush = remember(scrimColor, scrollProgress, topBarH, totalHeight) {
+            val barFraction = if (totalHeight > 0.dp) (topBarH / totalHeight).coerceIn(0.40f, 0.70f) else 0.55f
+            val peakAlpha = (0.85f * scrollProgress).coerceIn(0f, 1f)
+            val midAlpha = (0.55f * scrollProgress).coerceIn(0f, 1f)
+            Brush.verticalGradient(
+                colorStops = arrayOf(
+                    0.0f to scrimColor.copy(alpha = peakAlpha),
+                    barFraction to scrimColor.copy(alpha = midAlpha),
+                    barFraction + (1f - barFraction) * 0.50f to scrimColor.copy(alpha = midAlpha * 0.35f),
+                    1.0f to Color.Transparent,
+                )
+            )
+        }
+
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(totalHeight)
+                .background(backgroundBrush),
         )
     }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(totalHeight)
-            .background(backgroundBrush),
-    )
 }

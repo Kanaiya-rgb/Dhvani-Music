@@ -21,19 +21,23 @@ import androidx.security.crypto.MasterKey
  */
 class AuthStore(context: Context) {
 
-    private val prefs: SharedPreferences = runCatching {
-        EncryptedSharedPreferences.create(
-            context,
-            "flux_auth",
-            MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build(),
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
-    }.getOrElse {
-        Log.w("DhvaniMusic", "EncryptedSharedPreferences unavailable, falling back: ${it.message}")
-        context.getSharedPreferences("flux_auth_plain", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+
+    private val prefs: SharedPreferences by lazy {
+        runCatching {
+            EncryptedSharedPreferences.create(
+                appContext,
+                "flux_auth",
+                MasterKey.Builder(appContext)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build(),
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+            )
+        }.getOrElse {
+            Log.w("DhvaniMusic", "EncryptedSharedPreferences unavailable, falling back: ${it.message}")
+            appContext.getSharedPreferences("flux_auth_plain", Context.MODE_PRIVATE)
+        }
     }
 
     var cookie: String?

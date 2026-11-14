@@ -1,22 +1,15 @@
 package com.music.dhvani.data.lyrics
 
+import android.util.Log
 import com.music.dhvani.data.Http
 import kotlinx.serialization.json.Json
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
-/**
- * Shared plumbing for the lyric providers.
- *
- * They are all raced against each other by [LyricsRepository], so a provider
- * that hangs holds up the whole lookup. [LYRICS_TIMEOUT_SECONDS] is deliberately
- * far shorter than [Http]'s stream-oriented timeouts: a lyric that arrives
- * after the second chorus is of no use to anyone, and the fallbacks behind it
- * are the better answer.
- */
-private const val LYRICS_TIMEOUT_SECONDS = 6L
+private const val TAG = "LyricsHttp"
+private const val LYRICS_TIMEOUT_SECONDS = 12L
 
-internal const val LYRICS_AGENT = "Dhvani Music"
+internal const val LYRICS_AGENT = "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
 
 internal val lyricsJson = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -25,7 +18,8 @@ private val client by lazy {
     // common — only the deadline differs.
     Http.client.newBuilder()
         .callTimeout(LYRICS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .connectTimeout(3, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
         .build()
 }
 
@@ -33,11 +27,21 @@ private val client by lazy {
 internal fun lyricsGet(url: String): String? = runCatching {
     val request = Request.Builder().url(url)
         .header("User-Agent", LYRICS_AGENT)
-        .header("Accept", "application/json")
+        .header("Accept", "application/json, text/plain, application/xml, */*")
         .build()
     client.newCall(request).execute().use { response ->
-        if (response.isSuccessful) response.body?.string() else null
+        val code = response.code
+        val body = response.body?.string()
+        if (response.isSuccessful) {
+            Log.d(TAG, "SUCCESS $code for $url (${body?.length ?: 0} bytes)")
+            body
+        } else {
+            Log.w(TAG, "FAIL $code ${response.message} for $url")
+            null
+        }
     }
+}.onFailure { e ->
+    Log.e(TAG, "EXCEPTION for $url: ${e.javaClass.simpleName} - ${e.message}")
 }.getOrNull()
 
 /** Body of a GET with custom headers (e.g. for Musixmatch browser/client emulation). */

@@ -81,7 +81,11 @@ import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.border
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.transformations
+import com.music.dhvani.data.artist.ArtistSignatureTransformation
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
@@ -107,6 +111,7 @@ import com.music.dhvani.ui.components.PAGE_GUTTER
 import com.music.dhvani.ui.components.ROW_DIVIDER_INSET
 import com.music.dhvani.ui.components.SHELF_CARD_WIDTH
 import com.music.dhvani.ui.components.SongRow
+import com.music.dhvani.ui.components.ExplicitBadge
 import com.music.dhvani.ui.components.thumbnailBorder
 import com.music.dhvani.ui.components.detailSkeleton
 import com.music.dhvani.ui.components.topBarContentPadding
@@ -818,69 +823,37 @@ private fun ArtistHeader(page: DetailPage, palette: ArtworkPalette, artHeight: D
                         .padding(bottom = 10.dp)
                         .animateContentSize(),
                 ) {
-                    val isVectorOrTransparent = remember(signatureUrl) {
-                        signatureUrl?.let {
-                            !it.contains(".jpg", ignoreCase = true) && !it.contains(".jpeg", ignoreCase = true)
-                        } ?: true
-                    }
-                    val inkFilter = remember(isVectorOrTransparent) {
-                        if (isVectorOrTransparent) {
-                            ColorFilter.tint(Color.White)
-                        } else {
-                            // Scanned paper autographs (e.g. IndianAutographs JPEGs):
-                            // Hardware-accelerated GPU inversion & luminance-to-alpha extraction
-                            // Turns paper white (255) to transparent (0 alpha), and black ink (0) to crisp white ink (255)
-                            ColorFilter.colorMatrix(
-                                ColorMatrix(
-                                    floatArrayOf(
-                                        0f, 0f, 0f, 0f, 255f,
-                                        0f, 0f, 0f, 0f, 255f,
-                                        0f, 0f, 0f, 0f, 255f,
-                                        -0.45f, -0.45f, -0.45f, 0f, 255f,
-                                    )
-                                )
-                            )
-                        }
-                    }
-                    val shadowFilter = remember(isVectorOrTransparent) {
-                        if (isVectorOrTransparent) {
-                            ColorFilter.tint(Color.Black.copy(alpha = 0.55f))
-                        } else {
-                            ColorFilter.colorMatrix(
-                                ColorMatrix(
-                                    floatArrayOf(
-                                        0f, 0f, 0f, 0f, 0f,
-                                        0f, 0f, 0f, 0f, 0f,
-                                        0f, 0f, 0f, 0f, 0f,
-                                        -0.25f, -0.25f, -0.25f, 0f, 140f,
-                                    )
-                                )
-                            )
+                    val context = LocalContext.current
+                    val signatureRequest: ImageRequest? = remember(signatureUrl) {
+                        signatureUrl?.let { url ->
+                            ImageRequest.Builder(context)
+                                .data(url)
+                                .transformations(ArtistSignatureTransformation())
+                                .build()
                         }
                     }
 
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .height(64.dp)
+                            .height(84.dp)
                             .fillMaxWidth(),
                     ) {
                         // Subtle drop-shadow silhouette in translucent black so white ink pops against bright backgrounds
                         AsyncImage(
-                            model = signatureUrl,
+                            model = signatureRequest,
                             contentDescription = null,
-                            colorFilter = shadowFilter,
+                            colorFilter = ColorFilter.tint(Color.Black.copy(alpha = 0.50f)),
                             modifier = Modifier
-                                .height(64.dp)
-                                .widthIn(max = 240.dp)
+                                .height(84.dp)
+                                .widthIn(max = 280.dp)
                                 .offset(x = 1.dp, y = 1.5.dp),
                             contentScale = ContentScale.Fit,
                         )
-                        // Pure white ink signature
+                        // Pure white ink signature (processed by ArtistSignatureTransformation)
                         AsyncImage(
-                            model = signatureUrl,
+                            model = signatureRequest,
                             contentDescription = "Signature of ${page.title}",
-                            colorFilter = inkFilter,
                             onSuccess = {
                                 Log.d("ArtistSignature", "Signature loaded successfully for ${page.title}")
                                 isSignatureLoaded = true
@@ -890,8 +863,8 @@ private fun ArtistHeader(page: DetailPage, palette: ArtworkPalette, artHeight: D
                                 isSignatureLoaded = false
                             },
                             modifier = Modifier
-                                .height(64.dp)
-                                .widthIn(max = 240.dp),
+                                .height(84.dp)
+                                .widthIn(max = 280.dp),
                             contentScale = ContentScale.Fit,
                         )
                     }
@@ -1400,13 +1373,23 @@ private fun CompactSongRow(
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = palette.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (song.isExplicit) {
+                    ExplicitBadge()
+                }
+                Text(
+                    text = song.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = palette.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
             Text(
                 text = song.artist,
                 style = MaterialTheme.typography.bodyMedium,
@@ -1469,13 +1452,23 @@ private fun SuggestedSongRow(
         )
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = palette.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (song.isExplicit) {
+                    ExplicitBadge()
+                }
+                Text(
+                    text = song.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = palette.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
             Spacer(Modifier.height(2.dp))
             Text(
                 text = song.artist,

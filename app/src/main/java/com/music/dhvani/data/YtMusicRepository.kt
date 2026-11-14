@@ -14,6 +14,7 @@ import com.music.dhvani.data.model.PlaylistPrivacy
 import com.music.dhvani.data.model.SearchFilter
 import com.music.dhvani.data.model.SearchResult
 import com.music.dhvani.data.model.ShelfItem
+import com.music.dhvani.data.model.toShelfItem
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.SongMenu
 import com.music.dhvani.data.model.UserPlaylist
@@ -33,6 +34,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import com.music.dhvani.data.model.MoodGenreSection
 import java.util.concurrent.ConcurrentHashMap
@@ -74,14 +76,6 @@ object YtMusicRepository {
      */
     private val currentYear: Int
         get() = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
-
-    private fun Song.toShelfItem(): ShelfItem = ShelfItem(
-        title = title,
-        subtitle = artist,
-        thumbnailUrl = thumbnailUrl,
-        videoId = videoId,
-        browseId = null,
-    )
 
     fun isExcludedHomeShelf(shelf: HomeShelf): Boolean {
         val title = shelf.title.lowercase(Locale.ROOT).trim()
@@ -135,9 +129,24 @@ object YtMusicRepository {
             val dynamicShelvesAsync = async { runCatching { buildMeldStyleDynamicShelves() }.getOrDefault(emptyList()) }
             val homeRaw = async { Innertube.browse("FEmusic_home") }
 
-            val dynamicShelves = dynamicShelvesAsync.await()
             val home = homeRaw.await()
             val homeShelves = InnertubeParser.parseHome(home)
+
+            // Dynamic shelves: wait at most 1000ms after homeRaw finishes so home feed is never delayed
+            val dynamicShelves = runCatching {
+                withTimeoutOrNull(1000L) { dynamicShelvesAsync.await() } ?: run {
+                    val history = PlaybackHistory.recent.value
+                    if (history.isNotEmpty()) {
+                        listOf(
+                            HomeShelf(
+                                title = "Listen Again",
+                                subtitle = "Jump back in",
+                                items = history.take(15).map { it.toSong().toShelfItem() },
+                            )
+                        )
+                    } else emptyList()
+                }
+            }.getOrDefault(emptyList())
 
             val shelves = (dynamicShelves + homeShelves)
                 .filterNot { isExcludedHomeShelf(it) }
@@ -186,98 +195,108 @@ object YtMusicRepository {
 
         // 2. Quick Picks (Taste-based from history/likes or top hits)
         val quickPicksAsync = async(Dispatchers.IO) {
-            val historySongs = history.shuffled().take(8).map { it.toSong() }
-            val candidateSeed = (history.map { it.videoId } + likedIds).shuffled().firstOrNull()
-            val relatedSongs = if (candidateSeed != null) {
-                radio(candidateSeed).getOrNull().orEmpty().shuffled().take(8)
-            } else emptyList()
+            withTimeoutOrNull(2000L) {
+                val historySongs = history.shuffled().take(8).map { it.toSong() }
+                val candidateSeed = (history.map { it.videoId } + likedIds).shuffled().firstOrNull()
+                val relatedSongs = if (candidateSeed != null) {
+                    radio(candidateSeed).getOrNull().orEmpty().shuffled().take(8)
+                } else emptyList()
 
-            val combined = (historySongs + relatedSongs).distinctBy { it.videoId }.shuffled().take(16)
-            val finalSongs = if (combined.isNotEmpty()) combined else {
-                search("Top Bollywood Songs $currentYear", SearchFilter.SONGS).getOrNull()
-                    ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(16).orEmpty()
+                val combined = (historySongs + relatedSongs).distinctBy { it.videoId }.shuffled().take(16)
+                val finalSongs = if (combined.isNotEmpty()) combined else {
+                    search("Top Bollywood Songs $currentYear", SearchFilter.SONGS).getOrNull()
+                        ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(16).orEmpty()
+                }
+                if (finalSongs.isNotEmpty()) {
+                    HomeShelf(
+                        title = "Quick Picks",
+                        subtitle = "Fresh mix based on your taste",
+                        items = finalSongs.map { it.toShelfItem() },
+                    )
+                } else null
             }
-            if (finalSongs.isNotEmpty()) {
-                HomeShelf(
-                    title = "Quick Picks",
-                    subtitle = "Fresh mix based on your taste",
-                    items = finalSongs.map { it.toShelfItem() },
-                )
-            } else null
         }
 
         // 3. Daily Discover
         val dailyDiscoverAsync = async(Dispatchers.IO) {
-            val seedId = (likedIds + history.map { it.videoId }).shuffled().firstOrNull()
-            val related = if (seedId != null) {
-                radio(seedId).getOrNull().orEmpty().filterNot { it.videoId == seedId }.shuffled().take(12)
-            } else emptyList()
+            withTimeoutOrNull(2000L) {
+                val seedId = (likedIds + history.map { it.videoId }).shuffled().firstOrNull()
+                val related = if (seedId != null) {
+                    radio(seedId).getOrNull().orEmpty().filterNot { it.videoId == seedId }.shuffled().take(12)
+                } else emptyList()
 
-            val discoverSongs = if (related.isNotEmpty()) related else {
-                search("New Hindi Songs $currentYear", SearchFilter.SONGS).getOrNull()
-                    ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(12).orEmpty()
+                val discoverSongs = if (related.isNotEmpty()) related else {
+                    search("New Hindi Songs $currentYear", SearchFilter.SONGS).getOrNull()
+                        ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(12).orEmpty()
+                }
+                if (discoverSongs.isNotEmpty()) {
+                    HomeShelf(
+                        title = "Daily Discover",
+                        subtitle = "New sounds you haven't heard yet",
+                        items = discoverSongs.map { it.toShelfItem() },
+                    )
+                } else null
             }
-            if (discoverSongs.isNotEmpty()) {
-                HomeShelf(
-                    title = "Daily Discover",
-                    subtitle = "New sounds you haven't heard yet",
-                    items = discoverSongs.map { it.toShelfItem() },
-                )
-            } else null
         }
 
         // 4. Dynamic "Similar to"
         val similarAsync = async(Dispatchers.IO) {
-            val seedItem = history.shuffled().firstOrNull()
-            if (seedItem != null) {
-                val related = radio(seedItem.videoId).getOrNull().orEmpty()
-                    .filterNot { it.videoId == seedItem.videoId }
-                    .shuffled()
-                    .take(12)
-                if (related.isNotEmpty()) {
-                    HomeShelf(
-                        title = "Similar to ${seedItem.title}",
-                        subtitle = "Because you listened to ${seedItem.artist}",
-                        items = related.map { it.toShelfItem() },
-                    )
-                } else null
-            } else {
-                val tracks = search("Arijit Singh Best Songs", SearchFilter.SONGS).getOrNull()
+            withTimeoutOrNull(2000L) {
+                val seedItem = history.shuffled().firstOrNull()
+                if (seedItem != null) {
+                    val related = radio(seedItem.videoId).getOrNull().orEmpty()
+                        .filterNot { it.videoId == seedItem.videoId }
+                        .shuffled()
+                        .take(12)
+                    if (related.isNotEmpty()) {
+                        HomeShelf(
+                            title = "Similar to ${seedItem.title}",
+                            subtitle = "Because you listened to ${seedItem.artist}",
+                            items = related.map { it.toShelfItem() },
+                        )
+                    } else null
+                } else {
+                    val tracks = search("Arijit Singh Best Songs", SearchFilter.SONGS).getOrNull()
+                        ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(12).orEmpty()
+                    if (tracks.isNotEmpty()) {
+                        HomeShelf(
+                            title = "Similar to Arijit Singh",
+                            subtitle = "Because you love soulful melodies",
+                            items = tracks.map { it.toShelfItem() },
+                        )
+                    } else null
+                }
+            }
+        }
+
+        // 5. Bollywood Chartbusters
+        val chartbustersAsync = async(Dispatchers.IO) {
+            withTimeoutOrNull(2000L) {
+                val tracks = search("Bollywood Chartbusters $currentYear", SearchFilter.SONGS).getOrNull()
                     ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(12).orEmpty()
                 if (tracks.isNotEmpty()) {
                     HomeShelf(
-                        title = "Similar to Arijit Singh",
-                        subtitle = "Because you love soulful melodies",
+                        title = "Bollywood Chartbusters",
+                        subtitle = "Top Bollywood hits today",
                         items = tracks.map { it.toShelfItem() },
                     )
                 } else null
             }
         }
 
-        // 5. Bollywood Chartbusters
-        val chartbustersAsync = async(Dispatchers.IO) {
-            val tracks = search("Bollywood Chartbusters $currentYear", SearchFilter.SONGS).getOrNull()
-                ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(12).orEmpty()
-            if (tracks.isNotEmpty()) {
-                HomeShelf(
-                    title = "Bollywood Chartbusters",
-                    subtitle = "Top Bollywood hits today",
-                    items = tracks.map { it.toShelfItem() },
-                )
-            } else null
-        }
-
         // 6. Hindi Hits
         val hindiHitsAsync = async(Dispatchers.IO) {
-            val tracks = search("Latest Hindi Hits $currentYear", SearchFilter.SONGS).getOrNull()
-                ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(12).orEmpty()
-            if (tracks.isNotEmpty()) {
-                HomeShelf(
-                    title = "Hindi Hits",
-                    subtitle = "Trending melodies & fresh drops",
-                    items = tracks.map { it.toShelfItem() },
-                )
-            } else null
+            withTimeoutOrNull(2000L) {
+                val tracks = search("Latest Hindi Hits $currentYear", SearchFilter.SONGS).getOrNull()
+                    ?.filterIsInstance<SearchResult.Track>()?.map { it.song }?.shuffled()?.take(12).orEmpty()
+                if (tracks.isNotEmpty()) {
+                    HomeShelf(
+                        title = "Hindi Hits",
+                        subtitle = "Trending melodies & fresh drops",
+                        items = tracks.map { it.toShelfItem() },
+                    )
+                } else null
+            }
         }
 
         val qp = quickPicksAsync.await()

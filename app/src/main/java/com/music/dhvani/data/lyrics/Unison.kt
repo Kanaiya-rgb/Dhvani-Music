@@ -6,57 +6,66 @@ import kotlinx.serialization.Serializable
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /**
- * A community-submitted lyrics database, and the only source here whose
- * contents are contributed rather than licensed.
+ * A community-submitted lyrics database from BetterLyrics.
  *
- * That is its whole character. Every other source is a window onto somebody's
- * catalogue — Apple's, Musixmatch's, KuGou's — and carries whatever that
- * catalogue has. This one carries what people have uploaded, which means it
- * occasionally has a track none of the others do, and means its coverage is
- * thin and uneven everywhere else. It sits low in the default order for
- * exactly that reason.
+ * Querying supports:
+ * 1. Exact YouTube videoId (?v=...) - instant 1-call exact match for playing tracks.
+ * 2. Song title & artist (?song=...&artist=...) without rigid duration constraints.
  *
- * Each entry is voted on, and the response says so: a `score`, a `voteCount`
- * and a `confidence`. None of it is acted on here. A fresh submission is
- * `confidence: "low"` with no votes at all, so refusing those would refuse
- * nearly the whole database, and the alternative to a lightly-voted entry is
- * usually no lyrics rather than better ones.
- *
- * Three shapes come back, and it says which: Apple-style TTML, ordinary
- * line-stamped LRC, or plain text with no timing at all.
+ * Production host: https://unison.betterlyrics.org/lyrics (fallback: https://unison.boidu.dev/lyrics).
  */
 object Unison {
 
-    private const val BASE = "https://unison.boidu.dev/lyrics"
+    private const val BASE = "https://unison.betterlyrics.org/lyrics"
+    private const val FALLBACK_BASE = "https://unison.boidu.dev/lyrics"
+
+    private val YOUTUBE_ID = Regex("""[A-Za-z0-9_-]{11}""")
 
     suspend fun lyrics(
         title: String,
         artist: String,
-        durationMs: Long,
+        durationMs: Long = 0L,
         album: String? = null,
+        videoId: String? = null,
     ): List<LyricLine>? = withContext(Dispatchers.IO) {
-        val url = BASE.toHttpUrl().newBuilder()
-            .addQueryParameter("song", title)
-            .addQueryParameter("artist", artist)
-            .apply {
-                if (!album.isNullOrBlank()) addQueryParameter("album", album)
-                val seconds = durationMs / 1000
-                if (seconds > 0) addQueryParameter("duration", seconds.toString())
-            }
+        // 1. Try exact video ID match first if playing a YouTube track
+        if (!videoId.isNullOrBlank() && YOUTUBE_ID.matches(videoId)) {
+            val byVideo = fetch("$BASE?v=$videoId") ?: fetch("$FALLBACK_BASE?v=$videoId")
+            if (byVideo != null) return@withContext byVideo
+        }
+
+        // 2. Query by cleaned song + artist name without strict duration filter
+        val cleanTitle = LyricsCleaner.cleanTitle(title, artist).ifBlank { title }
+        val cleanArtist = LyricsCleaner.cleanArtist(artist).ifBlank { artist }
+
+        val searchUrl = BASE.toHttpUrl().newBuilder()
+            .addQueryParameter("song", cleanTitle)
+            .addQueryParameter("artist", cleanArtist)
             .build()
 
-        val body = lyricsGet(url.toString()) ?: return@withContext null
+        fetch(searchUrl.toString()) ?: run {
+            val fallbackUrl = FALLBACK_BASE.toHttpUrl().newBuilder()
+                .addQueryParameter("song", cleanTitle)
+                .addQueryParameter("artist", cleanArtist)
+                .build()
+            fetch(fallbackUrl.toString())
+        }
+    }
+
+    private fun fetch(url: String): List<LyricLine>? {
+        val body = lyricsGet(url) ?: return null
         val response = runCatching { lyricsJson.decodeFromString<Response>(body) }.getOrNull()
-            ?: return@withContext null
-        if (response.success != true) return@withContext null
-        linesOf(response.data ?: return@withContext null)
+            ?: return null
+        if (response.success != true) return null
+        return linesOf(response.data ?: return null)
     }
 
     /** The three shapes, told apart by what the entry says it is. */
     internal fun linesOf(data: Entry): List<LyricLine>? {
         val text = data.lyrics?.takeIf { it.isNotBlank() } ?: return null
         val lines = when {
-            data.format.equals(TTML, ignoreCase = true) -> TtmlLyrics.parse(text)
+            data.format.equals(TTML, ignoreCase = true) || text.contains("<tt", ignoreCase = true) ->
+                TtmlLyrics.parse(text)
             data.syncType.equals(PLAIN, ignoreCase = true) -> plain(text)
             // Word stamps first: the format field says only "lrc", and an
             // enhanced file is still one. [EnhancedLrc] comes back empty when

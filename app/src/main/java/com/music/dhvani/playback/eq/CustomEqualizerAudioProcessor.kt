@@ -8,6 +8,9 @@ import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.pow
+import com.music.dhvani.playback.EqCurve
+import com.music.dhvani.playback.EqLayout
+import com.music.dhvani.playback.FilterKind
 
 /**
  * AudioProcessor for ExoPlayer applying parametric EQ using Biquad filters.
@@ -23,9 +26,49 @@ class CustomEqualizerAudioProcessor : BaseAudioProcessor() {
     private var filters: List<BiquadFilter> = emptyList()
     private var preampGain: Double = 1.0
     private var pendingProfile: ParametricEQ? = null
+    private var pendingCurve: Pair<EqCurve, Float>? = null
+
+    @Volatile
+    private var balanceGainL = 1.0
+    @Volatile
+    private var balanceGainR = 1.0
 
     companion object {
         private const val TAG = "CustomEqualizerAudioProc"
+    }
+
+    @Synchronized
+    fun applyCurve(curve: EqCurve, balance: Float = 0f) {
+        val b = balance.coerceIn(-1f, 1f)
+        balanceGainL = if (b > 0f) (1f - b).toDouble() else 1.0
+        balanceGainR = if (b < 0f) (1f + b).toDouble() else 1.0
+
+        if (sampleRate == 0) {
+            pendingCurve = curve to balance
+            return
+        }
+
+        preampGain = 10.0.pow(curve.preampDb / 20.0)
+        filters = EqLayout.slots.mapIndexedNotNull { index, slot ->
+            val gainDb = curve.gainsDb.getOrElse(index) { 0f }.toDouble()
+            if (kotlin.math.abs(gainDb) < 0.05) return@mapIndexedNotNull null
+            val q = curve.qs.getOrElse(index) { 0.707f }.toDouble()
+            val fType = when (slot.kind) {
+                FilterKind.LOW_SHELF -> FilterType.LSC
+                FilterKind.HIGH_SHELF -> FilterType.HSC
+                FilterKind.BELL -> FilterType.PK
+            }
+            if (slot.frequencyHz >= sampleRate / 2.0) return@mapIndexedNotNull null
+            BiquadFilter(
+                sampleRate = sampleRate,
+                frequency = slot.frequencyHz.toDouble(),
+                gain = gainDb,
+                q = q,
+                filterType = fType,
+            )
+        }
+        equalizerEnabled = true
+        filters.forEach { it.reset() }
     }
 
     @Synchronized
@@ -49,6 +92,7 @@ class CustomEqualizerAudioProcessor : BaseAudioProcessor() {
         filters = emptyList()
         preampGain = 1.0
         pendingProfile = null
+        pendingCurve = null
         Log.d(TAG, "Equalizer disabled")
     }
 
@@ -78,6 +122,11 @@ class CustomEqualizerAudioProcessor : BaseAudioProcessor() {
             return AudioProcessor.AudioFormat.NOT_SET
         }
 
+        pendingCurve?.let { (curve, balance) ->
+            applyCurve(curve, balance)
+            pendingCurve = null
+        }
+
         pendingProfile?.let { profile ->
             preampGain = 10.0.pow(profile.preamp / 20.0)
             createFilters(profile.bands)
@@ -92,7 +141,8 @@ class CustomEqualizerAudioProcessor : BaseAudioProcessor() {
         val remaining = inputBuffer.remaining()
         if (remaining == 0) return
 
-        if (!equalizerEnabled || filters.isEmpty()) {
+        val hasBalance = balanceGainL != 1.0 || balanceGainR != 1.0
+        if (!equalizerEnabled && !hasBalance) {
             val outputBuffer = replaceOutputBuffer(remaining)
             outputBuffer.put(inputBuffer)
             outputBuffer.flip()
@@ -110,10 +160,12 @@ class CustomEqualizerAudioProcessor : BaseAudioProcessor() {
                 repeat(sampleCount) {
                     val sample = inputBuffer.getShort().toDouble() / 32768.0
                     var processed = sample
-                    for (filter in filters) {
-                        processed = filter.processSample(processed)
+                    if (equalizerEnabled) {
+                        for (filter in filters) {
+                            processed = filter.processSample(processed)
+                        }
+                        processed *= preampGain
                     }
-                    processed *= preampGain
                     val outputSample = (processed * 32768.0).coerceIn(-32768.0, 32767.0).toInt().toShort()
                     outputBuffer.putShort(outputSample)
                 }
@@ -126,14 +178,18 @@ class CustomEqualizerAudioProcessor : BaseAudioProcessor() {
                     var processedLeft = leftSample
                     var processedRight = rightSample
 
-                    for (filter in filters) {
-                        val (left, right) = filter.processStereo(processedLeft, processedRight)
-                        processedLeft = left
-                        processedRight = right
+                    if (equalizerEnabled) {
+                        for (filter in filters) {
+                            val (left, right) = filter.processStereo(processedLeft, processedRight)
+                            processedLeft = left
+                            processedRight = right
+                        }
+                        processedLeft *= preampGain
+                        processedRight *= preampGain
                     }
 
-                    processedLeft *= preampGain
-                    processedRight *= preampGain
+                    processedLeft *= balanceGainL
+                    processedRight *= balanceGainR
 
                     val outputLeft = (processedLeft * 32768.0).coerceIn(-32768.0, 32767.0).toInt().toShort()
                     val outputRight = (processedRight * 32768.0).coerceIn(-32768.0, 32767.0).toInt().toShort()

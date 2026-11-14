@@ -48,6 +48,8 @@ object VocalSpectrogram {
  */
 class VocalTracker(private val context: Context) {
 
+    val isAvailable: Boolean get() = false
+
     fun track(left: FloatArray, right: FloatArray, rate: Double): FloatArray? = null
 
     fun release() {}

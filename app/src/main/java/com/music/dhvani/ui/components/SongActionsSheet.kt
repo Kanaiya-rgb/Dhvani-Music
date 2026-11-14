@@ -5,7 +5,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.rounded.Undo
 
 import android.net.Uri
+import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -46,10 +49,11 @@ import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Language
-import com.music.dhvani.playback.eq.EqualizerManager
+
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -67,6 +71,7 @@ import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.ThumbDownOffAlt
+import com.music.dhvani.ui.icons.DhvaniIcons
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -84,12 +89,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.music.dhvani.data.NerdStats
@@ -161,9 +172,13 @@ fun SongActionsSheet(
     onOpenAudioQuality: (() -> Unit)? = null,
     onOpenEqualizer: (() -> Unit)? = null,
     onOpenAudioEffects: (() -> Unit)? = null,
+    onOpenLyricsOffset: (() -> Unit)? = null,
+    lyricsOffsetMs: Long = 0L,
     onEnterAmbientCinemaMode: (() -> Unit)? = null,
+
     onSetAsRingtone: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
+    onShareLyrics: (() -> Unit)? = null,
     /**
      * Copies what the app logged while starting this track. Null everywhere
      * except the player, where "this track" means something.
@@ -186,6 +201,7 @@ fun SongActionsSheet(
     resolvingLinks: Boolean = false,
 ) {
     var pickingSleepTimer by remember { mutableStateOf(false) }
+    var showShareOptionsDialog by remember { mutableStateOf(false) }
     // Read from the thumbnail the row that opened this sheet was already
     // showing, not a larger copy of it: the tint is a blur and a handful of
     // swatches, neither of which a bigger image improves, and going back for
@@ -203,16 +219,11 @@ fun SongActionsSheet(
 
     val audioSourceCompactValue = remember(currentNerdStats, preferredPlaybackSource, sourceConfigs) {
         val activeSource = when {
-            currentNerdStats?.isLossless == true || preferredPlaybackSource == "LOSSLESS" ||
-                currentNerdStats?.mimeType?.contains("flac", ignoreCase = true) == true -> "Lossless"
+            currentNerdStats?.isLossless == true || currentNerdStats?.mimeType?.contains("flac", ignoreCase = true) == true -> "Lossless"
             currentNerdStats?.isHiQuality == true ||
-                preferredPlaybackSource.contains("saavn", ignoreCase = true) ||
                 currentNerdStats?.sourceName?.contains("saavn", ignoreCase = true) == true ||
                 currentNerdStats?.sourceName?.contains("aac", ignoreCase = true) == true -> "High Quality AAC"
-            preferredPlaybackSource.equals("YOUTUBE", ignoreCase = true) ||
-                currentNerdStats?.sourceName?.contains("youtube", ignoreCase = true) == true ||
-                currentNerdStats?.sourceName?.contains("opus", ignoreCase = true) == true -> "Standard Opus"
-            else -> "Lossless"
+            else -> "Standard Opus"
         }
         val losslessCount = sourceConfigs.count { it.kind.canServeLossless && it.isComplete && it.enabled }.coerceAtLeast(1)
         val jioCount = if (sourceConfigs.none { it.kind == SourceKind.JIOSAAVN && !it.enabled }) 1 else 0
@@ -228,8 +239,144 @@ fun SongActionsSheet(
             return@TintedSheet
         }
 
-        SheetTrackHeader(song, subtitleColor = palette.onBackgroundVariant)
-        HorizontalDivider(thickness = 0.5.dp, color = palette.divider)
+        // Centered Share action header
+        if (!isOffline && (onShare != null || onShareLyrics != null)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            if (onShareLyrics != null && onShare != null) {
+                                showShareOptionsDialog = true
+                            } else if (onShareLyrics != null) {
+                                onShareLyrics()
+                            } else {
+                                onShare?.invoke()
+                            }
+                        }
+                        .padding(horizontal = 24.dp, vertical = 6.dp),
+                ) {
+                    Icon(
+                        imageVector = DhvaniIcons.ShareBox,
+                        contentDescription = "Share",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Share",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = Color.White.copy(alpha = 0.85f),
+                    )
+                }
+            }
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = Color.White.copy(alpha = 0.08f),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            )
+        }
+
+        if (showShareOptionsDialog) {
+            AlertDialog(
+                onDismissRequest = { showShareOptionsDialog = false },
+                title = {
+                    Text(
+                        text = "Share",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        // Option 1: Share song link
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                                .clickable {
+                                    showShareOptionsDialog = false
+                                    onShare?.invoke()
+                                }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Share,
+                                contentDescription = "Share song",
+                                tint = palette.accent,
+                                modifier = Modifier.size(24.dp),
+                            )
+                            Spacer(Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Share song",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color.White,
+                                )
+                                Text(
+                                    text = "Share YouTube Music link",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.65f),
+                                )
+                            }
+                        }
+
+                        // Option 2: Share lyrics card
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                                .clickable {
+                                    showShareOptionsDialog = false
+                                    onShareLyrics?.invoke()
+                                }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.AutoAwesome,
+                                contentDescription = "Share lyrics",
+                                tint = palette.accent,
+                                modifier = Modifier.size(24.dp),
+                            )
+                            Spacer(Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Share lyrics",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color.White,
+                                )
+                                Text(
+                                    text = "Create and share lyric card poster",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.65f),
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showShareOptionsDialog = false }) {
+                        Text("Cancel", color = Color.White.copy(alpha = 0.7f))
+                    }
+                },
+                containerColor = Color(0xFF1E1E22),
+                shape = RoundedCornerShape(20.dp),
+            )
+        }
 
         Column(
             modifier = Modifier
@@ -237,54 +384,69 @@ fun SongActionsSheet(
                 .weight(1f, fill = false)
                 .verticalScroll(rememberScrollState()),
         ) {
-            // Leads the list whenever it's available (like BitChord):
-            // Which recording/quality is playing is the one question that has to be answered
-            // before any of the rows below mean anything.
-            if (onOpenAudioQuality != null || onOpenVersions != null) {
-                if (onOpenAudioQuality != null && !isOffline) {
-                    ActionRow(
-                        icon = Icons.Rounded.GraphicEq,
-                        label = "Audio source",
-                        value = audioSourceCompactValue,
-                        accent = palette.accent,
-                        onClick = onOpenAudioQuality,
-                    )
+            val hasGroup1 = (onOpenAudioQuality != null && !isOffline) ||
+                (onOpenVersions != null && !isOffline) ||
+                (onOpenLyricsOffset != null) ||
+                (onSetAsRingtone != null)
+
+            // Group 1: Quality & Audio Settings
+            if (onOpenAudioQuality != null && !isOffline) {
+                ActionRow(
+                    icon = Icons.Rounded.GraphicEq,
+                    label = "Audio source",
+                    value = audioSourceCompactValue,
+                    accent = palette.accent,
+                    onClick = onOpenAudioQuality,
+                )
+            }
+            if (onOpenVersions != null && !isOffline) {
+                val currentLang = remember(song.title, song.artist, song.albumName) {
+                    detectSongLanguage(song.title, song.artist, song.albumName) ?: "Original"
                 }
-                if (onOpenVersions != null && !isOffline) {
-                    val currentLang = remember(song.title, song.artist, song.albumName) {
-                        detectSongLanguage(song.title, song.artist, song.albumName) ?: "Original"
-                    }
-                    ActionRow(
-                        icon = Icons.Rounded.Language,
-                        label = "Audio track",
-                        value = currentLang,
-                        accent = palette.accent,
-                        onClick = onOpenVersions,
-                    )
-                }
+                ActionRow(
+                    icon = Icons.Rounded.Language,
+                    label = "Audio track",
+                    value = currentLang,
+                    accent = palette.accent,
+                    onClick = onOpenVersions,
+                )
+            }
+            if (onOpenLyricsOffset != null) {
+                val offsetSec = lyricsOffsetMs / 1000f
+                val offsetFormatted = String.format(Locale.ROOT, "%.1f", offsetSec)
+                val offsetValue = if (lyricsOffsetMs > 0L) "+$offsetFormatted s" else if (lyricsOffsetMs < 0L) "$offsetFormatted s" else "0.0 s"
+                ActionRow(
+                    icon = Icons.Rounded.Tune,
+                    label = "Lyrics offset",
+                    value = offsetValue,
+                    accent = palette.accent,
+                    onClick = onOpenLyricsOffset,
+                )
             }
 
             onSetAsRingtone?.let { setRingtone ->
                 ActionRow(
-                    icon = Icons.Rounded.NotificationsActive,
+                    icon = DhvaniIcons.Ringtone,
                     label = "Set as Ringtone",
-                    tint = palette.accent,
                     accent = palette.accent,
                     onClick = setRingtone,
                 )
             }
 
+            if (hasGroup1) {
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color = Color.White.copy(alpha = 0.08f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+            }
+
+            // Group 2: Playback & Library Actions
+            var hasGroup2 = false
             if (!isOffline) {
-                onToggleLike?.let { toggleLike ->
-                    ActionRow(
-                        icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        label = if (liked) "Remove from Liked Music" else "Like",
-                        tint = if (liked) palette.accent else null,
-                        accent = palette.accent,
-                        onClick = toggleLike,
-                    )
-                }
+
                 if (onToggleDislike != null || onDislikeAndSkip != null) {
+                    hasGroup2 = true
                     ActionRow(
                         icon = if (disliked) Icons.Rounded.ThumbDown else Icons.Rounded.ThumbDownOffAlt,
                         label = if (disliked) "Undo dislike" else if (onDislikeAndSkip != null) "Dislike & skip" else "Dislike",
@@ -299,15 +461,8 @@ fun SongActionsSheet(
                         },
                     )
                 }
-                onEnterAmbientCinemaMode?.let { enterCinema ->
-                    ActionRow(
-                        icon = Icons.Rounded.Fullscreen,
-                        label = "Cinema Mode",
-                        accent = palette.accent,
-                        onClick = enterCinema,
-                    )
-                }
                 onRemoveFromPlaylist?.let {
+                    hasGroup2 = true
                     ActionRow(
                         icon = Icons.Rounded.PlaylistRemove,
                         label = "Remove from this playlist",
@@ -317,8 +472,8 @@ fun SongActionsSheet(
                 }
             }
 
-            DownloadRow(song, palette, isOffline, onDownload)
             if (onStartRadio != null) {
+                hasGroup2 = true
                 ActionRow(
                     icon = Icons.Rounded.Radio,
                     label = "Start radio",
@@ -327,6 +482,7 @@ fun SongActionsSheet(
                 )
             }
             if (onPlayNext != null) {
+                hasGroup2 = true
                 ActionRow(
                     icon = Icons.AutoMirrored.Rounded.PlaylistPlay,
                     label = "Play next",
@@ -335,6 +491,7 @@ fun SongActionsSheet(
                 )
             }
             if (onAddToQueue != null) {
+                hasGroup2 = true
                 ActionRow(
                     icon = Icons.AutoMirrored.Rounded.QueueMusic,
                     label = "Add to queue",
@@ -343,6 +500,7 @@ fun SongActionsSheet(
                 )
             }
             if (!isOffline) {
+                hasGroup2 = true
                 ActionRow(
                     icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
                     label = "Add to playlist",
@@ -350,22 +508,79 @@ fun SongActionsSheet(
                     onClick = onAddToPlaylist,
                 )
             }
-            when (val id = song.albumId) {
-                null -> if (resolvingLinks) LoadingActionRow(Icons.Rounded.Album, "Open album", palette)
-                else -> ActionRow(Icons.Rounded.Album, "Open album", accent = palette.accent) { onOpenAlbum(id) }
+
+            hasGroup2 = true
+            DownloadRow(song, palette, isOffline, onDownload)
+
+            if (hasGroup2) {
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color = Color.White.copy(alpha = 0.08f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
             }
+
+            // Group 3: Navigation & Info (Microphone for artist + artist subtitle, Album with album subtitle, Info)
+            var hasGroup3 = false
             when (val id = song.artistId) {
-                null -> if (resolvingLinks) LoadingActionRow(Icons.Rounded.Person, "Open artist", palette)
-                else -> ActionRow(Icons.Rounded.Person, "Open artist", accent = palette.accent) { onOpenArtist(id) }
+                null -> if (resolvingLinks) {
+                    hasGroup3 = true
+                    LoadingActionRow(DhvaniIcons.Mic, "Open artist", palette)
+                }
+                else -> {
+                    hasGroup3 = true
+                    ActionRow(
+                        icon = DhvaniIcons.Mic,
+                        label = "Open artist",
+                        subtitle = song.artist.takeIf { it.isNotBlank() },
+                        accent = palette.accent,
+                    ) { onOpenArtist(id) }
+                }
             }
-            if (showSleepTimer) {
+            when (val id = song.albumId) {
+                null -> if (resolvingLinks) {
+                    hasGroup3 = true
+                    LoadingActionRow(DhvaniIcons.Album, "Open album", palette)
+                }
+                else -> {
+                    hasGroup3 = true
+                    ActionRow(
+                        icon = DhvaniIcons.Album,
+                        label = "Open album",
+                        subtitle = (song.albumName ?: song.title).takeIf { it.isNotBlank() },
+                        accent = palette.accent,
+                    ) { onOpenAlbum(id) }
+                }
+            }
+            if (onOpenDetails != null) {
+                hasGroup3 = true
                 ActionRow(
-                    icon = Icons.Rounded.Bedtime,
+                    icon = Icons.Rounded.Info,
+                    label = "Song info",
+                    accent = palette.accent,
+                    onClick = onOpenDetails,
+                )
+            }
+
+            val hasGroup4 = showSleepTimer || onOpenEqualizer != null || onOpenAudioEffects != null || onCopyLog != null
+            if (hasGroup3 && hasGroup4) {
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color = Color.White.copy(alpha = 0.08f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+            }
+
+            // Group 4: Tools & Utilities
+            if (showSleepTimer) {
+                val sleepStatus = sleepTimerStatus()
+                ActionRow(
+                    icon = DhvaniIcons.SleepTimer,
                     label = "Sleep timer",
+                    value = sleepStatus,
                     accent = palette.accent,
                 ) { pickingSleepTimer = true }
             }
-
             onOpenEqualizer?.let { openEq ->
                 ActionRow(
                     icon = Icons.Rounded.Tune,
@@ -376,32 +591,22 @@ fun SongActionsSheet(
             }
             onOpenAudioEffects?.let { openEffects ->
                 ActionRow(
-                    icon = Icons.Rounded.AutoAwesome,
+                    icon = DhvaniIcons.SpeedDial,
                     label = "Slowed / Nightcore Mode",
                     accent = palette.accent,
                     onClick = openEffects,
                 )
             }
-
-            onOpenDetails?.let {
+            onCopyLog?.let {
                 ActionRow(
-                    icon = Icons.Rounded.Info,
-                    label = "Song info",
+                    icon = Icons.Rounded.BugReport,
+                    label = "Copy log",
                     accent = palette.accent,
                     onClick = it,
                 )
             }
 
-            if (!isOffline) {
-                onShare?.let {
-                    ActionRow(Icons.Rounded.Share, "Share", accent = palette.accent, onClick = it)
-                }
-            }
-            onCopyLog?.let {
-                ActionRow(Icons.Rounded.BugReport, "Copy Log", accent = palette.accent, onClick = it)
-            }
             Spacer(Modifier.height(16.dp))
-            Spacer(Modifier.navigationBarsPadding())
         }
     }
 }
@@ -415,6 +620,13 @@ fun SongActionsSheet(
  * the wash to be visible at all — and a transparent container has nothing left
  * to clip or to hang a handle on.
  */
+private val SHEET_SHAPE = RoundedCornerShape(32.dp)
+
+/**
+ * Floating rounded sheet in Dhvani aesthetic:
+ * 32dp continuous rounding, horizontal margins, dark translucent slate background,
+ * subtle 1px border, and top drag handle.
+ */
 @Composable
 private fun TintedSheet(
     palette: ArtworkPalette,
@@ -423,56 +635,55 @@ private fun TintedSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val configuration = LocalConfiguration.current
-    val maxSheetHeight = (configuration.screenHeightDp * 0.68f).dp
+    val maxSheetHeight = (configuration.screenHeightDp * 0.96f).dp
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(max = maxSheetHeight)
-            .clip(SHEET_SHAPE)
-            .border(
-                1.dp,
-                androidx.compose.ui.graphics.Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.22f),
-                        Color.Transparent,
-                    )
-                ),
-                SHEET_SHAPE
-            ),
+            .padding(bottom = 2.dp)
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.BottomCenter,
     ) {
-        ArtworkBackdrop(
-            palette = palette,
-            imageUrl = imageUrl,
-            modifier = Modifier.matchParentSize(),
-            // A sheet is a fraction of the height of a page, so the wash has
-            // to resolve over a much shorter run to read the same way.
-            washFraction = 0.75f,
-            artPx = ROW_ART_PX,
-        )
-        Column(Modifier.fillMaxWidth()) {
-            // Drawn rather than taken from BottomSheetDefaults, whose handle
-            // carries 22dp of padding on each side — half a row's worth of
-            // nothing between the grip and the track it is about.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 4.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    Modifier
-                        .size(width = 34.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(palette.onBackground.copy(alpha = 0.35f)),
+        Box(
+            modifier = Modifier
+                .widthIn(max = 420.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+                .heightIn(max = maxSheetHeight)
+                .clip(SHEET_SHAPE)
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        listOf(
+                            Color(0xFF1E2028).copy(alpha = 0.82f),
+                            Color(0xFF121317).copy(alpha = 0.80f),
+                        )
+                    )
                 )
+                .border(
+                    1.dp,
+                    Color.White.copy(alpha = 0.12f),
+                    SHEET_SHAPE,
+                ),
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .size(width = 36.dp, height = 4.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.30f)),
+                    )
+                }
+                content()
             }
-            content()
         }
     }
 }
-
-private val SHEET_SHAPE = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
 
 /**
  * One row carrying the whole life of a download: start it, watch it, cancel it,
@@ -805,13 +1016,13 @@ private fun SleepOption(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 22.dp, vertical = 15.dp),
+            .padding(horizontal = 20.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
+            color = Color.White,
             modifier = Modifier.weight(1f),
         )
         if (selected) {
@@ -871,36 +1082,61 @@ internal fun ActionRow(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    ActionRow(
+        leading = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = (tint ?: Color.White.copy(alpha = 0.95f)).copy(
+                    alpha = if (enabled) 1f else 0.35f,
+                ),
+                modifier = Modifier.size(22.dp),
+            )
+        },
+        label = label,
+        value = value,
+        subtitle = subtitle,
+        accent = accent,
+        enabled = enabled,
+        onClick = onClick,
+    )
+}
+
+@Composable
+internal fun ActionRow(
+    leading: @Composable () -> Unit,
+    label: String,
+    value: String? = null,
+    subtitle: String? = null,
+    accent: Color = MaterialTheme.colorScheme.primary,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 22.dp, vertical = 15.dp),
+            .padding(horizontal = 20.dp, vertical = 8.5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = (tint ?: MaterialTheme.colorScheme.onBackground).copy(
-                alpha = if (enabled) 1f else 0.4f,
-            ),
-            modifier = Modifier.size(22.dp),
-        )
+        leading()
         Spacer(Modifier.width(18.dp))
         if (subtitle != null) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = label,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onBackground.copy(
-                        alpha = if (enabled) 1f else 0.4f,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
+                    color = Color.White.copy(
+                        alpha = if (enabled) 1f else 0.35f,
                     ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                        alpha = if (enabled) 1f else 0.4f,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = Color.White.copy(
+                        alpha = if (enabled) 0.55f else 0.25f,
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -909,9 +1145,9 @@ internal fun ActionRow(
         } else {
             Text(
                 text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground.copy(
-                    alpha = if (enabled) 1f else 0.4f,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
+                color = Color.White.copy(
+                    alpha = if (enabled) 1f else 0.35f,
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -922,7 +1158,10 @@ internal fun ActionRow(
             Spacer(Modifier.width(12.dp))
             Text(
                 text = value,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
                 color = accent.copy(alpha = if (enabled) 1f else 0.4f),
                 maxLines = 1,
             )
@@ -932,33 +1171,31 @@ internal fun ActionRow(
 
 /**
  * Stands in for [ActionRow] while whether it belongs on the sheet at all is
- * still unknown — "Open album" or "Open artist" before the lookup for their
- * ids has come back. A spinner rather than the row simply being missing, so
- * it doesn't read as decided against until it actually is.
+ * still unknown.
  */
 @Composable
 private fun LoadingActionRow(icon: ImageVector, label: String, palette: ArtworkPalette) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 15.dp),
+            .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = palette.onBackground.copy(alpha = 0.4f),
+            tint = Color.White.copy(alpha = 0.4f),
             modifier = Modifier.size(22.dp),
         )
         Spacer(Modifier.width(18.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = palette.onBackground.copy(alpha = 0.4f),
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
+            color = Color.White.copy(alpha = 0.4f),
             modifier = Modifier.weight(1f),
         )
         CircularProgressIndicator(
-            color = palette.onBackgroundVariant,
+            color = Color.White.copy(alpha = 0.6f),
             strokeWidth = 2.dp,
             modifier = Modifier.size(16.dp),
         )

@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.media.audiofx.AudioEffect
 import android.util.Log
+import com.music.dhvani.data.settings.EqualizerMode
+import com.music.dhvani.playback.toneCurve
+import com.music.dhvani.playback.manualCurve
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -35,11 +38,11 @@ object EqualizerManager {
     val preampGain = _preampGain.asStateFlow()
 
     // Loudness Booster (>100% Volume Boost via Android LoudnessEnhancer)
-    // 0 to 2000 mB (0 dB to +20 dB boost)
+    // 0 to 400 mB (0 dB to +4 dB clean boost without hardware clipping)
     private val _loudnessEnabled = MutableStateFlow(false)
     val loudnessEnabled = _loudnessEnabled.asStateFlow()
 
-    private val _loudnessBoostMb = MutableStateFlow(600) // Default +6.0 dB boost
+    private val _loudnessBoostMb = MutableStateFlow(0) // Default 0 mB (clean 0 dB output)
     val loudnessBoostMb = _loudnessBoostMb.asStateFlow()
 
     private var appContext: Context? = null
@@ -50,8 +53,9 @@ object EqualizerManager {
         _enabled.value = prefs.getBoolean(KEY_ENABLED, false)
         _selectedPreset.value = prefs.getString(KEY_PRESET, "Flat") ?: "Flat"
         _preampGain.value = prefs.getFloat(KEY_PREAMP, 0.0f).toDouble()
-        _loudnessEnabled.value = prefs.getBoolean(KEY_LOUDNESS_ENABLED, false)
-        _loudnessBoostMb.value = prefs.getInt(KEY_LOUDNESS_BOOST_MB, 600)
+        // Overdrive booster is strictly transient in-session and never automatically re-engaged on app start
+        _loudnessEnabled.value = false
+        _loudnessBoostMb.value = 0
 
         val gainsStr = prefs.getString(KEY_GAINS, null)
         if (!gainsStr.isNullOrEmpty()) {
@@ -108,37 +112,17 @@ object EqualizerManager {
     }
 
     fun setLoudnessEnabled(enable: Boolean) {
-        if (_loudnessEnabled.value == enable) return
-        _loudnessEnabled.value = enable
-        save()
+        _loudnessEnabled.value = false
+        _loudnessBoostMb.value = 0
     }
 
-    fun setLoudnessBoostMb(gainMb: Int) {
-        val clamped = gainMb.coerceIn(0, 2000)
-        if (_loudnessBoostMb.value == clamped) return
-        _loudnessBoostMb.value = clamped
-        save()
+    fun setLoudnessBoostMb(gainMb: Int, persist: Boolean = false) {
+        _loudnessEnabled.value = false
+        _loudnessBoostMb.value = 0
     }
 
     fun openSystemEqualizer(context: Context, audioSessionId: Int = 0): Boolean {
-        return try {
-            val intent = Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL).apply {
-                putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.packageName)
-                if (audioSessionId != 0) {
-                    putExtra(AudioEffect.EXTRA_AUDIO_SESSION, audioSessionId)
-                }
-                putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
-            }
-            if (intent.resolveActivity(context.packageManager) != null) {
-                context.startActivity(intent)
-                true
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch system equalizer", e)
-            false
-        }
+        return com.music.dhvani.playback.SystemEqualizerUtils.openSystemEqualizer(context, audioSessionId)
     }
 
     fun reset() {
@@ -147,27 +131,37 @@ object EqualizerManager {
         _bandGains.value = List(10) { 0.0 }
         _preampGain.value = 0.0
         _loudnessEnabled.value = false
-        _loudnessBoostMb.value = 600
+        _loudnessBoostMb.value = 0
         applyCurrentState()
         save()
     }
 
-    private fun applyCurrentState() {
+    fun applyCurrentState() {
         synchronized(processors) {
             processors.forEach { applyToProcessor(it) }
         }
     }
 
     private fun applyToProcessor(processor: CustomEqualizerAudioProcessor) {
-        if (!_enabled.value) {
+        val enabled = com.music.dhvani.data.settings.AppSettings.equalizerEnabled.value
+        val balance = com.music.dhvani.data.settings.AppSettings.equalizerBalance.value
+        if (!enabled) {
             processor.disable()
             return
         }
-        val parametricEQ = EqualizerPresets.customToParametricEQ(
-            gains = _bandGains.value,
-            preamp = _preampGain.value
-        )
-        processor.applyProfile(parametricEQ)
+
+        val mode = com.music.dhvani.data.settings.AppSettings.equalizerMode.value
+        val curve = when (mode) {
+            EqualizerMode.DYNAMIC -> toneCurve(
+                x = com.music.dhvani.data.settings.AppSettings.equalizerToneX.value,
+                y = com.music.dhvani.data.settings.AppSettings.equalizerToneY.value,
+                focused = com.music.dhvani.data.settings.AppSettings.equalizerFocused.value,
+            )
+            EqualizerMode.MANUAL -> manualCurve(
+                bandsDb = com.music.dhvani.data.settings.AppSettings.equalizerBands.value
+            )
+        }
+        processor.applyCurve(curve, balance)
     }
 
     private fun save() {
@@ -178,8 +172,8 @@ object EqualizerManager {
             .putString(KEY_PRESET, _selectedPreset.value)
             .putString(KEY_GAINS, _bandGains.value.joinToString(","))
             .putFloat(KEY_PREAMP, _preampGain.value.toFloat())
-            .putBoolean(KEY_LOUDNESS_ENABLED, _loudnessEnabled.value)
-            .putInt(KEY_LOUDNESS_BOOST_MB, _loudnessBoostMb.value)
+            .putBoolean(KEY_LOUDNESS_ENABLED, false)
+            .putInt(KEY_LOUDNESS_BOOST_MB, 0)
             .apply()
     }
 }

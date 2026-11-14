@@ -84,7 +84,7 @@ fun FloatingDynamicIslandPermissionDialog(
         ) {
             Surface(
                 shape = RoundedCornerShape(32.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 8.dp,
                 modifier = Modifier
                     .fillMaxWidth()

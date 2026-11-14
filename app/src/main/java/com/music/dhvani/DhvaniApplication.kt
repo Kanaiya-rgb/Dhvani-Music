@@ -37,29 +37,33 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
-        // Early setups needed immediately
+        // Fast synchronous setups needed immediately for first frame
         AppSettings.init(this)
-        LastPlayed.init(this)
-        com.music.dhvani.playback.OriginalVersion.init(this)
-        com.music.dhvani.listentogether.ListenTogetherManager.init(this)
+        com.music.dhvani.playback.eq.EqualizerManager.init(this)
+        com.music.dhvani.playback.AudioOutputStatus.initMonitoring(this)
         authStore = AuthStore(this)
-        Innertube.cookie = authStore.cookie
 
         // Offload non-blocking disk stores, encrypted keystores, and network observers
         // to a dedicated background startup thread so the main UI thread renders instantly at 120 FPS
         kotlin.concurrent.thread(name = "dhvani-startup-init") {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            val cookie = authStore.cookie
+            Innertube.cookie = cookie
+            if (cookie != null) {
+                CoroutineScope(Dispatchers.IO).launch { Innertube.ensureSessionScope() }
+            }
+            com.music.dhvani.listentogether.ListenTogetherManager.init(this@DhvaniApplication)
             runCatching {
                 FirebaseMessaging.getInstance().subscribeToTopic("app_updates")
             }
             AppUpdateChecker.schedulePeriodicCheck(this@DhvaniApplication)
             AppUpdateChecker.startNetworkUpdateObserver(this@DhvaniApplication)
 
-            if (authStore.cookie != null) {
-                CoroutineScope(Dispatchers.IO).launch { Innertube.ensureSessionScope() }
-            }
-
             SourceRegistry.init(this@DhvaniApplication)
+            com.music.dhvani.data.sources.RemoteSourcesManager.init(this@DhvaniApplication)
+            CoroutineScope(Dispatchers.IO).launch {
+                com.music.dhvani.data.sources.RemoteSourcesManager.syncRemoteSources()
+            }
             SearchHistory.init(this@DhvaniApplication)
             PlaybackHistory.init(this@DhvaniApplication)
             LikeState.init(this@DhvaniApplication)

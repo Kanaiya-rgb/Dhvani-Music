@@ -26,15 +26,21 @@ object BetterLyrics {
         artist: String,
         durationMs: Long,
         album: String? = null,
-    ): List<LyricLine>? = fetch(BASE, title, artist, durationMs, album)
+        isrc: String? = null,
+    ): List<LyricLine>? {
+        val original = fetch(BASE, title, artist, durationMs, album)
+        if (!original.isNullOrEmpty()) return original
+        // Fallback to LrcRed Apple Music TTML when BetterLyrics host is restricted/down
+        return LrcRed.lyrics(title, artist, durationMs, isrc)
+    }
 
-    /** QQ Music's karaoke timings through BetterLyrics' Portato endpoint. */
+    /** QQ Music's karaoke and syllable timings via OIAPI. */
     suspend fun portato(
         title: String,
         artist: String,
         durationMs: Long,
         album: String? = null,
-    ): List<LyricLine>? = fetch(PORTATO, title, artist, durationMs, album)
+    ): List<LyricLine>? = QQMusicLyrics.lyrics(title, artist, durationMs, album)
 
     private suspend fun fetch(
         endpoint: String,

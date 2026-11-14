@@ -20,8 +20,8 @@
  *   animation morphs around the center instead of the start edge.
  *
  * Taken from EchoMusicApp/Echo-Music, which carries the three modifications
- * listed above; BitChord's own use of it is in
- * [com.music.bitchord.ui.components.GlassNavBar]. One further change here:
+ * listed above; Dhvani's own use of it is in
+ * [com.music.dhvani.ui.components.GlassNavBar]. One further change here:
  *
  * - `tabBarContentModifier` is a `@Composable () -> Modifier` factory rather
  *   than a single Modifier value. It is applied to three surfaces of three
@@ -30,7 +30,7 @@
  *   it last saw — so one shared instance is invalidated by whichever surface
  *   drew last and re-creates all three outlines every frame. A factory gives
  *   each surface its own.
- * - The expanded tab group uses BitChord's shared sliding selection pill. It
+ * - The expanded tab group uses a shared sliding selection pill. It
  *   follows horizontal drags, stretches while its spring catches up, resists at
  *   the ends, ticks across tab boundaries, and settles on release.
  */
@@ -813,7 +813,6 @@ private fun SharedTransitionScope.ExpandedTabs(
                     .graphicsLayer {
                         translationX = animatedIndicatorOffset
                         scaleX = 1f + lag * STRETCH
-                        scaleY = 1f - lag * STRETCH * SQUASH
                     }
                     .clip(shapes.tabShape)
                     .background(colors.indicatorColor, shapes.tabShape)
@@ -1217,10 +1216,10 @@ object FloatingTabBarDefaults {
      */
     @Composable
     fun shapes(
-        tabBarShape: Shape = RoundedCornerShape(100),
-        tabShape: Shape = RoundedCornerShape(100),
+        tabBarShape: Shape = RoundedCornerShape(percent = 50),
+        tabShape: Shape = RoundedCornerShape(percent = 50),
         standaloneTabShape: Shape = CircleShape,
-        accessoryShape: Shape = RoundedCornerShape(100),
+        accessoryShape: Shape = RoundedCornerShape(percent = 50),
     ): FloatingTabBarShapes = FloatingTabBarShapes(
         tabBarShape = tabBarShape,
         tabShape = tabShape,

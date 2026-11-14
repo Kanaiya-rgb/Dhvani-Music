@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Resolves handwritten artist signatures / autographs for artist profiles.
  *
  * Supports 3 resolution layers:
- * 1. User-configured Custom Signature API endpoint (BitChord compatible)
+ * 1. User-configured Custom Signature API endpoint
  * 2. Instant curated vector signatures for top world & Indian musicians
  * 3. Open Wikidata SPARQL service (Property P109) covering hundreds of thousands of artists worldwide
  */
@@ -60,6 +60,7 @@ object ArtistSignatureRepository {
         "kendrick lamar" to "https://upload.wikimedia.org/wikipedia/commons/e/e1/Kendrick_Lamar_Signature.svg",
         "kanye west" to "https://upload.wikimedia.org/wikipedia/commons/c/c5/Kanyewestsignature.svg",
         "ye" to "https://upload.wikimedia.org/wikipedia/commons/c/c5/Kanyewestsignature.svg",
+        "arijit singh" to "https://upload.wikimedia.org/wikipedia/commons/c/c2/Arijit_Singh_sig.png",
 
         // Indian Singing Legends (Curated from verified IndianAutographs & Archives)
         "kishore kumar" to "https://indianautographs.com/wp-content/uploads/prodimages/m_214086a.jpg",
@@ -86,9 +87,15 @@ object ArtistSignatureRepository {
         "meena mangeshkar" to "https://indianautographs.com/wp-content/uploads/prodimages/m_214079a.jpg",
         "mahendra kapoor" to "https://indianautographs.com/wp-content/uploads/prodimages/m_214089a.jpg",
         "amit kumar" to "https://indianautographs.com/wp-content/uploads/prodimages/m_214088a.jpg",
+        "kumar sanu" to "file:///android_asset/signatures/kumar_sanu.svg",
+        "k. sanu" to "file:///android_asset/signatures/kumar_sanu.svg",
+        "k.sanu" to "file:///android_asset/signatures/kumar_sanu.svg",
+        "kedarnath bhattacharya" to "file:///android_asset/signatures/kumar_sanu.svg",
+        "kumar sanu" to "file:///android_asset/signatures/kumar_sanu.svg",
+        "kedarnath bhattacharya" to "file:///android_asset/signatures/kumar_sanu.svg",
     )
 
-    const val BITCHORD_SIGNATURE_API = "https://proud-cascade-1654.de.deplexo.com/"
+    const val DEFAULT_SIGNATURE_API = "https://artistsignature.velixir.run/"
 
     /**
      * Resolves the signature graphic URL for [artistName].
@@ -105,23 +112,23 @@ object ArtistSignatureRepository {
             return@withContext if (cached == NO_SIGNATURE_SENTINEL) null else cached
         }
 
-        // Layer 1: BitChord / User-Configured Signature API endpoint
-        val customUrl = AppSettings.customSignatureApiUrl.value.trim().ifBlank { BITCHORD_SIGNATURE_API }
-        if (customUrl.isNotBlank()) {
-            val resolvedCustom = resolveFromCustomApi(customUrl, cleanName)
-            if (resolvedCustom != null) {
-                Log.d(TAG, "BitChord/Custom API signature hit for '$artistName': $resolvedCustom")
-                signatureCache[cacheKey] = resolvedCustom
-                return@withContext resolvedCustom
-            }
-        }
-
-        // Layer 2: Fast curated dictionary
+        // Layer 1: Fast curated & bundled local signatures (0ms latency)
         val curated = CURATED_SIGNATURES[cacheKey]
         if (curated != null) {
             Log.d(TAG, "Curated signature hit for '$artistName': $curated")
             signatureCache[cacheKey] = curated
             return@withContext curated
+        }
+
+        // Layer 2: Custom / Community Signature API endpoint (Velixir)
+        val customUrl = AppSettings.customSignatureApiUrl.value.trim().ifBlank { DEFAULT_SIGNATURE_API }
+        if (customUrl.isNotBlank()) {
+            val resolvedCustom = resolveFromCustomApi(customUrl, cleanName)
+            if (resolvedCustom != null) {
+                Log.d(TAG, "Custom API signature hit for '$artistName': $resolvedCustom")
+                signatureCache[cacheKey] = resolvedCustom
+                return@withContext resolvedCustom
+            }
         }
 
         // Layer 3: Wikidata SPARQL query (Property P109) - high quality transparent SVG/PNG
@@ -190,7 +197,7 @@ object ArtistSignatureRepository {
                     val separator = if (baseUrl.contains("?")) "&" else "?"
                     "$baseUrl${separator}artist=$encoded"
                 }
-                baseUrl.contains("proud-cascade") || baseUrl.contains("deplexo") -> {
+                baseUrl.contains("velixir") || baseUrl.contains("proud-cascade") || baseUrl.contains("deplexo") || !baseUrl.contains("/v1/") -> {
                     "${baseUrl.trimEnd('/')}/v1/signatures?artist=$encoded"
                 }
                 else -> {
@@ -212,21 +219,23 @@ object ArtistSignatureRepository {
                 if (contentType.contains("json") || bodyString.startsWith("{")) {
                     val json = JSONObject(bodyString)
 
-                    // 1. BitChord / Deplexo API signatures array
+                    // 1. Deplexo / Velixir JSON API signatures array
                     val signaturesArray = json.optJSONArray("signatures")
                     if (signaturesArray != null && signaturesArray.length() > 0) {
                         var fallbackUrl: String? = null
                         for (i in 0 until signaturesArray.length()) {
                             val sigObj = signaturesArray.optJSONObject(i) ?: continue
-                            val asset = sigObj.optJSONObject("asset") ?: continue
-                            val format = asset.optString("format").lowercase()
-                            val rawUrl = asset.optString("url")
-                            if (rawUrl.isNotBlank() && (rawUrl.startsWith("http://") || rawUrl.startsWith("https://"))) {
+                            val asset = sigObj.optJSONObject("asset")
+                            val format = asset?.optString("format")?.lowercase().orEmpty()
+                            val rawUrl = asset?.optString("url")
+                                ?.ifBlank { sigObj.optJSONObject("source")?.optString("original_url") }
+                                ?: sigObj.optString("url")
+                            if (!rawUrl.isNullOrBlank() && (rawUrl.startsWith("http://") || rawUrl.startsWith("https://"))) {
                                 // Strip tracking query params so clean URL and extension are preserved
                                 val cleanUrl = rawUrl.substringBefore("?").replace("http://", "https://")
                                 if (format == "svg") {
                                     return cleanUrl
-                                } else if (fallbackUrl == null && format == "png") {
+                                } else if (fallbackUrl == null && (format == "png" || format == "webp")) {
                                     fallbackUrl = cleanUrl
                                 } else if (fallbackUrl == null) {
                                     fallbackUrl = cleanUrl

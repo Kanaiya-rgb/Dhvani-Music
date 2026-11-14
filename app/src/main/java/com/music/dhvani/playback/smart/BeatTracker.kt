@@ -16,6 +16,8 @@ import kotlin.math.abs
  */
 class BeatTracker(private val context: Context) {
 
+    val isAvailable: Boolean get() = false
+
     /** A tracked grid on the analysed audio's own timeline, in seconds. */
     data class Grid(
         val beats: List<Double>,

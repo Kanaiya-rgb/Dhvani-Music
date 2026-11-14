@@ -179,9 +179,11 @@ class ReverbAudioProcessor : BaseAudioProcessor() {
                 outRight = allpassRight[i].process(outRight)
             }
 
-            // Mix dry and wet signals
-            var mixedLeft = (inLeft * currentDry) + (outLeft * currentWet * 2.5f)
-            var mixedRight = (inRight * currentDry) + (outRight * currentWet * 2.5f)
+            // Mix dry and wet signals with automatic headroom scaling to prevent digital clipping
+            val totalScale = currentDry + (currentWet * 1.5f)
+            val headroom = if (totalScale > 1.0f) (1.0f / totalScale) else 1.0f
+            var mixedLeft = ((inLeft * currentDry) + (outLeft * currentWet * 1.5f)) * headroom
+            var mixedRight = ((inRight * currentDry) + (outRight * currentWet * 1.5f)) * headroom
 
             // Warm low-pass filter stage
             if (alpha < 0.99f) {

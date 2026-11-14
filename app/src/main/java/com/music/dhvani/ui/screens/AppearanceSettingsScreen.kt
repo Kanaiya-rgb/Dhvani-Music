@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -58,6 +59,7 @@ import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.ViewStream
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.FormatBold
 import androidx.compose.material.icons.rounded.SlowMotionVideo
 import androidx.compose.material.icons.rounded.Style
 import androidx.compose.material3.Button
@@ -76,9 +78,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import android.graphics.Typeface
+import android.provider.OpenableColumns
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -88,19 +99,59 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.music.dhvani.data.icon.AppIcon
+import com.music.dhvani.data.icon.AppIconManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.music.dhvani.ui.components.ALERT_CORNER
+import com.music.dhvani.ui.components.ALERT_WIDTH
+import com.music.dhvani.ui.components.ACTION_HEIGHT
+import com.music.dhvani.ui.components.AlertRule
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import com.music.dhvani.R
+import com.music.dhvani.data.settings.AppFontStyle
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.settings.CanvasStyle
+import com.music.dhvani.ui.theme.PlusJakartaSans
+import com.music.dhvani.ui.theme.SFProDisplay
+import com.music.dhvani.ui.theme.CasualFontFamily
+import com.music.dhvani.ui.theme.CondensedFontFamily
+import com.music.dhvani.ui.theme.PoppinsFontFamily
+import com.music.dhvani.ui.theme.InterFontFamily
+import com.music.dhvani.ui.theme.MontserratFontFamily
+import com.music.dhvani.ui.theme.OutfitFontFamily
+import com.music.dhvani.ui.theme.OpenSansFontFamily
+import com.music.dhvani.ui.theme.LatoFontFamily
+import com.music.dhvani.ui.theme.OswaldFontFamily
+import com.music.dhvani.ui.theme.RalewayFontFamily
+import com.music.dhvani.ui.theme.NunitoFontFamily
+import com.music.dhvani.ui.theme.PlayfairFontFamily
+import com.music.dhvani.ui.theme.TelmaFontFamily
 import com.music.dhvani.data.settings.NowPlayingDefaultMode
 import com.music.dhvani.data.settings.DensityScale
 import com.music.dhvani.data.settings.MiniPlayerBackgroundStyle
@@ -131,6 +182,8 @@ fun AppearanceSettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val haptics = rememberHaptics()
+    var currentAppIcon by remember { mutableStateOf(AppIconManager.getCurrentIcon(context)) }
     val isSystemDark = isSystemInDarkTheme()
 
     val theme by AppSettings.themeMode.collectAsStateWithLifecycle()
@@ -138,6 +191,11 @@ fun AppearanceSettingsScreen(
     val accentColor by AppSettings.accentColor.collectAsStateWithLifecycle()
     val enableHighRefreshRate by AppSettings.enableHighRefreshRate.collectAsStateWithLifecycle()
     val densityScale by AppSettings.densityScale.collectAsStateWithLifecycle()
+    val fontStyle by AppSettings.fontStyle.collectAsStateWithLifecycle()
+    val boldText by AppSettings.boldText.collectAsStateWithLifecycle()
+    val customFontPath by AppSettings.customFontPath.collectAsStateWithLifecycle()
+    val customFontName by AppSettings.customFontName.collectAsStateWithLifecycle()
+    val customFontUrl by AppSettings.customFontUrl.collectAsStateWithLifecycle()
     var showCustomColorDialog by remember { mutableStateOf(false) }
 
     val sliderStyle by AppSettings.sliderStyle.collectAsStateWithLifecycle()
@@ -177,6 +235,63 @@ fun AppearanceSettingsScreen(
 
     // Dialog control states
     var showSignatureApiDialog by remember { mutableStateOf(false) }
+    var showFontStyleDialog by remember { mutableStateOf(false) }
+    var showCustomFontDialog by remember { mutableStateOf(false) }
+    var isFontLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    val fontPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                isFontLoading = true
+                try {
+                    val fontName = withContext(Dispatchers.IO) {
+                        val fontFile = File(context.filesDir, "custom_user_font.ttf")
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            fontFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        val tf = Typeface.createFromFile(fontFile)
+                        if (tf == null) {
+                            fontFile.delete()
+                            null
+                        } else {
+                            var name = "Custom Font"
+                            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                                if (cursor.moveToFirst()) {
+                                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                                    if (idx != -1) {
+                                        name = cursor.getString(idx) ?: "Custom Font"
+                                    }
+                                }
+                            }
+                            name.substringBeforeLast(".")
+                        }
+                    }
+                    if (fontName != null) {
+                        AppSettings.setCustomFont(
+                            path = File(context.filesDir, "custom_user_font.ttf").absolutePath,
+                            name = fontName,
+                            url = "",
+                        )
+                        AppSettings.setFontStyle(AppFontStyle.CUSTOM)
+                        Toast.makeText(context, "Font applied: $fontName", Toast.LENGTH_SHORT).show()
+                        showCustomFontDialog = false
+                        showFontStyleDialog = false
+                    } else {
+                        Toast.makeText(context, "Invalid font file. Please pick a .ttf or .otf file.", Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Failed to load font: ${e.message}", Toast.LENGTH_SHORT).show()
+                } finally {
+                    isFontLoading = false
+                }
+            }
+        }
+    }
     var showDensityDialog by remember { mutableStateOf(false) }
     var showDensityRestartDialog by remember { mutableStateOf(false) }
     var showSliderStyleDialog by remember { mutableStateOf(false) }
@@ -220,6 +335,124 @@ fun AppearanceSettingsScreen(
             .padding(contentPadding),
     ) {
         Spacer(Modifier.height(4.dp))
+
+        // ── App Icon (Dynamic Launcher Switcher) ────────────────────────
+        SettingsGroup(header = "App Icon") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = ROW_INSET),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.GridView,
+                        contentDescription = "App Icon",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Column {
+                        Text(
+                            text = "App Icon",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "Choose custom launcher icon for your home screen",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = ROW_INSET),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    items(AppIcon.entries) { icon ->
+                        val isSelected = currentAppIcon == icon
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .width(74.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) {
+                                    if (currentAppIcon != icon) {
+                                        val ok = AppIconManager.setIcon(context, icon)
+                                        if (ok) {
+                                            currentAppIcon = icon
+                                            haptics.play(Haptic.Select)
+                                            Toast.makeText(context, "App icon updated to ${icon.title}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(68.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(18.dp))
+                                        } else {
+                                            Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(18.dp))
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Image(
+                                    painter = painterResource(id = icon.previewRes),
+                                    contentDescription = icon.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                if (isSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(3.dp)
+                                            .size(18.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = "Selected",
+                                            tint = MaterialTheme.colorScheme.onPrimary,
+                                            modifier = Modifier.size(12.dp),
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = icon.title,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         // ── 1. Theme & Display ──────────────────────────────────────────
         SettingsGroup(header = stringResource(R.string.theme)) {
@@ -426,6 +659,32 @@ fun AppearanceSettingsScreen(
                 title = stringResource(R.string.display_density),
                 value = DensityScale.fromValue(densityScale).label,
                 onClick = { showDensityDialog = true },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.Style,
+                title = "Font Style",
+                value = if (fontStyle == AppFontStyle.CUSTOM && customFontName.isNotBlank() && customFontName != "Custom Font") {
+                    customFontName
+                } else fontStyle.label,
+                onClick = { showFontStyleDialog = true },
+            )
+            RowDivider()
+            SettingsRow(
+                icon = Icons.Rounded.FormatBold,
+                title = "Bold Text",
+                subtitle = "Make all typography bolder across the entire app",
+                trailing = {
+                    Switch(
+                        checked = boldText,
+                        onCheckedChange = AppSettings::setBoldText,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                },
+                onClick = { AppSettings.setBoldText(!boldText) },
             )
         }
 
@@ -1104,6 +1363,416 @@ fun AppearanceSettingsScreen(
                 }
             },
         )
+    }
+
+    // Font Style Picker Dialog (Matches AppLanguageDialog design)
+    if (showFontStyleDialog) {
+        Dialog(
+            onDismissRequest = { showFontStyleDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            val shape = RoundedCornerShape(20.dp)
+            val configuration = LocalConfiguration.current
+            val maxDialogHeight = (configuration.screenHeightDp * 0.72f).dp
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth(0.88f)
+                    .widthIn(min = 320.dp, max = 350.dp)
+                    .heightIn(max = maxDialogHeight)
+                    .clip(shape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                        shape = shape,
+                    ),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 19.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = "Font style",
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.W600,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = "Choose the typography style used by Dhvani Music.",
+                        modifier = Modifier.padding(top = 4.dp),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 13.sp,
+                            lineHeight = 17.sp,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false),
+                ) {
+                    items(AppFontStyle.entries, key = { it.id }) { style ->
+                        AlertRule()
+                        val isSelected = fontStyle == style
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val pressed by interactionSource.collectIsPressedAsState()
+                        val previewFont = when (style) {
+                            AppFontStyle.SF_PRO -> SFProDisplay
+                            AppFontStyle.JAKARTA -> PlusJakartaSans
+                            AppFontStyle.TELMA -> TelmaFontFamily
+                            AppFontStyle.POPPINS -> PoppinsFontFamily
+                            AppFontStyle.INTER -> InterFontFamily
+                            AppFontStyle.MONTSERRAT -> MontserratFontFamily
+                            AppFontStyle.OUTFIT -> OutfitFontFamily
+                            AppFontStyle.OPEN_SANS -> OpenSansFontFamily
+                            AppFontStyle.LATO -> LatoFontFamily
+                            AppFontStyle.OSWALD -> OswaldFontFamily
+                            AppFontStyle.RALEWAY -> RalewayFontFamily
+                            AppFontStyle.NUNITO -> NunitoFontFamily
+                            AppFontStyle.PLAYFAIR -> PlayfairFontFamily
+                            AppFontStyle.SYSTEM -> FontFamily.Default
+                            AppFontStyle.CONDENSED -> CondensedFontFamily
+                            AppFontStyle.SERIF -> FontFamily.Serif
+                            AppFontStyle.MONOSPACE -> FontFamily.Monospace
+                            AppFontStyle.CASUAL -> CasualFontFamily
+                            AppFontStyle.CURSIVE -> FontFamily.Cursive
+                            AppFontStyle.CUSTOM -> {
+                                runCatching {
+                                    val file = File(customFontPath)
+                                    if (file.exists() && file.length() > 0) FontFamily(Typeface.createFromFile(file)) else null
+                                }.getOrNull() ?: SFProDisplay
+                            }
+                        }
+
+                        val displayLabel = if (style == AppFontStyle.CUSTOM) {
+                            if (customFontName.isNotBlank() && customFontName != "Custom Font") "Custom: $customFontName" else "Custom Font"
+                        } else style.label
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = ACTION_HEIGHT)
+                                .background(
+                                    if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f) else Color.Transparent,
+                                )
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = interactionSource,
+                                    onClick = {
+                                        if (style == AppFontStyle.CUSTOM && (customFontPath.isBlank() || !File(customFontPath).exists())) {
+                                            showFontStyleDialog = false
+                                            showCustomFontDialog = true
+                                        } else {
+                                            AppSettings.setFontStyle(style)
+                                            showFontStyleDialog = false
+                                        }
+                                    },
+                                )
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Text(
+                                    text = displayLabel,
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontSize = 15.sp,
+                                        fontFamily = previewFont,
+                                        fontWeight = if (boldText) {
+                                            if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold
+                                        } else {
+                                            if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                        },
+                                    ),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                )
+                                if (style == AppFontStyle.CUSTOM) {
+                                    Text(
+                                        text = if (customFontPath.isNotBlank()) "Personal font · Tap ✎ to change" else "Import .ttf / .otf file or download link",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    )
+                                }
+                            }
+                            if (style == AppFontStyle.CUSTOM) {
+                                IconButton(
+                                    onClick = {
+                                        showFontStyleDialog = false
+                                        showCustomFontDialog = true
+                                    },
+                                    modifier = Modifier.size(32.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = if (customFontPath.isNotBlank()) Icons.Rounded.Edit else Icons.Rounded.Add,
+                                        contentDescription = "Configure Custom Font",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(19.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Custom Font Picker / URL Dialog (Matches Custom Avatar URL card design)
+    if (showCustomFontDialog) {
+        var inputUrl by remember { mutableStateOf(customFontUrl) }
+        Dialog(
+            onDismissRequest = {
+                if (!isFontLoading) {
+                    showCustomFontDialog = false
+                    showFontStyleDialog = true
+                }
+            },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.88f)
+                    .widthIn(min = 320.dp, max = 350.dp)
+                    .padding(vertical = 16.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF19191E),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Custom font URL",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (customFontPath.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                            ) {
+                                Text(
+                                    text = "Active",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = "Paste a direct font download link (.ttf or .otf), or pick a font file directly from your device storage.",
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.55f),
+                        lineHeight = 18.sp,
+                    )
+
+                    OutlinedTextField(
+                        value = inputUrl,
+                        onValueChange = { inputUrl = it },
+                        placeholder = {
+                            Text("https://example.com/font.ttf", color = Color.White.copy(alpha = 0.35f), fontSize = 13.sp, maxLines = 1)
+                        },
+                        singleLine = true,
+                        maxLines = 1,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFF131317),
+                            unfocusedContainerColor = Color(0xFF131317),
+                            focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                        ),
+                        trailingIcon = {
+                            if (inputUrl.isNotBlank()) {
+                                IconButton(onClick = { inputUrl = "" }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Clear,
+                                        contentDescription = "Clear",
+                                        tint = Color.White.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            }
+                        },
+                    )
+
+                    // Pick from storage action button
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White.copy(alpha = 0.06f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !isFontLoading) {
+                                fontPickerLauncher.launch(arrayOf("*/*"))
+                            },
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.FolderOpen,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = if (customFontPath.isNotBlank()) "File: $customFontName" else "Or pick font from storage",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White.copy(alpha = 0.9f),
+                                maxLines = 1,
+                            )
+                        }
+                    }
+
+                    // Action buttons
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (customFontPath.isNotBlank()) {
+                            TextButton(
+                                onClick = {
+                                    val f = File(context.filesDir, "custom_user_font.ttf")
+                                    if (f.exists()) f.delete()
+                                    AppSettings.clearCustomFont()
+                                    if (fontStyle == AppFontStyle.CUSTOM) {
+                                        AppSettings.setFontStyle(AppFontStyle.SF_PRO)
+                                    }
+                                    Toast.makeText(context, "Custom font removed", Toast.LENGTH_SHORT).show()
+                                    showCustomFontDialog = false
+                                    showFontStyleDialog = true
+                                },
+                                enabled = !isFontLoading,
+                            ) {
+                                Text("Remove", color = MaterialTheme.colorScheme.error)
+                            }
+                            Spacer(Modifier.weight(1f))
+                        }
+
+                        TextButton(
+                            onClick = {
+                                showCustomFontDialog = false
+                                showFontStyleDialog = true
+                            },
+                            enabled = !isFontLoading,
+                        ) {
+                            Text("Cancel", color = Color.White.copy(alpha = 0.7f))
+                        }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        Button(
+                            onClick = {
+                                val url = inputUrl.trim()
+                                if (url.isBlank()) {
+                                    Toast.makeText(context, "Please enter a valid URL or pick a file", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                scope.launch {
+                                    isFontLoading = true
+                                    try {
+                                        val fontName = withContext(Dispatchers.IO) {
+                                            val request = okhttp3.Request.Builder().url(url).build()
+                                            val response = com.music.dhvani.data.Http.client.newCall(request).execute()
+                                            if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
+                                            val body = response.body ?: throw Exception("Empty body")
+                                            val fontFile = File(context.filesDir, "custom_user_font.ttf")
+                                            body.byteStream().use { input ->
+                                                fontFile.outputStream().use { output ->
+                                                    input.copyTo(output)
+                                                }
+                                            }
+                                            val tf = Typeface.createFromFile(fontFile)
+                                            if (tf == null) {
+                                                fontFile.delete()
+                                                null
+                                            } else {
+                                                url.substringAfterLast("/").substringBefore("?").substringBeforeLast(".").ifBlank { "Custom Font" }
+                                            }
+                                        }
+                                        if (fontName != null) {
+                                            AppSettings.setCustomFont(
+                                                path = File(context.filesDir, "custom_user_font.ttf").absolutePath,
+                                                name = fontName,
+                                                url = url,
+                                            )
+                                            AppSettings.setFontStyle(AppFontStyle.CUSTOM)
+                                            Toast.makeText(context, "Font applied: $fontName", Toast.LENGTH_SHORT).show()
+                                            showCustomFontDialog = false
+                                            showFontStyleDialog = false
+                                        } else {
+                                            Toast.makeText(context, "Invalid font format. Ensure URL points to a direct .ttf or .otf file.", Toast.LENGTH_LONG).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        isFontLoading = false
+                                    }
+                                }
+                            },
+                            enabled = !isFontLoading && inputUrl.isNotBlank(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                        ) {
+                            if (isFontLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Downloading...")
+                            } else {
+                                Text("Apply")
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Density Restart Dialog

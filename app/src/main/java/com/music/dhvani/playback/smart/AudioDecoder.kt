@@ -1,6 +1,6 @@
 /*
  * Modeled on Orchard's own AudioDecoder (https://github.com/SFG5453/Orchard),
- * scoped down to the platform MediaCodec path  Orchard prefers a native
+ * scoped down to the platform MediaCodec path — Orchard prefers a native
  * libopus decode with the platform decoder as its documented fallback; this
  * only needs the fallback, since Dhvani has no reason to carry a second
  * Opus decoder purely for background analysis.
@@ -41,14 +41,14 @@ import kotlin.math.max
  * battery for nothing.
  *
  * Everything here is best-effort. A codec that will not configure, a
- * container Android cannot parse, a region past the end  all return null,
+ * container Android cannot parse, a region past the end — all return null,
  * and the caller falls back to no analysis, which the transition policy
  * already handles as its bottom rung.
  */
 object AudioDecoder {
 
     private const val TAG = "DhvaniMusicAudioDecoder"
-    private const val TIMEOUT_US = 10_000L
+    private const val TIMEOUT_US = 2_500L
 
     /** Decoded mono PCM at the container's own sample rate; the caller resamples. */
     data class Pcm(val samples: FloatArray, val sampleRate: Double)
@@ -132,10 +132,15 @@ object AudioDecoder {
 
     /** Concatenates the decoded chunks into one contiguous buffer. */
     private fun flatten(chunks: List<FloatArray>): FloatArray {
-        val samples = FloatArray(chunks.sumOf { it.size })
+        var total = 0
+        for (i in chunks.indices) {
+            total += chunks[i].size
+        }
+        val samples = FloatArray(total)
         var offset = 0
-        for (chunk in chunks) {
-            chunk.copyInto(samples, offset)
+        for (i in chunks.indices) {
+            val chunk = chunks[i]
+            System.arraycopy(chunk, 0, samples, offset, chunk.size)
             offset += chunk.size
         }
         return samples
@@ -252,14 +257,37 @@ object AudioDecoder {
             position(info.offset)
             limit(info.offset + info.size)
         }.asShortBuffer()
-        val frames = shorts.remaining() / safeChannels
+        val totalShorts = shorts.remaining()
+        val frames = totalShorts / safeChannels
+        if (frames <= 0) return FloatArray(0)
+
+        val raw = ShortArray(totalShorts)
+        shorts.get(raw)
         val mono = FloatArray(frames)
-        val frame = ShortArray(safeChannels)
-        for (index in 0 until frames) {
-            shorts.get(frame, 0, safeChannels)
-            var sum = 0
-            for (value in frame) sum += value
-            mono[index] = (sum / safeChannels.toFloat()) / 32768f
+
+        if (safeChannels == 1) {
+            val scale = 1f / 32768f
+            for (i in 0 until frames) {
+                mono[i] = raw[i] * scale
+            }
+        } else if (safeChannels == 2) {
+            val scale = 0.5f / 32768f
+            var rawIdx = 0
+            for (i in 0 until frames) {
+                val left = raw[rawIdx++]
+                val right = raw[rawIdx++]
+                mono[i] = (left + right) * scale
+            }
+        } else {
+            val scale = (1f / safeChannels) / 32768f
+            var rawIdx = 0
+            for (i in 0 until frames) {
+                var sum = 0
+                for (c in 0 until safeChannels) {
+                    sum += raw[rawIdx++]
+                }
+                mono[i] = sum * scale
+            }
         }
         return mono
     }
@@ -267,12 +295,6 @@ object AudioDecoder {
     /**
      * Splits one 16-bit PCM output buffer into planar left/right float in
      * [-1, 1], appending each to its own accumulator.
-     *
-     * A mono source is widened by giving both sides the same samples, and
-     * anything above two channels keeps only the first two: the model's input
-     * is stereo, and a downmix of a 5.1 track would put the centre channel 
-     * where the vocal usually is  into both sides at half level, which is
-     * the opposite of helpful for telling a vocal apart from the bed.
      */
     private fun toStereo(
         buffer: ByteBuffer,
@@ -287,14 +309,36 @@ object AudioDecoder {
             position(info.offset)
             limit(info.offset + info.size)
         }.asShortBuffer()
-        val frames = shorts.remaining() / safeChannels
+        val totalShorts = shorts.remaining()
+        val frames = totalShorts / safeChannels
+        if (frames <= 0) return
+
+        val raw = ShortArray(totalShorts)
+        shorts.get(raw)
         val leftChunk = FloatArray(frames)
         val rightChunk = FloatArray(frames)
-        val frame = ShortArray(safeChannels)
-        for (index in 0 until frames) {
-            shorts.get(frame, 0, safeChannels)
-            leftChunk[index] = frame[0] / 32768f
-            rightChunk[index] = (if (safeChannels > 1) frame[1] else frame[0]) / 32768f
+        val scale = 1f / 32768f
+
+        if (safeChannels == 1) {
+            for (i in 0 until frames) {
+                val sample = raw[i] * scale
+                leftChunk[i] = sample
+                rightChunk[i] = sample
+            }
+        } else if (safeChannels == 2) {
+            var rawIdx = 0
+            for (i in 0 until frames) {
+                leftChunk[i] = raw[rawIdx++] * scale
+                rightChunk[i] = raw[rawIdx++] * scale
+            }
+        } else {
+            var rawIdx = 0
+            val skip = safeChannels - 2
+            for (i in 0 until frames) {
+                leftChunk[i] = raw[rawIdx++] * scale
+                rightChunk[i] = raw[rawIdx++] * scale
+                rawIdx += skip
+            }
         }
         left += leftChunk
         right += rightChunk

@@ -90,6 +90,7 @@ data class SourceStream(
      * against the runtime being played.
      */
     val durationSec: Int? = null,
+    val contentLength: Long? = null,
 )
 
 /**

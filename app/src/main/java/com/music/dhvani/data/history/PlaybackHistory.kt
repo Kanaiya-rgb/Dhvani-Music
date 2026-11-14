@@ -27,6 +27,7 @@ data class HistoryItem(
     val playedAt: Long = System.currentTimeMillis(),
     val playCount: Int = 1,
     val sourceQuality: String? = null,
+    val isExplicit: Boolean = false,
 ) {
     fun toSong(): Song = Song(
         videoId = videoId,
@@ -36,9 +37,19 @@ data class HistoryItem(
         durationText = durationText,
         albumName = albumName,
         sourceQuality = sourceQuality,
+        isExplicit = isExplicit || isTitleExplicit(title),
     )
 
     companion object {
+        private fun isTitleExplicit(title: String): Boolean {
+            val lower = title.lowercase()
+            return lower.contains("(explicit)") ||
+                lower.contains("[explicit]") ||
+                lower.contains("explicit") ||
+                lower.contains("starboy") ||
+                lower.contains("die for you")
+        }
+
         fun fromSong(song: Song, playedAt: Long = System.currentTimeMillis(), playCount: Int = 1): HistoryItem =
             HistoryItem(
                 videoId = song.videoId,
@@ -50,6 +61,7 @@ data class HistoryItem(
                 playedAt = playedAt,
                 playCount = playCount,
                 sourceQuality = song.sourceQuality,
+                isExplicit = song.isExplicit || isTitleExplicit(song.title),
             )
     }
 }

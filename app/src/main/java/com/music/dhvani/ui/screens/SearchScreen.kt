@@ -106,6 +106,7 @@ import coil3.compose.AsyncImage
 import com.music.dhvani.data.model.BrowseItem
 import com.music.dhvani.data.model.BrowseType
 import com.music.dhvani.data.model.ROW_ART_PX
+import com.music.dhvani.data.artist.ArtistPortraitRepository
 import com.music.dhvani.data.model.SearchFilter
 import com.music.dhvani.data.model.artworkAt
 import com.music.dhvani.data.model.SearchResult
@@ -120,6 +121,7 @@ import com.music.dhvani.ui.components.ROW_DIVIDER_INSET
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.font.FontWeight
 import com.music.dhvani.ui.components.SongRow
+import com.music.dhvani.ui.components.ExplicitBadge
 import com.music.dhvani.data.model.detectSongLanguage
 import com.music.dhvani.ui.components.LanguageBadgePill
 import com.music.dhvani.ui.components.AudioQualityBadgePill
@@ -267,18 +269,17 @@ fun SearchScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.88f))
                     .statusBarsPadding()
                     .padding(top = 8.dp),
             ) {
             Text(
                 text = stringResource(R.string.search),
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.5).sp,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.6).sp,
                 ),
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(start = PAGE_GUTTER, end = PAGE_GUTTER, bottom = 12.dp),
+                modifier = Modifier.padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 2.dp, bottom = 14.dp),
             )
             SearchField(
                 query = query,
@@ -417,7 +418,7 @@ fun SearchScreen(
                             )
                             is SearchResult.Browse -> BrowseRow(
                                 item = row.item,
-                                onClick = { onBrowseClick(row.item) },
+                                onClick = onBrowseClick,
                                 onLongPress = onBrowseLongPress?.let { { it(row.item) } },
                             )
                         }
@@ -556,10 +557,16 @@ private fun TrackSuggestionRow(
             val qualityBadge = remember(song.sourceQuality, song.localPath, song.localUri) {
                 getAudioQualityBadge(song)
             }
+            val isExplicit = remember(song.isExplicit, song.title, song.artist, song.albumName) {
+                com.music.dhvani.data.ExplicitDetector.isExplicit(song.isExplicit, song.title, song.artist, song.albumName)
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                if (isExplicit) {
+                    ExplicitBadge()
+                }
                 Text(
                     text = song.title,
                     style = MaterialTheme.typography.titleMedium,
@@ -764,16 +771,16 @@ private data class QuickSearchTag(
 )
 
 private val QuickTags = listOf(
-    QuickSearchTag("🔥", "Bollywood Hits", listOf(Color(0xFFFF512F), Color(0xFFDD2476))),
+    QuickSearchTag("🔥", "Bollywood Hits", listOf(Color(0xFFFF416C), Color(0xFFFF4B2B))),
     QuickSearchTag("💖", "Arijit Singh", listOf(Color(0xFFE91E63), Color(0xFFFF5252))),
-    QuickSearchTag("🎧", "Desi Hip Hop", listOf(Color(0xFF1F1C18), Color(0xFF8E0E00))),
-    QuickSearchTag("☕", "Chill Lo-Fi", listOf(Color(0xFF007991), Color(0xFF78FFD6))),
-    QuickSearchTag("🕉️", "Bhakti & Aarti", listOf(Color(0xFFFF6A00), Color(0xFFEE0979))),
+    QuickSearchTag("🎧", "Desi Hip Hop", listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))),
+    QuickSearchTag("☕", "Chill Lo-Fi", listOf(Color(0xFF00B4DB), Color(0xFF0083B0))),
+    QuickSearchTag("🕉️", "Bhakti & Aarti", listOf(Color(0xFFFF8008), Color(0xFFFFC837))),
     QuickSearchTag("⚡", "Punjabi Bops", listOf(Color(0xFFF7971E), Color(0xFFFFD200))),
-    QuickSearchTag("🌿", "Indian Indie", listOf(Color(0xFF134E5E), Color(0xFF71B280))),
-    QuickSearchTag("🏋️", "Workout Pump", listOf(Color(0xFFB71C1C), Color(0xFFD32F2F))),
-    QuickSearchTag("🌙", "Late Night", listOf(Color(0xFF2C3E50), Color(0xFF4CA1AF))),
-    QuickSearchTag("✨", "90s Hits", listOf(Color(0xFF8A2387), Color(0xFFE94057))),
+    QuickSearchTag("🌿", "Indian Indie", listOf(Color(0xFF11998E), Color(0xFF38EF7D))),
+    QuickSearchTag("🏋️", "Workout Pump", listOf(Color(0xFFE52D27), Color(0xFFB31217))),
+    QuickSearchTag("🌙", "Late Night", listOf(Color(0xFF2C3E50), Color(0xFF3498DB))),
+    QuickSearchTag("✨", "90s Hits", listOf(Color(0xFF9D50BB), Color(0xFF6E48AA))),
 )
 
 private data class QuickArtist(
@@ -823,7 +830,7 @@ private val PopularArtists = listOf(
     QuickArtist(
         name = "Atif Aslam",
         initial = "AA",
-        imageUrl = "https://yt3.googleusercontent.com/ykJkyILKum4B2oudDxjnf5WNenWWZAp-WEz0_CHp4cu0VnqB2-uaNDylItqC68WLXV62rdHDun-ahbg=w500-h500-p-l90-rj",
+        imageUrl = "https://is1-ssl.mzstatic.com/image/thumb/AMCArtistImages211/v4/60/0c/ca/600cca55-1223-ab49-da84-6fd6bc8b99ed/ami-identity-10febf8a5cbd91d5f17ceb8cc10d1dc5-2025-01-24T11-05-43.059Z_cropped.png/4160x4160bb.jpg",
         gradient = listOf(Color(0xFF0052D4), Color(0xFF4364F7)),
     ),
     QuickArtist(
@@ -855,21 +862,30 @@ private fun LazyListScope.searchLandingContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 10.dp, bottom = 12.dp),
+                .padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 14.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                Icons.Rounded.Person,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = "Top Artists",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
+                letterSpacing = (-0.2).sp,
             )
         }
     }
@@ -885,15 +901,27 @@ private fun LazyListScope.searchLandingContent(
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .width(72.dp)
-                        .clickable { onArtistClick(artist.name) },
+                        .width(78.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onArtistClick(artist.name) }
+                        .padding(vertical = 2.dp),
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(64.dp)
+                            .size(68.dp)
                             .clip(CircleShape)
                             .background(Brush.linearGradient(artist.gradient))
-                            .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f), CircleShape),
+                            .border(
+                                2.dp,
+                                Brush.verticalGradient(
+                                    listOf(
+                                        Color.White.copy(alpha = 0.45f),
+                                        artist.gradient[0].copy(alpha = 0.65f),
+                                        Color.White.copy(alpha = 0.15f),
+                                    ),
+                                ),
+                                CircleShape,
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
@@ -902,8 +930,9 @@ private fun LazyListScope.searchLandingContent(
                             fontWeight = FontWeight.Black,
                             color = Color.White,
                         )
+                        val effectiveImage = ArtistPortraitRepository.getCachedPortrait(artist.name) ?: artist.imageUrl
                         AsyncImage(
-                            model = artist.imageUrl,
+                            model = effectiveImage,
                             contentDescription = artist.name,
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                             modifier = Modifier
@@ -911,42 +940,57 @@ private fun LazyListScope.searchLandingContent(
                                 .clip(CircleShape),
                         )
                     }
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(8.dp))
                     Text(
                         text = artist.name,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Medium,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.5.sp,
+                            lineHeight = 14.5.sp,
+                        ),
                         color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
+                        maxLines = 2,
+                        minLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 2.dp),
                     )
                 }
             }
         }
     }
 
-    // 3. Trending & Moods (Vertical 2-column cards layout)
+    // 3. Trending & Moods (2-column cards layout)
     item(key = "landing:trending:header") {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 22.dp, bottom = 12.dp),
+                .padding(start = PAGE_GUTTER, end = PAGE_GUTTER, top = 24.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                Icons.AutoMirrored.Rounded.TrendingUp,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.TrendingUp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = "Trending & Moods",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
+                letterSpacing = (-0.2).sp,
             )
         }
     }
@@ -960,42 +1004,86 @@ private fun LazyListScope.searchLandingContent(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 rowTags.forEach { tag ->
-                    Row(
+                    val cardShape = RoundedCornerShape(16.dp)
+                    Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
+                            .height(58.dp)
+                            .clip(cardShape)
                             .background(
                                 Brush.horizontalGradient(
-                                    colors = listOf(
-                                        tag.gradient[0].copy(alpha = 0.18f),
-                                        tag.gradient[1].copy(alpha = 0.08f),
+                                    listOf(
+                                        Color(0xFF1B1D25),
+                                        Color(0xFF14151C),
+                                    ),
+                                ),
+                            )
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(
+                                        tag.gradient[0].copy(alpha = 0.32f),
+                                        tag.gradient[1].copy(alpha = 0.12f),
+                                        Color.Transparent,
                                     ),
                                 ),
                             )
                             .border(
                                 1.dp,
-                                Brush.horizontalGradient(
-                                    colors = listOf(
-                                        tag.gradient[0].copy(alpha = 0.40f),
-                                        tag.gradient[1].copy(alpha = 0.20f),
+                                Brush.verticalGradient(
+                                    listOf(
+                                        Color.White.copy(alpha = 0.22f),
+                                        tag.gradient[0].copy(alpha = 0.30f),
+                                        Color.White.copy(alpha = 0.05f),
                                     ),
                                 ),
-                                RoundedCornerShape(14.dp),
+                                cardShape,
                             )
                             .clickable { onTagClick(tag.title) }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .padding(horizontal = 10.dp),
+                        contentAlignment = Alignment.CenterStart,
                     ) {
-                        Text(text = tag.emoji, style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = tag.title,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                Color.White.copy(alpha = 0.12f),
+                                                Color.White.copy(alpha = 0.04f),
+                                            ),
+                                        ),
+                                    )
+                                    .border(
+                                        0.8.dp,
+                                        Color.White.copy(alpha = 0.18f),
+                                        RoundedCornerShape(10.dp),
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = tag.emoji,
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = tag.title,
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.5.sp,
+                                    letterSpacing = (-0.1).sp,
+                                ),
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     }
                 }
                 if (rowTags.size == 1) {
@@ -1006,31 +1094,63 @@ private fun LazyListScope.searchLandingContent(
     }
 
     item(key = "landing:bottom:space") {
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(56.dp))
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BrowseRow(item: BrowseItem, onClick: () -> Unit, onLongPress: (() -> Unit)? = null) {
+private fun BrowseRow(
+    item: BrowseItem,
+    onClick: (BrowseItem) -> Unit,
+    onLongPress: (() -> Unit)? = null,
+) {
+    val isArtist = item.type == BrowseType.ARTIST ||
+        item.browseId.startsWith("UC") ||
+        item.subtitle.startsWith("Artist", ignoreCase = true) ||
+        item.subtitle.contains("Artist •", ignoreCase = true)
+
+    var artistPortrait by remember(item.browseId, item.title) {
+        mutableStateOf(
+            if (isArtist) {
+                ArtistPortraitRepository.getCachedPortrait(item.title)
+            } else null,
+        )
+    }
+
+    LaunchedEffect(item.browseId, item.title, isArtist) {
+        if (isArtist && artistPortrait == null) {
+            val resolved = ArtistPortraitRepository.getPortrait(item.title, currentThumbnail = item.thumbnailUrl)
+            if (resolved != null) {
+                artistPortrait = resolved
+            }
+        }
+    }
+
+    val effectiveItem = if (artistPortrait != null) {
+        item.copy(thumbnailUrl = artistPortrait)
+    } else {
+        item
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
+            .combinedClickable(onClick = { onClick(effectiveItem) }, onLongClick = onLongPress)
             .padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AsyncImage(
-            model = item.thumbnailUrl.artworkAt(ROW_ART_PX),
+            model = effectiveItem.thumbnailUrl.artworkAt(ROW_ART_PX),
             contentDescription = null,
             modifier = Modifier
                 .size(52.dp)
                 .clip(
-                    if (item.type == BrowseType.ARTIST) CircleShape
+                    if (isArtist) CircleShape
                     else RoundedCornerShape(8.dp),
                 )
                 .thumbnailBorder(
-                    if (item.type == BrowseType.ARTIST) CircleShape
+                    if (isArtist) CircleShape
                     else RoundedCornerShape(8.dp),
                 )
                 .background(MaterialTheme.colorScheme.surfaceVariant),
@@ -1209,27 +1329,54 @@ private fun SearchField(
         onSubmit()
         focusManager.clearFocus()
     }
-    val borderColor by animateColorAsState(
-        targetValue = if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-                      else MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
-        label = "searchBorder",
-    )
     val cardShape = CircleShape
+
+    val borderBrush = if (isFocused) {
+        Brush.horizontalGradient(
+            listOf(
+                MaterialTheme.colorScheme.primary,
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+            ),
+        )
+    } else {
+        Brush.verticalGradient(
+            listOf(
+                Color.White.copy(alpha = 0.16f),
+                Color.White.copy(alpha = 0.05f),
+            ),
+        )
+    }
+
+    val backgroundBrush = if (isFocused) {
+        Brush.verticalGradient(
+            listOf(
+                Color(0xFF22242D),
+                Color(0xFF171820),
+            ),
+        )
+    } else {
+        Brush.verticalGradient(
+            listOf(
+                Color(0xFF1F2129).copy(alpha = 0.95f),
+                Color(0xFF14151C).copy(alpha = 0.98f),
+            ),
+        )
+    }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .height(54.dp)
             .clip(cardShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(if (isFocused) 1.5.dp else 1.dp, borderColor, cardShape)
+            .background(backgroundBrush)
+            .border(if (isFocused) 1.5.dp else 1.dp, borderBrush, cardShape)
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
             ) {
                 focusRequester.requestFocus()
             }
-            .padding(start = 10.dp, end = 10.dp),
+            .padding(start = 12.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (isFocused) {
@@ -1238,7 +1385,7 @@ private fun SearchField(
                 contentDescription = "Back",
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .clickable { focusManager.clearFocus() }
                     .padding(6.dp),
@@ -1247,21 +1394,21 @@ private fun SearchField(
             Icon(
                 Icons.Rounded.Search,
                 contentDescription = stringResource(R.string.search),
-                tint = if (query.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (query.isNotBlank()) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.55f),
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .clickable(enabled = query.isNotBlank(), onClick = submit)
                     .padding(6.dp),
             )
         }
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(8.dp))
         Box(Modifier.weight(1f)) {
             if (query.isEmpty()) {
                 Text(
                     text = stringResource(R.string.search_hint),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
+                    color = Color.White.copy(alpha = 0.42f),
                 )
             }
             BasicTextField(
@@ -1269,7 +1416,8 @@ private fun SearchField(
                 onValueChange = onQueryChange,
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = Color.White,
+                    fontSize = 15.sp,
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -1286,7 +1434,7 @@ private fun SearchField(
         if (query.isNotEmpty()) {
             Box(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(30.dp)
                     .clip(CircleShape)
                     .clickable {
                         onQueryChange("")
@@ -1297,18 +1445,35 @@ private fun SearchField(
                 Icon(
                     Icons.Rounded.Close,
                     contentDescription = stringResource(R.string.clear_search),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = Color.White.copy(alpha = 0.70f),
                     modifier = Modifier.size(18.dp),
                 )
             }
             Spacer(Modifier.width(6.dp))
         }
-        // Voice Search Mic Button
+        // Voice Search Mic Jewel Button
         Box(
             modifier = Modifier
-                .size(34.dp)
+                .size(38.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                        ),
+                    ),
+                )
+                .border(
+                    1.dp,
+                    Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                            Color.White.copy(alpha = 0.10f),
+                        ),
+                    ),
+                    CircleShape,
+                )
                 .clickable(onClick = onVoiceClick),
             contentAlignment = Alignment.Center,
         ) {

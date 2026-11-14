@@ -34,6 +34,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import android.content.SharedPreferences
+import com.music.dhvani.data.model.Song
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -184,6 +189,11 @@ object AudioCache {
     const val QUEUE_DEPTH = QUEUE_LOOKAHEAD + 1
 
     private lateinit var cache: SimpleCache
+    private var prefs: SharedPreferences? = null
+    private val cachedSongs = ConcurrentHashMap<String, Song>()
+    private const val PREFS_CACHED_SONGS = "audio_cache_songs"
+    private const val KEY_CACHED_LIST = "cached_songs_list"
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -205,6 +215,13 @@ object AudioCache {
         // A SimpleCache can only be opened once per process, so the ceiling
         // moves by mutating this evictor rather than reopening the cache 
         // see [DynamicLruCacheEvictor].
+        prefs = context.getSharedPreferences(PREFS_CACHED_SONGS, Context.MODE_PRIVATE)
+        prefs?.getString(KEY_CACHED_LIST, null)?.let { stored ->
+            runCatching {
+                val list = json.decodeFromString<List<Song>>(stored)
+                list.forEach { cachedSongs[it.videoId] = it }
+            }
+        }
         scope.launch {
             AppSettings.audioCacheLimitBytes.collect { maxBytes ->
                 evictor.maxBytes = maxBytes
@@ -218,8 +235,45 @@ object AudioCache {
         cancel()
         scope.launch {
             cache.keys.toList().forEach { cache.removeResource(it) }
+            cachedSongs.clear()
+            prefs?.edit()?.clear()?.apply()
             withContext(Dispatchers.Main) { onComplete() }
         }
+    }
+
+    fun registerSong(song: Song) {
+        if (song.videoId.isBlank()) return
+        cachedSongs[song.videoId] = song
+        val p = prefs ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val list = cachedSongs.values.take(300).toList()
+                p.edit().putString(KEY_CACHED_LIST, json.encodeToString(list)).apply()
+            }
+        }
+    }
+
+    fun getCachedSongs(): List<Song> {
+        if (!::cache.isInitialized) return emptyList()
+        val keys = cache.keys
+        val videoIds = keys.mapNotNull { key ->
+            val bytes = runCatching { cache.getCachedBytes(key, 0, C.LENGTH_UNSET.toLong()) }.getOrDefault(0L)
+            if (bytes > 0) {
+                if (key.contains("|")) key.substringAfter("|")
+                else key.substringBefore("#")
+            } else null
+        }.filter { it.isNotBlank() }.toSet()
+
+        if (videoIds.isEmpty()) return emptyList()
+
+        val historyMap = com.music.dhvani.data.history.PlaybackHistory.recent.value.associateBy { it.videoId }
+        val likedMap = com.music.dhvani.data.LikeState.likedSongs.value.associateBy { it.videoId }
+
+        return videoIds.mapNotNull { vid ->
+            cachedSongs[vid]
+                ?: historyMap[vid]?.toSong()
+                ?: likedMap[vid]
+        }.distinctBy { it.videoId }
     }
 
     /**
@@ -594,6 +648,34 @@ object AudioCache {
                         runCatching { StreamResolver.resolve(id) }
                             .onFailure { TrackLog.d(TAG, "queue warm-up skipped $id: ${it.message}", about = id) }
                         delay(QUEUE_RESOLVE_STAGGER_MS)
+                    }
+                }
+            }
+        }
+
+        // Pre-warm and buffer opening for source and addon tracks (Kuwo, JioSaavn, Modules, etc.)
+        val sourceTracks = upcoming.filter { SourceRegistry.parseTrackKey(it.mediaId) != null }
+        if (sourceTracks.isNotEmpty()) {
+            val nextSource = sourceTracks.first()
+            val parsed = SourceRegistry.parseTrackKey(nextSource.mediaId)
+            if (parsed != null) {
+                val (configId, trackId) = parsed
+                scope.launch {
+                    delay(1_200L)
+                    val stream = runCatching {
+                        SourceResolver.resolve(configId, trackId, nextSource.target)
+                    }.getOrNull()
+                    if (stream != null) {
+                        TrackLog.d(TAG, "Pre-warmed stream for upcoming source track $configId:$trackId")
+                        val isManifest = stream.url.contains(".mpd") || stream.url.contains(".m3u8") ||
+                            stream.format.codec.equals("dash", ignoreCase = true) || stream.format.codec.equals("hls", ignoreCase = true)
+                        if (!isManifest) {
+                            val uri = Uri.parse(SourceRegistry.trackUri(configId, trackId))
+                            val cacheKey = "$configId|$trackId"
+                            runCatching {
+                                fetch(cacheKey, uri, 0L, PRELOAD_BYTES, pinKey = true)
+                            }
+                        }
                     }
                 }
             }
@@ -1034,6 +1116,44 @@ object AudioCache {
         val probe = contentLength.takeIf { it > 0 } ?: HEAD_PROBE_BYTES
         val prefix = cache.getCachedLength(key, 0, probe).coerceAtLeast(0L)
         return if (prefix <= 0L) null else Rendition(key, contentLength, prefix)
+    }
+
+    /**
+     * Looks for a complete or playable rendition on disk for [videoId].
+     * Used to play cached tracks instantly without making online network calls.
+     */
+    fun findPlayableCachedRendition(videoId: String): Rendition? {
+        if (!::cache.isInitialized) return null
+        val renditions = renditionKeysFor(videoId).mapNotNull(::renditionFor)
+        if (renditions.isEmpty()) return null
+        // 1. Return any complete rendition (lossless / hi-fi first if available)
+        renditions.firstOrNull { it.isComplete && (it.key.endsWith("#flac") || it.key.endsWith("#hifi")) }?.let { return it }
+        renditions.firstOrNull { it.isComplete }?.let { return it }
+        // 2. Or any rendition with a substantial cached prefix (>= 1MB)
+        return renditions.firstOrNull { it.cachedPrefix >= 1_000_000L }
+    }
+
+    /**
+     * Builds a URI whose cache key in [keyFactory] matches [rendition.key],
+     * allowing CacheDataSource to read the bytes directly from disk without network.
+     */
+    fun playableUriForRendition(videoId: String, rendition: Rendition): Uri {
+        return when {
+            rendition.key.endsWith("#flac") -> Uri.parse("https://local.cache.dhvani/?v=$videoId&q=lossless")
+            rendition.key.endsWith("#hifi") -> Uri.parse("https://local.cache.dhvani/?v=$videoId&q=hifi")
+            rendition.key.endsWith("#alt") -> Uri.parse("https://local.cache.dhvani/?v=$videoId&q=alt")
+            rendition.key.endsWith("#yt") -> Uri.parse("https://local.cache.dhvani/?v=$videoId&q=original&$DIRECT_YOUTUBE_PARAMETER=1")
+            rendition.key.contains("#") -> {
+                val tag = rendition.key.substringAfter("#")
+                Uri.parse("https://local.cache.dhvani/?v=$videoId&q=$tag")
+            }
+            rendition.key.contains("|") -> {
+                val source = rendition.key.substringBefore("|")
+                val track = rendition.key.substringAfter("|")
+                Uri.parse("dhvani://source?s=$source&t=$track")
+            }
+            else -> Uri.parse("https://local.cache.dhvani/?v=$videoId")
+        }
     }
 
     /**

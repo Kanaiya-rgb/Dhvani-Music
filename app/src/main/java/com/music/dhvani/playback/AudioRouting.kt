@@ -65,6 +65,7 @@ object AudioRouting {
          */
         val name: String,
         val kind: Kind,
+        val category: AudioOutputStatus.AudioDeviceCategory = AudioOutputStatus.AudioDeviceCategory.PHONE,
         /** Where the audio is going right now - see [activeOf]. */
         val isActive: Boolean = false,
     )
@@ -94,19 +95,23 @@ object AudioRouting {
 
     /** Every sink this device can play music through, in a stable order. */
     fun outputs(manager: AudioManager): List<Device> {
+        val simState = AudioOutputStatus.simulationState.value
         val infos = runCatching { manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS) }
             .getOrNull()
             ?: return emptyList()
         val active = activeOf(infos, _selectedId.value)
-        return infos
+        val realOutputs = infos
             .mapNotNull { info -> kindOf(info.type)?.let { info to it } }
             .map { (info, kind) ->
+                val name = nameOf(info, kind)
+                val cat = AudioOutputStatus.detectCategory(info, name)
                 Device(
                     id = info.id,
                     type = info.type,
-                    name = nameOf(info, kind),
+                    name = name,
                     kind = kind,
-                    isActive = info.id == active?.id,
+                    category = cat,
+                    isActive = if (simState.isSimulated) false else (info.id == active?.id),
                 )
             }
             // One row per physical device. Several entries under one name is
@@ -115,6 +120,26 @@ object AudioRouting {
             .groupBy { it.name to it.kind }
             .map { (_, sameDevice) -> sameDevice.minByOrNull { preferenceWithin(it.type) }!! }
             .sortedBy { it.kind.ordinal }
+
+        if (simState.isSimulated && simState.preset != null) {
+            val preset = simState.preset
+            val simDevice = Device(
+                id = -999,
+                type = preset.descriptor.type,
+                name = preset.deviceName,
+                kind = when (preset.expectedCategory) {
+                    AudioOutputStatus.AudioDeviceCategory.PHONE -> Kind.PHONE
+                    AudioOutputStatus.AudioDeviceCategory.WIRED -> Kind.WIRED
+                    AudioOutputStatus.AudioDeviceCategory.USB -> Kind.USB
+                    else -> Kind.BLUETOOTH
+                },
+                category = preset.expectedCategory,
+                isActive = true,
+            )
+            return listOf(simDevice) + realOutputs
+        }
+
+        return realOutputs
     }
 
     /**

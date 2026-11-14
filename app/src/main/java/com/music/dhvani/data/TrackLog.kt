@@ -68,33 +68,32 @@ object TrackLog {
     // record(), which is what Copy Log actually depends on.
 
     fun d(tag: String, message: String, about: String? = working.get()) {
-        if (!BuildConfig.DEBUG) return
         Log.d(tag, message)
         record('D', message, about)
     }
 
     fun i(tag: String, message: String, about: String? = working.get()) {
-        if (BuildConfig.DEBUG) Log.i(tag, message)
+        Log.i(tag, message)
         record('I', message, about)
     }
 
     fun w(tag: String, message: String, about: String? = working.get()) {
-        if (BuildConfig.DEBUG) Log.w(tag, message)
+        Log.w(tag, message)
         record('W', message, about)
     }
 
     fun w(tag: String, message: String, error: Throwable, about: String? = working.get()) {
-        if (BuildConfig.DEBUG) Log.w(tag, message, error)
+        Log.w(tag, message, error)
         record('W', "$message\n${error.stackTraceToString()}", about)
     }
 
     fun e(tag: String, message: String, about: String? = working.get()) {
-        if (BuildConfig.DEBUG) Log.e(tag, message)
+        Log.e(tag, message)
         record('E', message, about)
     }
 
     fun e(tag: String, message: String, error: Throwable, about: String? = working.get()) {
-        if (BuildConfig.DEBUG) Log.e(tag, message, error)
+        Log.e(tag, message, error)
         record('E', "$message\n${error.stackTraceToString()}", about)
     }
 

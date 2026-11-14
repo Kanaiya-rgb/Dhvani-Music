@@ -38,17 +38,25 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -77,6 +85,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,7 +93,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -468,52 +479,96 @@ fun PlaySingHumSheet(
             decorFitsSystemWindows = false,
         ),
     ) {
-        BackHandler(onBack = onDismiss)
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF0F1117)), // Deep cosmic obsidian matching screenshot
-        ) {
-            // Top Navigation Bar: Back Arrow on left, clean and empty on right (history & more deleted)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Start,
-            ) {
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp),
-                    )
+        val view = LocalView.current
+        DisposableEffect(view) {
+            val setupWindow = {
+                var p: android.view.ViewParent? = view.parent
+                while (p != null) {
+                    if (p is DialogWindowProvider) {
+                        val window = p.window
+                        window.setLayout(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
+                        WindowCompat.setDecorFitsSystemWindows(window, false)
+                        window.setBackgroundDrawableResource(android.R.color.transparent)
+                        break
+                    }
+                    p = p.parent
                 }
             }
+            val listener = object : android.view.View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: android.view.View) { setupWindow() }
+                override fun onViewDetachedFromWindow(v: android.view.View) {}
+            }
+            view.addOnAttachStateChangeListener(listener)
+            setupWindow()
+            onDispose {
+                view.removeOnAttachStateChangeListener(listener)
+            }
+        }
 
-            // Main Content: Exact layout from user's screenshot
+        BackHandler(onBack = onDismiss)
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0F1117))
+                .statusBarsPadding(),
+        ) {
+            val totalHeight = maxHeight
+            val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val safeBottom = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
+            val bottomInset = maxOf(navBarBottom, safeBottom)
+            // Ensure at least 36dp padding so the navigation bar (gesture pill or buttons) never overlaps content
+            val effectiveBottomPadding = (bottomInset + 16.dp).coerceAtLeast(36.dp)
+
+            val isCompact = totalHeight < 680.dp
+            val orbSize = if (isCompact) 140.dp else 165.dp
+            val cardSize = if (isCompact) 115.dp else 135.dp
+
+            val baseContentHeight = (if (foundTrack != null) 380.dp else 350.dp) + effectiveBottomPadding
+            val extraSpace = (totalHeight - baseContentHeight).coerceAtLeast(0.dp)
+            val spacerTop = (extraSpace * 0.28f).coerceIn(18.dp, 72.dp)
+            val spacerMid = (extraSpace * 0.22f).coerceIn(14.dp, 48.dp)
+            val spacerBottom = (extraSpace * 0.42f).coerceIn(28.dp, 80.dp)
+
+            val scrollState = rememberScrollState()
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                    .verticalScroll(scrollState),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween,
             ) {
+                // Top Navigation Bar: Back Arrow on left
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Start,
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
+
                 // 1. Header Typography
                 Column(
-                    modifier = Modifier.padding(top = 18.dp),
+                    modifier = Modifier.padding(top = 2.dp, bottom = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
                         text = "Find any song",
                         style = MaterialTheme.typography.headlineLarge.copy(
-                            fontSize = 32.sp,
+                            fontSize = if (isCompact) 23.sp else 25.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = (-0.5).sp,
                         ),
@@ -523,7 +578,7 @@ fun PlaySingHumSheet(
                     Text(
                         text = "Play it, sing it, or hum a tune",
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = 15.sp,
+                            fontSize = if (isCompact) 13.sp else 14.sp,
                             fontWeight = FontWeight.Normal,
                         ),
                         color = Color(0xFFA5A9B8),
@@ -531,26 +586,28 @@ fun PlaySingHumSheet(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(spacerTop))
+
                 // 2. Glowing Holographic Harmonic Orb or Track Found Card
                 if (foundTrack != null) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.padding(vertical = 16.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(vertical = 4.dp),
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(180.dp)
-                                .clip(RoundedCornerShape(24.dp))
+                                .size(cardSize)
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(Color(0xFF1E212B))
                                 .border(
                                     1.5.dp,
                                     Brush.linearGradient(
                                         listOf(Color(0xFFFFB300), Color(0xFFBA68C8))
                                     ),
-                                    RoundedCornerShape(24.dp)
+                                    RoundedCornerShape(20.dp)
                                 ),
-                            contentAlignment = Alignment.Center
+                            contentAlignment = Alignment.Center,
                         ) {
                             if (!foundTrack?.artworkUrl.isNullOrEmpty()) {
                                 AsyncImage(
@@ -563,7 +620,7 @@ fun PlaySingHumSheet(
                                     imageVector = Icons.Rounded.GraphicEq,
                                     contentDescription = null,
                                     tint = Color(0xFFFFB300),
-                                    modifier = Modifier.size(64.dp)
+                                    modifier = Modifier.size(44.dp),
                                 )
                             }
                         }
@@ -572,39 +629,39 @@ fun PlaySingHumSheet(
                             text = foundTrack?.title.orEmpty(),
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 20.sp
+                                fontSize = if (isCompact) 16.5.sp else 18.sp,
                             ),
                             color = Color.White,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
                         )
 
                         Text(
                             text = foundTrack?.artist.orEmpty(),
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 15.sp
+                                fontSize = if (isCompact) 12.5.sp else 13.5.sp,
                             ),
                             color = Color(0xFFA5A9B8),
                             textAlign = TextAlign.Center,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 } else {
                     HolographicSongOrb(
                         audioLevel = animatedAudioLevel,
                         isListening = isListening,
-                        modifier = Modifier
-                            .size(270.dp)
-                            .padding(vertical = 12.dp),
+                        modifier = Modifier.size(orbSize),
                     )
                 }
+
+                Spacer(modifier = Modifier.height(spacerMid))
 
                 // 3. Spectrum Equalizer Bars & Status Caption
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     SpectrumBars(
                         audioLevel = animatedAudioLevel,
@@ -614,24 +671,26 @@ fun PlaySingHumSheet(
                     Text(
                         text = statusText,
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = 14.5.sp,
+                            fontSize = if (isCompact) 12.5.sp else 13.5.sp,
                             fontWeight = FontWeight.Normal,
                         ),
                         color = Color(0xFFECEFF4).copy(alpha = 0.88f),
                         textAlign = TextAlign.Center,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 20.dp),
+                        modifier = Modifier.padding(horizontal = 24.dp),
                     )
                 }
+
+                Spacer(modifier = Modifier.height(spacerBottom))
 
                 // 4. Action Buttons
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 20.dp),
+                        .padding(horizontal = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     if (foundTrack != null) {
                         val trackQuery = "${foundTrack?.title} ${foundTrack?.artist}"
@@ -650,7 +709,7 @@ fun PlaySingHumSheet(
                                     onPlayNow(trackQuery)
                                     onDismiss()
                                 }
-                                .padding(vertical = 14.dp),
+                                .padding(vertical = 12.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Row(
@@ -689,7 +748,7 @@ fun PlaySingHumSheet(
                                     onViewInSearch(trackQuery)
                                     onDismiss()
                                 }
-                                .padding(vertical = 12.dp),
+                                .padding(vertical = 10.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Row(
@@ -705,7 +764,7 @@ fun PlaySingHumSheet(
                                 Text(
                                     text = "Go to search list",
                                     style = MaterialTheme.typography.labelLarge.copy(
-                                        fontSize = 14.5.sp,
+                                        fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
                                     ),
                                     color = Color(0xFFECEFF4),
@@ -743,7 +802,7 @@ fun PlaySingHumSheet(
                                     shape = CircleShape,
                                 )
                                 .clickable(enabled = !isListening && !isAnalyzing, onClick = { startIdentification() })
-                                .padding(horizontal = 32.dp, vertical = 14.dp),
+                                .padding(horizontal = 28.dp, vertical = 12.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Row(
@@ -759,7 +818,7 @@ fun PlaySingHumSheet(
                                 Text(
                                     text = buttonText,
                                     style = MaterialTheme.typography.labelLarge.copy(
-                                        fontSize = 15.sp,
+                                        fontSize = 14.5.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         letterSpacing = 0.2.sp,
                                     ),
@@ -767,6 +826,8 @@ fun PlaySingHumSheet(
                                 )
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         // Google Sound Search alternative option (for singing/humming melody) - ONLY when no song found yet
                         Box(
@@ -780,31 +841,34 @@ fun PlaySingHumSheet(
                                         Toast.makeText(context, "Google App not installed", Toast.LENGTH_SHORT).show()
                                     }
                                 }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            contentAlignment = Alignment.Center
+                                .padding(horizontal = 18.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.Search,
                                     contentDescription = "Google Sound Search",
                                     tint = Color(0xFFA5A9B8),
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(15.dp),
                                 )
                                 Text(
                                     text = "Try Google Hum Search",
                                     style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Medium,
                                     ),
-                                    color = Color(0xFFA5A9B8)
+                                    color = Color(0xFFA5A9B8),
                                 )
                             }
                         }
                     }
                 }
+
+                // Dedicated bottom spacer guaranteeing clear margin above gesture bar / navigation buttons
+                Spacer(modifier = Modifier.height(effectiveBottomPadding))
             }
         }
     }

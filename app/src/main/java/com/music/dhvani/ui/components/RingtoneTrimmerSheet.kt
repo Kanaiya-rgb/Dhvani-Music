@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Security
+import com.music.dhvani.ui.icons.DhvaniIcons
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -281,7 +282,7 @@ fun RingtoneTrimmerSheet(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.NotificationsActive,
+                            imageVector = DhvaniIcons.Ringtone,
                             contentDescription = null,
                             tint = Color(0xFFA78BFA),
                             modifier = Modifier.size(20.dp),
@@ -753,7 +754,7 @@ fun RingtoneTrimmerSheet(
                     )
                 } else {
                     Icon(
-                        imageVector = Icons.Rounded.NotificationsActive,
+                        imageVector = DhvaniIcons.Ringtone,
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(20.dp),
@@ -813,7 +814,7 @@ fun RingtoneTrimmerSheet(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.NotificationsActive,
+                            imageVector = DhvaniIcons.Ringtone,
                             contentDescription = null,
                             tint = Color(0xFFA78BFA),
                             modifier = Modifier.size(36.dp),

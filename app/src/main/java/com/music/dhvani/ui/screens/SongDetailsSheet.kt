@@ -125,7 +125,7 @@ fun SongDetailsSheet(
     val context = LocalContext.current
     val cachedInitial = remember(song.videoId) { detailsMemoryCache[song.videoId] }
 
-    val defaultKbps = nerdStats?.bitrateKbps ?: 143
+    val defaultKbps = nerdStats?.effectiveBitrateKbps ?: nerdStats?.bitrateKbps ?: 143
     val durationMs = remember(song.videoId) { song.durationMillis().takeIf { it > 0 } ?: 210000L }
     val calculatedSize = remember(song.videoId, defaultKbps) {
         (durationMs * defaultKbps * 1000L) / (8 * 1000L)
@@ -140,7 +140,7 @@ fun SongDetailsSheet(
                 bitrateKbps = defaultKbps,
                 sampleRateHz = nerdStats?.sampleRateHz ?: 48000,
                 loudnessDb = -10.67f,
-                fileSizeBytes = calculatedSize,
+                fileSizeBytes = nerdStats?.fileSizeBytes ?: calculatedSize,
                 description = formatStructuredDescription(song, null),
             )
         )
@@ -305,14 +305,16 @@ fun SongDetailsSheet(
                     val likesFormatted = formatCountNumber(media.likes)
                     val dislikesFormatted = formatCountNumber(media.dislikes)
                     val itagFormatted = (media.itag ?: 251).toString()
-                    val mimeFormatted = media.mimeType ?: nerdStats?.mimeType ?: "audio/webm"
-                    val codecFormatted = media.codec ?: nerdStats?.mimeType?.substringAfterLast("/")?.lowercase() ?: "opus"
-                    val kbps = media.bitrateKbps ?: nerdStats?.bitrateKbps ?: 143
+                    val isFlacStream = nerdStats?.isLossless == true || nerdStats?.mimeType?.contains("flac", ignoreCase = true) == true
+                    val mimeFormatted = if (isFlacStream) "audio/flac" else (media.mimeType ?: nerdStats?.mimeType ?: "audio/webm")
+                    val codecFormatted = if (isFlacStream) "flac" else (media.codec ?: nerdStats?.mimeType?.substringAfterLast("/")?.lowercase() ?: "opus")
+                    val kbps = nerdStats?.effectiveBitrateKbps ?: media.bitrateKbps ?: nerdStats?.bitrateKbps ?: 143
                     val bitrateFormatted = "$kbps Kbps"
                     val sampleRateFormatted = "${media.sampleRateHz ?: nerdStats?.sampleRateHz ?: 48000} Hz"
                     val loudnessFormatted = "${media.loudnessDb ?: -10.67f} dB"
                     val volumeFormatted = "${(volume * 100).toInt()}%"
-                    val fileSizeFormatted = formatShortFileSize(media.fileSizeBytes ?: calculatedSize)
+                    val activeFileSizeBytes = nerdStats?.fileSizeBytes ?: media.fileSizeBytes ?: calculatedSize
+                    val fileSizeFormatted = formatShortFileSize(activeFileSizeBytes)
 
                     DetailItemRow(icon = Icons.Rounded.RssFeed, label = "Views", value = viewsFormatted, accent = palette.accent, onBackground = palette.onBackground, onBackgroundVariant = palette.onBackgroundVariant, onCopy = onCopy)
                     DetailItemRow(icon = Icons.Rounded.ThumbUp, label = "Likes", value = likesFormatted, accent = palette.accent, onBackground = palette.onBackground, onBackgroundVariant = palette.onBackgroundVariant, onCopy = onCopy)
@@ -580,12 +582,15 @@ private suspend fun fetchMediaDetailsFast(
     val cached = detailsMemoryCache[song.videoId]
     if (cached != null) return@withContext cached
 
-    val kbps = nerdStats?.bitrateKbps ?: 143
+    val kbps = nerdStats?.effectiveBitrateKbps ?: nerdStats?.bitrateKbps ?: 143
 
-    // Check cached stream URL without blocking network (0ms memory check)
+    // Check cached stream URL or active stream size without blocking network
+    val streamRealSize = nerdStats?.fileSizeBytes
+        ?: com.music.dhvani.playback.StreamChoice.of(song.videoId)?.contentLength
     val cachedUrl = StreamResolver.getCachedUrl(song.videoId)?.toHttpUrlOrNull()
     val itag = cachedUrl?.queryParameter("itag")?.toIntOrNull() ?: 251
-    val clen = cachedUrl?.queryParameter("clen")?.toLongOrNull()
+    val clen = streamRealSize
+        ?: cachedUrl?.queryParameter("clen")?.toLongOrNull()
         ?: ((durationMs * kbps * 1000L) / (8 * 1000L))
 
     // Run parallel non-blocking requests with 3.5s timeouts
@@ -635,8 +640,8 @@ private suspend fun fetchMediaDetailsFast(
             likes = votes?.second,
             dislikes = votes?.third,
             itag = itag,
-            mimeType = nerdStats?.mimeType ?: "audio/webm",
-            codec = nerdStats?.mimeType?.substringAfterLast("/")?.lowercase() ?: "opus",
+            mimeType = if (nerdStats?.isLossless == true || nerdStats?.mimeType?.contains("flac", ignoreCase = true) == true) "audio/flac" else (nerdStats?.mimeType ?: "audio/webm"),
+            codec = if (nerdStats?.isLossless == true || nerdStats?.mimeType?.contains("flac", ignoreCase = true) == true) "flac" else (nerdStats?.mimeType?.substringAfterLast("/")?.lowercase() ?: "opus"),
             bitrateKbps = kbps,
             sampleRateHz = nerdStats?.sampleRateHz ?: 48000,
             loudnessDb = -10.67f,

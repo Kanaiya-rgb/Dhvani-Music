@@ -2,6 +2,7 @@ package com.music.dhvani.data.lyrics
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.text.Normalizer
@@ -13,37 +14,31 @@ import kotlin.math.abs
  *
  * Every document lives at `https://lrc.red/s/{ISRC}.ttml`, so a track whose
  * recording is already known costs one request and cannot come back as the
- * wrong edit. That is the usual case: [BiniLyrics] answers its searches out
- * of this same catalogue — its `lyricsUrl` points here — and
- * [LyricsRepository] hands the ISRC it finds to every source that can use one.
+ * wrong edit.
  *
- * Without one, lrc.red's own search (`/search.json?q=`) is asked with the
- * title and artist, and the hits are matched here rather than trusted in
- * order: the search is a free-text one and ranks "Bohemian Rhapsody
- * (Operatic Section / 2011 A Cappella Mix)" above the song itself. See [best].
- *
- * Line-synced entries are TTML too (`lrc:timing="Line"`), which [TtmlLyrics]
- * already reads, so one parser covers both. The document's own
- * `<audio lyricOffset>` is ignored, as it is for every Apple TTML here — the
- * stamps are written against the release audio, which is what is playing.
+ * Uses lrc.red's official REST API v1 (`/api/v1?track=&artist=&duration=`)
+ * as the primary search engine, falling back to `/api/v1?q=` and
+ * free-text `/search.json?q=`.
  */
 object LrcRed {
 
     private const val BASE = "https://lrc.red/"
 
     /**
-     * How far a hit's length may be from the playing track's. YouTube reports
-     * whole seconds, and lrc.red lists the 2011 remaster of "Bohemian Rhapsody"
-     * at 356.5 s against 352.0 s for the live cut — close enough that the
-     * version words in [best] have to do most of the work, not this.
+     * How far a hit's length may be from the playing track's. YouTube music
+     * videos frequently include spoken dialogue, intro cuts, or outro scenes
+     * that make the video 20-40 seconds longer than the studio audio cut.
      */
-    private const val DURATION_TOLERANCE_SECONDS = 3.0
+    private const val DURATION_TOLERANCE_SECONDS = 45.0
 
     /** `CC-XXX-YY-NNNNN` without the dashes — and nothing else goes into a path. */
     private val ISRC = Regex("""[A-Z]{2}[A-Z0-9]{3}\d{7}""")
 
+    fun cleanIsrc(isrc: String): String =
+        isrc.trim().replace("-", "").uppercase(Locale.ROOT)
+
     fun documentUrl(isrc: String): String? =
-        isrc.trim().uppercase(Locale.ROOT).takeIf { ISRC.matches(it) }?.let { "${BASE}s/$it.ttml" }
+        cleanIsrc(isrc).takeIf { ISRC.matches(it) }?.let { "${BASE}s/$it.ttml" }
 
     suspend fun lyrics(
         title: String,
@@ -51,24 +46,139 @@ object LrcRed {
         durationMs: Long,
         isrc: String? = null,
         get: suspend (String) -> String? = { lyricsGet(it) },
+        onFoundIsrc: ((String) -> Unit)? = null,
     ): List<LyricLine>? = withContext(Dispatchers.IO) {
-        val known = isrc?.let(::documentUrl)
-        if (known != null) document(known, get)?.let { return@withContext it }
+        val cleanedIsrc = isrc?.let(::cleanIsrc)?.takeIf { ISRC.matches(it) }
+        val known = cleanedIsrc?.let { "${BASE}s/$it.ttml" }
+        if (known != null) {
+            document(known, get)?.let {
+                onFoundIsrc?.invoke(cleanedIsrc)
+                return@withContext it
+            }
+        }
 
         // A known recording lrc.red doesn't have — a local file's tag naming a
         // release it never indexed — still gets a search: the same song is
         // often catalogued under a sibling release's code.
         val hit = search(title, artist, durationMs) ?: return@withContext null
-        val found = hit.isrc?.let(::documentUrl)?.takeIf { it != known } ?: return@withContext null
-        document(found, get)
+        val hitIsrc = hit.isrc?.let(::cleanIsrc)?.takeIf { ISRC.matches(it) } ?: return@withContext null
+        val found = "${BASE}s/$hitIsrc.ttml".takeIf { it != known } ?: return@withContext null
+        val lines = document(found, get)
+        if (!lines.isNullOrEmpty()) {
+            onFoundIsrc?.invoke(hitIsrc)
+        }
+        lines
     }
 
-    private suspend fun document(url: String, get: suspend (String) -> String?): List<LyricLine>? =
-        get(url)?.let(TtmlLyrics::parse)?.takeIf { it.isNotEmpty() }
+    suspend fun findHit(title: String, artist: String, durationMs: Long): Hit? = withContext(Dispatchers.IO) {
+        search(title, artist, durationMs)
+    }
+
+    private suspend fun document(url: String, get: suspend (String) -> String?): List<LyricLine>? {
+        val content = get(url)
+        if (!content.isNullOrBlank()) {
+            val lines = ProviderLyrics.parse(content)?.takeIf { it.isNotEmpty() }
+            if (!lines.isNullOrEmpty()) {
+                android.util.Log.d("LrcRed", "Loaded ${lines.size} lines from $url")
+                return lines
+            }
+        }
+        // Fallback: if .ttml failed, try .lrc (contains per-word <00:23.77> timings)
+        if (url.endsWith(".ttml")) {
+            val lrcUrl = url.removeSuffix(".ttml") + ".lrc"
+            val lrcContent = get(lrcUrl)
+            if (!lrcContent.isNullOrBlank()) {
+                val lines = ProviderLyrics.parse(lrcContent)?.takeIf { it.isNotEmpty() }
+                if (!lines.isNullOrEmpty()) {
+                    android.util.Log.d("LrcRed", "Loaded ${lines.size} lines from fallback $lrcUrl")
+                    return lines
+                }
+            }
+        }
+        return null
+    }
 
     private fun search(title: String, artist: String, durationMs: Long): Hit? {
+        val cleanTitle = LyricsCleaner.cleanTitle(title, artist).ifBlank { title }
+        val cleanArtist = LyricsCleaner.cleanArtist(artist).ifBlank { artist }
+        val seconds = if (durationMs > 0) (durationMs / 1000).toInt() else 0
+
+        // 1. Primary choice: lrc.red fast free-text search (/search.json?q=) - native frontend endpoint (~480ms)
+        val freeTextHit = searchFreeText(cleanTitle, cleanArtist, durationMs)
+            ?: searchFreeText(cleanTitle, "", durationMs)
+            ?: if (cleanTitle != title) searchFreeText(title, "", durationMs) else null
+        if (freeTextHit != null) {
+            android.util.Log.d("LrcRed", "Found hit via search.json: ${freeTextHit.isrc} - ${freeTextHit.title}")
+            return freeTextHit
+        }
+
+        // 2. Secondary choice: lrc.red official REST API v1 (?track=&artist=&duration=)
+        val apiHit = searchApiV1(cleanTitle, cleanArtist, seconds)
+            ?: if (cleanTitle != title || cleanArtist != artist) searchApiV1(title, artist, seconds) else null
+        if (apiHit != null) {
+            android.util.Log.d("LrcRed", "Found hit via api/v1: ${apiHit.isrc} - ${apiHit.title}")
+            return apiHit
+        }
+        return null
+    }
+
+    private fun searchApiV1(title: String, artist: String, seconds: Int): Hit? {
+        val builder = "${BASE}api/v1".toHttpUrl().newBuilder()
+            .addQueryParameter("track", title)
+        if (artist.isNotBlank()) builder.addQueryParameter("artist", artist)
+        if (seconds > 0) builder.addQueryParameter("duration", seconds.toString())
+
+        var body = lyricsGet(builder.build().toString())
+        var resp = body?.let { runCatching { lyricsJson.decodeFromString<ApiV1Response>(it) }.getOrNull() }
+        var results = resp?.results.orEmpty()
+
+        // Fallback 1: Query by track title only (without artist restriction)
+        if (results.isEmpty() && artist.isNotBlank() && title.isNotBlank()) {
+            val titleOnlyUrl = "${BASE}api/v1".toHttpUrl().newBuilder()
+                .addQueryParameter("track", title)
+                .apply { if (seconds > 0) addQueryParameter("duration", seconds.toString()) }
+                .build()
+            body = lyricsGet(titleOnlyUrl.toString())
+            resp = body?.let { runCatching { lyricsJson.decodeFromString<ApiV1Response>(it) }.getOrNull() }
+            results = resp?.results.orEmpty()
+        }
+
+        // Fallback 2: Free-text search
+        if (results.isEmpty() && title.isNotBlank()) {
+            val qUrl = "${BASE}api/v1".toHttpUrl().newBuilder()
+                .addQueryParameter("q", title)
+                .build()
+            body = lyricsGet(qUrl.toString())
+            resp = body?.let { runCatching { lyricsJson.decodeFromString<ApiV1Response>(it) }.getOrNull() }
+            results = resp?.results.orEmpty()
+        }
+
+        if (results.isEmpty()) return null
+
+        val valid = results.filter { it.isrc?.let(::cleanIsrc)?.let(ISRC::matches) == true }
+        if (valid.isEmpty()) return null
+
+        val bestResult = if (seconds > 0) {
+            valid.filter { it.duration == null || abs(it.duration - seconds) <= 45 }
+                .minByOrNull { it.duration?.let { d -> abs(d - seconds) } ?: 999 }
+                ?: valid.first()
+        } else {
+            valid.first()
+        }
+
+        return Hit(
+            isrc = bestResult.isrc,
+            title = bestResult.trackName,
+            artist = bestResult.artistName,
+            album = bestResult.albumName,
+            duration = bestResult.duration?.toDouble(),
+        )
+    }
+
+    private fun searchFreeText(title: String, artist: String, durationMs: Long): Hit? {
+        val q = if (artist.isNotBlank()) "$title $artist".trim() else title.trim()
         val url = "${BASE}search.json".toHttpUrl().newBuilder()
-            .addQueryParameter("q", "$title $artist".trim())
+            .addQueryParameter("q", q)
             .build()
         val body = lyricsGet(url.toString()) ?: return null
         val hits = runCatching { lyricsJson.decodeFromString<Response>(body) }.getOrNull()?.hits
@@ -78,20 +188,6 @@ object LrcRed {
 
     /**
      * The hit that is this recording, or null if none of them is sure to be.
-     *
-     * A miss here is recoverable — the sources behind this one get their turn —
-     * and the wrong words scrolling in time with the right song is not, so
-     * every test is a requirement rather than a score:
-     *
-     *  - the title, outside its brackets and any " - " suffix, is the same;
-     *  - the words in those brackets that name a different recording
-     *    ([VERSION_WORDS]: live, remix, acoustic…) are the same on both
-     *    sides — "Remastered" and "From 'Aashiqui 2'" don't count;
-     *  - at least one credited artist is shared;
-     *  - the length is within [DURATION_TOLERANCE_SECONDS], when both are known.
-     *
-     * Of the hits that pass, the closest in length wins, and the search's own
-     * rank breaks a tie.
      */
     fun best(hits: List<Hit>, title: String, artist: String, durationMs: Long): Hit? {
         val wantedTitle = coreOf(title)
@@ -105,11 +201,17 @@ object LrcRed {
         return hits
             .filter { hit ->
                 val name = hit.title ?: return@filter false
-                hit.isrc?.let(::documentUrl) != null &&
+                val dist = distance(hit)
+                val hitArtists = artistsOf(hit.artist.orEmpty())
+                val artistsMatch = wantedArtists.isEmpty() ||
+                    hitArtists.any { it in wantedArtists } ||
+                    wantedArtists.any { it in hitArtists }
+
+                hit.isrc?.let(::cleanIsrc)?.let(ISRC::matches) == true &&
                     coreOf(name) == wantedTitle &&
                     versionOf(name) == wantedVersion &&
-                    (wantedArtists.isEmpty() || artistsOf(hit.artist.orEmpty()).any { it in wantedArtists }) &&
-                    distance(hit) <= DURATION_TOLERANCE_SECONDS
+                    (artistsMatch || dist <= 8.0) &&
+                    dist <= DURATION_TOLERANCE_SECONDS
             }
             .minByOrNull(::distance)
     }
@@ -159,6 +261,22 @@ object LrcRed {
         val hits: List<Hit>? = null,
         /** Paging cursor. The first page is all a match is looked for in. */
         val next: String? = null,
+    )
+
+    @Serializable
+    internal data class ApiV1Response(
+        val results: List<ApiV1Result>? = null,
+    )
+
+    @Serializable
+    internal data class ApiV1Result(
+        @SerialName("track_name") val trackName: String? = null,
+        @SerialName("artist_name") val artistName: String? = null,
+        @SerialName("album_name") val albumName: String? = null,
+        val duration: Int? = null,
+        val isrc: String? = null,
+        val lyricsUrl: String? = null,
+        @SerialName("timing_type") val timingType: String? = null,
     )
 
     @Serializable

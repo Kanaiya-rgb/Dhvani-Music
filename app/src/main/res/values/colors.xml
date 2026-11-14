@@ -7,4 +7,13 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- App Launcher Icon Backgrounds -->
+    <color name="ic_launcher_bg_cyberpunk_neon">#FF000000</color>
+    <color name="ic_launcher_bg_royal_gold">#FF0B0D11</color>
+    <color name="ic_launcher_bg_monochrome">#FFF0F2F5</color>
+    <color name="ic_launcher_bg_stealth_black">#FF000000</color>
+    <color name="ic_launcher_bg_smoky_amber">#FF0E0B12</color>
+    <color name="ic_launcher_bg_liquid_glass">#FF0E0911</color>
+    <color name="ic_launcher_bg_cosmic_crystal">#FF090815</color>
 </resources>

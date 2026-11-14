@@ -8,10 +8,12 @@ import com.music.dhvani.data.model.durationMillis
 import com.music.dhvani.data.settings.AppSettings
 import com.music.dhvani.data.settings.AudioQuality
 import com.music.dhvani.data.settings.DownloadQuality
+import com.music.dhvani.data.monochrome.MonochromeService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.selects.select
 
 /**
@@ -92,18 +94,24 @@ object SourceResolver {
         else -> StreamRequest.Capped(quality.maxKbps)
     }
 
+    private val resolvedSourceUriCache = java.util.concurrent.ConcurrentHashMap<String, SourceStream>()
+
     /**
      * @param uri a `flux://source?...` URI as built by [SourceRegistry.trackUri].
      * @return the stream, or null when nothing enabled could serve the track.
      */
     suspend fun resolve(uri: Uri): SourceStream? {
+        val uriStr = uri.toString()
+        resolvedSourceUriCache[uriStr]?.let { return it }
         val configId = uri.getQueryParameter("s") ?: return null
         val trackId = uri.getQueryParameter("t") ?: return null
         return resolve(
             configId = configId,
             trackId = trackId,
             target = targetIn(uri),
-        )
+        )?.also {
+            resolvedSourceUriCache[uriStr] = it
+        }
     }
 
     /**
@@ -120,6 +128,12 @@ object SourceResolver {
         durationSec = uri.getQueryParameter("d")?.toIntOrNull(),
     )
 
+    fun targetIn(song: Song) = TrackMatcher.Target(
+        title = song.title,
+        artist = song.artist,
+        durationSec = TrackMatcher.secondsOf(song.durationText),
+    )
+
     /**
      * @param target is what a cross-source match is made on. Without it the
      *   only possible behaviour is "the pinned source or nothing", which is
@@ -130,6 +144,8 @@ object SourceResolver {
         trackId: String,
         target: TrackMatcher.Target,
     ): SourceStream? {
+        val trackKey = "${configId}::$trackId"
+        resolvedSourceUriCache[trackKey]?.let { return it }
         val request = requestForNow()
         val pinned = SourceRegistry.instance(configId)
         val active = SourceRegistry.active()
@@ -152,12 +168,14 @@ object SourceResolver {
                 // source instead, and to [bestAcross] below if that fails.
                 if (upgraded.format.isLossless != true) continue
                 TrackLog.d(TAG, "lossless upgrade: '${target.title}' served by ${source.displayName}")
-                return upgraded
+                return upgraded.also { resolvedSourceUriCache[trackKey] = it }
             }
         }
 
         if (pinned != null) {
-            attempt(pinned) { pinned.stream(trackId, request) }?.let { return it }
+            attempt(pinned) { pinned.stream(trackId, request) }?.let {
+                return it.also { resolvedSourceUriCache[trackKey] = it }
+            }
         }
 
         // Last resort. A track whose own source is down is still a track the
@@ -167,7 +185,7 @@ object SourceResolver {
         val (fallbackSource, stream) =
             bestAcross(active.filterNot { it.configId == configId }, target, request) ?: return null
         TrackLog.d(TAG, "fallback: '${target.title}' served by ${fallbackSource.displayName}")
-        return stream
+        return stream.also { resolvedSourceUriCache[trackKey] = it }
     }
 
     /**
@@ -202,80 +220,126 @@ object SourceResolver {
         val active = SourceRegistry.active()
         val youtube = active.firstOrNull { it.kind == SourceKind.YOUTUBE } ?: return null
 
-        // 1. If explicit target source was requested (e.g. user selected specific addon), try it first!
-        if (!targetSourceId.isNullOrBlank()) {
+        val preferred = AppSettings.preferredPlaybackSource.value
+        // If native YouTube stream is explicitly requested, do not substitute
+        if (targetSourceId == "YOUTUBE") {
+            return null
+        }
+        if (preferred == "YOUTUBE" && targetSourceId == null && request !is StreamRequest.Lossless) {
+            return null
+        }
+
+        val wantsLossless = request is StreamRequest.Lossless || preferred == "LOSSLESS" ||
+            preferred == "builtin_addon_qobuz" ||
+            preferred == "builtin_addon_aurix_tidal" ||
+            AppSettings.effectiveAudioQuality == AudioQuality.LOSSLESS ||
+            SourceRegistry.configs.value.any { it.id == preferred && it.kind.canServeLossless }
+
+        val isExplicitManualTarget = !targetSourceId.isNullOrBlank()
+
+        // 1. If explicit manual target source was selected by user in the stream picker:
+        if (isExplicitManualTarget && !targetSourceId.isNullOrBlank()) {
             val specificSource = SourceRegistry.instance(targetSourceId)
                 ?: active.firstOrNull { it.configId == targetSourceId }
                 ?: active.firstOrNull { it.kind.name.equals(targetSourceId, ignoreCase = true) }
-                ?: if (targetSourceId.contains("monochrome", ignoreCase = true)) active.firstOrNull { it.kind == SourceKind.MONOCHROME }
-                   else if (targetSourceId == "LOSSLESS" || request is StreamRequest.Lossless) active.firstOrNull { it.kind.canServeLossless }
+                ?: if (targetSourceId.contains("jiosaavn", ignoreCase = true) || targetSourceId.equals("JIOSAAVN", ignoreCase = true)) active.firstOrNull { it.kind == SourceKind.JIOSAAVN }
                    else null
             if (specificSource != null) {
-                val stream = matchAndStream(specificSource, target, request, waitForAll = false)
+                val targetReq = if (specificSource.kind == SourceKind.JIOSAAVN) StreamRequest.Best else request
+                val stream = matchAndStream(specificSource, target, targetReq, waitForAll = false)
                 if (stream != null) {
                     TrackLog.d(
                         TAG,
-                        "substituted explicit target: '${target.title}' served by ${specificSource.displayName} over YouTube at ${stream.format.summary}",
+                        "substituted explicit manual target: '${target.title}' served by ${specificSource.displayName} over YouTube at ${stream.format.summary}",
                     )
+                    val rawQuality = if (stream.format.isLossless == true) {
+                        if (stream.format.isHiRes == true || (stream.format.bitDepth ?: 16) > 16) "24-bit Hi-Res FLAC" else "16-bit 44.1kHz FLAC"
+                    } else if (specificSource.kind == SourceKind.JIOSAAVN) {
+                        "320 kbps AAC"
+                    } else {
+                        stream.format.summary
+                    }
+                    availabilityCache["${specificSource.configId}_${target.title.lowercase().trim()}"] = true to rawQuality
                     return stream.copy(format = stream.format.copy(source = specificSource.displayName))
                 }
             }
         }
 
-        val candidates = rankedAbove(youtube.configId, active)
-
-        // 2. When Lossless is requested, query lossless-capable sources (Monochrome, Modules) in parallel!
-        // Do NOT let a slow failing source or lossy 320k response kill the lossless source.
-        if (request is StreamRequest.Lossless) {
-            val bitExactSources = active.filter { it.kind.canServeLossless && it.configId != targetSourceId }
-            if (bitExactSources.isNotEmpty()) {
-                val won = bestAcross(
-                    bitExactSources,
+        // 2. When Lossless is requested or preferred, query ALL lossless-capable sources in PARALLEL via bestAcross!
+        // Quality Hierarchy: 24-bit Hi-Res FLAC > 16-bit CD-Quality FLAC > lossy.
+        // User's preferred source is given tie-breaking preference, but higher quality always wins.
+        if (wantsLossless) {
+            val allLossless = active.filter {
+                it.kind.canServeLossless
+            }
+            val losslessSources = allLossless.sortedWith(
+                compareByDescending<MusicSource> { it.configId == preferred }
+                    .thenByDescending {
+                        it.displayName.contains("qobuz", ignoreCase = true) ||
+                            it.displayName.contains("24-bit", ignoreCase = true) ||
+                            it.displayName.contains("hi-res", ignoreCase = true)
+                    }
+            )
+            if (losslessSources.isNotEmpty()) {
+                val losslessPair = bestAcross(
+                    losslessSources,
                     target,
-                    request,
+                    StreamRequest.Lossless,
                     waitForAll = false,
-                    strictLength = false,
-                ) { _, stream -> stream.format.isLossless == true }
-                if (won != null) {
-                    val (source, stream) = won
+                    strictLength = target.durationSec != null,
+                ) { _, s -> s.format.isLossless == true }
+                if (losslessPair != null) {
+                    val (source, stream) = losslessPair
                     TrackLog.d(
                         TAG,
-                        "substituted lossless: '${target.title}' served by ${source.displayName} over YouTube at ${stream.format.summary}",
+                        "substituted lossless module: '${target.title}' served by ${source.displayName} at ${stream.format.summary}",
                     )
+                    val rawQuality = if (stream.format.isHiRes == true || (stream.format.bitDepth ?: 16) > 16) "24-bit Hi-Res FLAC" else "16-bit 44.1kHz FLAC"
+                    availabilityCache["${source.configId}_${target.title.lowercase().trim()}"] = true to rawQuality
                     return stream.copy(format = stream.format.copy(source = source.displayName))
                 }
             }
         }
 
-        // Ask in rank order: top ranked source gets first priority!
-        // If it doesn't have the song or fails, it falls through to the next one below it.
-        for (source in candidates) {
-            val stream = matchAndStream(source, target, request, waitForAll = false)
+        // 3. JioSaavn is top high-quality priority: bit-rate 320 kbps AAC
+        val jioSource = active.firstOrNull { it.kind == SourceKind.JIOSAAVN }
+        if (jioSource != null) {
+            val stream = matchAndStream(jioSource, target, StreamRequest.Best, waitForAll = false, strictLength = target.durationSec != null)
             if (stream != null) {
-                val isOverBudget = when (request) {
-                    is StreamRequest.Lossless -> false
-                    is StreamRequest.Best -> stream.format.isLossless == true
-                    is StreamRequest.Capped -> stream.format.isLossless == true || (stream.format.kbps != null && stream.format.kbps > request.maxKbps)
-                }
-                if (isOverBudget) {
-                    TrackLog.d(
-                        TAG,
-                        "${source.displayName} offered ${stream.format.summary}; over budget for $request; trying next source",
-                    )
-                    continue
-                }
                 TrackLog.d(
                     TAG,
-                    "substituted: '${target.title}' served by ${source.displayName} over YouTube" +
-                        " at ${stream.format.summary}" + if (stream.belowRequest) " (below request)" else "",
+                    "substituted JioSaavn: '${target.title}' served by ${jioSource.displayName} over YouTube at ${stream.format.summary}",
                 )
+                availabilityCache["${jioSource.configId}_${target.title.lowercase().trim()}"] = true to "320 kbps AAC"
+                return stream.copy(format = stream.format.copy(source = jioSource.displayName))
+            }
+        }
+
+        // 4. Fallback to any remaining custom module plugins in parallel
+        val customModules = active.filter {
+            (it.kind == SourceKind.CUSTOM_MODULE || it.kind == SourceKind.MODULE || it.kind == SourceKind.TIDAL || it.kind == SourceKind.KUWO || it.kind == SourceKind.MONOCHROME) &&
+                it.configId != targetSourceId
+        }
+        if (customModules.isNotEmpty()) {
+            val anyModule = bestAcross(customModules, target, StreamRequest.Best, waitForAll = false, strictLength = target.durationSec != null)
+            if (anyModule != null) {
+                val (source, stream) = anyModule
+                TrackLog.d(
+                    TAG,
+                    "substituted custom module: '${target.title}' served by ${source.displayName} over YouTube at ${stream.format.summary}",
+                )
+                val rawQuality = if (stream.format.isLossless == true) "16-bit 44.1kHz FLAC" else stream.format.summary
+                availabilityCache["${source.configId}_${target.title.lowercase().trim()}"] = true to rawQuality
                 return stream.copy(format = stream.format.copy(source = source.displayName))
             }
         }
+
+        // 5. Return null -> YouTube Opus stream plays as native fallback
         return null
     }
 
     private val availabilityCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Boolean, String>>()
+    private val matchedCandidateCache = java.util.concurrent.ConcurrentHashMap<String, Song>()
 
     /**
      * Checks if [source] has an available copy of [song].
@@ -289,34 +353,66 @@ object SourceResolver {
             val target = TrackMatcher.targetOf(song)
             if (target.title.isBlank()) return@withContext false to "No track info"
 
-            try {
-                val queries = TrackMatcher.queries(target)
-                for (query in queries.take(2)) {
-                    val results = source.search(query, limit = 5, waitForAll = false)
-                    val matches = TrackMatcher.ranked(results, target)
+            val titleKey = "${source.configId}_${target.title.lowercase().trim()}"
+            availabilityCache[titleKey]?.let { return@withContext it }
+
+val probed = kotlinx.coroutines.withTimeoutOrNull(7500L) {
+                try {
+                    if (source.kind == SourceKind.TIDAL) {
+                        if (!com.music.dhvani.data.sources.zarz.ZarzSessionManager.isSessionValid()) {
+                            return@withTimeoutOrNull false to "Verification needed • Tap to verify"
+                        }
+                    }
+                    val queries = TrackMatcher.queries(target)
+                    var matches = emptyList<Song>()
+                    for (q in queries.take(2)) {
+                        val results = source.search(q, limit = 5, waitForAll = false)
+                        val ranked = TrackMatcher.ranked(results, target)
+                        if (ranked.isNotEmpty()) {
+                            matches = ranked
+                            break
+                        }
+                    }
                     if (matches.isNotEmpty()) {
-                        val topMatch = matches.first()
+                        // For lossless-capable sources, prioritize candidates that declare lossless/FLAC tier
+                        val topMatch = if (source.kind.canServeLossless) {
+                            matches.firstOrNull {
+                                it.sourceQuality?.contains("FLAC", ignoreCase = true) == true ||
+                                    it.sourceQuality?.contains("LOSSLESS", ignoreCase = true) == true ||
+                                    it.sourceQuality?.contains("HI-RES", ignoreCase = true) == true
+                            } ?: matches.first()
+                        } else {
+                            matches.first()
+                        }
+                        matchedCandidateCache[cacheKey] = topMatch
+                        matchedCandidateCache[titleKey] = topMatch
                         val rawQuality = topMatch.sourceQuality
                         val quality = when {
                             rawQuality?.contains("HI-RES", ignoreCase = true) == true ||
                                 rawQuality?.contains("24-BIT", ignoreCase = true) == true -> "24-bit Hi-Res FLAC"
-                            source.kind.canServeLossless || rawQuality?.contains("FLAC", ignoreCase = true) == true ||
+                            rawQuality?.contains("FLAC", ignoreCase = true) == true ||
                                 rawQuality?.contains("LOSSLESS", ignoreCase = true) == true -> "16-bit 44.1kHz FLAC"
+                            source.kind.canServeLossless -> rawQuality ?: "16-bit 44.1kHz FLAC"
                             source.kind == SourceKind.JIOSAAVN -> "320 kbps AAC"
                             else -> rawQuality ?: if (source.kind.canServeLossless) "FLAC Lossless" else "320 kbps AAC"
                         }
                         val result = true to quality
                         availabilityCache[cacheKey] = result
-                        return@withContext result
+                        availabilityCache[titleKey] = result
+                        return@withTimeoutOrNull result
                     }
+                } catch (e: Exception) {
+                    TrackLog.w(TAG, "availability probe failed for ${source.displayName}: ${e.message}")
                 }
-            } catch (e: Exception) {
-                TrackLog.w(TAG, "availability probe failed for ${source.displayName}: ${e.message}")
+                null
             }
 
-            val result = false to "Not available on ${source.displayName}"
-            availabilityCache[cacheKey] = result
-            result
+            if (probed != null) {
+                return@withContext probed
+            }
+
+            // Do not permanently poison cache on transient timeout or slow responses
+            false to "Not available on ${source.displayName}"
         }
 
     /**
@@ -348,14 +444,48 @@ object SourceResolver {
         if (target.title.isBlank()) return null
         val active = SourceRegistry.active()
         val youtube = active.firstOrNull { it.kind == SourceKind.YOUTUBE } ?: return null
-        val quick = rankedAbove(youtube.configId, active).filter { it.kind.worthPrefetching }
-        if (quick.isEmpty()) return null
-        val (source, stream) = bestAcross(quick, target, requestForNow()) ?: return null
-        TrackLog.d(
-            TAG,
-            "warmed: '${target.title}' from ${source.displayName} at ${stream.format.summary}",
-        )
-        return stream.copy(format = stream.format.copy(source = source.displayName))
+        val preferred = AppSettings.preferredPlaybackSource.value
+        val wantsLossless = AppSettings.effectiveAudioQuality == AudioQuality.LOSSLESS ||
+            preferred == "LOSSLESS" ||
+            preferred.startsWith("builtin_addon_") ||
+            SourceRegistry.configs.value.any { it.id == preferred && it.kind.canServeLossless }
+
+        val candidates = active.filter { it.kind != SourceKind.YOUTUBE && it.kind.worthPrefetching }
+            .distinctBy { it.configId }
+
+        if (candidates.isEmpty()) return null
+
+        if (wantsLossless) {
+            val lossless = candidates.filter { it.kind.canServeLossless }
+            if (lossless.isNotEmpty()) {
+                val pair = bestAcross(
+                    lossless,
+                    target,
+                    StreamRequest.Lossless,
+                    waitForAll = false,
+                    strictLength = target.durationSec != null,
+                ) { _, s -> s.format.isLossless == true }
+                if (pair != null) {
+                    val (source, stream) = pair
+                    TrackLog.d(TAG, "warmed lossless: '${target.title}' from ${source.displayName} at ${stream.format.summary}")
+                    val rawQuality = if (stream.format.isHiRes == true || (stream.format.bitDepth ?: 16) > 16) "24-bit Hi-Res FLAC" else "16-bit 44.1kHz FLAC"
+                    availabilityCache["${source.configId}_${target.title.lowercase().trim()}"] = true to rawQuality
+                    return stream.copy(format = stream.format.copy(source = source.displayName))
+                }
+            }
+        }
+
+        val lossy = candidates.filterNot { it.kind.canServeLossless }
+        if (lossy.isNotEmpty()) {
+            val pair = bestAcross(lossy, target, StreamRequest.Best, waitForAll = false, strictLength = target.durationSec != null)
+            if (pair != null) {
+                val (source, stream) = pair
+                TrackLog.d(TAG, "warmed lossy: '${target.title}' from ${source.displayName} at ${stream.format.summary}")
+                availabilityCache["${source.configId}_${target.title.lowercase().trim()}"] = true to "320 kbps AAC"
+                return stream.copy(format = stream.format.copy(source = source.displayName))
+            }
+        }
+        return null
     }
 
     /**
@@ -407,7 +537,7 @@ object SourceResolver {
         target: TrackMatcher.Target,
         playing: StreamFormat? = null,
     ): SourceStream? {
-        if (target.title.isBlank() || target.durationSec == null) return null
+        if (target.title.isBlank()) return null
         val request = requestForNow()
         val active = SourceRegistry.active()
         val youtube = active.firstOrNull { it.kind == SourceKind.YOUTUBE } ?: return null
@@ -439,31 +569,102 @@ object SourceResolver {
         // Thirteen seconds of a 143-second track played at the wrong bitrate,
         // and the seam then landed mid-song rather than near its start. Raced,
         // the same swap happens inside a second.
-        val (source, chosen) = bestAcross(
-            rankedAbove(youtube.configId, active),
-            target,
-            request,
-            waitForAll = true,
-            strictLength = true,
-        ) { candidate, stream ->
-            worthSwapping(stream.format, playing).also { worth ->
-                // Named rather than skipped silently. This is the one refusal
-                // in the upgrade path that discards a stream already found,
-                // matched and length-checked, and a silent skip reads in the log
-                // exactly like a source having nothing — which is how a null
-                // [playing] came to quietly turn the whole cached-track path
-                // lossless-only for a while without leaving a trace.
-                if (!worth) {
-                    TrackLog.d(
-                        TAG,
-                        "${candidate.displayName}'s ${stream.format.summary} isn't worth swapping " +
-                            "'${target.title}' off ${playing?.summary ?: "an unmeasured stream"}",
-                    )
+        val preferred = AppSettings.preferredPlaybackSource.value
+        val wantsLossless = request is StreamRequest.Lossless ||
+            AppSettings.effectiveAudioQuality == AudioQuality.LOSSLESS ||
+            preferred == "LOSSLESS" ||
+            preferred.contains("qobuz", ignoreCase = true) ||
+            preferred.contains("lossless", ignoreCase = true) ||
+            preferred.startsWith("builtin_addon_") ||
+            SourceRegistry.configs.value.any { it.id == preferred && it.kind.canServeLossless }
+
+        val upgradeCandidates = active.filter { it.kind != SourceKind.YOUTUBE }.distinctBy { it.configId }
+
+        // 1. If user preferred JioSaavn (320 kbps AAC), try it first with zero wait
+        val isJioPreferred = preferred.equals("JIOSAAVN", ignoreCase = true)
+        if (isJioPreferred) {
+            val jioSource = upgradeCandidates.firstOrNull { it.kind == SourceKind.JIOSAAVN }
+            if (jioSource != null) {
+                val stream = matchAndStream(jioSource, target, StreamRequest.Best, waitForAll = false, strictLength = false)
+                if (stream != null && worthSwapping(stream.format, playing)) {
+                    TrackLog.d(TAG, "preferred JioSaavn upgrade found: '${target.title}' at ${stream.format.summary}")
+                    return stream.copy(format = stream.format.copy(source = jioSource.displayName))
                 }
             }
-        } ?: return null
-        TrackLog.d(TAG, "upgrade found: '${target.title}' at ${chosen.format.summary} from ${source.displayName}")
-        return chosen.copy(format = chosen.format.copy(source = source.displayName))
+        }
+
+        // 2. When Lossless is requested or preferred, query Lossless candidates in parallel (fast, responsive)
+        if (wantsLossless) {
+            val losslessCandidates = upgradeCandidates.filter {
+                it.kind.canServeLossless
+            }
+            val sortedCandidates = losslessCandidates.sortedWith(
+                compareByDescending<MusicSource> { it.configId == preferred }
+                    .thenByDescending { it.kind == SourceKind.KUWO || it.kind == SourceKind.MONOCHROME }
+                    .thenByDescending { it.kind == SourceKind.TIDAL }
+                    .thenByDescending {
+                        it.displayName.contains("qobuz", ignoreCase = true) ||
+                            it.displayName.contains("24-bit", ignoreCase = true) ||
+                            it.displayName.contains("hi-res", ignoreCase = true)
+                    }
+            )
+            if (sortedCandidates.isNotEmpty()) {
+                val losslessPair = withTimeoutOrNull(8_000L) {
+                    bestAcross(
+                        sortedCandidates,
+                        target,
+                        StreamRequest.Lossless,
+                        waitForAll = false,
+                        strictLength = false,
+                    ) { candidate, stream ->
+                        stream.format.isLossless == true && worthSwapping(stream.format, playing).also { worth ->
+                            if (!worth) {
+                                TrackLog.d(
+                                    TAG,
+                                    "${candidate.displayName}'s ${stream.format.summary} isn't worth swapping " +
+                                        "'${target.title}' off ${playing?.summary ?: "an unmeasured stream"}",
+                                )
+                            }
+                        }
+                    }
+                }
+                if (losslessPair != null) {
+                    val (source, chosen) = losslessPair
+                    TrackLog.d(TAG, "lossless upgrade found: '${target.title}' at ${chosen.format.summary} from ${source.displayName}")
+                    return chosen.copy(format = chosen.format.copy(source = source.displayName))
+                }
+            }
+        }
+
+        // 3. High-quality lossy candidates (JioSaavn 320 kbps AAC) as responsive fallback
+        val lossyCandidates = upgradeCandidates.filterNot { it.kind.canServeLossless }
+        if (lossyCandidates.isNotEmpty()) {
+            val lossyPair = withTimeoutOrNull(4_500L) {
+                bestAcross(
+                    lossyCandidates,
+                    target,
+                    StreamRequest.Best,
+                    waitForAll = false,
+                    strictLength = false,
+                ) { candidate, stream ->
+                    worthSwapping(stream.format, playing).also { worth ->
+                        if (!worth) {
+                            TrackLog.d(
+                                TAG,
+                                "${candidate.displayName}'s ${stream.format.summary} isn't worth swapping " +
+                                    "'${target.title}' off ${playing?.summary ?: "an unmeasured stream"}",
+                            )
+                        }
+                    }
+                }
+            }
+            if (lossyPair != null) {
+                val (source, chosen) = lossyPair
+                TrackLog.d(TAG, "lossy upgrade fallback: '${target.title}' at ${chosen.format.summary} from ${source.displayName}")
+                return chosen.copy(format = chosen.format.copy(source = source.displayName))
+            }
+        }
+        return null
     }
 
     /**
@@ -699,27 +900,31 @@ object SourceResolver {
      * in the audio for nothing. 160 to 320 clears it; 128 to 192 does not.
      */
     internal fun worthSwapping(candidate: StreamFormat, playing: StreamFormat?): Boolean {
+        if (playing == null) return false
         val request = requestForNow()
-        // If the current connection ceiling does not allow lossless, candidate FLAC is over budget
-        if (request !is StreamRequest.Lossless && candidate.isLossless == true) return false
+        val preferred = AppSettings.preferredPlaybackSource.value
+        val wantsLossless = request is StreamRequest.Lossless ||
+            AppSettings.effectiveAudioQuality == AudioQuality.LOSSLESS ||
+            preferred == "LOSSLESS" ||
+            preferred.startsWith("builtin_addon_") ||
+            SourceRegistry.configs.value.any { it.id == preferred && it.kind.canServeLossless }
+
+        // If user wants lossless, candidate FLAC is NEVER over budget
+        if (!wantsLossless && candidate.isLossless == true) return false
         if (request is StreamRequest.Capped && candidate.kbps != null && candidate.kbps > request.maxKbps) return false
 
         // If the currently playing stream is already lossless:
-        if (playing?.isLossless == true) {
+        if (playing.isLossless == true) {
             // If already verified Hi-Res (24-bit or > 48kHz), no upgrade needed
             if (playing.isHiRes) return false
             // Upgrading from 16-bit FLAC is only worth a seam if candidate is genuine Hi-Res (24-bit or > 48kHz)
             return candidate.isHiRes
         }
-        // If candidate is lossless and current is lossy, definitely worth upgrading (when lossless requested)
+        // If candidate is lossless and current is lossy, definitely worth upgrading
         if (candidate.isLossless == true) return true
+
         val candidateKbps = candidate.kbps ?: return false
-        if (playing == null) return false
-        // When playing from cache, YouTube Opus carries no container bitrate field —
-        // `playing.kbps` is null. Defaulting to 160 (the typical Opus rendition) is
-        // correct and conservative: it is where YouTube's Opus consistently lands.
-        val playingKbps = playing.kbps
-            ?: if (playing.source == "youtube" && playing.codec == "opus") YOUTUBE_OPUS_FLOOR_KBPS else return false
+        val playingKbps = playing.kbps ?: return false
         return candidateKbps - playingKbps >= UPGRADE_MIN_GAIN_KBPS
     }
 
@@ -737,7 +942,7 @@ object SourceResolver {
      * song replaced mid-play by a different cut of it.
      */
     fun sameRecordingAs(candidateSec: Int?, playingSec: Int?): Boolean {
-        if (candidateSec == null || playingSec == null) return false
+        if (candidateSec == null || candidateSec <= 0 || playingSec == null || playingSec <= 0) return false
         return kotlin.math.abs(candidateSec - playingSec) <= UPGRADE_DRIFT_SEC
     }
 
@@ -751,7 +956,7 @@ object SourceResolver {
      * a YouTube id before anyone has asked a source for it.
      */
     fun canSubstituteForYouTube(): Boolean =
-        SourceRegistry.active().indexOfFirst { it.kind == SourceKind.YOUTUBE } > 0
+        SourceRegistry.active().any { it.kind != SourceKind.YOUTUBE }
 
     /**
      * The sources ranked above [configId], in order.
@@ -825,10 +1030,27 @@ object SourceResolver {
             }
             .toMutableList()
         var best: Pair<MusicSource, SourceStream>? = null
+        var foundLosslessAt: Long? = null
+        val hiresGraceMs = 2_500L
         try {
             while (running.isNotEmpty()) {
-                val first = select {
-                    running.forEach { candidate -> candidate.onAwait { candidate } }
+                val remainingGraceMs = if (foundLosslessAt != null) {
+                    val elapsed = android.os.SystemClock.elapsedRealtime() - foundLosslessAt
+                    val rem = hiresGraceMs - elapsed
+                    if (rem <= 0) break // Grace period expired; take current best lossless stream!
+                    rem
+                } else null
+
+                val first: Deferred<Pair<MusicSource, SourceStream?>> = if (remainingGraceMs != null) {
+                    withTimeoutOrNull(remainingGraceMs) {
+                        select<Deferred<Pair<MusicSource, SourceStream?>>> {
+                            running.forEach { candidate -> candidate.onAwait { candidate } }
+                        }
+                    } ?: break // Grace period expired waiting for 24-bit Hi-Res; return current 16-bit FLAC!
+                } else {
+                    select<Deferred<Pair<MusicSource, SourceStream?>>> {
+                        running.forEach { candidate -> candidate.onAwait { candidate } }
+                    }
                 }
                 // Anything that crossed the line while that one was being waited
                 // on is already sitting there. Folding those in costs no time at
@@ -837,14 +1059,20 @@ object SourceResolver {
                 val ready = listOf(first) + running.filter { it !== first && it.isCompleted }
                 running -= ready.toSet()
                 for (done in ready) {
-                    val (source, stream) = done.await()
-                    if (stream == null) continue
+                    val result = done.await()
+                    val source = result.first
+                    val stream = result.second ?: continue
                     if (!accept(source, stream)) continue
                     if (isBetter(stream.format, best?.second?.format)) best = source to stream
                 }
-                // Something usable is in hand. Everything better than it is a
-                // maybe, and waiting for a maybe costs the listener a certainty.
                 if (best != null) break
+                // Early break: if we found a verified 24-bit Hi-Res FLAC, nothing can beat it!
+                if (best?.second?.format?.let { it.isHiRes && (it.bitDepth ?: 16) >= 24 } == true) break
+
+                // If we found a valid 16-bit FLAC and haven't started grace timer yet, start it now
+                if (best?.second?.format?.isLossless == true && foundLosslessAt == null) {
+                    foundLosslessAt = android.os.SystemClock.elapsedRealtime()
+                }
             }
         } finally {
             running.forEach { it.cancel() }
@@ -880,6 +1108,21 @@ object SourceResolver {
         waitForAll: Boolean = false,
         strictLength: Boolean = false,
     ): SourceStream? {
+        val titleKey = "${source.configId}_${target.title.lowercase().trim()}"
+        matchedCandidateCache[titleKey]?.let { cachedMatch ->
+            val trackId = SourceRegistry.parseTrackKey(cachedMatch.videoId)?.second ?: cachedMatch.videoId
+            val opened = attempt(source) { source.stream(trackId, request) }
+            if (opened != null) {
+                val stream = opened.copy(durationSec = TrackMatcher.secondsOf(cachedMatch.durationText))
+                val served = stream.format
+                val wantsLossless = request is StreamRequest.Lossless
+                if (!wantsLossless || served.isLossless == true || served.statesNothingLossy) {
+                    TrackLog.d(TAG, "${source.displayName} served pre-matched '${cachedMatch.title}' → ${served.summary}")
+                    return stream
+                }
+            }
+        }
+        var bestStream: SourceStream? = null
         for (query in TrackMatcher.queries(target)) {
             val candidates = attempt(source) {
                 source.search(query, limit = MATCH_CANDIDATES, waitForAll = waitForAll)
@@ -892,12 +1135,20 @@ object SourceResolver {
             // nothing else is worth cutting a listener's audio for — or filing
             // on their device under the name of the track they asked for.
             if (strictLength) {
-                matches = matches.filter { TrackMatcher.withinSeconds(it, target, UPGRADE_DRIFT_SEC) }
+                matches = matches.filter {
+                    sameRecordingAs(TrackMatcher.secondsOf(it.durationText), target.durationSec)
+                }
             }
             if (matches.isEmpty()) continue
-            return streamBest(source, matches, target, request)
+            val stream = streamBest(source, matches, target, request)
+            if (stream != null) {
+                if (request !is StreamRequest.Lossless || stream.format.isLossless == true) {
+                    return stream
+                }
+                bestStream = betterOf(bestStream, stream)
+            }
         }
-        return null
+        return bestStream
     }
 
     /**
@@ -961,14 +1212,17 @@ object SourceResolver {
                     it.sourceQuality?.contains("HI-RES", ignoreCase = true) == true
             }
         }
-        // Stable, so the confidence order [TrackMatcher.ranked] produced
-        // survives inside each tier.
-        return eligible.sortedByDescending {
-            it.sourceQuality == ModuleSource.LOSSLESS ||
-                it.sourceQuality?.contains("LOSSLESS", ignoreCase = true) == true ||
-                it.sourceQuality?.contains("FLAC", ignoreCase = true) == true ||
-                it.sourceQuality?.contains("HI-RES", ignoreCase = true) == true
-        }
+        // Stable sort prioritizing 24-bit Hi-Res over 16-bit FLAC over standard
+        return eligible.sortedWith(
+            compareByDescending<Song> {
+                it.sourceQuality?.contains("HI-RES", ignoreCase = true) == true ||
+                    it.sourceQuality?.contains("24-BIT", ignoreCase = true) == true
+            }.thenByDescending {
+                it.sourceQuality == ModuleSource.LOSSLESS ||
+                    it.sourceQuality?.contains("LOSSLESS", ignoreCase = true) == true ||
+                    it.sourceQuality?.contains("FLAC", ignoreCase = true) == true
+            }
+        )
     }
 
     private suspend fun streamBest(
@@ -991,7 +1245,7 @@ object SourceResolver {
 
             val isOverBudget = when (request) {
                 is StreamRequest.Lossless -> false
-                is StreamRequest.Best -> served.isLossless == true
+                is StreamRequest.Best -> false
                 is StreamRequest.Capped -> served.isLossless == true || (served.kbps != null && served.kbps > request.maxKbps)
             }
             if (isOverBudget) {
@@ -1004,6 +1258,8 @@ object SourceResolver {
                     TAG,
                     "${source.displayName} matched '${match.title}' by '${match.artist}' → ${served.summary}",
                 )
+                val titleKey = "${source.configId}_${target.title.lowercase().trim()}"
+                matchedCandidateCache[titleKey] = match
                 return stream
             }
             TrackLog.d(TAG, "${source.displayName} offered ${served.summary} for '${match.title}'; looking further")
@@ -1109,7 +1365,7 @@ object SourceResolver {
      * audio a listener is in the middle of. Two seconds allows for a service
      * rounding a runtime differently and nothing else.
      */
-    private const val UPGRADE_DRIFT_SEC = 5
+    private const val UPGRADE_DRIFT_SEC = 2
 
     /**
      * How close two runtimes have to be to be the same cut of a song.

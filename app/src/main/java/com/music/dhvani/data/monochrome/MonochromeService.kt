@@ -33,6 +33,25 @@ object MonochromeService {
     private const val PRIMARY_HOST = "https://tracks.monochrome.st"
     private val FALLBACK_HOSTS = emptyList<String>()
 
+    val fastClient: okhttp3.OkHttpClient = Http.client.newBuilder()
+        .connectTimeout(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .readTimeout(8000, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .callTimeout(10000, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .build()
+
+    @Volatile
+    private var offlineUntilMs = 0L
+
+    fun isOffline(): Boolean = System.currentTimeMillis() < offlineUntilMs
+
+    fun markOffline(durationMs: Long = 300_000L) {
+        offlineUntilMs = System.currentTimeMillis() + durationMs
+    }
+
+    fun markOnline() {
+        offlineUntilMs = 0L
+    }
+
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -43,13 +62,17 @@ object MonochromeService {
      * Checks if the service is currently reachable.
      */
     suspend fun health(): Boolean = withContext(Dispatchers.IO) {
+        if (isOffline()) return@withContext false
         try {
             val request = Request.Builder()
                 .url("$PRIMARY_HOST/search?q=test")
+                .header("User-Agent", "Mozilla/5.0 (Android; Mobile; rv:130.0) Gecko/130.0")
                 .head()
                 .build()
-            Http.client.newCall(request).execute().use { response ->
-                response.isSuccessful || response.code in 200..399
+            fastClient.newCall(request).execute().use { response ->
+                val ok = response.isSuccessful || response.code in 200..399
+                if (ok) markOnline() else if (response.code in 502..504) markOffline(60_000L)
+                ok
             }
         } catch (e: Exception) {
             TrackLog.w(TAG, "Monochrome health check failed: ${e.message}")
@@ -62,24 +85,29 @@ object MonochromeService {
      * Parses both 'topResults' and 'tracks' arrays from the response.
      */
     suspend fun search(query: String): List<MonochromeTrack> = withContext(Dispatchers.IO) {
+        if (isOffline()) return@withContext emptyList()
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
         val urls = listOf("$PRIMARY_HOST/search?q=$encodedQuery") +
             FALLBACK_HOSTS.map { "$it/search?q=$encodedQuery" }
 
         for (url in urls) {
             try {
-                kotlinx.coroutines.withTimeoutOrNull(5000L) {
+                kotlinx.coroutines.withTimeoutOrNull(4500L) {
                     val request = Request.Builder()
                         .url(url)
                         .header("User-Agent", "Mozilla/5.0 (Android; Mobile; rv:130.0) Gecko/130.0")
                         .get()
                         .build()
 
-                    Http.client.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) return@use null
+                    fastClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            if (response.code in 502..504) markOffline(60_000L)
+                            return@use null
+                        }
                         val bodyString = response.body?.string() ?: return@use null
                         val results = parseSearchResults(bodyString)
                         if (results.isNotEmpty()) {
+                            markOnline()
                             TrackLog.d(TAG, "Monochrome search for '$query' returned ${results.size} tracks from $url")
                             return@withTimeoutOrNull results
                         }
@@ -96,9 +124,10 @@ object MonochromeService {
 
     /**
      * Returns the direct raw 24-bit 96kHz FLAC stream URL for a given track id.
+     * Note: Monochrome requires the `?quality=LOSSLESS` query parameter to avoid Cloudflare 429 throttling.
      */
     fun getStreamUrl(trackId: String): String {
-        return "$PRIMARY_HOST/track/$trackId"
+        return "$PRIMARY_HOST/track/$trackId?quality=LOSSLESS"
     }
 
     private fun parseSearchResults(body: String): List<MonochromeTrack> {

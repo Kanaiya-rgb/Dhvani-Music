@@ -25,31 +25,12 @@ enum class SourceKind(
     /**
      * Whether this kind answers quickly enough to be worth asking *before* a
      * track is played, so its copy can be pinned and cached ahead of time.
-     *
-     * Measured on this device, the gap is not close: JioSaavn answers a search
-     * and hands back a stream URL in about 0.4s, while a module index takes
-     * 7-13s to walk its backends — and read-ahead runs on the track *after* the
-     * one playing, so a lookup that slow is usually still going when the
-     * listener arrives. A wasted JioSaavn resolve costs one HTTP round trip; a
-     * wasted module resolve costs a QuickJS engine, an index fetch and several
-     * backend searches. The first is worth spending speculatively and the
-     * second is not.
-     *
-     * False for [YOUTUBE] as well, though it *is* warmed ahead of time — that
-     * happens through its own read-ahead in
-     * [AudioCache][com.music.dhvani.playback.AudioCache], which speaks video
-     * ids directly and needs no cross-source match to find the track.
      */
     val worthPrefetching: Boolean = false,
 ) {
     /**
      * A module index the user pointed at themselves, tried ahead of the one
      * baked into the build.
-     *
-     * Same protocol as [MODULE] and served by the same [ModuleSource] — the
-     * only thing this kind carries that the other doesn't is its place in the
-     * order, which is what being declared first here decides. There is at most
-     * one at a time; see [SourceRegistry.setCustomModule].
      */
     CUSTOM_MODULE(
         label = "Custom module",
@@ -57,19 +38,11 @@ enum class SourceKind(
         labels = listOf("FLAC", "Lossless", "Hi-Res", "Plugins"),
         needsServer = true,
         canServeLossless = true,
+        worthPrefetching = false,
     ),
 
     /**
      * A URL to a compatible module-index JSON.
-     *
-     * The index lists JS plugin descriptors; each plugin ships a JS file
-     * that exports `searchTracks()` and `getTrackStreamUrl()`. The app
-     * fetches the index, loads each plugin's JS into a QuickJS sandbox,
-     * and calls those functions — the same mechanism Convx uses to support
-     * services like Qobuz, Apple Music, etc.
-     *
-     * The JS runs in a sandboxed QuickJS VM with no access to the Android
-     * runtime, only to a wired-in `fetch()` implementation.
      */
     MODULE(
         label = "Module source",
@@ -78,6 +51,16 @@ enum class SourceKind(
         labels = listOf("FLAC", "Lossless", "Hi-Res", "Plugins"),
         needsServer = true,
         canServeLossless = true,
+        worthPrefetching = false,
+    ),
+
+    TIDAL(
+        label = "TIDAL HiFi",
+        detail = "Studio Master & CD-quality FLAC (16-bit / 44.1 kHz) and Dolby Atmos spatial audio.",
+        labels = listOf("FLAC", "Lossless", "Dolby Atmos", "16/24-bit"),
+        needsServer = false,
+        canServeLossless = true,
+        worthPrefetching = true,
     ),
 
     MONOCHROME(
@@ -86,6 +69,24 @@ enum class SourceKind(
         labels = listOf("FLAC", "24-bit · 96kHz", "Lossless"),
         needsServer = false,
         canServeLossless = true,
+        worthPrefetching = true,
+    ),
+
+    KUWO(
+        label = "Kuwo FLAC Master",
+        detail = "Direct CD-Quality 16/24-bit Lossless FLAC streams via Kuwo CDN.",
+        labels = listOf("FLAC", "Lossless", "2000kbps"),
+        needsServer = true,
+        canServeLossless = true,
+        worthPrefetching = true,
+    ),
+
+    NETEASE(
+        label = "NetEase Cloud Music",
+        detail = "High-quality 320kbps MP3 audio streams via NetEase CDN.",
+        labels = listOf("High Quality", "320kbps", "NetEase"),
+        needsServer = true,
+        canServeLossless = false,
         worthPrefetching = true,
     ),
 
@@ -100,9 +101,7 @@ enum class SourceKind(
 
     /**
      * The source the app was built on, listed here so it always has a fixed
-     * place: second, behind the module source. It cannot be removed — see
-     * [SourceRegistry]. Nothing else in the app can supply a home feed, a
-     * radio station or a related-tracks queue.
+     * place: second, behind the module source. It cannot be removed.
      */
     YOUTUBE(
         label = "Standard Opus",

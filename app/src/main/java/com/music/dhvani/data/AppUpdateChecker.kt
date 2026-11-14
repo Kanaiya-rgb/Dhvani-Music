@@ -61,6 +61,7 @@ object AppUpdateChecker {
         val apkUrl: String?,
         /** The release's own Markdown body, shown as this update's "what's new". */
         val notes: String?,
+        val apkSizeBytes: Long? = null,
     )
 
     private const val CACHE_SUBDIR = "updates"
@@ -68,23 +69,36 @@ object AppUpdateChecker {
     private const val PRIMARY_CDN_URL =
         "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Releases/main/version.json"
     private const val FALLBACK_CDN_URL =
-        "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Music/main/version.json"
+        "https://raw.githubusercontent.com/Kanaiya-rgb/Dhvani-Releases/main/version.json"
 
     private const val PRIMARY_API_URL =
         "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Releases/releases/latest"
     private const val FALLBACK_API_URL =
-        "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Music/releases/latest"
+        "https://api.github.com/repos/Kanaiya-rgb/Dhvani-Releases/releases/latest"
 
     private val json = Json { ignoreUnknownKeys = true }
 
     private val _available = MutableStateFlow<UpdateInfo?>(null)
     val available = _available.asStateFlow()
 
+    private val _latestKnown = MutableStateFlow<UpdateInfo?>(null)
+    val latestKnown = _latestKnown.asStateFlow()
+
     private val _promptDialog = MutableStateFlow(false)
     val promptDialog = _promptDialog.asStateFlow()
 
-    fun triggerDialog() {
-        _promptDialog.value = true
+    fun triggerDialog(scope: CoroutineScope? = null) {
+        val candidate = _available.value ?: _latestKnown.value
+        if (candidate != null && isNewer(candidate.version, BuildConfig.VERSION_NAME)) {
+            _promptDialog.value = true
+        } else if (scope != null) {
+            scope.launch {
+                val res = check()
+                if (res is CheckResult.UpdateAvailable) {
+                    _promptDialog.value = true
+                }
+            }
+        }
     }
 
     fun consumeDialog() {
@@ -94,7 +108,13 @@ object AppUpdateChecker {
     /** Where this update's APK download currently stands, for the dialog's progress row. */
     sealed interface DownloadState {
         data object Idle : DownloadState
-        data class Downloading(val fraction: Float) : DownloadState
+        data class Downloading(
+            val fraction: Float,
+            val bytesDownloaded: Long = 0L,
+            val totalBytes: Long = 0L,
+        ) : DownloadState {
+            val percent: Int get() = (fraction * 100).toInt()
+        }
         data class Ready(val file: File) : DownloadState
         data class Failed(val message: String) : DownloadState
     }
@@ -127,18 +147,46 @@ object AppUpdateChecker {
             ?: fetchFromGitHubApi(PRIMARY_API_URL)
             ?: fetchFromGitHubApi(FALLBACK_API_URL)
             ?: fetchFromGitHubRedirect("https://github.com/Kanaiya-rgb/Dhvani-Releases")
-            ?: fetchFromGitHubRedirect("https://github.com/Kanaiya-rgb/Dhvani-Music")
         if (latestInfo == null) {
             return@withContext CheckResult.Error("Could not reach update server")
         }
 
-        if (isNewer(latestInfo.version, BuildConfig.VERSION_NAME)) {
-            _available.value = latestInfo
-            context?.let { postUpdateNotification(it, latestInfo) }
-            CheckResult.UpdateAvailable(latestInfo)
+        val resolvedInfo = if (latestInfo.apkSizeBytes == null && latestInfo.apkUrl != null) {
+            val realSize = resolveContentLength(latestInfo.apkUrl)
+            if (realSize != null && realSize > 0L) latestInfo.copy(apkSizeBytes = realSize) else latestInfo
+        } else latestInfo
+
+        _latestKnown.value = resolvedInfo
+
+        if (isNewer(resolvedInfo.version, BuildConfig.VERSION_NAME)) {
+            _available.value = resolvedInfo
+            context?.let { postUpdateNotification(it, resolvedInfo) }
+            CheckResult.UpdateAvailable(resolvedInfo)
         } else {
-            CheckResult.UpToDate(BuildConfig.VERSION_NAME, latestInfo.version)
+            CheckResult.UpToDate(BuildConfig.VERSION_NAME, resolvedInfo.version)
         }
+    }
+
+    /**
+     * Resolves the latest release data from CDN / GitHub API regardless of whether
+     * it is newer than the currently installed app version (used for live preview
+     * and accurate metadata inspection).
+     */
+    suspend fun fetchLatest(): UpdateInfo? = withContext(Dispatchers.IO) {
+        val latestInfo = fetchFromCdn(PRIMARY_CDN_URL)
+            ?: fetchFromCdn(FALLBACK_CDN_URL)
+            ?: fetchFromGitHubApi(PRIMARY_API_URL)
+            ?: fetchFromGitHubApi(FALLBACK_API_URL)
+            ?: fetchFromGitHubRedirect("https://github.com/Kanaiya-rgb/Dhvani-Releases")
+            ?: return@withContext _latestKnown.value
+
+        val resolvedInfo = if (latestInfo.apkSizeBytes == null && latestInfo.apkUrl != null) {
+            val realSize = resolveContentLength(latestInfo.apkUrl)
+            if (realSize != null && realSize > 0L) latestInfo.copy(apkSizeBytes = realSize) else latestInfo
+        } else latestInfo
+
+        _latestKnown.value = resolvedInfo
+        resolvedInfo
     }
 
     private fun fetchFromCdn(url: String): UpdateInfo? = runCatching {
@@ -159,7 +207,9 @@ object AppUpdateChecker {
                 ?: "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases"
             val apk = obj["apkUrl"]?.jsonPrimitive?.contentOrNull
             val notes = obj["notes"]?.jsonPrimitive?.contentOrNull
-            UpdateInfo(ver, relUrl, apk, notes)
+            val sizeBytes = obj["sizeBytes"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+                ?: obj["size"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+            UpdateInfo(ver, relUrl, apk, notes, sizeBytes)
         }
     }.getOrNull()
 
@@ -175,10 +225,22 @@ object AppUpdateChecker {
             val release = json.parseToJsonElement(body) as? JsonObject ?: return null
             val tag = release["tag_name"]?.jsonPrimitive?.contentOrNull ?: return null
             val url = release["html_url"]?.jsonPrimitive?.contentOrNull ?: return null
-            val apkUrl = apkAssetUrl(release)
+            val assetInfo = apkAssetInfo(release)
+            val apkUrl = assetInfo?.first
+            val sizeBytes = assetInfo?.second
             val notes = release["body"]?.jsonPrimitive?.contentOrNull
             val latest = tag.removePrefix("v").trim()
-            UpdateInfo(latest, url, apkUrl, notes)
+            UpdateInfo(latest, url, apkUrl, notes, sizeBytes)
+        }
+    }.getOrNull()
+
+    private fun resolveContentLength(url: String): Long? = runCatching {
+        val headReq = Request.Builder().url(url).head().build()
+        Http.client.newCall(headReq).execute().use { res ->
+            if (res.isSuccessful) {
+                res.header("Content-Length")?.toLongOrNull()
+                    ?: res.body?.contentLength()?.takeIf { it > 0 }
+            } else null
         }
     }.getOrNull()
 
@@ -216,16 +278,17 @@ object AppUpdateChecker {
      * [UpdateInfo.apkUrl] null and the UI falls back to opening the releases
      * page as before.
      */
-    private fun apkAssetUrl(release: JsonObject): String? = runCatching {
-        release["assets"]?.jsonArray
-            ?.mapNotNull { it as? JsonObject }
-            ?.firstOrNull { asset ->
-                asset["name"]?.jsonPrimitive?.contentOrNull?.endsWith(".apk", ignoreCase = true) == true &&
-                    asset["state"]?.jsonPrimitive?.contentOrNull == "uploaded"
-            }
-            ?.get("browser_download_url")
-            ?.jsonPrimitive
-            ?.contentOrNull
+    private fun apkAssetInfo(release: JsonObject): Pair<String, Long?>? = runCatching {
+        val assets = release["assets"]?.jsonArray ?: return@runCatching null
+        val asset = assets
+            .filterIsInstance<JsonObject>()
+            .firstOrNull { a ->
+                a["name"]?.jsonPrimitive?.contentOrNull?.endsWith(".apk", ignoreCase = true) == true &&
+                    a["state"]?.jsonPrimitive?.contentOrNull == "uploaded"
+            } ?: return@runCatching null
+        val url = asset["browser_download_url"]?.jsonPrimitive?.contentOrNull ?: return@runCatching null
+        val size: Long? = asset["size"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+        Pair(url, size)
     }.getOrNull()
 
     /**
@@ -234,11 +297,13 @@ object AppUpdateChecker {
      * the state is reset, "Install Now" comes straight back without a second
      * download.
      */
-    suspend fun downloadApk(context: Context): Unit = withContext(Dispatchers.IO) {
-        val info = _available.value ?: return@withContext
-        val url = info.apkUrl ?: return@withContext
+    suspend fun downloadApk(context: Context, explicitInfo: UpdateInfo? = null): Unit = withContext(Dispatchers.IO) {
+        val info = explicitInfo ?: _available.value ?: _latestKnown.value ?: return@withContext
+        val url = info.apkUrl
+            ?: "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases/download/v2.8.0/DhvaniMusic-v2.8.0.apk"
         downloadCancelled = false
-        _download.value = DownloadState.Downloading(0f)
+        val initialTotal = info.apkSizeBytes ?: 33779394L
+        _download.value = DownloadState.Downloading(0f, 0L, initialTotal)
 
         runCatching {
             val dir = File(context.cacheDir, CACHE_SUBDIR).apply { mkdirs() }
@@ -250,7 +315,7 @@ object AppUpdateChecker {
             Http.client.newCall(request).execute().use { response ->
                 check(response.isSuccessful) { "Download failed: HTTP ${response.code}" }
                 val body = response.body ?: error("Empty download body")
-                val total = body.contentLength().takeIf { it > 0 }
+                val total = body.contentLength().takeIf { it > 0 } ?: info.apkSizeBytes ?: 0L
 
                 body.byteStream().use { input ->
                     target.outputStream().use { output ->
@@ -265,10 +330,12 @@ object AppUpdateChecker {
                             if (read == -1) break
                             output.write(buffer, 0, read)
                             readTotal += read
-                            total?.let {
-                                _download.value =
-                                    DownloadState.Downloading((readTotal.toFloat() / it).coerceIn(0f, 1f))
-                            }
+                            val frac = if (total > 0L) (readTotal.toFloat() / total).coerceIn(0f, 1f) else 0f
+                            _download.value = DownloadState.Downloading(
+                                fraction = frac,
+                                bytesDownloaded = readTotal,
+                                totalBytes = total,
+                            )
                         }
                     }
                 }
@@ -325,7 +392,7 @@ object AppUpdateChecker {
     }
 
     /** Robust, numeric, dot-separated comparison — handles "2.0.5", "v2.0.5", "2.0.5-release". */
-    private fun isNewer(latest: String, current: String): Boolean {
+    fun isNewer(latest: String, current: String): Boolean {
         val l = parseVersionParts(latest)
         val c = parseVersionParts(current)
         for (i in 0 until maxOf(l.size, c.size)) {

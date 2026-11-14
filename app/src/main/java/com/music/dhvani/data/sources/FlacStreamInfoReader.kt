@@ -81,9 +81,10 @@ object FlacStreamInfoReader {
      * Inspects a FLAC stream URL by requesting only the first 128 bytes via HTTP Range.
      * Fast, lightweight (~5ms) and does not buffer audio payload.
      */
-    suspend fun inspectUrl(url: String): FlacStreamInfo? = withContext(Dispatchers.IO) {
-        try {
-            val req = Request.Builder()
+    suspend fun inspectUrl(url: String): FlacStreamInfo? = kotlinx.coroutines.withTimeoutOrNull(2500L) {
+        withContext(Dispatchers.IO) {
+            try {
+                val req = Request.Builder()
                 .url(url)
                 .header("Range", "bytes=0-127")
                 .header("User-Agent", "Mozilla/5.0 (Android; Mobile; rv:130.0) Gecko/130.0")
@@ -104,9 +105,10 @@ object FlacStreamInfoReader {
                 } ?: return@withContext null
                 parse(bytes)
             }
-        } catch (e: Exception) {
-            TrackLog.w(TAG, "FlacStreamInfoReader failed for $url: ${e.message}")
-            null
+            } catch (e: Exception) {
+                TrackLog.w(TAG, "FlacStreamInfoReader failed for $url: ${e.message}")
+                null
+            }
         }
     }
 }

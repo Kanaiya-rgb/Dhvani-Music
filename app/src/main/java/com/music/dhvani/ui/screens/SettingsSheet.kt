@@ -1,5 +1,7 @@
 package com.music.dhvani.ui.screens
 
+import com.music.dhvani.ui.icons.DhvaniIcons
+
 import android.content.Context
 import android.content.Intent
 import android.media.audiofx.AudioEffect
@@ -15,6 +17,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -87,7 +90,6 @@ import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material.icons.rounded.CloudDownload
 import com.music.dhvani.data.settings.DownloadNetwork
 import com.music.dhvani.ui.components.EqualizerSheet
-import com.music.dhvani.playback.eq.EqualizerManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -177,6 +179,12 @@ import com.music.dhvani.data.model.Account
 import com.music.dhvani.BuildConfig
 import com.music.dhvani.data.scrobbling.LastFM
 import com.music.dhvani.data.settings.AppSettings
+import com.music.dhvani.data.settings.AutomixPerformanceMode
+import com.music.dhvani.data.settings.OutputPcmMode
+import com.music.dhvani.playback.AudioOutputStatus
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.Usb
 import com.music.dhvani.R
 import com.music.dhvani.data.sources.SourceKind
 import com.music.dhvani.data.sources.SourceRegistry
@@ -220,18 +228,29 @@ fun SettingsScreen(
     onCheckForUpdates: () -> Unit = {},
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    initialSubScreen: SettingsSubScreen? = null,
+    onSubScreenSelected: ((SettingsSubScreen?) -> Unit)? = null,
 ) {
     val context = LocalContext.current
 
     val wifiQuality by AppSettings.audioQualityWifi.collectAsStateWithLifecycle()
     val cellularQuality by AppSettings.audioQualityCellular.collectAsStateWithLifecycle()
     val metered by AppSettings.meteredConnection.collectAsStateWithLifecycle()
+    val isWifiConnected by AppSettings.isWifiConnected.collectAsStateWithLifecycle()
+    val isCellularConnected by AppSettings.isCellularConnected.collectAsStateWithLifecycle()
     val crossfade by AppSettings.crossfadeSeconds.collectAsStateWithLifecycle()
     val smartFade by AppSettings.smartFadeEnabled.collectAsStateWithLifecycle()
+    val automixPerformance by AppSettings.automixPerformanceMode.collectAsStateWithLifecycle()
     val gaplessPlayback by AppSettings.gaplessPlayback.collectAsStateWithLifecycle()
     val skipSilence by AppSettings.skipSilence.collectAsStateWithLifecycle()
     val spatialAudio by AppSettings.spatialAudio.collectAsStateWithLifecycle()
     val dolbyAtmosEnabled by AppSettings.dolbyAtmosEnabled.collectAsStateWithLifecycle()
+    val hasHardwareDolby = remember { DolbyUtils.isDolbyAtmosAvailable(context) }
+    val outputPcmMode by AppSettings.outputPcmMode.collectAsStateWithLifecycle()
+    val preferUsbDac by AppSettings.preferUsbDac.collectAsStateWithLifecycle()
+    val loudnessNormalization by AppSettings.loudnessNormalization.collectAsStateWithLifecycle()
+    val disableNormalizationOnSpeaker by AppSettings.disableNormalizationOnSpeaker.collectAsStateWithLifecycle()
+    val audioOutputSnapshot by AudioOutputStatus.current.collectAsStateWithLifecycle()
     val audioListeningMode by AppSettings.audioListeningMode.collectAsStateWithLifecycle()
     var showListeningModeDialog by remember { mutableStateOf(false) }
     val nerdStats by AppSettings.showNerdStats.collectAsStateWithLifecycle()
@@ -279,6 +298,7 @@ fun SettingsScreen(
     val autoDownloadOnPlay by AppSettings.autoDownloadOnPlay.collectAsStateWithLifecycle()
     val autoDownloadLiked by AppSettings.autoDownloadLiked.collectAsStateWithLifecycle()
     val autoplay by AppSettings.autoplay.collectAsStateWithLifecycle()
+    val showCachedPlaylist by AppSettings.showCachedPlaylist.collectAsStateWithLifecycle()
     val cacheLimitBytes by AppSettings.audioCacheLimitBytes.collectAsStateWithLifecycle()
     val sourceConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
@@ -307,9 +327,10 @@ fun SettingsScreen(
     val swipeToPlayNext by AppSettings.swipeToPlayNext.collectAsStateWithLifecycle()
     val dontRepeatSuggestions by AppSettings.dontRepeatSuggestions.collectAsStateWithLifecycle()
     val convertVideoToAudio by AppSettings.convertVideoToAudio.collectAsStateWithLifecycle()
-    val equalizerEnabled by EqualizerManager.enabled.collectAsStateWithLifecycle()
-    val equalizerPreset by EqualizerManager.selectedPreset.collectAsStateWithLifecycle()
+    val equalizerEnabled by AppSettings.equalizerEnabled.collectAsStateWithLifecycle()
+    val equalizerPreset by AppSettings.equalizerPreset.collectAsStateWithLifecycle()
     var showEqualizerSheet by remember { mutableStateOf(false) }
+    var showSimulatorSheet by remember { mutableStateOf(false) }
 
     // Whether lossless capability is configured in this build (Module or Native Tidal HiFi).
     val losslessConfigured = BuildConfig.MODULE_INDEX_URL.trim().isNotEmpty() ||
@@ -384,16 +405,29 @@ fun SettingsScreen(
         }.getOrNull() ?: "1.0"
     }
 
-    var currentSubScreen by rememberSaveable { mutableStateOf<SettingsSubScreen?>(null) }
+    var currentSubScreen by rememberSaveable { mutableStateOf<SettingsSubScreen?>(initialSubScreen) }
     var searchQuery by remember { mutableStateOf("") }
 
     val changelogReleases by ChangelogRepository.releases.collectAsStateWithLifecycle()
     val isChangelogLoading by ChangelogRepository.isLoading.collectAsStateWithLifecycle()
     val changelogScope = rememberCoroutineScope()
 
+    LaunchedEffect(initialSubScreen) {
+        if (initialSubScreen != null && currentSubScreen != initialSubScreen) {
+            currentSubScreen = initialSubScreen
+        }
+    }
+
     LaunchedEffect(currentSubScreen) {
+        onSubScreenSelected?.invoke(currentSubScreen)
         if (currentSubScreen != null) {
-            onSubScreenChange(currentSubScreen!!.title) { currentSubScreen = null }
+            onSubScreenChange(currentSubScreen!!.title) {
+                if (currentSubScreen == SettingsSubScreen.EQUALIZER || currentSubScreen == SettingsSubScreen.AUTOMIX_PERFORMANCE) {
+                    currentSubScreen = SettingsSubScreen.PLAYBACK_AUDIO
+                } else {
+                    currentSubScreen = null
+                }
+            }
             if (currentSubScreen == SettingsSubScreen.CHANGELOG) {
                 ChangelogRepository.refresh()
             }
@@ -403,13 +437,15 @@ fun SettingsScreen(
     }
     DisposableEffect(Unit) {
         onDispose {
-            onSubScreenChange(null, null)
+            // Keep onSubScreenChange intact when child destinations like Sources/Appearance push on top
         }
     }
 
     BackHandler(enabled = currentSubScreen != null || searchQuery.isNotEmpty()) {
         if (searchQuery.isNotEmpty()) {
             searchQuery = ""
+        } else if (currentSubScreen == SettingsSubScreen.EQUALIZER || currentSubScreen == SettingsSubScreen.AUTOMIX_PERFORMANCE) {
+            currentSubScreen = SettingsSubScreen.PLAYBACK_AUDIO
         } else {
             currentSubScreen = null
         }
@@ -472,6 +508,27 @@ fun SettingsScreen(
 
             // Playback & Audio
             SearchableSettingItem(
+                title = "Output precision",
+                subtitle = "AudioTrack 16-bit PCM or 32-bit float output",
+                category = "Playback & Audio",
+                icon = Icons.Rounded.GraphicEq,
+                onClick = { currentSubScreen = SettingsSubScreen.PLAYBACK_AUDIO },
+            ),
+            SearchableSettingItem(
+                title = "Prefer USB DAC",
+                subtitle = "Direct bit-perfect streaming to external USB DAC",
+                category = "Playback & Audio",
+                icon = Icons.Rounded.Usb,
+                onClick = { currentSubScreen = SettingsSubScreen.PLAYBACK_AUDIO },
+            ),
+            SearchableSettingItem(
+                title = "Loudness normalization",
+                subtitle = "Levels every track to the same loudness",
+                category = "Playback & Audio",
+                icon = Icons.AutoMirrored.Rounded.VolumeUp,
+                onClick = { currentSubScreen = SettingsSubScreen.PLAYBACK_AUDIO },
+            ),
+            SearchableSettingItem(
                 title = "Audio sources",
                 subtitle = "Where audio streams are resolved (lossless / YouTube Music)",
                 category = "Playback & Audio",
@@ -506,25 +563,25 @@ fun SettingsScreen(
                 onClick = { currentSubScreen = SettingsSubScreen.PLAYBACK_AUDIO },
             ),
             SearchableSettingItem(
-                title = "Smart fade (Automix)",
-                subtitle = "AI beat-matched transitions between songs",
+                title = "Automix [BETA]",
+                subtitle = "Times and blends transitions automatically, without a slider",
                 category = "Playback & Audio",
                 icon = Icons.Rounded.AutoAwesome,
                 onClick = { currentSubScreen = SettingsSubScreen.PLAYBACK_AUDIO },
             ),
             SearchableSettingItem(
-                title = "Equalizer",
-                subtitle = if (equalizerEnabled) equalizerPreset else "Built-in parametric equalizer",
+                title = "Automix performance",
+                subtitle = "CPU background analysis threads (${automixPerformance.title})",
                 category = "Playback & Audio",
-                icon = Icons.Rounded.BarChart,
-                onClick = { showEqualizerSheet = true },
+                icon = Icons.Rounded.Tune,
+                onClick = { currentSubScreen = SettingsSubScreen.AUTOMIX_PERFORMANCE },
             ),
             SearchableSettingItem(
-                title = "System equalizer",
-                subtitle = "Device hardware audio effects panel",
+                title = "Equalizer",
+                subtitle = if (equalizerEnabled) equalizerPreset.name else "Tone, seven bands and balance",
                 category = "Playback & Audio",
-                icon = Icons.Rounded.GraphicEq,
-                onClick = { openEqualizer(context, sessionId) },
+                icon = Icons.Rounded.BarChart,
+                onClick = { currentSubScreen = SettingsSubScreen.EQUALIZER },
             ),
             SearchableSettingItem(
                 title = "Spatial audio",
@@ -600,7 +657,7 @@ fun SettingsScreen(
             ),
             SearchableSettingItem(
                 title = "Lyrics sources",
-                subtitle = "BiniLyrics, BetterLyrics, PaxSenix, YouTube, Musixmatch, LRCLIB",
+                subtitle = "am-lyrics, lrc.red, Musixmatch, YouTube, LRCLIB, KuGou",
                 category = "Lyrics & Content",
                 icon = Icons.Rounded.LocalOffer,
                 onClick = onLyricsSources,
@@ -751,6 +808,13 @@ fun SettingsScreen(
                 subtitle = "Prompt to select audio quality and network policy every time you download a song",
                 category = "Downloads & Storage",
                 icon = Icons.AutoMirrored.Rounded.HelpOutline,
+                onClick = { currentSubScreen = SettingsSubScreen.DOWNLOADS_STORAGE },
+            ),
+            SearchableSettingItem(
+                title = "Show cached songs folder",
+                subtitle = "Adds a Cached songs folder to Library with the YouTube and JioSaavn songs kept in the song cache",
+                category = "Downloads & Storage",
+                icon = Icons.Rounded.Refresh,
                 onClick = { currentSubScreen = SettingsSubScreen.DOWNLOADS_STORAGE },
             ),
             SearchableSettingItem(
@@ -1157,6 +1221,12 @@ fun SettingsScreen(
                 )
             }
         }
+    } else if (currentSubScreen == SettingsSubScreen.EQUALIZER) {
+        EqualizerScreen(
+            onBack = { currentSubScreen = SettingsSubScreen.PLAYBACK_AUDIO },
+            contentPadding = contentPadding,
+            modifier = modifier,
+        )
     } else {
         Column(
             modifier = modifier
@@ -1168,11 +1238,12 @@ fun SettingsScreen(
 
             when (currentSubScreen!!) {
                 SettingsSubScreen.PLAYBACK_AUDIO -> {
+                    // 1. Audio sources & quality (Top)
                     SettingsGroup(header = "Audio sources & quality") {
                         SettingsRow(
-                            icon = Icons.Rounded.Storage,
-                            title = "Audio sources & priority order",
-                            subtitle = if (moduleEnabled) "Active: Modular FLAC/ALAC plugins, High Quality AAC & Standard Opus fallback" else "Configure stream sources & modular lossless plugins",
+                            icon = DhvaniIcons.Extension,
+                            title = "Sources",
+                            subtitle = "Where audio comes from and the order used",
                             trailing = { Chevron() },
                             onClick = onSources,
                         )
@@ -1180,7 +1251,7 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.Rounded.Wifi,
                             title = stringResource(R.string.on_wifi),
-                            badge = stringResource(R.string.in_use).takeIf { metered == false },
+                            badge = stringResource(R.string.in_use).takeIf { isWifiConnected == true },
                             value = wifiQuality.localizedLabel(),
                             onClick = { picking = QualityTarget.WIFI },
                         )
@@ -1188,47 +1259,184 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.Rounded.SignalCellularAlt,
                             title = stringResource(R.string.on_mobile_data),
-                            badge = stringResource(R.string.in_use).takeIf { metered == true },
+                            badge = stringResource(R.string.in_use).takeIf { isWifiConnected == false && isCellularConnected == true },
                             value = cellularQuality.localizedLabel(),
                             onClick = { picking = QualityTarget.CELLULAR },
                         )
+                        RowDivider()
+                        SettingsRow(
+                            iconPainter = painterResource(R.drawable.ic_dolby_d),
+                            title = stringResource(R.string.dolby_atmos),
+                            subtitle = if (hasHardwareDolby) {
+                                stringResource(R.string.dolby_atmos_subtitle)
+                            } else {
+                                stringResource(R.string.dolby_atmos_unavailable)
+                            },
+                            enabled = hasHardwareDolby,
+                            trailing = {
+                                Switch(
+                                    checked = dolbyAtmosEnabled && hasHardwareDolby,
+                                    onCheckedChange = { AppSettings.setDolbyAtmosEnabled(it) },
+                                    enabled = hasHardwareDolby,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = if (hasHardwareDolby) {
+                                { AppSettings.setDolbyAtmosEnabled(!dolbyAtmosEnabled) }
+                            } else null,
+                        )
                     }
 
+                    // 2. Playback & Output (Hardware precision, DAC, Loudness)
+                    SettingsGroup(header = "Playback & Output") {
+                        val actualRate = audioOutputSnapshot.actualSampleRateHz
+                        val sampleRateStr = if (audioOutputSnapshot.sampleRatesHz.isNotEmpty()) {
+                            "${audioOutputSnapshot.sampleRatesHz.first() / 1000f} kHz"
+                        } else if (actualRate != null) {
+                            "${actualRate / 1000f} kHz"
+                        } else {
+                            "48.0 kHz"
+                        }
+                        val precisionStatusStr = when {
+                            audioOutputSnapshot.floatFallback -> "16-bit fallback"
+                            outputPcmMode == OutputPcmMode.FLOAT_32 -> "32-bit float active"
+                            else -> "16-bit PCM"
+                        }
+                        val outputPrecisionSubtitle = "${audioOutputSnapshot.sink} · ${audioOutputSnapshot.deviceName} · $sampleRateStr · $precisionStatusStr"
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.GraphicEq,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                                Spacer(Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Output precision",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = outputPrecisionSubtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    .padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                listOf(OutputPcmMode.PCM_16, OutputPcmMode.FLOAT_32).forEach { mode ->
+                                    val isSelected = outputPcmMode == mode
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(
+                                                if (isSelected) MaterialTheme.colorScheme.onSurface
+                                                else Color.Transparent,
+                                            )
+                                            .clickable { AppSettings.setOutputPcmMode(mode) }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = mode.label,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) MaterialTheme.colorScheme.surface
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        RowDivider()
+
+                        SettingsRow(
+                            icon = Icons.Rounded.Usb,
+                            title = "Prefer USB DAC",
+                            subtitle = "Direct bit-perfect streaming to connected external USB DAC",
+                            trailing = {
+                                Switch(
+                                    checked = preferUsbDac,
+                                    onCheckedChange = AppSettings::setPreferUsbDac,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setPreferUsbDac(!preferUsbDac) },
+                        )
+
+                        RowDivider()
+
+                        SettingsRow(
+                            icon = Icons.AutoMirrored.Rounded.VolumeUp,
+                            title = "Loudness normalization",
+                            subtitle = "Levels every track to the same loudness",
+                            trailing = {
+                                Switch(
+                                    checked = loudnessNormalization,
+                                    onCheckedChange = AppSettings::setLoudnessNormalization,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setLoudnessNormalization(!loudnessNormalization) },
+                        )
+
+                        if (loudnessNormalization) {
+                            RowDivider()
+                            SettingsRow(
+                                icon = Icons.Rounded.PhoneAndroid,
+                                title = "Disable on Phone Speaker",
+                                subtitle = "Maintain natural output dynamics on device speakers",
+                                trailing = {
+                                    Switch(
+                                        checked = disableNormalizationOnSpeaker,
+                                        onCheckedChange = AppSettings::setDisableNormalizationOnSpeaker,
+                                        colors = SwitchDefaults.colors(
+                                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                        ),
+                                    )
+                                },
+                                onClick = { AppSettings.setDisableNormalizationOnSpeaker(!disableNormalizationOnSpeaker) },
+                            )
+                        }
+                    }
+
+                    // 3. Transitions & Automix (Untouched Crossfade + Smart fade + Gapless)
                     SettingsGroup(header = "Transitions & Automix") {
-                        SettingsRow(
-                            icon = Icons.Rounded.GraphicEq,
-                            title = "Gapless playback",
-                            subtitle = "Continuous playback with zero silence gap between tracks",
-                            trailing = {
-                                Switch(
-                                    checked = gaplessPlayback,
-                                    onCheckedChange = AppSettings::setGaplessPlayback,
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                    ),
-                                )
-                            },
-                            onClick = { AppSettings.setGaplessPlayback(!gaplessPlayback) },
-                        )
-                        RowDivider()
-                        SettingsRow(
-                            icon = Icons.Rounded.AutoAwesome,
-                            title = "Smart fade (Automix)",
-                            subtitle = "AI beat-matched smooth transitions between songs",
-                            trailing = {
-                                Switch(
-                                    checked = smartFade,
-                                    onCheckedChange = AppSettings::setSmartFadeEnabled,
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                    ),
-                                )
-                            },
-                            onClick = { AppSettings.setSmartFadeEnabled(!smartFade) },
-                        )
-                        RowDivider()
                         SliderRow(
                             icon = Icons.Rounded.Waves,
                             title = stringResource(R.string.crossfade),
@@ -1252,7 +1460,7 @@ fun SettingsScreen(
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(
                                             if (isSelected) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.surfaceVariant,
+                                             else MaterialTheme.colorScheme.surfaceVariant,
                                         )
                                         .clickable { AppSettings.setCrossfadeSeconds(sec) }
                                         .padding(vertical = 6.dp),
@@ -1267,41 +1475,77 @@ fun SettingsScreen(
                                 }
                             }
                         }
-                    }
-
-                    SettingsGroup(header = "Audio processing") {
+                        RowDivider()
                         SettingsRow(
-                            icon = Icons.Rounded.BarChart,
-                            title = "Equalizer",
-                            subtitle = if (equalizerEnabled) equalizerPreset else "Disabled",
+                            icon = Icons.Rounded.AutoAwesome,
+                            title = "Automix [BETA]",
+                            subtitle = "Times and blends transitions automatically, without a slider. Performance may vary on slower devices.",
+                            trailing = {
+                                Switch(
+                                    checked = smartFade,
+                                    onCheckedChange = AppSettings::setSmartFadeEnabled,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setSmartFadeEnabled(!smartFade) },
+                        )
+                        RowDivider()
+                        SettingsRow(
+                            icon = Icons.Rounded.Tune,
+                            title = "Automix performance",
+                            subtitle = "Sets how much CPU background analysis may use",
+                            value = automixPerformance.title,
                             trailing = { Chevron() },
-                            onClick = { showEqualizerSheet = true },
+                            onClick = { currentSubScreen = SettingsSubScreen.AUTOMIX_PERFORMANCE },
                         )
                         RowDivider()
                         SettingsRow(
                             icon = Icons.Rounded.GraphicEq,
-                            title = "System equalizer",
-                            trailing = { Chevron() },
-                            onClick = { openEqualizer(context, sessionId) },
+                            title = "Gapless playback",
+                            subtitle = "Continuous playback with zero silence gap between tracks",
+                            trailing = {
+                                Switch(
+                                    checked = gaplessPlayback,
+                                    onCheckedChange = AppSettings::setGaplessPlayback,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setGaplessPlayback(!gaplessPlayback) },
                         )
-                        RowDivider()
-                        SettingsRow(
-                            icon = Icons.Rounded.Headphones,
-                            title = "Listening mode",
-                            subtitle = audioListeningMode.subtitle,
-                            value = audioListeningMode.label,
-                            trailing = { Chevron() },
-                            onClick = { showListeningModeDialog = true },
-                        )
-                        RowDivider()
-                        val hasDolby = remember(context) { DolbyUtils.isDolbyAtmosAvailable(context) }
-                        val hasDolbyPanel = remember(context) { DolbyUtils.isDolbyPanelAvailable(context) }
+                    }
 
-                        // 1. 3D Spatial Audio (Works on all devices via in-app DSP)
+                    // 4. Audio processing & Soundstage
+                    SettingsGroup(header = "Audio processing") {
+                        val currentEqPreset by AppSettings.equalizerPreset.collectAsStateWithLifecycle()
+                        val isEqEnabled by AppSettings.equalizerEnabled.collectAsStateWithLifecycle()
+
+                        SettingsRow(
+                            icon = Icons.AutoMirrored.Rounded.VolumeOff,
+                            title = stringResource(R.string.skip_silence),
+                            subtitle = "Trim gaps longer than a second",
+                            trailing = {
+                                Switch(
+                                    checked = skipSilence,
+                                    onCheckedChange = AppSettings::setSkipSilence,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setSkipSilence(!skipSilence) },
+                        )
+                        RowDivider()
                         SettingsRow(
                             icon = Icons.Rounded.SurroundSound,
                             title = "3D Spatial Audio",
-                            subtitle = if (spatialAudio) "Active: 3D surround soundstage enabled" else "Expands soundstage into virtual 3D surround for all headphones",
+                            subtitle = if (spatialAudio) "Active: 3D surround soundstage enabled" else "Widens stereo tracks for a more immersive 3D feel",
                             trailing = {
                                 Switch(
                                     checked = spatialAudio,
@@ -1317,63 +1561,12 @@ fun SettingsScreen(
                             },
                         )
                         RowDivider()
-
-                        // 2. Hardware Dolby Atmos (Disabled on phones that lack Dolby hardware)
                         SettingsRow(
-                            icon = Icons.Rounded.SurroundSound,
-                            title = "Dolby Atmos",
-                            badge = if (!hasDolby) "Not Supported" else null,
-                            subtitle = if (hasDolby) {
-                                if (dolbyAtmosEnabled) "Active: Hardware Dolby Atmos acoustic processing enabled"
-                                else "Enable hardware Dolby Atmos acoustic enhancement"
-                            } else {
-                                "Hardware Dolby Atmos is not supported on this phone. Use in-app 3D Spatial Audio (above) for 3D surround sound on any headphones."
-                            },
-                            enabled = hasDolby,
-                            trailing = {
-                                Switch(
-                                    checked = hasDolby && dolbyAtmosEnabled,
-                                    enabled = hasDolby,
-                                    onCheckedChange = { if (hasDolby) AppSettings.setDolbyAtmosEnabled(it) },
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                    ),
-                                )
-                            },
-                            onClick = if (hasDolby) {
-                                { AppSettings.setDolbyAtmosEnabled(!dolbyAtmosEnabled) }
-                            } else null,
-                        )
-                        RowDivider()
-
-                        // 3. System Dolby Atmos panel
-                        SettingsRow(
-                            icon = Icons.Rounded.SurroundSound,
-                            title = "System Dolby Atmos panel",
-                            badge = if (!hasDolbyPanel) "Not Supported" else null,
-                            subtitle = if (!hasDolbyPanel) {
-                                "System Dolby Atmos control panel is not installed on this phone."
-                            } else null,
-                            enabled = hasDolbyPanel,
-                            trailing = if (hasDolbyPanel) { { Chevron() } } else null,
-                            onClick = if (hasDolbyPanel) { { DolbyUtils.openDolbyAtmos(context) } } else null,
-                        )
-                        RowDivider()
-                        SettingsRow(
-                            icon = Icons.AutoMirrored.Rounded.VolumeOff,
-                            title = stringResource(R.string.skip_silence),
-                            trailing = {
-                                Switch(
-                                    checked = skipSilence,
-                                    onCheckedChange = AppSettings::setSkipSilence,
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                    ),
-                                )
-                            },
-                            onClick = { AppSettings.setSkipSilence(!skipSilence) },
+                            icon = Icons.Rounded.Tune,
+                            title = "Equalizer",
+                            subtitle = if (isEqEnabled) currentEqPreset.name else "Disabled · Tone, seven bands and balance",
+                            trailing = { Chevron() },
+                            onClick = { currentSubScreen = SettingsSubScreen.EQUALIZER },
                         )
                     }
 
@@ -1463,6 +1656,58 @@ fun SettingsScreen(
                             onClick = { AppSettings.setStopOnTaskRemoved(!stopOnTaskRemoved) },
                         )
                     }
+
+                    if (BuildConfig.DEBUG) {
+                        val simState by com.music.dhvani.playback.AudioOutputStatus.simulationState.collectAsStateWithLifecycle()
+                        SettingsGroup(header = "Developer tools") {
+                            SettingsRow(
+                                icon = Icons.Rounded.Tune,
+                                title = "Audio Output Simulator",
+                                subtitle = if (simState.isSimulated && simState.preset != null) {
+                                    "Active: ${simState.preset?.deviceName} (${simState.preset?.expectedCategory?.name})"
+                                } else {
+                                    "Simulate earbuds, headphones, speakers & car audio"
+                                },
+                                trailing = { Chevron() },
+                                onClick = { showSimulatorSheet = true },
+                            )
+                        }
+                    }
+                }
+
+                SettingsSubScreen.AUTOMIX_PERFORMANCE -> {
+                    Text(
+                        text = "Automix performance",
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = GROUP_INSET, vertical = 8.dp),
+                    )
+                    SettingsGroup(
+                        footer = "Higher performance analyses tracks faster, but can use more battery and make the phone warmer.",
+                    ) {
+                        AutomixPerformanceMode.entries.forEachIndexed { index, mode ->
+                            if (index > 0) RowDivider()
+                            val isSelected = automixPerformance == mode
+                            SettingsRow(
+                                title = mode.title,
+                                subtitle = mode.subtitle,
+                                trailing = {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = "Selected",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                },
+                                onClick = { AppSettings.setAutomixPerformanceMode(mode) },
+                            )
+                        }
+                    }
+                }
+
+                SettingsSubScreen.EQUALIZER -> {
+                    // Handled above outside the scrolling container
                 }
 
                 SettingsSubScreen.LYRICS_CONTENT -> {
@@ -1737,6 +1982,23 @@ fun SettingsScreen(
                         header = stringResource(R.string.storage),
                         footer = "Downloaded audio kept on disk for instant seeking, offline playback and replays",
                     ) {
+                        SettingsRow(
+                            icon = Icons.Rounded.Refresh,
+                            title = "Show cached songs folder",
+                            subtitle = "Adds a Cached songs folder to Library with the YouTube and JioSaavn songs kept in the song cache",
+                            trailing = {
+                                Switch(
+                                    checked = showCachedPlaylist,
+                                    onCheckedChange = AppSettings::setShowCachedPlaylist,
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    ),
+                                )
+                            },
+                            onClick = { AppSettings.setShowCachedPlaylist(!showCachedPlaylist) },
+                        )
+                        RowDivider()
                         SliderRow(
                             icon = Icons.Rounded.Storage,
                             title = stringResource(R.string.song_cache_limit),
@@ -1759,6 +2021,20 @@ fun SettingsScreen(
                                 AudioCache.clear {
                                     Toast.makeText(context, "Song cache cleared", Toast.LENGTH_SHORT).show()
                                 }
+                            },
+                        )
+                        RowDivider()
+                        SettingsRow(
+                            icon = Icons.Rounded.DeleteSweep,
+                            title = "Clear image cache",
+                            subtitle = "Frees space used by album artwork",
+                            onClick = {
+                                runCatching {
+                                    val imageLoader = coil3.SingletonImageLoader.get(context)
+                                    imageLoader.diskCache?.clear()
+                                    imageLoader.memoryCache?.clear()
+                                }
+                                Toast.makeText(context, "Image cache cleared", Toast.LENGTH_SHORT).show()
                             },
                         )
                     }
@@ -2217,6 +2493,12 @@ fun SettingsScreen(
                                 text = "Version $version",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        onCheckForUpdates()
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 2.dp),
                             )
                             Spacer(Modifier.height(16.dp))
                             Text(
@@ -2626,6 +2908,10 @@ fun SettingsScreen(
         EqualizerSheet(onDismiss = { showEqualizerSheet = false })
     }
 
+    if (showSimulatorSheet) {
+        com.music.dhvani.ui.components.AudioDeviceSimulatorSheet(onDismiss = { showSimulatorSheet = false })
+    }
+
     if (showSliderStyleDialog) {
         SliderStyleDialog(onDismissRequest = { showSliderStyleDialog = false })
     }
@@ -3007,8 +3293,10 @@ fun SettingsScreen(
     }
 }
 
-private enum class SettingsSubScreen(val title: String) {
+enum class SettingsSubScreen(val title: String) {
     PLAYBACK_AUDIO("Playback and audio"),
+    AUTOMIX_PERFORMANCE("Automix performance"),
+    EQUALIZER("Equalizer"),
     LYRICS_CONTENT("Lyrics and subtitles"),
     DOWNLOADS_STORAGE("Downloads and storage"),
     ACCOUNTS_INTEGRATIONS("Accounts and integrations"),
@@ -3210,14 +3498,7 @@ internal fun ThemeMode.localizedLabel(): String = stringResource(
 )
 
 private fun openEqualizer(context: Context, sessionId: Int) {
-    val intent = Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL).apply {
-        putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
-        putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.packageName)
-        putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
-    }
-    runCatching { context.startActivity(intent) }.onFailure {
-        Toast.makeText(context, "No system equalizer on this device", Toast.LENGTH_SHORT).show()
-    }
+    com.music.dhvani.playback.SystemEqualizerUtils.openSystemEqualizer(context, sessionId)
 }
 
 private fun isDolbyAtmosPanelAvailable(context: Context): Boolean = DolbyUtils.isDolbyPanelAvailable(context)
@@ -3616,7 +3897,8 @@ internal fun RowDivider() {
  */
 @Composable
 internal fun SettingsRow(
-    icon: ImageVector,
+    icon: ImageVector? = null,
+    iconPainter: Painter? = null,
     title: String,
     subtitle: String? = null,
     subtitleContent: (@Composable () -> Unit)? = null,
@@ -3635,13 +3917,23 @@ internal fun SettingsRow(
             .padding(horizontal = ROW_INSET, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.size(ICON_SIZE),
-        )
-        Spacer(Modifier.width(ICON_GAP))
+        if (iconPainter != null) {
+            Icon(
+                painter = iconPainter,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.size(ICON_SIZE),
+            )
+            Spacer(Modifier.width(ICON_GAP))
+        } else if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.size(ICON_SIZE),
+            )
+            Spacer(Modifier.width(ICON_GAP))
+        }
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(

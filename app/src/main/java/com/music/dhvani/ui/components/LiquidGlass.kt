@@ -4,7 +4,7 @@
  * upstream attribution. This file is the integration glue, adapted from
  * EchoMusicApp/Echo-Music's GlassEffectConfig/Modifier.liquidGlass
  * (GPL-3.0), cut down from Echo's full per-component/vibrancy-slider config
- * to the single on/off switch BitChord exposes in Settings, and scoped to
+ * to the single on/off switch Dhvani exposes in Settings, and scoped to
  * the floating nav bar only.
  */
 package com.music.dhvani.ui.components
@@ -31,6 +31,12 @@ import com.music.dhvani.ui.components.backdrop.effects.lens
 import com.music.dhvani.ui.components.backdrop.highlight.Highlight
 import com.music.dhvani.ui.components.backdrop.shadow.Shadow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Brush
+
 
 /** Whether the liquid glass nav bar is turned on — see [AppSettings.liquidGlass]. */
 val LocalLiquidGlassEnabled = staticCompositionLocalOf { false }
@@ -76,6 +82,16 @@ private const val GLASS_RESOLUTION_SCALE = 0.33f
 internal val GLASS_EDGE_WIDTH = 0.5.dp
 internal val GLASS_EDGE_COLOR = Color.White.copy(alpha = 0.10f)
 
+val GlassPrismaticEdgeBrush = Brush.linearGradient(
+    colors = listOf(
+        Color.White.copy(alpha = 0.60f),
+        Color(0xFF38BDF8).copy(alpha = 0.40f), // cyan prismatic edge
+        Color.White.copy(alpha = 0.15f),
+        Color(0xFFEC4899).copy(alpha = 0.35f), // magenta refraction
+        Color.White.copy(alpha = 0.55f),
+    )
+)
+
 /**
  * Icon and label colour for content sitting on a glass surface.
  *
@@ -120,42 +136,51 @@ fun glassIndicatorColor(): Color =
 @Composable
 fun Modifier.liquidGlass(shape: CornerBasedShape): Modifier {
     if (!isGlassSupported()) return this
-    val reduceDynamicBlur by AppSettings.reduceDynamicBlur.collectAsStateWithLifecycle()
-    if (reduceDynamicBlur) {
-        return background(MaterialTheme.colorScheme.surface, shape)
-            .border(GLASS_EDGE_WIDTH, GLASS_EDGE_COLOR, shape)
-    }
     val backdrop = LocalAppBackdrop.current
     val density = LocalDensity.current
-    val blurPx = with(density) { BLUR_RADIUS_DP.dp.toPx() } * GLASS_RESOLUTION_SCALE
-    val lensHeightPx = with(density) { (LENS_HEIGHT * LENS_MAX_DP).dp.toPx() } * GLASS_RESOLUTION_SCALE
-    val lensAmountPx = with(density) { (LENS_AMOUNT * LENS_MAX_DP).dp.toPx() } * GLASS_RESOLUTION_SCALE
+
+    val vibrancy by AppSettings.liquidGlassVibrancy.collectAsStateWithLifecycle()
+    val blurRadiusDp by AppSettings.liquidGlassBlurRadius.collectAsStateWithLifecycle()
+    val menuRes by AppSettings.liquidGlassMenuResolution.collectAsStateWithLifecycle()
+    val refHeight by AppSettings.liquidGlassRefractionHeight.collectAsStateWithLifecycle()
+    val refAmount by AppSettings.liquidGlassRefractionAmount.collectAsStateWithLifecycle()
+    val chromaticAberration by AppSettings.liquidGlassChromaticAberration.collectAsStateWithLifecycle()
+    val depthEffect by AppSettings.liquidGlassDepthEffect.collectAsStateWithLifecycle()
+
+    val resolutionScale = if (menuRes == "HIGH") 1.0f else 0.5f
+    val blurPx = with(density) { blurRadiusDp.dp.toPx() } * resolutionScale
+    val lensHeightPx = with(density) { (refHeight * LENS_MAX_DP).dp.toPx() } * resolutionScale
+    val lensAmountPx = with(density) { (refAmount * LENS_MAX_DP).dp.toPx() } * resolutionScale
     val surfaceTintColor = if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) {
         Color(0xFFFAFAFA)
     } else {
-        Color(0xFF121212)
+        Color(0xFF10121A)
     }
 
     return drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
         effects = {
-            colorControls(saturation = 1f + 0.5f * VIBRANCY)
-            blur(blurPx)
+            colorControls(saturation = 1f + 0.5f * vibrancy)
+            if (blurPx > 0f) {
+                blur(blurPx)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 lens(
                     refractionHeight = lensHeightPx,
                     refractionAmount = lensAmountPx,
-                    depthEffect = true,
-                    chromaticAberration = true,
+                    depthEffect = depthEffect,
+                    chromaticAberration = chromaticAberration,
                 )
+            } else {
+                blur(with(density) { 16.dp.toPx() } * resolutionScale)
             }
         },
         highlight = { Highlight.Default },
         shadow = { Shadow.Default },
         onDrawSurface = {
-            drawRect(color = surfaceTintColor.copy(alpha = SURFACE_OPACITY), size = size)
+            drawRect(color = surfaceTintColor.copy(alpha = 0.12f), size = size)
         },
-        backdropScale = GLASS_RESOLUTION_SCALE,
+        backdropScale = resolutionScale,
     )
 }

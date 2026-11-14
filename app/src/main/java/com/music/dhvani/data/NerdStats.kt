@@ -39,7 +39,24 @@ object NerdStats {
         val decoderName: String? = null,
         /** Whether an active lookup or race is in flight for a better stream. */
         val isSearchingBetterQuality: Boolean = false,
+        /** Real total file size in bytes for the active stream. */
+        val fileSizeBytes: Long? = null,
     ) {
+        val effectiveBitrateKbps: Int?
+            get() {
+                if (bitrateKbps != null && bitrateKbps > 0) return bitrateKbps
+                if (claimed?.kbps != null && claimed.kbps > 0) return claimed.kbps
+                if (isLossless) {
+                    val depth = bitDepth ?: 16
+                    val rate = sampleRateHz ?: 44100
+                    val ch = channels ?: 2
+                    val pcmRate = (rate.toLong() * ch.toLong() * depth.toLong()) / 1000L
+                    val ratio = if (depth >= 24) 52L else 58L
+                    return (pcmRate * ratio / 100L).toInt()
+                }
+                return null
+            }
+
         /**
          * Whether what arrived is measurably worse than what was promised.
          *
@@ -79,10 +96,16 @@ object NerdStats {
                 val wantsHiRes = AppSettings.effectiveAudioQuality == com.music.dhvani.data.settings.AudioQuality.LOSSLESS &&
                     (AppSettings.preferredPlaybackSource.value == "LOSSLESS" || claimed?.isLossless == true || claimed?.isHiRes == true)
                 if (wantsHiRes && isLossless && !isHiRes) {
+                    if (isSearchingBetterQuality || racingLossless.value.isNotEmpty()) {
+                        return "Searching for 24-bit Hi-Res…"
+                    }
                     return "24-bit unavailable; playing 16-bit Lossless"
                 }
                 if (wantsHiRes && !isLossless && mimeType != null) {
                     val kb = bitrateKbps ?: claimed?.kbps
+                    if (isSearchingBetterQuality || racingLossless.value.isNotEmpty()) {
+                        return if (isHiQuality) "Upgrading to Lossless…" else "Searching for Lossless…"
+                    }
                     return if (isHiQuality) {
                         "Lossless unavailable; playing High Quality" + (if (kb != null) " ($kb kbps)" else "")
                     } else {
@@ -115,7 +138,10 @@ object NerdStats {
         val isLossless: Boolean
             get() = when {
                 mimeType != null -> isLosslessMime(mimeType)
-                else -> claimed?.isLossless == true
+                claimed?.codec?.contains("opus", ignoreCase = true) == true || claimed?.source?.contains("Opus", ignoreCase = true) == true -> false
+                claimed?.codec?.contains("aac", ignoreCase = true) == true || claimed?.source?.contains("Saavn", ignoreCase = true) == true -> false
+                claimed?.isLossless == true -> true
+                else -> false
             }
 
         /**
@@ -133,8 +159,7 @@ object NerdStats {
          * Whether this stream delivers Dolby Atmos or spatial audio.
          */
         val isDolbyAtmos: Boolean
-            get() = AppSettings.dolbyAtmosEnabled.value ||
-                claimed?.isDolbyAtmos == true ||
+            get() = claimed?.isDolbyAtmos == true ||
                 (channels ?: 0) > 2 ||
                 mimeType?.contains("eac3", ignoreCase = true) == true ||
                 mimeType?.contains("ac4", ignoreCase = true) == true ||
@@ -165,7 +190,7 @@ object NerdStats {
      * `audio/raw` is here because that is how Media3 names PCM — a WAV stream
      * reaches the renderer as raw samples, not as `audio/wav`.
      */
-    private val LOSSLESS_CODEC_SUFFIXES = listOf("flac", "alac", "raw", "wav", "wave", "pcm")
+    private val LOSSLESS_CODEC_SUFFIXES = listOf("flac", "alac", "wav", "wave")
 
     /**
      * Whether [mimeType] names a bit-exact codec.

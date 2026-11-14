@@ -83,9 +83,9 @@ private const val MIN_SMART_DURATION_SECONDS = 45.0
 private const val MIN_INCOMING_CLEARANCE_SECONDS = 5.0
 
 private val KEY_INDEX = mapOf(
-    "C" to 0, "C?" to 1, "D?" to 1, "D" to 2, "D?" to 3, "E?" to 3,
-    "E" to 4, "F" to 5, "F?" to 6, "G?" to 6, "G" to 7, "G?" to 8,
-    "A?" to 8, "A" to 9, "A?" to 10, "B?" to 10, "B" to 11,
+    "C" to 0, "C♯" to 1, "D♭" to 1, "D" to 2, "D♯" to 3, "E♭" to 3,
+    "E" to 4, "F" to 5, "F♯" to 6, "G♭" to 6, "G" to 7, "G♯" to 8,
+    "A♭" to 8, "A" to 9, "A♯" to 10, "B♭" to 10, "B" to 11,
 )
 
 /** Anything matching this is spoken or already a performance; mixing it is never wanted. */

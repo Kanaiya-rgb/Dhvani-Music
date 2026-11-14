@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.dhvani.auth.AuthStore
 import com.music.dhvani.data.AppUpdateChecker
+import com.music.dhvani.data.HomeFeedCache
 import com.music.dhvani.data.LocalMediaRepository
 import com.music.dhvani.data.LikeState
 import com.music.dhvani.data.YtMusicRepository
@@ -27,6 +28,7 @@ import com.music.dhvani.data.model.PlaylistPrivacy
 import com.music.dhvani.data.model.SearchFilter
 import com.music.dhvani.data.model.SearchResult
 import com.music.dhvani.data.model.ShelfItem
+import com.music.dhvani.data.model.toShelfItem
 import com.music.dhvani.data.model.Song
 import com.music.dhvani.data.model.SearchSuggestionItem
 import com.music.dhvani.data.model.MoodGenre
@@ -221,6 +223,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _lyricsSource = MutableStateFlow<LyricsSource?>(null)
     val lyricsSource: StateFlow<LyricsSource?> = _lyricsSource.asStateFlow()
 
+    private val _lyricsSongwriters = MutableStateFlow<List<String>>(emptyList())
+    val lyricsSongwriters: StateFlow<List<String>> = _lyricsSongwriters.asStateFlow()
+
     /**
      * Whether the lookup for the current track has finished. [lyrics] alone
      * can't tell "still looking" apart from "looked, found nothing" — both
@@ -306,6 +311,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (result != null && result.lines.isNotEmpty()) {
                 _lyrics.value = result.lines
                 _lyricsSource.value = result.source
+                if (result.songwriters.isNotEmpty()) {
+                    _lyricsSongwriters.value = result.songwriters
+                }
                 lyricsFor = videoId to setOf(source)
             }
             _lyricsChecked.value = true
@@ -351,6 +359,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _lyrics.value = null
         _translatedLyrics.value = null
         _lyricsSource.value = null
+        _lyricsSongwriters.value = emptyList()
         lyricsJob?.cancel()
         if (sources.isEmpty()) {
             // Switched off, or every source unticked. Nothing to look up, and
@@ -391,6 +400,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             )
             _lyrics.value = found?.lines
             _lyricsSource.value = found?.source
+            val explicitWriters = found?.songwriters?.takeIf { it.isNotEmpty() }
+            if (explicitWriters != null) {
+                _lyricsSongwriters.value = explicitWriters
+            } else {
+                if (artist.isNotBlank() && artist != "Unknown") {
+                    _lyricsSongwriters.value = artist.split(",", "&", "feat.", "ft.", "Feat.", "Ft.", " / ").map { it.trim() }.filter { it.isNotBlank() }
+                } else {
+                    _lyricsSongwriters.value = emptyList()
+                }
+                viewModelScope.launch {
+                    val realWriters = com.music.dhvani.data.lyrics.SongwritersRepository.fetchSongwriters(
+                        videoId = videoId,
+                        title = title,
+                        artist = artist,
+                    )
+                    if (realWriters.isNotEmpty() && lyricsFor?.first == videoId) {
+                        _lyricsSongwriters.value = realWriters
+                    }
+                }
+            }
             _lyricsChecked.value = true
             if (_isLyricsTranslated.value) translateCurrentLyrics()
         }
@@ -404,6 +433,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         album: String? = null,
         localUri: String? = null,
     ) {
+        com.music.dhvani.data.lyrics.LyricsRepository.clearCache(videoId)
         lyricsFor = null
         loadLyrics(videoId, title, artist, durationMs, album, localUri)
     }
@@ -1279,7 +1309,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         loadPlaylists()
         if (!libraryStale) return
         libraryStale = false
-        if (_library.value is UiState.Success) refresh(Feed.LIBRARY)
+        if (_library.value is UiState.Success) refresh(Feed.LIBRARY, silent = true)
     }
 
     init {
@@ -1325,7 +1355,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!homeStale) return
         homeStale = false
         // A first load already in flight will pick the new play up by itself.
-        if (_home.value is UiState.Success) refresh(Feed.HOME)
+        if (_home.value is UiState.Success) refresh(Feed.HOME, silent = true)
     }
 
     private fun loadAccount() {
@@ -1350,17 +1380,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * state — a refresh that swapped the page for a spinner would be a worse
      * experience than the stale content it replaces.
      */
-    fun refresh(feed: Feed) {
+    fun refresh(feed: Feed, silent: Boolean = false) {
         if (feed in _refreshing.value) return
         if (feed == Feed.LIBRARY && !_signedIn.value) return
-        _refreshing.value = _refreshing.value + feed
+        if (!silent) {
+            _refreshing.value = _refreshing.value + feed
+        }
         viewModelScope.launch {
-            when (feed) {
-                Feed.HOME -> fetchHome()
-                Feed.EXPLORE -> fetchExplore()
-                Feed.LIBRARY -> fetchLibrary()
+            try {
+                val timeoutMs = if (feed == Feed.LIBRARY) 3_000L else 10_000L
+                withTimeout(timeoutMs) {
+                    when (feed) {
+                        Feed.HOME -> fetchHome()
+                        Feed.EXPLORE -> fetchExplore()
+                        Feed.LIBRARY -> fetchLibrary()
+                    }
+                }
+            } catch (t: Throwable) {
+                // Ensure failures or timeout don't permanently freeze pull-to-refresh
+            } finally {
+                if (!silent) {
+                    _refreshing.value = _refreshing.value - feed
+                }
             }
-            _refreshing.value = _refreshing.value - feed
         }
     }
 
@@ -1405,10 +1447,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadHome() {
-        if (_selectedCategory.value != "All") {
+        if (_selectedCategory.value != "All" && !_selectedCategory.value.startsWith("All")) {
             setHomeCategory(_selectedCategory.value)
             return
         }
+
+        // 1. In-Memory check: if already loaded in this active session
         cachedAllHome?.let {
             val filtered = it.filterNot { YtMusicRepository.isExcludedHomeShelf(it) }
             if (filtered.isNotEmpty()) {
@@ -1416,7 +1460,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return
             }
         }
-        _home.value = UiState.Loading
+
+        // 2. Disk Cache check (Stale-While-Revalidate: Instant 0ms perceived latency on cold start)
+        val app = getApplication<Application>()
+        val diskCached = HomeFeedCache.load(app)
+
+        if (!diskCached.isNullOrEmpty()) {
+            val filtered = diskCached.filterNot { YtMusicRepository.isExcludedHomeShelf(it) }
+            if (filtered.isNotEmpty()) {
+                cachedAllHome = filtered
+                _home.value = UiState.Success(filtered)
+            }
+        } else {
+            // 3. Instant Local Shelves First (if no disk cache exists, e.g. clean install/cleared cache)
+            val history = PlaybackHistory.recent.value
+            if (history.isNotEmpty()) {
+                val instantShelf = HomeShelf(
+                    title = "Listen Again",
+                    subtitle = "Jump back in",
+                    items = history.take(15).map { it.toSong().toShelfItem() },
+                )
+                _home.value = UiState.Success(listOf(instantShelf))
+            } else {
+                _home.value = UiState.Loading
+            }
+        }
+
+        // 4. Background Revalidate (Silently fetch fresh feed without freezing UI)
         viewModelScope.launch { fetchHome() }
     }
 
@@ -1454,19 +1524,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         homeContinuation = null
         homeFallbackPage = 0
         homeSeenTitles.clear()
-        _home.value = YtMusicRepository.home().fold(
+        val currentHasContent = (_home.value as? UiState.Success)?.data?.isNotEmpty() == true
+        YtMusicRepository.home().fold(
             onSuccess = { feed ->
                 homeContinuation = feed.continuation
                 val shelves = feed.shelves
                     .filterNot { YtMusicRepository.isExcludedHomeShelf(it) }
                     .filter { homeSeenTitles.add(it.title.lowercase(Locale.ROOT)) }
-                if (shelves.isEmpty()) UiState.Error("No results from YouTube Music")
-                else {
+                if (shelves.isEmpty()) {
+                    if (!currentHasContent) {
+                        _home.value = UiState.Error("No results from YouTube Music")
+                    }
+                } else {
                     cachedAllHome = shelves
-                    UiState.Success(shelves)
+                    _home.value = UiState.Success(shelves)
+                    HomeFeedCache.save(getApplication(), shelves)
                 }
             },
-            onFailure = { UiState.Error(it.friendly()) },
+            onFailure = { err ->
+                // Stale-While-Revalidate: keep cached content visible if network hiccups
+                if (!currentHasContent) {
+                    _home.value = UiState.Error(err.friendly())
+                }
+            },
         )
     }
 
@@ -1917,11 +1997,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         type: BrowseType = BrowseType.OTHER,
     ) {
         val resolved = browseTypeOf(browseId, type)
+        val initialArtwork = if (resolved == BrowseType.ARTIST) {
+            com.music.dhvani.data.artist.ArtistPortraitRepository.getCachedPortrait(title) ?: thumbnailUrl
+        } else {
+            thumbnailUrl
+        }
         _detailStack.value += DetailPage(
             browseId = browseId,
             title = title,
             subtitle = subtitle,
-            thumbnailUrl = thumbnailUrl,
+            thumbnailUrl = initialArtwork,
             songs = UiState.Loading,
             type = resolved,
         )
@@ -1956,6 +2041,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 Downloads.recordIdOf(browseId) != null -> {
                     val songs = downloadedPlaylist(browseId)
                     if (songs.isEmpty()) UiState.Error(DOWNLOADS_GONE) else UiState.Success(songs)
+                }
+                browseId == "local:cached" -> {
+                    val songs = com.music.dhvani.playback.AudioCache.getCachedSongs()
+                    name = "Cached songs"
+                    credit = "Songs from YouTube and JioSaavn in the song cache"
+                    if (songs.isEmpty()) UiState.Error("No cached songs found in cache")
+                    else UiState.Success(songs)
                 }
                 browseId == "local:downloads" -> {
                     val context = getApplication<Application>()
@@ -2032,15 +2124,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     YtMusicRepository.artistPage(browseId).fold(
                         onSuccess = { page ->
                             sections = page.sections
-                            artwork = page.thumbnailUrl
                             name = page.name
+                            val artistQuery = page.name?.takeIf { it.isNotBlank() } ?: title
+                            val verifiedPortrait = com.music.dhvani.data.artist.ArtistPortraitRepository.getPortrait(artistQuery, currentThumbnail = page.thumbnailUrl)
+                            artwork = verifiedPortrait ?: page.thumbnailUrl
                             description = page.description
                             subscriberCountText = page.subscriberCountText
                             monthlyListenerCount = page.monthlyListenerCount
                             if (page.songs.isEmpty()) {
                                 UiState.Error(NO_TRACKS)
                             } else {
-                                UiState.Success(page.songs.withArtwork(thumbnailUrl))
+                                UiState.Success(page.songs.withArtwork(artwork ?: thumbnailUrl))
                             }
                         },
                         onFailure = { UiState.Error(it.friendly()) },
@@ -2118,6 +2212,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 Downloads.recordIdOf(browseId) != null -> {
                     val songs = downloadedPlaylist(browseId)
                     if (songs.isEmpty()) UiState.Error(DOWNLOADS_GONE) else UiState.Success(songs)
+                }
+                browseId == "local:cached" -> {
+                    val songs = com.music.dhvani.playback.AudioCache.getCachedSongs()
+                    if (songs.isEmpty()) UiState.Error("No cached songs found in cache")
+                    else UiState.Success(songs)
                 }
                 browseId == "local:downloads" -> {
                     val songs = LocalMediaRepository.getDownloadedSongs(context)
@@ -2236,6 +2335,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // it is rather than being read off a prefix convention.
         browseId.startsWith(Downloads.PLAYLIST_PREFIX) ||
             browseId == "local:liked" ||
+            browseId == "local:cached" ||
             browseId.startsWith("local:custom:") -> BrowseType.PLAYLIST
         browseId.startsWith("UC") -> BrowseType.ARTIST
         browseId.startsWith("MPREb") -> BrowseType.ALBUM
@@ -2271,6 +2371,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 Downloads.recordIdOf(browseId) != null -> runCatching {
                     downloadedPlaylist(browseId).ifEmpty { error(DOWNLOADS_GONE) }
+                }
+                browseId == "local:cached" -> runCatching {
+                    com.music.dhvani.playback.AudioCache.getCachedSongs()
+                        .ifEmpty { error("No cached songs in cache") }
                 }
                 browseId == "local:downloads" -> runCatching {
                     LocalMediaRepository.getDownloadedSongs(context)

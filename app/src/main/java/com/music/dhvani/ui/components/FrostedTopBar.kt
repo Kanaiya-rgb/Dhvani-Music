@@ -320,8 +320,8 @@ fun FrostedTopBar(
                     .padding(horizontal = 96.dp)
                     .fillMaxWidth()
                     .graphicsLayer {
-                        alpha = if (onBack != null || isHome) titleAlpha else 0f
-                        translationY = 6.dp.toPx() * (1f - titleAlpha)
+                        alpha = if (onBack != null) 1f else if (isHome) 0f else titleAlpha
+                        translationY = if (onBack != null) 0f else (6.dp.toPx() * (1f - titleAlpha))
                     },
             )
             // On a pushed page the back affordance is always visible, since

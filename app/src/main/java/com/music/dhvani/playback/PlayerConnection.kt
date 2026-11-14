@@ -174,6 +174,7 @@ fun rememberPlayerState(controller: MediaController?): PlayerState {
         val currentSong = state.song
         if (currentSong != null && state.isPlaying) {
             PlaybackHistory.record(currentSong)
+            AudioCache.registerSong(currentSong)
         }
     }
     LaunchedEffect(controller, state.isPlaying, foreground) {
@@ -215,6 +216,13 @@ fun MediaItem.toSong() = Song(
     fromAutoplay = this.fromAutoplay,
     localUri = mediaMetadata.extras?.getString(EXTRA_LOCAL_URI),
     localPath = mediaMetadata.extras?.getString(EXTRA_LOCAL_PATH),
+    isExplicit = mediaMetadata.extras?.getBoolean(EXTRA_IS_EXPLICIT) == true ||
+        com.music.dhvani.data.ExplicitDetector.isExplicit(
+            false,
+            mediaMetadata.title?.toString().orEmpty(),
+            mediaMetadata.artist?.toString().orEmpty(),
+            mediaMetadata.albumTitle?.toString(),
+        ),
 )
 
 /** @see Song.fromAutoplay */
@@ -227,6 +235,7 @@ val MediaItem.fromAutoplay: Boolean
  * the player, and the UI only ever sees it back through a MediaController.
  */
 private const val EXTRA_FROM_AUTOPLAY = "dhvani.fromAutoplay"
+private const val EXTRA_IS_EXPLICIT = "dhvani.isExplicit"
 
 /**
  * The artist and album pages this track hangs under, when they are known.
@@ -349,6 +358,7 @@ fun MediaController.changeAudioTrack(song: Song) {
             "albumId" to song.albumId,
             "albumName" to song.albumName,
             "sourceQuality" to song.sourceQuality,
+            "isExplicit" to song.isExplicit,
         ),
     )
 }
@@ -367,12 +377,18 @@ fun Song.toDirectYouTubeMediaItem(): MediaItem =
         .setUri(directYouTubeUri())
         .build()
 
-fun Song.highQualityUri(): String =
-    "flux://watch?v=$videoId${matchQuery()}&q=hifi"
+fun Song.highQualityUri(sourceId: String? = "JIOSAAVN"): String = buildString {
+    append("flux://watch?v=").append(videoId)
+    append(matchQuery())
+    append("&q=hifi")
+    if (!sourceId.isNullOrBlank()) {
+        append("&src=").append(Uri.encode(sourceId))
+    }
+}
 
-fun Song.toHighQualityMediaItem(): MediaItem =
+fun Song.toHighQualityMediaItem(sourceId: String? = "JIOSAAVN"): MediaItem =
     toMediaItem().buildUpon()
-        .setUri(highQualityUri())
+        .setUri(highQualityUri(sourceId))
         .build()
 
 fun Song.losslessUri(sourceId: String? = null): String = buildString {
@@ -430,14 +446,15 @@ fun Song.toMediaItem(): MediaItem {
         sourceTrack != null -> SourceRegistry.trackUri(sourceTrack.first, sourceTrack.second)
             .let { "$it${matchQuery()}" }
         OriginalVersion.isPinned(videoId) -> directYouTubeUri()
+        com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value == "LOSSLESS" -> losslessUri()
+        com.music.dhvani.data.sources.SourceRegistry.configs.value.any {
+            it.id == com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value &&
+                it.kind.canServeLossless
+        } -> losslessUri(com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value)
+        com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality == com.music.dhvani.data.settings.AudioQuality.LOSSLESS &&
+            com.music.dhvani.data.sources.SourceRegistry.configs.value.any { it.enabled && it.isComplete && it.kind.canServeLossless } -> losslessUri()
         com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value == "YOUTUBE" -> directYouTubeUri()
-        com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality == com.music.dhvani.data.settings.AudioQuality.LOSSLESS ||
-            com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value == "LOSSLESS" ||
-            com.music.dhvani.data.sources.SourceRegistry.configs.value.any { it.id == com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value && it.kind.canServeLossless } ->
-            losslessUri(com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value)
-        com.music.dhvani.data.settings.AppSettings.effectiveAudioQuality == com.music.dhvani.data.settings.AudioQuality.HIGH ||
-            com.music.dhvani.data.settings.AppSettings.preferredPlaybackSource.value == "JIOSAAVN" -> highQualityUri()
-        else -> "flux://watch?v=$videoId${matchQuery()}"
+        else -> highQualityUri("JIOSAAVN")
     }
     val finalArtworkUri = Downloads.localCoverUri(videoId) ?: artworkAt(NOTIFICATION_ART_PX)
     val parsedDurationMs = TrackMatcher.secondsOf(durationText)?.times(1000L)
@@ -490,7 +507,7 @@ fun Song.toMediaItem(): MediaItem {
             // queue lost the `&d=` its matching depends on.
             .apply {
                 if (fromAutoplay || offlineUri != null || durationText != null ||
-                    artistId != null || albumId != null
+                    artistId != null || albumId != null || isExplicit
                 ) {
                     setExtras(
                         bundleOf(
@@ -500,6 +517,7 @@ fun Song.toMediaItem(): MediaItem {
                             EXTRA_DURATION to durationText,
                             EXTRA_ARTIST_ID to artistId,
                             EXTRA_ALBUM_ID to albumId,
+                            EXTRA_IS_EXPLICIT to isExplicit,
                         ),
                     )
                 }
