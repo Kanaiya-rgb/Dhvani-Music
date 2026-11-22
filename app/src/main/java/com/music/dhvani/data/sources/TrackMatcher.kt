@@ -190,10 +190,12 @@ object TrackMatcher {
                 withinSeconds(candidate, target, CREDIT_OVERRIDE_SEC) &&
                     (wantedLang == null || gotLang == null || wantedLang.equals(gotLang, ignoreCase = true)) &&
                     // Never match totally unrelated songs with common titles (e.g. "Tere Bin", "Tum Hi Ho")
-                    // If credits disagree, require either matching album/context or target has no artist
+                    // If credits disagree, require either matching album/context, target has no artist, or exact runtime match (abs <= 1s) on multi-word title
                     (target.artist.isBlank() || candidate.artist.isBlank() ||
                         wanted.context.any { it in got.context } ||
-                        candidate.albumName?.lowercase(Locale.ROOT)?.let { alb -> wanted.context.any { alb.contains(it) } } == true)
+                        candidate.albumName?.lowercase(Locale.ROOT)?.let { alb -> wanted.context.any { alb.contains(it) } } == true ||
+                        (target.durationSec != null && secondsOf(candidate.durationText) != null &&
+                            abs(target.durationSec - secondsOf(candidate.durationText)!!) <= 1 && wanted.words.size >= 2))
             }
             ?: return null
         return BASE + artist + duration + contextScore(wanted, got)

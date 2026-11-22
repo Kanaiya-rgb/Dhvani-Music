@@ -88,6 +88,9 @@ fun SongVersionsSheet(
 
         val origClean = TrackMatcher.searchableTitle(song.title, "").lowercase(Locale.ROOT)
         val family = SongLanguage.getCrossLanguageFamily(song.title)
+        val origArtists = song.artist?.lowercase(Locale.ROOT)?.split(",", "&", "feat.", "ft.", "/")
+            ?.map { it.trim() }?.filter { it.length >= 3 }.orEmpty()
+        val origAlbumClean = song.albumName?.let { TrackMatcher.searchableTitle(it, "") }?.lowercase(Locale.ROOT)?.trim().orEmpty()
 
         for (v in versions) {
             if (v.videoId == song.videoId) continue
@@ -105,6 +108,24 @@ fun SongVersionsSheet(
             val isTitleMatch = candClean.startsWith(origClean) || candClean.contains(origClean)
 
             if (!isFamilyMatch && !isTitleMatch) continue
+
+            // If candidate matched via cross-language family, verify artist or album compatibility
+            if (isFamilyMatch && !isTitleMatch) {
+                val candArtists = v.artist?.lowercase(Locale.ROOT)?.split(",", "&", "feat.", "ft.", "/")
+                    ?.map { it.trim() }?.filter { it.length >= 3 }.orEmpty()
+                val candAlbum = v.albumName?.let { TrackMatcher.searchableTitle(it, "") }?.lowercase(Locale.ROOT)?.trim().orEmpty()
+                val candTitle = v.title.lowercase(Locale.ROOT)
+
+                val hasArtistMatch = origArtists.any { oa -> candArtists.any { ca -> ca.contains(oa) || oa.contains(ca) } }
+                val hasAlbumMatch = origAlbumClean.isNotBlank() && (
+                    candAlbum.contains(origAlbumClean) || origAlbumClean.contains(candAlbum) ||
+                    candTitle.contains(origAlbumClean)
+                )
+
+                if (!hasArtistMatch && !hasAlbumMatch && (origArtists.isNotEmpty() || origAlbumClean.isNotBlank())) {
+                    continue
+                }
+            }
 
             // 3. Duration sanity check: audio tracks of the same song have similar duration (within 45s)
             val origSec = TrackMatcher.secondsOf(song.durationText)

@@ -129,7 +129,8 @@ fun rememberPlayerState(controller: MediaController?): PlayerState {
         fun sync(error: String? = null) {
             val item = player.currentMediaItem
             val currentSong = item?.toSong()
-            val isOffline = currentSong?.let { s ->
+            val effectiveSong = currentSong ?: if (player.mediaItemCount > 0 && (player.playbackState == Player.STATE_BUFFERING || player.isPlaying || player.playWhenReady)) state.song else null
+            val isOffline = (effectiveSong ?: currentSong)?.let { s ->
                 s.localUri != null || s.localPath != null ||
                     s.videoId.startsWith("local:") || s.videoId.startsWith("file:") || s.videoId.startsWith("content:") ||
                     Downloads.saved.value.containsKey(s.videoId)
@@ -139,7 +140,7 @@ fun rememberPlayerState(controller: MediaController?): PlayerState {
             position.positionMs = player.currentPosition.coerceAtLeast(0L)
             position.bufferedPositionMs = if (isOffline) 0L else player.bufferedPosition.coerceAtLeast(0L)
             state = state.copy(
-                song = currentSong,
+                song = effectiveSong,
                 isPlaying = player.isPlaying,
                 durationMs = player.duration.coerceAtLeast(0L),
                 error = error,

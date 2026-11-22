@@ -1,8 +1,8 @@
 {
-  "version": "3.0.0",
-  "versionCode": 44,
-  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases/tag/v3.0.0",
-  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases/download/v3.0.0/DhvaniMusic-v3.0.0.apk",
+  "version": "3.0.1",
+  "versionCode": 45,
+  "releaseUrl": "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases/tag/v3.0.1",
+  "apkUrl": "https://github.com/Kanaiya-rgb/Dhvani-Releases/releases/download/v3.0.1/DhvaniMusic-v3.0.1.apk",
   "sizeBytes": 44468505,
-  "notes": "v3.0.0: 8 Handcrafted dynamic launcher icons, official Dolby Atmos® integration, Samsung SoundAlive hardware bypass, zero-stall Lossless FLAC watchdog, and audio pipeline overhaul."
+  "notes": "v3.0.1: Critical bug fixes for playback buffer stalls, audio pipeline routing, lossless track matching accuracy, and overall stability improvements."
 }

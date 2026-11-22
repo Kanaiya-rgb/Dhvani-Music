@@ -1570,6 +1570,7 @@ fun NowPlayingScreen(
     }
     var volumeDragging by remember { mutableStateOf(false) }
     var systemVolume by remember { mutableFloatStateOf(volume.value) }
+    var lastSetSysVolume by remember { mutableIntStateOf((volume.value * maxVolume).roundToInt()) }
     var showVolumePercent by remember { mutableStateOf(false) }
     var volumeHideJob by remember { mutableStateOf<Job?>(null) }
     var isFirstVolumeLaunch by remember { mutableStateOf(true) }
@@ -3790,7 +3791,7 @@ fun NowPlayingScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
-                            Icons.AutoMirrored.Rounded.VolumeDown,
+                            DhvaniIcons.VolumeLow,
                             contentDescription = null,
                             tint = Color.White.copy(alpha = 0.5f),
                             modifier = Modifier.size(20.dp),
@@ -3806,13 +3807,15 @@ fun NowPlayingScreen(
                                 volumeHideJob?.cancel()
                                 val clamped = it.coerceIn(0f, 1f)
                                 scope.launch { volume.snapTo(clamped) }
-                                audioManager?.setStreamVolume(
-                                    AudioManager.STREAM_MUSIC,
-                                    (clamped * maxVolume).roundToInt().coerceIn(0, maxVolume),
-                                    0,
-                                )
-                                com.music.dhvani.playback.eq.EqualizerManager.setLoudnessEnabled(false)
-                                com.music.dhvani.playback.eq.EqualizerManager.setLoudnessBoostMb(0)
+                                val targetSysVol = (clamped * maxVolume).roundToInt().coerceIn(0, maxVolume)
+                                if (targetSysVol != lastSetSysVolume) {
+                                    lastSetSysVolume = targetSysVol
+                                    audioManager?.setStreamVolume(
+                                        AudioManager.STREAM_MUSIC,
+                                        targetSysVol,
+                                        0,
+                                    )
+                                }
                             },
                             onValueChangeFinished = {
                                 volumeDragging = false
@@ -3828,7 +3831,7 @@ fun NowPlayingScreen(
                         )
                         Spacer(Modifier.width(10.dp))
                         Icon(
-                            Icons.AutoMirrored.Rounded.VolumeUp,
+                            DhvaniIcons.VolumeHigh,
                             contentDescription = null,
                             tint = Color.White.copy(alpha = 0.5f),
                             modifier = Modifier.size(20.dp),

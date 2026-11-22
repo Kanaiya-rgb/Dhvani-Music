@@ -100,9 +100,9 @@ class DhvaniApplication : Application(), SingletonImageLoader.Factory {
      */
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-        val isLowRam = am?.isLowRamDevice == true || Runtime.getRuntime().maxMemory() < 192L * 1024 * 1024
-        val memoryPercent = if (isLowRam) 0.12 else 0.25
-        val maxDiskBytes = if (isLowRam) 120L * 1024 * 1024 else 250L * 1024 * 1024
+        val isLowRam = am?.isLowRamDevice == true || Runtime.getRuntime().maxMemory() < 256L * 1024 * 1024
+        val memoryPercent = if (isLowRam) 0.06 else 0.10
+        val maxDiskBytes = if (isLowRam) 60L * 1024 * 1024 else 120L * 1024 * 1024
 
         val imageOkHttpClient = com.music.dhvani.data.Http.client.newBuilder()
             .addInterceptor { chain ->

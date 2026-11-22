@@ -299,7 +299,6 @@ fun CanvasArtworkPlayer(
         },
         update = { frame ->
             val view = frame.getChildAt(0) as TextureView
-            player.setVideoTextureView(view)
             view.alpha = alpha
             view.centerCrop(bounds, clipAspect)
             frame.fadeFraction = bottomFade

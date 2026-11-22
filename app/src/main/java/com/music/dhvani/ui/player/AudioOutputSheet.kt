@@ -877,6 +877,7 @@ private fun VolumeRow(manager: AudioManager, routeKey: Any) {
     }
 
     var dragging by remember { mutableStateOf(false) }
+    var lastSetVol by remember(manager) { mutableIntStateOf((level * max).roundToInt()) }
 
     val context = LocalContext.current
 
@@ -971,13 +972,13 @@ private fun VolumeRow(manager: AudioManager, routeKey: Any) {
             value = level,
 
             onValueChange = {
-
                 dragging = true
-
                 level = it
-
-                manager.setStreamVolume(AudioManager.STREAM_MUSIC, (it * max).roundToInt(), 0)
-
+                val target = (it * max).roundToInt().coerceIn(0, max)
+                if (target != lastSetVol) {
+                    lastSetVol = target
+                    manager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+                }
             },
 
             onValueChangeFinished = { dragging = false },

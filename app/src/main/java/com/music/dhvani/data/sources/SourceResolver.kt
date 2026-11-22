@@ -353,7 +353,8 @@ object SourceResolver {
             val target = TrackMatcher.targetOf(song)
             if (target.title.isBlank()) return@withContext false to "No track info"
 
-            val titleKey = "${source.configId}_${target.title.lowercase().trim()}"
+            val artistPart = target.artist?.lowercase()?.trim().orEmpty()
+            val titleKey = "${source.configId}_${target.title.lowercase().trim()}_$artistPart"
             availabilityCache[titleKey]?.let { return@withContext it }
 
 val probed = kotlinx.coroutines.withTimeoutOrNull(7500L) {
@@ -1108,18 +1109,30 @@ val probed = kotlinx.coroutines.withTimeoutOrNull(7500L) {
         waitForAll: Boolean = false,
         strictLength: Boolean = false,
     ): SourceStream? {
-        val titleKey = "${source.configId}_${target.title.lowercase().trim()}"
+        val artistPart = target.artist?.lowercase()?.trim().orEmpty()
+        val titleKey = "${source.configId}_${target.title.lowercase().trim()}_$artistPart"
         matchedCandidateCache[titleKey]?.let { cachedMatch ->
-            val trackId = SourceRegistry.parseTrackKey(cachedMatch.videoId)?.second ?: cachedMatch.videoId
-            val opened = attempt(source) { source.stream(trackId, request) }
-            if (opened != null) {
-                val stream = opened.copy(durationSec = TrackMatcher.secondsOf(cachedMatch.durationText))
-                val served = stream.format
-                val wantsLossless = request is StreamRequest.Lossless
-                if (!wantsLossless || served.isLossless == true || served.statesNothingLossy) {
-                    TrackLog.d(TAG, "${source.displayName} served pre-matched '${cachedMatch.title}' → ${served.summary}")
-                    return stream
+            val matchesArtist = target.artist.isNullOrBlank() || cachedMatch.artist.isNullOrBlank() ||
+                target.artist.contains(cachedMatch.artist ?: "", ignoreCase = true) ||
+                (cachedMatch.artist ?: "").contains(target.artist, ignoreCase = true) ||
+                TrackMatcher.score(cachedMatch, target) != null
+            val matchesDuration = target.durationSec == null || sameRecordingAs(TrackMatcher.secondsOf(cachedMatch.durationText), target.durationSec)
+            if (matchesArtist && matchesDuration) {
+                val trackId = SourceRegistry.parseTrackKey(cachedMatch.videoId)?.second ?: cachedMatch.videoId
+                val opened = attempt(source) { source.stream(trackId, request) }
+                if (opened != null) {
+                    val stream = opened.copy(durationSec = TrackMatcher.secondsOf(cachedMatch.durationText))
+                    val served = stream.format
+                    val wantsLossless = request is StreamRequest.Lossless
+                    if (!wantsLossless || served.isLossless == true || served.statesNothingLossy) {
+                        TrackLog.d(TAG, "${source.displayName} served pre-matched '${cachedMatch.title}' → ${served.summary}")
+                        return stream
+                    }
+                } else {
+                    matchedCandidateCache.remove(titleKey)
                 }
+            } else {
+                matchedCandidateCache.remove(titleKey)
             }
         }
         var bestStream: SourceStream? = null
@@ -1258,7 +1271,8 @@ val probed = kotlinx.coroutines.withTimeoutOrNull(7500L) {
                     TAG,
                     "${source.displayName} matched '${match.title}' by '${match.artist}' → ${served.summary}",
                 )
-                val titleKey = "${source.configId}_${target.title.lowercase().trim()}"
+                val artistPart = target.artist?.lowercase()?.trim().orEmpty()
+                val titleKey = "${source.configId}_${target.title.lowercase().trim()}_$artistPart"
                 matchedCandidateCache[titleKey] = match
                 return stream
             }

@@ -138,9 +138,9 @@ fun SongDetailsSheet(
                 mimeType = nerdStats?.mimeType ?: "audio/webm",
                 codec = nerdStats?.mimeType?.substringAfterLast("/")?.lowercase() ?: "opus",
                 bitrateKbps = defaultKbps,
-                sampleRateHz = nerdStats?.sampleRateHz ?: 48000,
+                sampleRateHz = nerdStats?.sampleRateHz?.takeIf { it > 0 } ?: 48000,
                 loudnessDb = -10.67f,
-                fileSizeBytes = nerdStats?.fileSizeBytes ?: calculatedSize,
+                fileSizeBytes = nerdStats?.fileSizeBytes?.takeIf { it >= 150_000L } ?: calculatedSize,
                 description = formatStructuredDescription(song, null),
             )
         )
@@ -310,10 +310,12 @@ fun SongDetailsSheet(
                     val codecFormatted = if (isFlacStream) "flac" else (media.codec ?: nerdStats?.mimeType?.substringAfterLast("/")?.lowercase() ?: "opus")
                     val kbps = nerdStats?.effectiveBitrateKbps ?: media.bitrateKbps ?: nerdStats?.bitrateKbps ?: 143
                     val bitrateFormatted = "$kbps Kbps"
-                    val sampleRateFormatted = "${media.sampleRateHz ?: nerdStats?.sampleRateHz ?: 48000} Hz"
+                    val sampleRateFormatted = "${media.sampleRateHz?.takeIf { it > 0 } ?: nerdStats?.sampleRateHz?.takeIf { it > 0 } ?: 48000} Hz"
                     val loudnessFormatted = "${media.loudnessDb ?: -10.67f} dB"
                     val volumeFormatted = "${(volume * 100).toInt()}%"
-                    val activeFileSizeBytes = nerdStats?.fileSizeBytes ?: media.fileSizeBytes ?: calculatedSize
+                    val activeFileSizeBytes = nerdStats?.fileSizeBytes?.takeIf { it >= 150_000L }
+                        ?: media.fileSizeBytes?.takeIf { it >= 150_000L }
+                        ?: calculatedSize
                     val fileSizeFormatted = formatShortFileSize(activeFileSizeBytes)
 
                     DetailItemRow(icon = Icons.Rounded.RssFeed, label = "Views", value = viewsFormatted, accent = palette.accent, onBackground = palette.onBackground, onBackgroundVariant = palette.onBackgroundVariant, onCopy = onCopy)
@@ -585,12 +587,12 @@ private suspend fun fetchMediaDetailsFast(
     val kbps = nerdStats?.effectiveBitrateKbps ?: nerdStats?.bitrateKbps ?: 143
 
     // Check cached stream URL or active stream size without blocking network
-    val streamRealSize = nerdStats?.fileSizeBytes
-        ?: com.music.dhvani.playback.StreamChoice.of(song.videoId)?.contentLength
+    val streamRealSize = nerdStats?.fileSizeBytes?.takeIf { it >= 150_000L }
+        ?: com.music.dhvani.playback.StreamChoice.of(song.videoId)?.contentLength?.takeIf { it >= 150_000L }
     val cachedUrl = StreamResolver.getCachedUrl(song.videoId)?.toHttpUrlOrNull()
     val itag = cachedUrl?.queryParameter("itag")?.toIntOrNull() ?: 251
     val clen = streamRealSize
-        ?: cachedUrl?.queryParameter("clen")?.toLongOrNull()
+        ?: cachedUrl?.queryParameter("clen")?.toLongOrNull()?.takeIf { it >= 150_000L }
         ?: ((durationMs * kbps * 1000L) / (8 * 1000L))
 
     // Run parallel non-blocking requests with 3.5s timeouts
@@ -643,7 +645,7 @@ private suspend fun fetchMediaDetailsFast(
             mimeType = if (nerdStats?.isLossless == true || nerdStats?.mimeType?.contains("flac", ignoreCase = true) == true) "audio/flac" else (nerdStats?.mimeType ?: "audio/webm"),
             codec = if (nerdStats?.isLossless == true || nerdStats?.mimeType?.contains("flac", ignoreCase = true) == true) "flac" else (nerdStats?.mimeType?.substringAfterLast("/")?.lowercase() ?: "opus"),
             bitrateKbps = kbps,
-            sampleRateHz = nerdStats?.sampleRateHz ?: 48000,
+            sampleRateHz = nerdStats?.sampleRateHz?.takeIf { it > 0 } ?: 48000,
             loudnessDb = -10.67f,
             fileSizeBytes = clen,
             description = properDesc,
@@ -705,7 +707,7 @@ private fun formatCountNumber(count: Long?): String {
 }
 
 private fun formatShortFileSize(bytes: Long?): String {
-    if (bytes == null || bytes <= 0L) return "—"
+    if (bytes == null || bytes < 150_000L) return "—"
     val mb = bytes.toDouble() / (1024.0 * 1024.0)
     return String.format(Locale.US, "%.1f MB", mb)
 }

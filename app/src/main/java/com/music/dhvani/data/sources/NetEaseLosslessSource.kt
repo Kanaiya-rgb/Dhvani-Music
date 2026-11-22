@@ -95,7 +95,9 @@ class NetEaseLosslessSource(
                 }
                 val body = resp.body?.string() ?: return@use emptyList()
                 val root = json.parseToJsonElement(body).jsonObject
-                val data = root["data"] as? JsonArray ?: return@use emptyList()
+                val data = (root["data"] as? JsonArray)
+                    ?: (root["data"] as? JsonObject)?.get("items") as? JsonArray
+                    ?: return@use emptyList()
 
                 val songs = data.mapIndexedNotNull { idx, el ->
                     val obj = el as? JsonObject ?: return@mapIndexedNotNull null
@@ -206,7 +208,10 @@ class NetEaseLosslessSource(
                 val data = root["data"]
                 return when (data) {
                     is JsonArray -> (data.firstOrNull() as? JsonObject)?.get("url")?.jsonPrimitive?.contentOrNull?.trim()
-                    is JsonObject -> data["url"]?.jsonPrimitive?.contentOrNull?.trim()
+                    is JsonObject -> {
+                        data["url"]?.jsonPrimitive?.contentOrNull?.trim()
+                            ?: ((data["items"] as? JsonArray)?.firstOrNull() as? JsonObject)?.get("url")?.jsonPrimitive?.contentOrNull?.trim()
+                    }
                     else -> null
                 }
             }
@@ -233,6 +238,7 @@ class NetEaseLosslessSource(
                 val root = json.parseToJsonElement(body).jsonObject
                 val data = root["data"] as? JsonObject ?: return null
                 return data["url"]?.jsonPrimitive?.contentOrNull?.trim()
+                    ?: ((data["items"] as? JsonArray)?.firstOrNull() as? JsonObject)?.get("url")?.jsonPrimitive?.contentOrNull?.trim()
             }
         } catch (e: Exception) {
             TrackLog.w(TAG, "NetEase stream lookup by title failed for '$title': ${e.message}")

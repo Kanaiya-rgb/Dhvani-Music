@@ -95,7 +95,9 @@ class KuwoLosslessSource(
                 }
                 val body = resp.body?.string() ?: return@use emptyList()
                 val root = json.parseToJsonElement(body).jsonObject
-                val data = root["data"] as? JsonArray ?: return@use emptyList()
+                val data = (root["data"] as? JsonArray)
+                    ?: (root["data"] as? JsonObject)?.get("items") as? JsonArray
+                    ?: return@use emptyList()
 
                 val songs = data.mapIndexedNotNull { idx, el ->
                     val obj = el as? JsonObject ?: return@mapIndexedNotNull null
@@ -174,7 +176,9 @@ class KuwoLosslessSource(
                 if (!resp.isSuccessful) return emptyList()
                 val body = resp.body?.string() ?: return emptyList()
                 val root = json.parseToJsonElement(body).jsonObject
-                val data = root["data"] as? JsonArray ?: return emptyList()
+                val data = (root["data"] as? JsonArray)
+                    ?: (root["data"] as? JsonObject)?.get("items") as? JsonArray
+                    ?: return emptyList()
                 return data.mapNotNull { it as? JsonObject }
             }
         } catch (_: Exception) {

@@ -68,6 +68,7 @@ AGENTS.md
 *.idsig
 apk/
 bundle/
+release/
 screen_*.png
 emulator_*.png
 current_*.png

@@ -1752,8 +1752,6 @@ fun AmbientCinemaLandscapeOverlay(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(enabled = !isExiting) { dismissCinemaMode() }
                     .padding(horizontal = 32.dp, vertical = 6.dp),
             ) {
                 Box(

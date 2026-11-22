@@ -197,9 +197,15 @@ class PlaybackService : MediaSessionService() {
             if (player?.currentMediaItem?.mediaId == mediaId) {
                 val song = item.toSong()
                 val targetItem = song.toDirectYouTubeMediaItem()
-                active.setMediaItem(targetItem, position)
+                val currentIdx = active.currentMediaItemIndex
+                if (currentIdx in 0 until active.mediaItemCount) {
+                    active.replaceMediaItem(currentIdx, targetItem)
+                    active.seekTo(currentIdx, position)
+                } else {
+                    active.setMediaItem(targetItem, position)
+                }
                 active.prepare()
-                active.play()
+                if (active.playWhenReady) active.play()
             }
         }
     }
@@ -367,6 +373,8 @@ class PlaybackService : MediaSessionService() {
                                     args.getString("albumName")
                                 ),
                         )
+                        // Pin version so audio language tracks always resolve directly without 3rd-party misidentification
+                        OriginalVersion.pin(newSong.videoId)
                         swapAudioTrack(newSong)
                     }
                 }
@@ -666,9 +674,9 @@ class PlaybackService : MediaSessionService() {
             // the app's caching/upgrade logic in between, so it's the one
             // line that can prove a "hi-res" session never quietly slid
             // onto a lower-rate stream mid-track. `adb logcat -s DECODE:I`.
-            val khz = format.sampleRate.takeIf { it != Format.NO_VALUE }
+            val khz = format.sampleRate.takeIf { it != Format.NO_VALUE && it > 0 }
                 ?.let { "%.1fkHz".format(Locale.ROOT, it / 1000.0) } ?: "?kHz"
-            val kbps = format.bitrate.takeIf { it != Format.NO_VALUE }
+            val kbps = format.bitrate.takeIf { it != Format.NO_VALUE && it > 0 }
                 ?.let { "${it / 1000}kbps" } ?: "bitrate n/a"
             val depth = bitDepthOf(format.pcmEncoding)?.let { "${it}-bit" } ?: "?-bit"
             TrackLog.i(
@@ -676,8 +684,10 @@ class PlaybackService : MediaSessionService() {
                 "$audioFormatFor <- ${format.sampleMimeType} $khz $kbps $depth ${format.channelCount}ch",
                 about = audioFormatFor,
             )
-            val sampleRate = format.sampleRate.takeIf { it != Format.NO_VALUE } ?: 44100
-            val pcmEncoding = format.pcmEncoding.takeIf { it != Format.NO_VALUE } ?: android.media.AudioFormat.ENCODING_PCM_16BIT
+            val sampleRate = format.sampleRate.takeIf { it != Format.NO_VALUE && it > 0 }
+                ?: AudioOutputStatus.current.value.actualSampleRateHz?.takeIf { it > 0 }
+                ?: 44100
+            val pcmEncoding = format.pcmEncoding.takeIf { it != Format.NO_VALUE && it > 0 } ?: android.media.AudioFormat.ENCODING_PCM_16BIT
             AudioOutputStatus.publishAudioTrack(pcmEncoding, sampleRate)
             publishNerdStats()
         }
@@ -880,7 +890,10 @@ class PlaybackService : MediaSessionService() {
             // Innermost, so it chunks the real googlevideo URL the resolver
             // below has already substituted in — see [ChunkedDataSource] for
             // why an open-ended read of one is worth avoiding.
-            ChunkedDataSource.Factory(OkHttpDataSource.Factory(Http.client), STREAM_CHUNK_BYTES),
+            ChunkedDataSource.Factory(
+                OkHttpDataSource.Factory(Http.client),
+                STREAM_CHUNK_BYTES
+            ),
         ) { dataSpec ->
             // Which track everything below is for, said once, because none of
             // it would otherwise know: this runs on ExoPlayer's loader thread
@@ -1538,6 +1551,10 @@ class PlaybackService : MediaSessionService() {
         setSessionOwner(incoming, owns = true)
         incoming.volume = HEADROOM_VOLUME
 
+        if (isQualitySwap) {
+            crossfade?.onQualitySwapAdopted(outgoing, incoming)
+        }
+
         outgoing.removeListener(playbackListener)
         outgoing.removeAnalyticsListener(formatListener)
         // The fields move before the listeners are attached, so anything the
@@ -1559,6 +1576,10 @@ class PlaybackService : MediaSessionService() {
                 reason = Player.MEDIA_ITEM_TRANSITION_REASON_AUTO,
                 alreadyAudible = true,
             )
+            autoplayLoadJob?.cancel()
+            autoplayLoadJob = null
+            autoplaySeed = null
+            loadAutoplayForCurrentTrack()
             updateNotificationButtons()
             overlayManager?.onSongChanged(incoming.currentMediaItem?.toSong())
         } else {
@@ -1585,6 +1606,7 @@ class PlaybackService : MediaSessionService() {
         qualitySwapJob = scope.launch(Dispatchers.Main) {
             val active = player ?: return@launch
             val standby = spare ?: return@launch
+            crossfade?.abortForManualSwap()
             val currIdx = active.currentMediaItemIndex
             if (currIdx !in 0 until active.mediaItemCount) return@launch
             val currItem = active.currentMediaItem ?: return@launch
@@ -1639,16 +1661,27 @@ class PlaybackService : MediaSessionService() {
                         StreamChoice.remember(videoId, resolvedStream, substituted = true)
                         val isDash = resolvedStream.url.contains(".mpd") || resolvedStream.format.codec.equals("dash", ignoreCase = true)
                         val isHls = resolvedStream.url.contains(".m3u8") || resolvedStream.format.codec.equals("hls", ignoreCase = true)
+                        val isFlac = resolvedStream.format.isLossless == true || resolvedStream.format.codec.equals("flac", ignoreCase = true) || resolvedStream.url.contains(".flac")
+                        val isMp4 = resolvedStream.format.codec.equals("mp4", ignoreCase = true) || resolvedStream.format.codec.equals("m4a", ignoreCase = true) || resolvedStream.url.contains(".mp4") || resolvedStream.url.contains(".m4a")
+                        val isAac = resolvedStream.format.codec.equals("aac", ignoreCase = true) || resolvedStream.url.contains(".aac")
+                        val isMp3 = resolvedStream.format.codec.equals("mp3", ignoreCase = true) || resolvedStream.url.contains(".mp3")
+                        val isOpus = resolvedStream.format.codec.equals("opus", ignoreCase = true) || resolvedStream.url.contains(".opus") || resolvedStream.url.contains(".webm")
+
+                        val resolvedMime = when {
+                            isDash -> MimeTypes.APPLICATION_MPD
+                            isHls -> MimeTypes.APPLICATION_M3U8
+                            isFlac -> MimeTypes.AUDIO_FLAC
+                            isMp4 -> MimeTypes.AUDIO_MP4
+                            isAac -> MimeTypes.AUDIO_AAC
+                            isMp3 -> MimeTypes.AUDIO_MPEG
+                            isOpus -> MimeTypes.AUDIO_OPUS
+                            else -> null
+                        }
+
                         val builder = currItem.buildUpon()
                             .setMediaId(videoId)
                             .setUri(Uri.parse(resolvedStream.url))
-                        if (isDash) {
-                            builder.setMimeType(MimeTypes.APPLICATION_MPD)
-                        } else if (isHls) {
-                            builder.setMimeType(MimeTypes.APPLICATION_M3U8)
-                        } else if (resolvedStream.format.isLossless == true || resolvedStream.format.codec.equals("flac", ignoreCase = true)) {
-                            builder.setMimeType(MimeTypes.AUDIO_FLAC)
-                        }
+                            .setMimeType(resolvedMime)
                         builder.build()
                     } else {
                         song.toLosslessMediaItem(targetConfig?.id ?: mode)
@@ -1672,16 +1705,27 @@ class PlaybackService : MediaSessionService() {
                         StreamChoice.remember(videoId, resolvedStream, substituted = true)
                         val isDash = resolvedStream.url.contains(".mpd") || resolvedStream.format.codec.equals("dash", ignoreCase = true)
                         val isHls = resolvedStream.url.contains(".m3u8") || resolvedStream.format.codec.equals("hls", ignoreCase = true)
+                        val isFlac = resolvedStream.format.isLossless == true || resolvedStream.format.codec.equals("flac", ignoreCase = true) || resolvedStream.url.contains(".flac")
+                        val isMp4 = resolvedStream.format.codec.equals("mp4", ignoreCase = true) || resolvedStream.format.codec.equals("m4a", ignoreCase = true) || resolvedStream.url.contains(".mp4") || resolvedStream.url.contains(".m4a")
+                        val isAac = resolvedStream.format.codec.equals("aac", ignoreCase = true) || resolvedStream.url.contains(".aac")
+                        val isMp3 = resolvedStream.format.codec.equals("mp3", ignoreCase = true) || resolvedStream.url.contains(".mp3")
+                        val isOpus = resolvedStream.format.codec.equals("opus", ignoreCase = true) || resolvedStream.url.contains(".opus") || resolvedStream.url.contains(".webm")
+
+                        val resolvedMime = when {
+                            isDash -> MimeTypes.APPLICATION_MPD
+                            isHls -> MimeTypes.APPLICATION_M3U8
+                            isFlac -> MimeTypes.AUDIO_FLAC
+                            isMp4 -> MimeTypes.AUDIO_MP4
+                            isAac -> MimeTypes.AUDIO_AAC
+                            isMp3 -> MimeTypes.AUDIO_MPEG
+                            isOpus -> MimeTypes.AUDIO_OPUS
+                            else -> null
+                        }
+
                         val builder = currItem.buildUpon()
                             .setMediaId(videoId)
                             .setUri(Uri.parse(resolvedStream.url))
-                        if (isDash) {
-                            builder.setMimeType(MimeTypes.APPLICATION_MPD)
-                        } else if (isHls) {
-                            builder.setMimeType(MimeTypes.APPLICATION_M3U8)
-                        } else if (resolvedStream.format.isLossless == true || resolvedStream.format.codec.equals("flac", ignoreCase = true)) {
-                            builder.setMimeType(MimeTypes.AUDIO_FLAC)
-                        }
+                            .setMimeType(resolvedMime)
                         builder.build()
                     } else {
                         song.toHighQualityMediaItem("JIOSAAVN")
@@ -1738,6 +1782,10 @@ class PlaybackService : MediaSessionService() {
                     standby.stop()
                     standby.clearMediaItems()
                     standby.volume = HEADROOM_VOLUME
+                    active.volume = HEADROOM_VOLUME
+                    if (wasPlaying && !active.isPlaying && active.playbackState == Player.STATE_READY) {
+                        active.play()
+                    }
                     withContext(Dispatchers.Main) {
                         val msg = if (isLosslessMode) {
                             "Lossless stream unavailable, remaining on active audio"
@@ -1762,6 +1810,10 @@ class PlaybackService : MediaSessionService() {
                 standby.stop()
                 standby.clearMediaItems()
                 standby.volume = HEADROOM_VOLUME
+                active.volume = HEADROOM_VOLUME
+                if (wasPlaying && !active.isPlaying && active.playbackState == Player.STATE_READY) {
+                    active.play()
+                }
                 withContext(Dispatchers.Main) {
                     val msg = if (isLosslessMode) {
                         "Selected FLAC stream currently unavailable"
@@ -1828,7 +1880,6 @@ class PlaybackService : MediaSessionService() {
             val wasPlaying = active.playWhenReady
 
             val targetItem = newSong.toMediaItem()
-            swappingMediaId = targetItem.mediaId
 
             val standby = spare
             if (standby == null) {
@@ -1837,6 +1888,9 @@ class PlaybackService : MediaSessionService() {
                 active.seekTo(currIdx, currentPos)
                 active.prepare()
                 if (wasPlaying) active.play()
+                overlayManager?.onSongChanged(newSong)
+                updateNotificationButtons()
+                pushDiscordPresence(active)
                 return@launch
             }
 
@@ -1874,9 +1928,17 @@ class PlaybackService : MediaSessionService() {
             }
 
             if (!isActive || standby.playerError != null) {
+                TrackLog.w("DhvaniMusic", "Standby player error during audio track swap: ${standby.playerError?.errorCodeName}; falling back to active player")
                 standby.stop()
                 standby.clearMediaItems()
                 standby.volume = HEADROOM_VOLUME
+                active.replaceMediaItem(currIdx, targetItem)
+                active.seekTo(currIdx, currentPos)
+                active.prepare()
+                if (wasPlaying) active.play()
+                overlayManager?.onSongChanged(newSong)
+                updateNotificationButtons()
+                pushDiscordPresence(active)
                 return@launch
             }
 
@@ -1908,6 +1970,12 @@ class PlaybackService : MediaSessionService() {
             active.clearMediaItems()
             active.volume = HEADROOM_VOLUME
 
+            if (wasPlaying) {
+                standby.play()
+            }
+            overlayManager?.onSongChanged(newSong)
+            updateNotificationButtons()
+            pushDiscordPresence(standby)
             publishNerdStats()
         }
     }
@@ -2294,9 +2362,11 @@ class PlaybackService : MediaSessionService() {
         ) {
             return
         }
-        if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS &&
-            fallbackHttp403Stream(player, item, position)
-        ) {
+        val isCorruptedOrBlocked = error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+            error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+            error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+            error.cause is androidx.media3.exoplayer.source.UnrecognizedInputFormatException
+        if (isCorruptedOrBlocked && fallbackHttp403Stream(player, item, position)) {
             return
         }
         // Giving up on the *retry*, not on everything below it.
@@ -2384,17 +2454,8 @@ class PlaybackService : MediaSessionService() {
             // the middle of the last one. Releasing the choice without dropping
             // the bytes would trade one stuck track for a corrupt one.
             if (givingUp) {
-                // A track nobody can play must not leave the player parked in
-                // IDLE on it. Nothing else in this service calls prepare() again,
-                // so before this the queue simply stopped: the notification kept
-                // showing the song, the play button kept doing nothing, and from
-                // the outside that is indistinguishable from a hung app — which
-                // is what the report describes and what "it was stuck on my
-                // phone too" means. Moving on is the only honest answer, and it
-                // is only safe to do for a verdict: a track that merely ran out
-                // of attempts may still be playable when the listener presses
-                // play, and skipping past it would silently eat it.
-                if (verdict != null) withContext(Dispatchers.Main) { skipPastUnplayable(mediaId, verdict) }
+                val reason = verdict ?: "Playback attempts exhausted"
+                withContext(Dispatchers.Main) { skipPastUnplayable(mediaId, reason) }
                 return@launch
             }
             withContext(Dispatchers.Main) {
@@ -2542,15 +2603,21 @@ class PlaybackService : MediaSessionService() {
                         player.replaceMediaItem(currentIdx, newItem)
                         player.seekTo(currentIdx, position)
                         player.prepare()
-            if (player.playWhenReady) {
-                player.play()
-            }
+                        if (player.playWhenReady) {
+                            player.play()
+                        }
                         player.play()
                         TrackLog.d(
                             "DhvaniMusic",
                             "Seamlessly recovered $mediaId via ${fallback.client.clientName} client",
                             about = mediaId,
                         )
+                    }
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    if (player.currentMediaItem?.mediaId == mediaId) {
+                        skipPastUnplayable(mediaId, "HTTP 403 fallback exhausted")
                     }
                 }
             }
@@ -2578,6 +2645,12 @@ class PlaybackService : MediaSessionService() {
         if (exoPlayer.currentMediaItem?.mediaId != mediaId) return
         if (!exoPlayer.hasNextMediaItem()) {
             TrackLog.w("DhvaniMusic", "$reason — and nothing after it in the queue", about = mediaId)
+            if (AppSettings.autoplay.value) {
+                autoplayLoadJob?.cancel()
+                autoplayLoadJob = null
+                autoplaySeed = null
+                loadAutoplayForCurrentTrack()
+            }
             return
         }
         TrackLog.w("DhvaniMusic", "$reason — skipping to the next track", about = mediaId)
@@ -2861,26 +2934,46 @@ class PlaybackService : MediaSessionService() {
         val isHls = stream.url.contains(".m3u8") || stream.format.codec.equals("hls", ignoreCase = true)
         val isManifest = isDash || isHls
 
+        if (withContext(Dispatchers.Main) { crossfade?.isTransitioning() } == true) {
+            TrackLog.d("DhvaniMusic", "swapIn deferred for $mediaId: crossfade transition in progress")
+            QualityUpgrade.shelve(mediaId, stream)
+            return
+        }
+
         // Ultra-smooth standby dual-player crossfade (zero break in audio)
         val standbySwapped = withContext(Dispatchers.Main) {
             val standby = spare
             val active = player
-            if (standby != null && active != null && !isManifest) {
+            val isTransitioning = crossfade?.isTransitioning() == true
+            if (!isTransitioning && standby != null && active != null && !isManifest) {
                 val currIdx = active.currentMediaItemIndex
                 if (currIdx in 0 until active.mediaItemCount && active.currentMediaItem?.mediaId == mediaId) {
                     val wasPlaying = active.playWhenReady
                     val currentPos = active.currentPosition
 
+                    val isDash = stream.url.contains(".mpd") || stream.format.codec.equals("dash", ignoreCase = true)
+                    val isHls = stream.url.contains(".m3u8") || stream.format.codec.equals("hls", ignoreCase = true)
+                    val isFlac = stream.format.isLossless == true || stream.format.codec.equals("flac", ignoreCase = true) || stream.url.contains(".flac")
+                    val isMp4 = stream.format.codec.equals("mp4", ignoreCase = true) || stream.format.codec.equals("m4a", ignoreCase = true) || stream.url.contains(".mp4") || stream.url.contains(".m4a")
+                    val isAac = stream.format.codec.equals("aac", ignoreCase = true) || stream.url.contains(".aac")
+                    val isMp3 = stream.format.codec.equals("mp3", ignoreCase = true) || stream.url.contains(".mp3")
+                    val isOpus = stream.format.codec.equals("opus", ignoreCase = true) || stream.url.contains(".opus") || stream.url.contains(".webm")
+
+                    val resolvedMime = when {
+                        isDash -> MimeTypes.APPLICATION_MPD
+                        isHls -> MimeTypes.APPLICATION_M3U8
+                        isFlac -> MimeTypes.AUDIO_FLAC
+                        isMp4 -> MimeTypes.AUDIO_MP4
+                        isAac -> MimeTypes.AUDIO_AAC
+                        isMp3 -> MimeTypes.AUDIO_MPEG
+                        isOpus -> MimeTypes.AUDIO_OPUS
+                        else -> null
+                    }
+
                     val builder = at.item.buildUpon()
                         .setMediaId(mediaId)
                         .setUri(Uri.parse(stream.url))
-                    if (isDash) {
-                        builder.setMimeType(MimeTypes.APPLICATION_MPD)
-                    } else if (isHls) {
-                        builder.setMimeType(MimeTypes.APPLICATION_M3U8)
-                    } else if (stream.format.isLossless == true || stream.format.codec.equals("flac", ignoreCase = true)) {
-                        builder.setMimeType(MimeTypes.AUDIO_FLAC)
-                    }
+                        .setMimeType(resolvedMime)
                     val targetItem = builder.build()
                     val queueItems = (0 until active.mediaItemCount).map { i ->
                         if (i == currIdx) targetItem else active.getMediaItemAt(i)
@@ -2951,6 +3044,11 @@ class PlaybackService : MediaSessionService() {
                     withContext(Dispatchers.Main) {
                         spare?.stop()
                         spare?.clearMediaItems()
+                        spare?.volume = HEADROOM_VOLUME
+                        active.volume = HEADROOM_VOLUME
+                        if (active.playWhenReady && !active.isPlaying && active.playbackState == Player.STATE_READY) {
+                            active.play()
+                        }
                         QualityUpgrade.unshelve(mediaId)
                         TrackLog.d("DhvaniMusic", "standby swap timed out or errored; continuing current playback without interruption")
                     }
@@ -3469,7 +3567,7 @@ class PlaybackService : MediaSessionService() {
             preferredSource == "LOSSLESS" ||
             preferredSource.startsWith("builtin_addon_") ||
             com.music.dhvani.data.sources.SourceRegistry.configs.value.any { it.id == preferredSource && it.kind.canServeLossless }
-        val isExplicitManualForce = forceLossless || forceHighQuality || !targetSourceId.isNullOrBlank() || wantsLosslessSetting
+        val isExplicitManualForce = forceLossless || forceHighQuality || !targetSourceId.isNullOrBlank()
         if (isExplicitManualForce) {
             StreamChoice.allowSubstitutes(videoId)
             QualityUpgrade.allowUpgrades(videoId)
@@ -3695,8 +3793,8 @@ class PlaybackService : MediaSessionService() {
                 else "High Quality AAC"
             }
             isFlacActual -> {
-                val depth = format?.pcmEncoding?.let(::bitDepthOf) ?: declared?.bitDepth ?: 16
-                val rate = format?.sampleRate.takeIf { it != null && it != Format.NO_VALUE } ?: declared?.sampleRateHz ?: 44100
+                val depth = format?.pcmEncoding?.takeIf { it != Format.NO_VALUE && it > 0 }?.let(::bitDepthOf) ?: declared?.bitDepth ?: 16
+                val rate = format?.sampleRate?.takeIf { it != Format.NO_VALUE && it > 0 } ?: declared?.sampleRateHz?.takeIf { it > 0 } ?: 44100
                 val isHiRes = depth > 16 || rate > 48000
 
                 when {
@@ -3734,18 +3832,25 @@ class PlaybackService : MediaSessionService() {
 
         val isFlacOrLossless = isFlacActual
 
-        val resolvedDepth = format?.pcmEncoding?.let(::bitDepthOf)
-            ?: declared?.bitDepth
-            ?: if (isFlacOrLossless && (resolvedSource.contains("Hi-Res", ignoreCase = true) || resolvedSource.contains("Studio Master", ignoreCase = true))) 24
-            else if (isFlacOrLossless || isOpusActual || isAacActual) 16
-            else null
+        val resolvedDepth = when {
+            isFlacOrLossless -> {
+                format?.pcmEncoding?.takeIf { it != Format.NO_VALUE && it > 0 }?.let(::bitDepthOf)
+                    ?: declared?.bitDepth
+                    ?: if (resolvedSource.contains("Hi-Res", ignoreCase = true) || resolvedSource.contains("Studio Master", ignoreCase = true)) 24
+                    else 16
+            }
+            isOpusActual || isAacActual -> 16
+            else -> format?.pcmEncoding?.takeIf { it != Format.NO_VALUE && it > 0 }?.let(::bitDepthOf) ?: declared?.bitDepth ?: 16
+        }
 
-        val resolvedChannels = format?.channelCount?.takeIf { it != Format.NO_VALUE }
-            ?: 2
+        val resolvedChannels = format?.channelCount?.takeIf { it != Format.NO_VALUE && it > 0 } ?: 2
 
-        val resolvedSampleRate = format?.sampleRate?.takeIf { it != Format.NO_VALUE }
-            ?: declared?.sampleRateHz
-            ?: 44100
+        val resolvedSampleRate = when {
+            isOpusActual -> 48000
+            isAacActual -> format?.sampleRate?.takeIf { it != Format.NO_VALUE && it > 0 } ?: declared?.sampleRateHz?.takeIf { it > 0 } ?: 44100
+            isFlacOrLossless -> format?.sampleRate?.takeIf { it != Format.NO_VALUE && it > 0 } ?: declared?.sampleRateHz?.takeIf { it > 0 } ?: 44100
+            else -> format?.sampleRate?.takeIf { it != Format.NO_VALUE && it > 0 } ?: 44100
+        }
 
         val streamContentLength = streamChoice?.contentLength
             ?: (if (uri != null) AudioCache.contentLengthOf(uri).takeIf { it > 0 } else null)
@@ -3780,14 +3885,20 @@ class PlaybackService : MediaSessionService() {
                     ?: declared?.kbps?.takeIf { it in 400..1800 }
             }
             isOpusActual -> {
-                format?.bitrate?.takeIf { it != Format.NO_VALUE && it > 0 }?.div(1000)
+                format?.bitrate?.takeIf { it != Format.NO_VALUE && it in 50_000..320_000 }?.div(1000)
                     ?: NerdStats.pickedBitrateKbps(mediaId)?.takeIf { it in 50..320 }
                     ?: 160
             }
+            isAacActual -> {
+                format?.bitrate?.takeIf { it != Format.NO_VALUE && it in 64_000..320_000 }?.div(1000)
+                    ?: declared?.kbps?.takeIf { it in 64..320 }
+                    ?: NerdStats.pickedBitrateKbps(mediaId)?.takeIf { it in 64..320 }
+                    ?: 320
+            }
             else -> {
-                format?.bitrate?.takeIf { it != Format.NO_VALUE && it > 0 }?.div(1000)
-                    ?: declared?.kbps?.takeIf { it > 0 }
-                    ?: NerdStats.pickedBitrateKbps(mediaId)?.takeIf { it > 0 }
+                format?.bitrate?.takeIf { it != Format.NO_VALUE && it in 50_000..320_000 }?.div(1000)
+                    ?: declared?.kbps?.takeIf { it in 50..320 }
+                    ?: NerdStats.pickedBitrateKbps(mediaId)?.takeIf { it in 50..320 }
             }
         }
 
@@ -3952,11 +4063,11 @@ class PlaybackService : MediaSessionService() {
                     // pending and nothing is already looking.
                     lookForBetterCopy(player)
 
-                    // Continuous background telemetry heartbeat every 30 seconds
+                    // Continuous background telemetry heartbeat every 2 minutes (120 seconds)
                     // Keeps active status online and current playing track up to date
                     // even if the user cleared the app from recent apps.
                     val now = SystemClock.elapsedRealtime()
-                    if (now - lastHeartbeatTime >= 30_000L) {
+                    if (now - lastHeartbeatTime >= 120_000L) {
                         lastHeartbeatTime = now
                         com.music.dhvani.data.telemetry.TelemetryManager.reportBackgroundHeartbeat(song, isPlaying = true)
                     }
@@ -4029,7 +4140,7 @@ class PlaybackService : MediaSessionService() {
      */
     private fun farBufferingLoadControl() = DefaultLoadControl.Builder()
         .setBufferDurationsMs(
-            /* minBufferMs = */ 60_000,
+            /* minBufferMs = */ 20_000,
             /* maxBufferMs = */ FAR_BUFFER_MS,
             /* bufferForPlaybackMs = */ START_PLAYBACK_MS,
             /* bufferForPlaybackAfterRebufferMs = */ RESUME_PLAYBACK_MS,
@@ -5014,22 +5125,22 @@ class PlaybackService : MediaSessionService() {
          * Size of each range the player fetches. The same figure read-ahead
          * uses, and for the same reason — see [ChunkedDataSource].
          */
-        const val STREAM_CHUNK_BYTES = 4L * 1024 * 1024
+        const val STREAM_CHUNK_BYTES = 1L * 1024 * 1024
 
         /** Shortest gap "skip silence" is allowed to touch. */
         const val MIN_SILENCE_US = 1_000_000L
 
-        /** Past any song, so the byte ceiling is what stops loading. */
-        const val FAR_BUFFER_MS = 15 * 60 * 1000
+        /** Buffer up to 90 seconds ahead - ample for smooth continuous playback without memory pressure. */
+        const val FAR_BUFFER_MS = 90 * 1000
 
-        /** 128MB buffer ceiling accommodates large Lossless / Hi-Res FLAC tracks as well as Opus without stutters. */
-        const val FAR_BUFFER_BYTES = 128 * 1024 * 1024
+        /** 24MB buffer ceiling holds ~20 mins of Opus or >1 min of Hi-Res FLAC, preventing LMK kills on budget devices. */
+        const val FAR_BUFFER_BYTES = 24 * 1024 * 1024
 
         /**
          * A short nudge backwards, and no more: this shares the byte ceiling
          * above with the read-ahead it would otherwise starve.
          */
-        const val BACK_BUFFER_MS = 30 * 1000
+        const val BACK_BUFFER_MS = 15 * 1000
 
         /** Fast initial audio start so playback begins almost immediately. */
         const val START_PLAYBACK_MS = 250

@@ -409,6 +409,52 @@ class CrossfadeController(
         if (phase != Phase.IDLE) bail()
     }
 
+    /**
+     * Safely aborts any in-flight song transition when the user manually swaps audio source / quality.
+     */
+    fun abortForManualSwap() {
+        if (phase != Phase.IDLE) {
+            Log.d(TAG, "abortForManualSwap: cancelling $phase cleanly")
+            phase = Phase.IDLE
+            handedOff = false
+            incomingCueTimeMs = 0L
+            incomingPlaybackRate = 1.0
+            queuedItemCount = 0
+            incoming = null
+            outgoing = null
+            filters.open()
+            AppSettings.smartMixInProgress.value = false
+            latestLivePlanDetails = null
+        }
+    }
+
+    /**
+     * Called when PlaybackService adopts a new session player due to a quality swap,
+     * source substitution, or mid-track upgrade.
+     *
+     * 1. Detaches listener from outgoing and attaches to incoming (the new session player).
+     * 2. Safely resets any in-flight crossfade without retiring or stopping the newly adopted player.
+     */
+    fun onQualitySwapAdopted(outgoing: ExoPlayer, incoming: ExoPlayer) {
+        listeningTo?.removeListener(listener)
+        incoming.addListener(listener)
+        listeningTo = incoming
+
+        if (phase != Phase.IDLE) {
+            Log.d(TAG, "onQualitySwapAdopted: resetting $phase cleanly")
+            phase = Phase.IDLE
+            handedOff = false
+            incomingCueTimeMs = 0L
+            incomingPlaybackRate = 1.0
+            queuedItemCount = 0
+            this.incoming = null
+            this.outgoing = null
+            filters.open()
+            AppSettings.smartMixInProgress.value = false
+            latestLivePlanDetails = null
+        }
+    }
+
     // ---- Ticker -------------------------------------------------------------
 
     private fun tick() {
@@ -952,9 +998,10 @@ class CrossfadeController(
         // reads as the tail being spent. Safe to discard: [into] is the
         // authoritative queue from here, and this player is retired seconds
         // later anyway.
-        if (out.mediaItemCount > out.currentMediaItemIndex + 1) {
-            out.removeMediaItems(out.currentMediaItemIndex + 1, out.mediaItemCount)
-        }
+        // Do not truncate the queue with removeMediaItems so the queue is never
+        // destroyed if a blend bails mid-flight. Instead, pauseAtEndOfMediaItems
+        // ensures the outgoing player stops at its end instead of advancing.
+        out.pauseAtEndOfMediaItems = true
 
         AppSettings.smartMixInProgress.value = isRealMix()
         // The queue has just moved on, so the marker's fractions now refer to a
@@ -1087,6 +1134,20 @@ class CrossfadeController(
         Log.d(TAG, "bail from $phase")
         AppSettings.smartMixInProgress.value = false
         latestLivePlanDetails = null
+        val inPlayer = incoming
+        val outPlayer = outgoing
+        if (handedOff && inPlayer?.playerError != null && outPlayer != null && (outPlayer.isPlaying || outPlayer.playbackState == Player.STATE_READY)) {
+            Log.w(TAG, "Incoming player failed during crossfade; rescuing outgoing player")
+            filters.open()
+            outPlayer.volume = PlaybackService.HEADROOM_VOLUME
+            outPlayer.pauseAtEndOfMediaItems = false
+            handedOff = false
+            listenTo(outPlayer)
+            onHandoff(inPlayer, outPlayer)
+            inPlayer.let(::retire)
+            finish()
+            return
+        }
         if (!handedOff) {
             // Nothing was ever audible; no ramp to run.
             finish()
@@ -1120,6 +1181,8 @@ class CrossfadeController(
         filters.open()
         render = Render()
 
+        outgoing?.pauseAtEndOfMediaItems = false
+        incoming?.pauseAtEndOfMediaItems = false
         if (handedOff) {
             // The roles have already traded: the incoming player is the session
             // and owns the queue from here, and the outgoing one is spare.
@@ -1163,6 +1226,12 @@ class CrossfadeController(
      * of preparing it.
      */
     private fun retire(player: ExoPlayer) {
+        if (player === active()) {
+            Log.w(TAG, "Refusing to retire active session player!")
+            player.volume = PlaybackService.HEADROOM_VOLUME
+            return
+        }
+        player.pauseAtEndOfMediaItems = false
         player.stop()
         player.clearMediaItems()
         player.volume = PlaybackService.HEADROOM_VOLUME

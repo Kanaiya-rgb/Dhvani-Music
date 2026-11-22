@@ -193,7 +193,7 @@ object YtMusicRepository {
             return@coroutineScope shelves
         }
 
-        // 2. Quick Picks (Taste-based from history/likes or top hits)
+        // 2. Quick Picks (Taste-based from history/likes or top Bollywood hits)
         val quickPicksAsync = async(Dispatchers.IO) {
             withTimeoutOrNull(2000L) {
                 val historySongs = history.shuffled().take(8).map { it.toSong() }
@@ -217,7 +217,7 @@ object YtMusicRepository {
             }
         }
 
-        // 3. Daily Discover
+        // 3. Daily Discover (seed-based discovery or new Hindi tracks)
         val dailyDiscoverAsync = async(Dispatchers.IO) {
             withTimeoutOrNull(2000L) {
                 val seedId = (likedIds + history.map { it.videoId }).shuffled().firstOrNull()
@@ -239,7 +239,7 @@ object YtMusicRepository {
             }
         }
 
-        // 4. Dynamic "Similar to"
+        // 4. Dynamic "Similar to <Recent Artist>" or Soulful Hindi
         val similarAsync = async(Dispatchers.IO) {
             withTimeoutOrNull(2000L) {
                 val seedItem = history.shuffled().firstOrNull()
@@ -839,17 +839,24 @@ object YtMusicRepository {
         val cleanTitle = TrackMatcher.searchableTitle(song.title, song.artist)
         val family = SongLanguage.getCrossLanguageFamily(song.title)
         val currentLang = detectSongLanguage(song.title, song.artist, song.albumName)
+        val cleanAlbum = song.albumName?.let { TrackMatcher.searchableTitle(it, "") }?.trim().orEmpty()
+        val primaryArtist = song.artist?.split(",", "&", "feat.", "ft.", "/")?.firstOrNull()?.trim().orEmpty()
 
         val queries = mutableListOf<String>()
         if (family != null) {
-            family.forEach { alias -> queries.add(alias) }
+            family.forEach { alias ->
+                if (cleanAlbum.isNotBlank() && !cleanAlbum.equals(alias, ignoreCase = true)) {
+                    queries.add("$alias $cleanAlbum")
+                }
+                if (primaryArtist.isNotBlank() && !primaryArtist.equals(alias, ignoreCase = true)) {
+                    queries.add("$alias $primaryArtist")
+                }
+                queries.add(alias)
+            }
         } else {
             queries.add(cleanTitle)
-            if (!song.albumName.isNullOrBlank()) {
-                val cleanAlbum = TrackMatcher.searchableTitle(song.albumName, "")
-                if (cleanAlbum.isNotBlank() && !cleanAlbum.equals(cleanTitle, ignoreCase = true)) {
-                    queries.add("$cleanTitle $cleanAlbum")
-                }
+            if (cleanAlbum.isNotBlank() && !cleanAlbum.equals(cleanTitle, ignoreCase = true)) {
+                queries.add("$cleanTitle $cleanAlbum")
             }
             // Target alternate languages: if international track, query major global dub languages; otherwise major Indian languages
             val isInternational = currentLang in listOf("English", "Spanish", "French", "Portuguese", "German", "Italian", "Japanese", "Korean")
@@ -884,6 +891,10 @@ object YtMusicRepository {
 
             val origClean = cleanTitle.lowercase(Locale.ROOT)
             val origSec = TrackMatcher.secondsOf(song.durationText)
+            val origArtists = song.artist?.lowercase(Locale.ROOT)?.split(",", "&", "feat.", "ft.", "/")
+                ?.map { it.trim() }?.filter { it.length >= 3 }.orEmpty()
+            val origAlbumClean = cleanAlbum.lowercase(Locale.ROOT)
+
             for (candidate in ytTracks) {
                 if (candidate.videoId in seenIds) continue
 
@@ -896,6 +907,24 @@ object YtMusicRepository {
                     candClean.startsWith(origClean) || candClean.contains(origClean)
                 } else {
                     candClean == origClean
+                }
+
+                // If candidate matched via cross-language family, verify artist or album compatibility
+                if (isFamilyMatch && !isDirectMatch) {
+                    val candArtists = candidate.artist?.lowercase(Locale.ROOT)?.split(",", "&", "feat.", "ft.", "/")
+                        ?.map { it.trim() }?.filter { it.length >= 3 }.orEmpty()
+                    val candAlbum = candidate.albumName?.let { TrackMatcher.searchableTitle(it, "") }?.lowercase(Locale.ROOT)?.trim().orEmpty()
+                    val candTitle = candidate.title.lowercase(Locale.ROOT)
+
+                    val hasArtistMatch = origArtists.any { oa -> candArtists.any { ca -> ca.contains(oa) || oa.contains(ca) } }
+                    val hasAlbumMatch = origAlbumClean.isNotBlank() && (
+                        candAlbum.contains(origAlbumClean) || origAlbumClean.contains(candAlbum) ||
+                        candTitle.contains(origAlbumClean)
+                    )
+
+                    if (!hasArtistMatch && !hasAlbumMatch && (origArtists.isNotEmpty() || origAlbumClean.isNotBlank())) {
+                        continue
+                    }
                 }
 
                 val candSec = TrackMatcher.secondsOf(candidate.durationText)
@@ -913,7 +942,14 @@ object YtMusicRepository {
             val jioSource = SourceRegistry.active().firstOrNull { it.kind == SourceKind.JIOSAAVN }
             if (jioSource != null) {
                 val jioQueries = if (family != null) {
-                    family.take(4)
+                    val list = mutableListOf<String>()
+                    family.take(4).forEach { alias ->
+                        if (cleanAlbum.isNotBlank() && !cleanAlbum.equals(alias, ignoreCase = true)) {
+                            list.add("$alias $cleanAlbum")
+                        }
+                        list.add(alias)
+                    }
+                    list
                 } else {
                     val list = mutableListOf<String>()
                     val majorLanguages = listOf("Telugu", "Tamil", "Kannada", "Malayalam", "Odia", "Bengali", "Punjabi", "Hindi")
@@ -926,6 +962,10 @@ object YtMusicRepository {
                 }
                 val origClean = cleanTitle.lowercase(Locale.ROOT)
                 val origSec = TrackMatcher.secondsOf(song.durationText)
+                val origArtists = song.artist?.lowercase(Locale.ROOT)?.split(",", "&", "feat.", "ft.", "/")
+                    ?.map { it.trim() }?.filter { it.length >= 3 }.orEmpty()
+                val origAlbumClean = cleanAlbum.lowercase(Locale.ROOT)
+
                 for (jq in jioQueries) {
                     val jioTracks = jioSource.search(jq, limit = 4, waitForAll = false)
                     for (jt in jioTracks) {
@@ -934,6 +974,24 @@ object YtMusicRepository {
                         val candClean = TrackMatcher.searchableTitle(jt.title, jt.artist).lowercase(Locale.ROOT)
                         val isFamilyMatch = family?.any { candClean.contains(it) } == true
                         val isDirectMatch = candClean.startsWith(origClean) || candClean.contains(origClean)
+
+                        if (isFamilyMatch && !isDirectMatch) {
+                            val candArtists = jt.artist?.lowercase(Locale.ROOT)?.split(",", "&", "feat.", "ft.", "/")
+                                ?.map { it.trim() }?.filter { it.length >= 3 }.orEmpty()
+                            val candAlbum = jt.albumName?.let { TrackMatcher.searchableTitle(it, "") }?.lowercase(Locale.ROOT)?.trim().orEmpty()
+                            val candTitle = jt.title.lowercase(Locale.ROOT)
+
+                            val hasArtistMatch = origArtists.any { oa -> candArtists.any { ca -> ca.contains(oa) || oa.contains(ca) } }
+                            val hasAlbumMatch = origAlbumClean.isNotBlank() && (
+                                candAlbum.contains(origAlbumClean) || origAlbumClean.contains(candAlbum) ||
+                                candTitle.contains(origAlbumClean)
+                            )
+
+                            if (!hasArtistMatch && !hasAlbumMatch && (origArtists.isNotEmpty() || origAlbumClean.isNotBlank())) {
+                                continue
+                            }
+                        }
+
                         val candSec = TrackMatcher.secondsOf(jt.durationText)
                         val isDurationClose = origSec == null || candSec == null || Math.abs(origSec - candSec) <= 45
                         if ((isFamilyMatch || isDirectMatch) && isDurationClose) {

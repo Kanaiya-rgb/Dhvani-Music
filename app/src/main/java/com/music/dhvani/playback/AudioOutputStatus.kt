@@ -1332,12 +1332,18 @@ object AudioOutputStatus {
     }
 
     fun publishAudioTrack(encoding: Int, sampleRateHz: Int, bufferSize: Int? = null) {
+        val validRate = sampleRateHz.takeIf { it > 0 }
+            ?: current.value.actualSampleRateHz?.takeIf { it > 0 }
+            ?: 44100
+        val validEncoding = encoding.takeIf { it > 0 }
+            ?: current.value.actualEncoding?.takeIf { it > 0 }
+            ?: AudioFormat.ENCODING_PCM_16BIT
         current.value = current.value.copy(
-            actualEncoding = encoding,
-            actualSampleRateHz = sampleRateHz,
+            actualEncoding = validEncoding,
+            actualSampleRateHz = validRate,
             bufferSize = bufferSize ?: current.value.bufferSize,
             floatFallback = current.value.requestedPcmMode == OutputPcmMode.FLOAT_32 &&
-                encoding != AudioFormat.ENCODING_PCM_FLOAT,
+                validEncoding != AudioFormat.ENCODING_PCM_FLOAT,
         )
     }
 

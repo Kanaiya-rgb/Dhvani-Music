@@ -190,17 +190,12 @@ private val PIPELINE_SCRIM_COLOR = Color.Black.copy(alpha = 0.60f)
 
 
 private fun formatSampleRate(hz: Int): String {
-
-    return if (hz % 1000 == 0) {
-
-        "${hz / 1000} kHz"
-
+    val rate = hz.takeIf { it > 0 } ?: 44100
+    return if (rate % 1000 == 0) {
+        "${rate / 1000} kHz"
     } else {
-
-        "%.1f kHz".format(hz / 1000f)
-
+        "%.1f kHz".format(rate / 1000f)
     }
-
 }
 
 
@@ -561,31 +556,32 @@ val infiniteTransition = rememberInfiniteTransition(label = "pipelineFlow")
 
 
 
-                        val bitDepthInt = stats?.bitDepth?.takeIf { it > 0 }
-
-                            ?: stats?.claimed?.bitDepth?.takeIf { it > 0 }
-
-                            ?: if (isFlacOrLossless && sourceName.contains("Hi-Res", ignoreCase = true)) 24
-
-                            else if (isFlacOrLossless) 16
-
-                            else if (isOpus || isAac) 16
-
-                            else null
-
-
+                        val bitDepthInt = when {
+                            isOpus || isAac -> 16
+                            isFlacOrLossless -> stats?.bitDepth?.takeIf { it > 0 }
+                                ?: stats?.claimed?.bitDepth?.takeIf { it > 0 }
+                                ?: if (sourceName.contains("Hi-Res", ignoreCase = true)) 24
+                                else 16
+                            else -> stats?.bitDepth?.takeIf { it > 0 } ?: 16
+                        }
 
                         val bitDepth = bitDepthInt?.let { "$it-bit" } ?: "—"
 
-
-
-                        val sampleRateHz = stats?.sampleRateHz ?: stats?.claimed?.sampleRateHz ?: outputStatus.actualSampleRateHz ?: 48000
+                        val sampleRateHz = when {
+                            isOpus -> 48000
+                            isAac -> stats?.sampleRateHz?.takeIf { it > 0 } ?: 44100
+                            isFlacOrLossless -> stats?.sampleRateHz?.takeIf { it > 0 }
+                                ?: stats?.claimed?.sampleRateHz?.takeIf { it > 0 }
+                                ?: outputStatus.actualSampleRateHz?.takeIf { it > 0 }
+                                ?: 44100
+                            else -> stats?.sampleRateHz?.takeIf { it > 0 } ?: 44100
+                        }
 
                         val sampleRateDisplay = formatSampleRate(sampleRateHz)
 
 
 
-                        val channelsInt = stats?.channels ?: 2
+                        val channelsInt = stats?.channels?.takeIf { it > 0 } ?: 2
 
                         val pcmRateKbps = ((sampleRateHz.toLong() * channelsInt.toLong() * (bitDepthInt?.toLong() ?: 16L)) / 1000L).toInt()
 
@@ -595,11 +591,11 @@ val infiniteTransition = rememberInfiniteTransition(label = "pipelineFlow")
 
                             isFlacOrLossless -> {
 
-                                stats?.bitrateKbps?.takeIf { it >= 500 }
+                                stats?.bitrateKbps?.takeIf { it >= 400 }
 
-                                    ?: stats?.claimed?.kbps?.takeIf { it >= 500 }
+                                    ?: stats?.claimed?.kbps?.takeIf { it >= 400 }
 
-                                    ?: (if ((bitDepthInt ?: 16) >= 24) (pcmRateKbps * 52) / 100 else (pcmRateKbps * 58) / 100)
+                                    ?: (if ((bitDepthInt ?: 16) >= 24) (pcmRateKbps * 52) / 100 else (pcmRateKbps * 58) / 100).takeIf { it > 0 }
 
                             }
 
@@ -621,13 +617,13 @@ val infiniteTransition = rememberInfiniteTransition(label = "pipelineFlow")
 
 
 
-                        val bitrate = calculatedBitrate?.let { "$it kbps" } ?: "—"
+                        val bitrate = calculatedBitrate?.takeIf { it > 0 }?.let { "$it kbps" } ?: "—"
 
 
 
                         val pcmDataRate = bitDepthInt?.let {
 
-                            "$pcmRateKbps kbps"
+                            pcmRateKbps.takeIf { it > 0 }?.let { "$it kbps" }
 
                         } ?: "—"
 
@@ -674,7 +670,7 @@ val infiniteTransition = rememberInfiniteTransition(label = "pipelineFlow")
 
                             PipelineRow("Bitrate", bitrate)
 
-                            val streamFileSizeDisplay = stats?.fileSizeBytes?.takeIf { it > 0 }?.let { bytes ->
+                            val streamFileSizeDisplay = stats?.fileSizeBytes?.takeIf { it >= 150_000L }?.let { bytes ->
                                 val mb = bytes.toDouble() / (1024.0 * 1024.0)
                                 String.format(java.util.Locale.US, "%.1f MB", mb)
                             }
@@ -739,9 +735,9 @@ val infiniteTransition = rememberInfiniteTransition(label = "pipelineFlow")
 
                         // ── STAGE 2: RESAMPLER ───────────────────────────────
 
-                        val targetRate = outputStatus.actualSampleRateHz ?: 48000
+                        val targetRate = outputStatus.actualSampleRateHz?.takeIf { it > 0 } ?: 48000
 
-                        val inputRate = stats?.sampleRateHz ?: stats?.claimed?.sampleRateHz ?: targetRate
+                        val inputRate = stats?.sampleRateHz?.takeIf { it > 0 } ?: stats?.claimed?.sampleRateHz?.takeIf { it > 0 } ?: targetRate
 
                         val isBitExactPassthrough = (inputRate == targetRate)
 

@@ -180,7 +180,9 @@ object NerdStats {
          * 256kbps stream is a 256kbps stream wherever it came from.
          */
         val isHiQuality: Boolean
-            get() = !isLossless && (bitrateKbps ?: claimed?.kbps ?: 0) >= HI_QUALITY_KBPS
+            get() = !isLossless &&
+                !(mimeType?.contains("opus", ignoreCase = true) == true || sourceName?.contains("Opus", ignoreCase = true) == true) &&
+                (bitrateKbps ?: claimed?.kbps ?: 0) >= HI_QUALITY_KBPS
     }
 
     /**
